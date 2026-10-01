@@ -34,4 +34,4 @@ Kurashi Ledgerの実装側担当として作業してください。
 
 ローカルの元checkoutの場所はユーザーの環境で指定する。実行が始まったらIssue URL、branch、worktree、agent/sessionを控える。
 
-継続確認には [外部AIの定期確認](external-worker.md) の`/loop 1h`例を使う。定期登録は初回指示とは別にClaude Code側で行い、job IDを確認する。
+継続確認には [外部AIの定期確認](external-worker.md) の`/loop 30m`例を使う。定期登録は初回指示とは別にClaude Code側で行い、job IDを確認する。
