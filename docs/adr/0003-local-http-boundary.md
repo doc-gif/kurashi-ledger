@@ -43,7 +43,7 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
 
 | 方式 | 判断 |
 | --- | --- |
-| loopback HTTP＋Host/Origin検証＋起動トークン（採用） | ブラウザ側の制限に頼らず、サーバー側だけで他サイトと他プロセスからの操作を拒否できる |
+| loopback HTTP＋Host/Origin検証＋起動トークン（採用） | ブラウザ側の制限に頼らず、サーバー側だけで、cookieもトークンも持たない要求を拒否できる。他サイトのページ、DNS rebinding、起動出力を読めない他プロセスがこれに当たる。cookieを受け取りうる同じPCの別ポートのサービスと、同じOSユーザーで動く悪意あるプロセスは対象外（「この境界で守らないもの」） |
 | loopback HTTPのみ（検証なし） | DNS rebindingやクロスサイト要求に弱い。採用しない |
 | loopback HTTPS（自己署名証明書） | 証明書の導入と更新を利用者に課す。loopbackはsecure contextなので得るものが少ない |
 | HTTPを使わないデスクトップシェル（Electron等のIPC） | ADR-0002で初期の配布方式として見送り。再評価するときはこのADRを置き換える |

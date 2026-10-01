@@ -82,9 +82,9 @@ T00では実装・検証コードを作っていない。必要な検証は次�
 | --- | --- |
 | T02 | Node 26のLTS入りの確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないこと、`.gitignore`の修正、試作コードの棚卸し |
 | T05 | Mac/Windows/LinuxのCIで固定版のNode.jsを使うこと。各タスクが作った試験（ローカルHTTPの境界を含む）を実行し、UIが入ったときにE2Eを追加できる構成にすること |
-| T07 | データルートの検査（Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）とlock、migration前の退避、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
+| T07 | データルートの検査（実体パスで判定。Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）とlock、migration前の退避とDBだけのrollback、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
 | T08 | ReactとViteの導入（初回UI依存）、フォーム部品の基盤の選定、PlaywrightのChromium（全OS）とWebKit（Mac）、対応ブラウザでのキーボード操作・アクセシビリティ |
-| T12 | tar＋age形式のアーカイブ、typageと公式`age`との相互復号、パスフレーズの生成と最低長、作成直後の検証、世代管理、復元とrollbackのコマンド、壊れたアーカイブ |
+| T12 | tar＋age形式のアーカイブ、typageと公式`age`との相互復号、パスフレーズの生成と最低長、作成直後の検証、世代管理、復元のコマンド（展開前のエントリ検査、種別マーカーの再作成、入れ替え失敗時の戻し）、壊れたアーカイブ |
 | T13 | 新規のMac/Windows環境で、起動・終了・バックアップ・復元の手順を実施して記録する |
 | T25 | 更新とrollback、Node.jsのメジャー更新、別OSへの移行、パスフレーズを失った場合の限界 |
 
@@ -95,5 +95,7 @@ T00では実装・検証コードを作っていない。必要な検証は次�
 1. `npm start`で動くHTTPサーバーの骨格と、ADR-0003の境界検査の実装。台帳に該当するタスクがない。T09（入力ユースケースとそのAPIアダプタ）に含めるか、独立したタスクにするか。
 2. バックアップの設定・作成の画面と、起動時の催促。T12の範囲はinfrastructureと復元手順で、UIを含まない。T12の範囲を広げるか、T13（統合）に含めるか、別タスクにするか。
 3. T02の着手時にNode 26がまだLTSでなかった場合の、Node 24から26への移行（版の指定、lockfile、CI設定を変える）の担当。
-4. マージ後に`docs/project-status.md`、`docs/architecture.md`、READMEの記載（「T00で決定予定」等）を更新する担当。T00の範囲外なので、T02に含めるか、所有者が直接行うか。
+4. **マージ前に決めてほしい:** このPRをマージすると、`docs/project-status.md`の「UI、DBドライバ、配布方式: T00で決定予定」や「次に行うこと」、`docs/architecture.md`の状態欄、READMEの同様の記載が、ADRと食い違ったまま最初に読む資料に残る。T00の範囲（`docs/adr/`）外なので、このPRでは変更していない。次のどちらにするか。
+   - (a) このPRに、それらの記載をADRへのリンク付きで「T00で決定済み」に直す変更を加えることを許可する。
+   - (b) マージと同時に所有者が直接更新する。
 5. Firefoxを「可能な範囲」に留めてよいか。普段使うブラウザがFirefoxなら「対応」へ上げ、E2Eに加える。
