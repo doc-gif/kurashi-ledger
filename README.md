@@ -2,7 +2,7 @@
 
 複数勤務先の給与・銀行入金、税金・社会保険の記録と見通しを管理する個人向けアプリの設計プロジェクトです。
 
-**現在は設計段階で、製品の実装は停止中です。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算、実行可能なCI、自動実装・自動マージはまだありません。
+**現在は設計段階で、製品の実装は停止中です。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算、製品CIはまだありません。レビュー運用の設定は先行して進め、実装側AIはPRまで、Codex側は定期レビューを担当します。自動マージは行いません。
 
 ## 別のAIが作業を引き継ぐとき
 
@@ -12,11 +12,17 @@
 
 - [実装順序・並行作業](docs/implementation-plan.md)
 - [タスク台帳 — T00–T25と任意評価E01](docs/implementation-tasks.md)
-- [定期確認・AIへの割当・条件付きマージ](docs/github-agent-operations.md)
+- [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
+- [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
+- [Claude Code等へ渡す定期確認の指示](docs/external-worker.md)
+- [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)
+- [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
 - [テスト方針](docs/testing.md)
 - [公開・運用方針](SECURITY.md)
 - [OpenFiscaの検証項目](experiments/openfisca/README.md)
+
+Copilotの自動レビュー用repoルールは設定済みです。Draftはrepo側の自動レビュー対象外、新しいpushは再レビュー対象です。作成者の利用権・利用枠に依存するため、初回PRで実動作を確認します。Claude Code用の入口は[CLAUDE.md](CLAUDE.md)です。
 
 タスクIDはGitHub Issue番号ではありません。Issueはまだ作成しておらず、実装再開後に対応付けます。
 

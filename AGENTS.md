@@ -5,7 +5,7 @@
 1. [現在の状態と実装可否](docs/project-status.md)
 2. [実装計画・依存関係](docs/implementation-plan.md)
 3. [タスク台帳・受入条件](docs/implementation-tasks.md)
-4. [GitHub・複数AIの運用設計](docs/github-agent-operations.md)
+4. [GitHub・複数AIの運用設計](docs/github-agent-operations.md)、[PR引継ぎ・レビュー](docs/pr-review-loop.md)
 5. [アーキテクチャ](docs/architecture.md)、[テスト方針](docs/testing.md)、[公開・運用方針](SECURITY.md)
 
 **現在は設計段階で実装停止中。** Issue原稿や予定があることを着手許可と解釈しない。所有者が実装再開を明示した場合はその指示を優先し、状態資料へ反映して進める。同じ許可を再度要求する必要はない。
@@ -16,12 +16,12 @@
 - 最新mainの本規約・状態・関連仕様を読み直す。関連Issueとopen PR、依存タスクの成果物、担当中の作業を確認する。一覧がページ分割される場合は必要な全ページを読む。
 - 通信・認証の失敗で最新状態が確認できなければ、ローカル調査と設計整理に留め、競合し得る新規着手やマージをしない。
 - 他者のcheckoutに対して勝手にpull、reset、stash、clean、branch切替をしない。dirtyな作業を消さない。
-- 実装時は最新`origin/main`からタスク専用branch・worktreeを作る。例: `git worktree add -b task/T06-records ../kurashi-ledger-T06 origin/main`。既存branch・worktreeがある場合は状態と担当を調べ、上書きしない。
+- 実装時は最新`origin/main`からタスク専用branch・worktreeを作る。[ローカルworktree運用](docs/local-worktrees.md)に従い、元checkoutの未追跡ファイルをコピーしない。例: `git worktree add -b task/T06-records ../kurashi-ledger-T06 origin/main`。既存branch・worktreeがある場合は状態と担当を調べ、上書きしない。
 
 ## 担当と作業範囲
 
 - 実装再開後にIssueを作成・割当し、タスクID、仕様revision、agent/session ID、branch、base SHA、変更予定範囲、共有資源、受入条件を明記する。運用システム未実装の間は所有者または指定調整係の直接割当を使う。
-- 1タスクにつき実装担当1名。自動割当は将来のT24で導入する。単なるラベルやロックIssueを原子的な排他とみなさない。
+- 1タスクにつき実装担当1名。初期は所有者・単一調整係が割当し、T24で外部AIの定期確認・指摘対応を整える。単なるラベルやロックIssueを原子的な排他とみなさない。
 - データ契約、migration、lockfile、共通トークン、Figmaマスター、CI権限は同時編集を避ける。範囲の追加や契約変更は先に調整する。
 - AIごとに専用worktreeと合成DBを使う。別担当のbranchへpushしない。期限切れclaimは、元workerの停止・終了を確認するまで奪わない。
 - 新機能や仕様変更は候補Issueへ分ける。承認済み範囲の不具合修正は同じタスクで進める。
@@ -42,7 +42,10 @@
 - stageするファイルを明示し、公開対象の差分を読む。元のローカル環境に未追跡の試作コードがあっても、`git add .`等で一緒に公開しない。
 - PRには関連Issue、変更理由、受入条件に対する証跡、対象SHA、検証、未対応範囲を記載する。1タスクに複数PRがある場合、最後まで完了するPRだけでIssueを閉じる。
 - 最新head/baseのCI成功と、別担当の内容レビューを別々に確認する。CI成功だけのBot APPROVEをレビューの代用にしない。
-- 自動マージは現時点では無効。将来有効化後も、承認仕様、最新CI、信頼された独立レビュー、リスク別条件を満たす場合のみ。実装workerにmain保護迂回やMerge gate発行権限を渡さない。
+- 実装担当はDraft/Open PRと対象head/base付きの完了報告で止める。Codex側は定期確認・内容レビュー・修正確認を担当する。実装再開時もこの役割分担を守る。
+- 自動マージ案は撤回し、auto-mergeは無効のまま維持する。acceptedはマージ許可ではない。所有者が明示指示するまで、いずれのAIもマージ・デプロイしない。
+- Open状態や無更新の時間だけで完成と判断しない。最新head/baseに一致するready-for-review報告を確認し、投稿直前に再取得する。新push・base変更・working報告で古い引継ぎは失効する。
+- 同一GitHubアカウントではCOMMENTにroleとdecisionを明示する。Copilotの指摘を独立評価し、返信だけで再レビューされるとは仮定しない。レビュー側はPR由来のコードを資格情報のある環境で実行しない。
 - Actionsは最小権限、標準hosted runner、合成データ、reviewed commit SHA固定を基本とする。権限付きworkflowからPRの未信頼コードを実行しない。
 
 ## 終了・中断時の引継ぎ
