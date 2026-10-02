@@ -1,3 +1,6 @@
+# 公開範囲の規則と例外の点検手順は docs/public-data.md。.gitignoreは追加の防御で、
+# 主な境界は「実データのデータルートをrepoの外に置く」こと（ADR-0006）。
+# 例外を変えるときは scripts/lib/public-policy.ts と試験の見本も同じPRで直す。
 node_modules/
 dist/
 coverage/
@@ -8,12 +11,14 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-data/
-private/
-local-data/
-evidence/
-exports/
-backups/
+# 実データ・出力・バックアップ用のディレクトリはリポジトリ直下だけを除外する
+# （src/domain/evidence/ のようなソースの置き場所を除外しないため）。
+/data/
+/private/
+/local-data/
+/evidence/
+/exports/
+/backups/
 *.pdf
 *.png
 *.jpg
@@ -28,5 +33,15 @@ backups/
 *.log
 *.pem
 *.key
+*.age
 .venv/
 __pycache__/
+# 例外: 合成データのfixture（tests/fixtures/）とデザイン資産（design/）だけ。
+!/tests/fixtures/**/*.csv
+!/tests/fixtures/**/*.pdf
+!/tests/fixtures/**/*.png
+!/tests/fixtures/**/*.jpg
+!/tests/fixtures/**/*.jpeg
+!/design/**/*.png
+!/design/**/*.jpg
+!/design/**/*.jpeg
