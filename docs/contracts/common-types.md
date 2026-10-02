@@ -326,11 +326,18 @@
 | 照合配分の識別の次元の項目（[照合の規則](reconciliation.md)の3の表） | 確定するとき | 同3の表の条件のとおり |
 | 照合の判断の`scope` | `annual-adoption`・`mismatch-explanation` | `known` |
 | 照合の判断の`explainedComparisons` | `mismatch-explanation` | `known`（1件以上） |
-| 計算runの`ruleSet` | 制度データを読み込んだ（`computed`・`provisional`・`incomplete`、または読み込んだあとに`failed`） | `known` |
-| 同 | 制度データを使わない計算器、または読み込む前に`unsupported`・`failed`になった | `not-applicable` |
-| 計算runの`previousRunId` | いつでも | `known`か`not-applicable` |
-| 計算runの`failure` | `status`が`failed` | `known` |
+| 計算runの`ruleSet`・`failure`・`previousRunId` | 結果の状態ごと | 下の「計算runの項目の状態」の表 |
 | `AdoptionSnapshot`の`adoptedRef`と`coverage` | `selection`が`annual-document` | `adoptedRef`は`known`（版を固定）、`coverage`は`known`の`annual-document` |
 | 同 | `selection`が`entered-payslips`・`no-annual-document` | `adoptedRef`は`not-applicable`、`coverage`は`known`の`entered-records-only` |
 | 同 | `selection`が`adoption-needed` | どちらも`not-applicable` |
 | `Assumption`の`ref` | `source`が`forecast` | `known`（予測の行。版を固定） |
+
+**計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の値（`results`の`value`）の状態は、[計算結果](calculation-results.md)の2の表による。
+
+| 項目 | `computed` | `provisional` | `incomplete` | `unsupported` | `failed` |
+| --- | --- | --- | --- | --- | --- |
+| `ruleSet` | 制度データを読み込んだら`known`、読み込まない計算器なら`not-applicable` | 同左 | 同左 | 読み込んだら`known`（読み込んだあとで対象外と分かった場合を含む）、読み込む前に対象外と分かったら`not-applicable` | 読み込んだあとに失敗したら`known`、読み込む前に失敗したら`not-applicable` |
+| `failure` | `not-applicable` | `not-applicable` | `not-applicable` | `not-applicable` | `known` |
+| `previousRunId` | `known`か`not-applicable` | 同左 | 同左 | 同左 | 同左 |
+
+どの状態でも、`ruleSet`は制度データを読み込んだかどうかだけで決まり（読み込んだら`known`、読み込まなかったら`not-applicable`）、`unknown`は使わない。

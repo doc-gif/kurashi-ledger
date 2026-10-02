@@ -16,7 +16,7 @@
 | `createdAt` | `Instant` | 実行日時（注入した時計） |
 | `calculator` | `{ id: Text, version: Text }` | 計算器の識別子と版（例 所得税の試算はT16で決める）。暗黙の代わりの計算器を使わない |
 | `appCommit` | `Text` | 実行したアプリのcommit（40文字のSHA）。作業ツリーに変更がある状態での実行の扱いは、ADR-0002の実行物の確認と合わせてT15で決める |
-| `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。制度データを読み込んだrunでは`known`が必要。制度データを使わない計算器、または読み込む前に`unsupported`・`failed`になったrunは`not-applicable`。`unknown`は使わない（[共通の型](common-types.md)の12） |
+| `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。結果の状態を問わず、制度データを読み込んだrunでは`known`（読み込んだあとで`unsupported`・`failed`になった場合を含む）、読み込まなかったrunでは`not-applicable`。`unknown`は使わない（[共通の型](common-types.md)の12の「計算runの項目の状態」の表） |
 | `target` | `Target` | 計算の対象（年・年度・地域） |
 | `inputs` | `Inputs` | 入力の固定した写し |
 | `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2を参照） |
@@ -24,8 +24,8 @@
 | `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べ、`order`は1から始めて1ずつ増やす（run内で一意の連番） |
 | `missingInputs` | `List<MissingInput>` | 不足した入力 |
 | `unconfirmedItems` | `List<Text>` | 未確認の事項（利用者に確かめてほしいこと） |
-| `previousRunId` | `Fact<Id<CalculationRun>>` | 同じ目的の前のrun（訂正後の再計算等）。最初のrunは`not-applicable` |
-| `failure` | `Fact<Text>` | `failed`の場合だけ。失敗の内容（実データの値を含めない） |
+| `previousRunId` | `Fact<Id<CalculationRun>>` | 同じ目的の前のrun（訂正後の再計算等）。最初のrunは`not-applicable`（同じ表） |
+| `failure` | `Fact<Text>` | `failed`の場合だけ（`known`が必要。同じ表）。失敗の内容（実データの値を含めない） |
 
 `Target`:
 
