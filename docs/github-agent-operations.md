@@ -11,7 +11,7 @@
 | レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
 
-**いずれのAIも自動マージしない。** auto-mergeは無効のままにする。実装担当は、自分のPRに限り、最新head/baseで次をすべて確かめてから、`--match-head-commit`付きのマージコミットでマージしてよい: 実装していない別の担当の`decision: accepted`、Copilotの未対応の指摘がないこと、baseが変わっておらず競合がないこと。ほかの担当のPRはマージしない（2026-10-02の所有者決定。[AGENTS.md](../AGENTS.md)）。
+**いずれのAIも自動マージしない。** auto-mergeは無効のままにする。実装担当は、自分のPRに限り、最新head/baseで次をすべて確かめてから、`--match-head-commit`付きのマージコミットでマージしてよい: 実装していない別の担当の`decision: accepted`、Copilotの未対応の指摘がないこと、baseが変わっておらず競合がないこと。ほかの担当のPRはマージしない（2026-10-02の所有者決定。[AGENTS.md](../AGENTS.md)）。マージの直前に、mainの先端が確認したbase_shaと同じことを確かめる。`--match-head-commit`はheadしか固定しないので、マージのあとで、マージコミットの1つ目の親が確認したbase_shaであることも確かめる。違っていれば（確認の直後に別のPRが入った等）、その組み合わせをもう一度確かめ、問題があれば修正のPRを出す。マージは1件ずつ行う。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
 

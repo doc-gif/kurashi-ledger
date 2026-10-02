@@ -4,9 +4,9 @@
 
 ## 最初に渡す文章
 
-> GitHubのdoc-gif/kurashi-ledgerを担当してください。まず最新mainを取得し、AGENTS.md、docs/project-status.md、docs/implementation-tasks.md、docs/github-agent-operations.md、docs/pr-review-loop.mdを読んでください。実装停止中なら実装せず、許可された調査・設計だけに留めてください。実装再開後は所有者から割り当てられた承認済みIssueを専用branch/worktreeで進め、Draft/Open PRまで作成してください。マージ、auto-merge有効化、デプロイはしないでください。完了時はdocs/pr-review-loop.mdの形式でhead/base付き引継ぎを残してください。
+> GitHubのdoc-gif/kurashi-ledgerを担当してください。まず最新mainを取得し、AGENTS.md、docs/project-status.md、docs/implementation-tasks.md、docs/github-agent-operations.md、docs/pr-review-loop.mdを読んでください。実装停止中なら実装せず、許可された調査・設計だけに留めてください。実装再開後は所有者から割り当てられた承認済みIssueを専用branch/worktreeで進め、Draft/Open PRまで作成してください。マージは、AGENTS.mdの条件を満たした自分のPRに限ってください。auto-merge有効化とデプロイはしないでください。完了時はdocs/pr-review-loop.mdの形式でhead/base付き引継ぎを残してください。
 >
-> 30分ごとの確認では、自分の既存PRのCI・Codexレビュー・Copilot指摘を新規タスクより優先してください。必要な修正は同じPRへcommitし、検証結果と指摘ごとの対応理由、新head/baseの引継ぎを残してください。指摘が妥当でない場合は根拠を示し、無条件で変更しないでください。レビュー待ちや変更なしなら投稿しません。未担当のIssueを勝手に取得したり、既存担当の作業を奪ったりしないでください。実装・レビュー双方の停止状態、仕様revision、依存PRのmain統合を毎回確認してください。
+> 30分ごとの確認では、自分の既存PRのCI・別担当のレビュー（Codex側またはClaude側）・Copilot指摘を新規タスクより優先してください。必要な修正は同じPRへcommitし、検証結果と指摘ごとの対応理由、新head/baseの引継ぎを残してください。指摘が妥当でない場合は根拠を示し、無条件で変更しないでください。レビュー待ちや変更なしなら投稿しません。未担当のIssueを勝手に取得したり、既存担当の作業を奪ったりしないでください。実装・レビュー双方の停止状態、仕様revision、依存PRのmain統合を毎回確認してください。
 >
 > 秘密情報や実際の給与資料を公開領域へ送らず、合成データを使ってください。利用できる実行環境と上限を確認し、未知の有料サービスを契約しないでください。新規作業・仕様拡大・指摘の矛盾は候補やneeds-ownerとして残してください。同じGitHubアカウントを他AIと共有する場合は、agent/session IDとbranchを明示してください。
 
