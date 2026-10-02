@@ -1,23 +1,24 @@
 {
   "schema_version": 1,
   "base_sha": "a7cfc84797f34856d2d8cec2a75e0e57b098fa1a",
-  "task_id": "OPS-REVIEW / #3",
+  "task_id": "OPS-REVIEW",
   "planned_paths": [
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/copilot-instructions.md",
-    ".greptile/config.json",
-    ".greptile/files.json",
     ".review/findings.json",
     ".review/invariants.json",
     "AGENTS.md",
     "CLAUDE.md",
+    "docs/github-agent-operations.md",
     "docs/pr-review-loop.md",
     "docs/project-status.md",
     "docs/review-prevention.md",
     "tools/review_guard/README.md",
     "tools/review_guard/adapters/github-actions.yml",
+    "tools/review_guard/changed_paths.py",
     "tools/review_guard/ci.py",
     "tools/review_guard/guard.py",
+    "tools/review_guard/tests/test_changed_paths.py",
     "tools/review_guard/tests/test_ci.py",
     "tools/review_guard/tests/test_guard.py"
   ],
@@ -25,7 +26,7 @@
     {
       "description": "初回導入前のmainには検査器と事前計画の規約がなく、この計画の記録はツール作成後である。",
       "state": "resolved",
-      "resolution": "初回導入の例外を手順に明記。CIはbootstrapと表示し、計画の事前検証や独立承認を済ませたとは報告しない。以後のPRは計画先行にする。"
+      "resolution": "初回導入の例外を手順に明記。base検査器未導入のCIテンプレートは失敗終了し、検証済みとしない。以後のPRは計画先行にする。"
     },
     {
       "description": "GitHub認証にworkflow scopeがなく、Actionsの有効化はできない。",
@@ -41,6 +42,11 @@
       "description": "連携コメントでT26の実際の予定パスと条件の対象パスのずれが指摘された。",
       "state": "resolved",
       "resolution": "INV-HTTP/RELEASEにsrc/infrastructure/http/**、INV-RELEASEに.npmrcを追加し、repo固有のルーティング試験を追加する。T23/T24との関係と導入前後の運用を説明する。"
+    },
+    {
+      "description": "PR4-R001〜R008: CIの信頼境界の過大な説明、条件変更・base更新・計画書式・別担当レビュー・停止条件・Windows入力が不十分。",
+      "state": "resolved",
+      "resolution": "R001(b): workflow保護は別途必要と限定し、既存pull_requestテンプレートのまま権限を拡大しない。条件変更はbaseとの差分を報告。baseの祖先確認と三点diff、決定参照付きchange-proposedの構造検査、UTF-8出力、役割と停止条件の文書整合、回帰試験を追加する。任意R009の関連条件の縮小は効果測定後に判断し、既知パス漏れは今回修正。"
     }
   ],
   "assessments": [
@@ -68,8 +74,8 @@
         },
         {
           "id": "trust",
-          "method": "候補catalogから必須条件を消した状態でbase検査器を起動する統合試験。base SHA変更、TODO、未計画パスも試験",
-          "expected": "条件緩和・未記入・対象変更は失敗する。成功表示はmetadata-completeで、内容の正しさや承認を示さない。"
+          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。",
+          "expected": "候補codeでは検査を置換できず、baseの必要記入を満たさなければ失敗。条件の変更は将来の採否を独立レビューへ返す。保護されないworkflowは迂回可能と明記し、構造合格を承認にしない。"
         }
       ]
     },
