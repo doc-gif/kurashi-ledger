@@ -54,7 +54,7 @@ E2Eの道具の比較:
 
 ## 影響
 
-- TypeScriptとlockfileはT02で、PlaywrightはT05で、ReactとViteは台帳のとおり「初回UI依存追加」としてT08で導入する。lockfileは共有資源なので、この順に1名ずつ変更する。
+- TypeScriptとlockfileはT02で、PlaywrightはT05で、起動のscriptsはT26で、ReactとViteは台帳のとおり「初回UI依存追加」としてT08で導入する。`package.json`とlockfileは共有資源なので、この順に1名ずつ変更する（T08はT26に依存する）。
 - Safari固有の不具合はWebKitのE2Eで検出しきれない可能性がある。リリース前の手動確認を手順に入れる。
 - Firefoxで問題が見つかった場合は、対応ブラウザへ格上げするかを所有者が判断する。
 
