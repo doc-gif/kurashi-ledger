@@ -11,6 +11,7 @@ import {
   RECORD_FILE_NAME,
   checkInstalledTree,
   compareRecord,
+  npmChildEnvironment,
   npmCiArguments,
   observeInstall,
   recordPath,
@@ -28,7 +29,12 @@ afterEach(() => {
 
 // 合成のlockfile。必須の依存、このOS・CPUに当たる任意の依存、当たらない任意の依存を持つ。
 const LOCKED: Record<string, Record<string, unknown>> = {
-  'node_modules/required-dep': { version: '1.0.0', integrity: 'sha512-AAAA', dev: true },
+  'node_modules/required-dep': {
+    version: '1.0.0',
+    integrity: 'sha512-AAAA',
+    dev: true,
+    bin: { 'required-tool': 'cli.js' },
+  },
   'node_modules/opt-this-platform': {
     version: '1.0.0',
     integrity: 'sha512-BBBB',
@@ -68,10 +74,16 @@ function makeProject(): string {
   return root;
 }
 
-// npm ciが成功したときの様子をまねる（node_modulesを作り直し、導入したものをhidden lockfileに書く）。
-function fakeSuccessfulCi(root: string, installed: Record<string, unknown> = pick(INSTALLED_PATHS)): NpmCiResult {
+// npm ciが成功したときの様子をまねる（node_modulesを作り直し、導入したものをhidden lockfileに書き、
+// 実行ファイルのリンクを.binに置く）。
+function fakeSuccessfulCi(
+  root: string,
+  installed: Record<string, unknown> = pick(INSTALLED_PATHS),
+  binLinks = true,
+): NpmCiResult {
   rmSync(join(root, 'node_modules'), { recursive: true, force: true });
-  mkdirSync(join(root, 'node_modules'));
+  mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
+  if (binLinks) writeFileSync(join(root, 'node_modules', '.bin', 'required-tool'), '');
   writeFileSync(
     join(root, 'node_modules', '.package-lock.json'),
     JSON.stringify({ name: 'synthetic', lockfileVersion: 3, requires: true, packages: installed }),
@@ -178,6 +190,35 @@ test('npm ciが成功を返しても、導入した木がlockfileと合わなけ
   }
 });
 
+test('入った依存の実行ファイルのリンクが.binになければ、記録を書かない（bin-links=false等）', () => {
+  const root = makeProject();
+  const { code, output } = setup(root, () => fakeSuccessfulCi(root, pick(INSTALLED_PATHS), false));
+  assert.equal(code, 1);
+  assert.match(output, /required-dep の実行ファイル required-tool のリンク/);
+  assert.equal(existsSync(recordPath(root)), false);
+  // Windowsでは.cmdのshimでもよい。
+  const win: Runtime = { ...runtime, platform: 'win32' };
+  writeFileSync(join(root, 'node_modules', '.bin', 'required-tool.cmd'), '');
+  assert.deepEqual(checkInstalledTree(root, win).filter((p) => p.includes('required-tool')), []);
+});
+
+test('子のnpmへは、npm_で始まる環境変数を渡さない', () => {
+  const env = {
+    PATH: '/synthetic/bin',
+    HTTPS_PROXY: 'http://proxy.example.test:8080',
+    NODE_ENV: 'production',
+    npm_config_bin_links: 'false',
+    NPM_CONFIG_OMIT: 'dev',
+    npm_config_userconfig: '/synthetic/npmrc',
+    npm_execpath: '/synthetic/npm-cli.js',
+  };
+  assert.deepEqual(npmChildEnvironment(env), {
+    PATH: '/synthetic/bin',
+    HTTPS_PROXY: 'http://proxy.example.test:8080',
+    NODE_ENV: 'production',
+  });
+});
+
 test('別のOS・CPU向けの任意の依存と、libcを指定した任意の依存は、なくてもよい', () => {
   const root = makeProject();
   fakeSuccessfulCi(root);
@@ -263,15 +304,18 @@ test('lockfileの改行だけの違いも別の内容として扱う（そのま
   assert.equal(compareRecord(lf, crlf).length, 1);
 });
 
-test('npm ciには、導入する木を変えうる設定をコマンドラインで固定して渡す', () => {
-  assert.deepEqual(npmCiArguments(runtime), [
+test('npm ciには、利用者・全体のnpmrcの代わりに空のファイルを渡し、主な既定の値を明示する', () => {
+  assert.deepEqual(npmCiArguments(runtime, { user: 'empty-user', global: 'empty-global' }), [
     'ci',
+    '--userconfig=empty-user',
+    '--globalconfig=empty-global',
     '--ignore-scripts',
     '--dry-run=false',
     '--include=dev',
     '--include=optional',
     '--include=peer',
     '--install-strategy=hoisted',
+    '--bin-links=true',
     '--os=darwin',
     '--cpu=arm64',
   ]);

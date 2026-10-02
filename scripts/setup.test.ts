@@ -15,6 +15,7 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const DEP_NAME = 'kl-synthetic-dep';
 const DEP_FILE = `${DEP_NAME}-1.0.0.tgz`;
 const RECORD = join('node_modules', '.kurashi-ledger-install.json');
+const BIN_NAME = 'kl-synthetic-bin';
 const TIMEOUT_MS = 120_000;
 
 type Mode = 'ok' | 'missing' | 'hang';
@@ -46,15 +47,17 @@ const npmCli = findNpmCli();
 // 外側のnpm（npm test）から受け継いだ設定を消し、試験用の設定だけを渡す。
 // npm_config_local_prefix等が残ると、内側のnpmがこのrepoを対象にしてしまう。
 // NODE_ENV・NODE_OPTIONS等も外し、試験の結果が実行する人の環境に左右されないようにする。
-function npmEnv(cacheName: string): NodeJS.ProcessEnv {
+// キャッシュは、setupが起動する子のnpmにも効くよう、一時プロジェクトの.npmrcで指定する。
+function npmEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (/^npm_/i.test(key) || /^NODE_/i.test(key)) continue;
     env[key] = value;
   }
-  env['npm_config_cache'] = join(work, cacheName);
   env['npm_config_userconfig'] = join(work, 'empty-userconfig');
   env['npm_config_globalconfig'] = join(work, 'empty-globalconfig');
+  // setupが一時ファイルを置く場所も、試験の作業ディレクトリの中にする（中断の試験で残っても消せる）。
+  for (const key of ['TMPDIR', 'TEMP', 'TMP']) env[key] = join(work, 'tmp');
   return env;
 }
 
@@ -73,10 +76,10 @@ function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 // 合成のregistryがこのプロセスで動いているので、同期の実行（spawnSync）は使わない。
-function startNpm(cwd: string, args: readonly string[], cacheName: string, extraEnv: NodeJS.ProcessEnv = {}) {
+function startNpm(cwd: string, args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}) {
   const child = spawn(process.execPath, [npmCli, ...args], {
     cwd,
-    env: { ...npmEnv(cacheName), ...extraEnv },
+    env: { ...npmEnv(), ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32', // POSIXでは新しいプロセスグループにする
   });
@@ -95,13 +98,8 @@ function startNpm(cwd: string, args: readonly string[], cacheName: string, extra
   return { child, exited, done };
 }
 
-function npm(
-  cwd: string,
-  args: readonly string[],
-  cacheName = `cache-${counter}`,
-  extraEnv: NodeJS.ProcessEnv = {},
-): Promise<Run> {
-  return startNpm(cwd, args, cacheName, extraEnv).done;
+function npm(cwd: string, args: readonly string[], extraEnv: NodeJS.ProcessEnv = {}): Promise<Run> {
+  return startNpm(cwd, args, extraEnv).done;
 }
 
 function describe(r: Run): string {
@@ -112,20 +110,29 @@ before(async () => {
   work = mkdtempSync(join(tmpdir(), 'kl-setup-test-'));
   writeFileSync(join(work, 'empty-userconfig'), '');
   writeFileSync(join(work, 'empty-globalconfig'), '');
+  mkdirSync(join(work, 'tmp'));
 
-  // 合成の依存。インストールスクリプトが動けば、npmを起動したディレクトリに印を残す。
+  // 合成の依存。実行ファイルを1つ持つ。インストールスクリプトが動けば、npmを起動したディレクトリに印を残す。
   const src = join(work, 'dep-src');
   mkdirSync(src);
   writeFileSync(
     join(src, 'package.json'),
-    JSON.stringify({ name: DEP_NAME, version: '1.0.0', scripts: { postinstall: 'node postinstall.cjs' } }),
+    JSON.stringify({
+      name: DEP_NAME,
+      version: '1.0.0',
+      bin: { [BIN_NAME]: 'bin.js' },
+      scripts: { postinstall: 'node postinstall.cjs' },
+    }),
   );
   writeFileSync(join(src, 'index.js'), 'module.exports = 1;\n');
+  writeFileSync(join(src, 'bin.js'), '#!/usr/bin/env node\nconsole.log(1);\n');
   writeFileSync(
     join(src, 'postinstall.cjs'),
     "require('node:fs').writeFileSync(require('node:path').join(process.env.INIT_CWD, 'postinstall-ran'), 'x');\n",
   );
-  const packed = await npm(src, ['pack', '--ignore-scripts', '--pack-destination', work], 'cache-pack');
+  const packed = await npm(src, ['pack', '--ignore-scripts', '--pack-destination', work], {
+    npm_config_cache: join(work, 'cache-pack'),
+  });
   assert.equal(packed.status, 0, describe(packed));
   tarball = readFileSync(join(work, DEP_FILE));
   integrity = `sha512-${createHash('sha512').update(tarball).digest('base64')}`;
@@ -195,6 +202,7 @@ function makeProject(): string {
             integrity,
             dev: true,
             hasInstallScript: true,
+            bin: { [BIN_NAME]: 'bin.js' },
           },
         },
       },
@@ -202,11 +210,18 @@ function makeProject(): string {
       2,
     ),
   );
+  useCache(root, `cache-${counter}`);
+  return root;
+}
+
+// 一時プロジェクトの.npmrc。キャッシュを変えると、取得の失敗・中断の試験でキャッシュに当たらない。
+function useCache(root: string, cacheName: string): void {
   writeFileSync(
     join(root, '.npmrc'),
     [
       'ignore-scripts=true',
       `registry=http://127.0.0.1:${port}/`,
+      `cache=${join(work, cacheName).replace(/\\/g, '/')}`,
       'audit=false',
       'fund=false',
       'update-notifier=false',
@@ -214,7 +229,11 @@ function makeProject(): string {
       '',
     ].join('\n'),
   );
-  return root;
+}
+
+function hasBinLink(root: string): boolean {
+  const bin = join(root, 'node_modules', '.bin', BIN_NAME);
+  return existsSync(bin) || existsSync(`${bin}.cmd`);
 }
 
 test('setupは記録を書き、インストールスクリプトを動かさない。npm ciを直接実行すると記録が消え、buildが止まってsetupを案内する', async () => {
@@ -257,7 +276,8 @@ test('npm ciが失敗したとき、前の記録を消し、新しい記録を�
 
   // 依存を取得できない（キャッシュも空）。npm ciはnode_modulesを消してから失敗する。
   mode = 'missing';
-  const failed = await npm(root, ['run', 'setup'], `cache-missing-${counter}`);
+  useCache(root, `cache-missing-${counter}`);
+  const failed = await npm(root, ['run', 'setup']);
   mode = 'ok';
   assert.notEqual(failed.status, 0, describe(failed));
   assert.match(failed.stderr, /記録は書いていない/);
@@ -302,17 +322,32 @@ test('package.jsonの依存の宣言を変えたあと、npm ciを直接実行�
   assert.notEqual((await npm(root, ['run', 'check:install'])).status, 0);
 });
 
-test('NODE_ENV=productionやomitの設定があっても、setupはdevの依存を入れて記録する', async () => {
+test('利用者のnpmrcや環境変数のnpmの設定（bin-links=false、omit=dev等）があっても、setupは同じ木を入れて記録する', async () => {
   mode = 'ok';
   const root = makeProject();
-  const hostile = { NODE_ENV: 'production', npm_config_omit: 'dev', npm_config_install_strategy: 'nested' };
-  const plain = await npm(root, ['ci'], `cache-${counter}`, hostile);
-  assert.equal(plain.status, 0, describe(plain));
-  assert.equal(existsSync(join(root, 'node_modules', DEP_NAME)), false, '設定のままのnpm ciはdevの依存を省く');
 
-  const setup = await npm(root, ['run', 'setup'], `cache-${counter}`, hostile);
+  // 設定がそのまま効くnpm ciでは、木が変わることを先に確かめる。
+  const noBin = await npm(root, ['ci'], { npm_config_bin_links: 'false' });
+  assert.equal(noBin.status, 0, describe(noBin));
+  assert.ok(existsSync(join(root, 'node_modules', DEP_NAME, 'index.js')));
+  assert.equal(hasBinLink(root), false, 'bin-links=falseのnpm ciは実行ファイルのリンクを作らない');
+  const noDev = await npm(root, ['ci'], { NODE_ENV: 'production' });
+  assert.equal(noDev.status, 0, describe(noDev));
+  assert.equal(existsSync(join(root, 'node_modules', DEP_NAME)), false, 'NODE_ENV=productionのnpm ciはdevの依存を省く');
+
+  const hostileRc = join(work, `hostile-npmrc-${counter}`);
+  writeFileSync(hostileRc, 'bin-links=false\nomit=dev\ninstall-strategy=nested\ndry-run=true\n');
+  const hostile = {
+    NODE_ENV: 'production',
+    npm_config_userconfig: hostileRc,
+    npm_config_bin_links: 'false',
+    npm_config_omit: 'dev',
+    npm_config_install_strategy: 'nested',
+  };
+  const setup = await npm(root, ['run', 'setup'], hostile);
   assert.equal(setup.status, 0, describe(setup));
   assert.ok(existsSync(join(root, 'node_modules', DEP_NAME, 'index.js')));
+  assert.ok(hasBinLink(root), '実行ファイルのリンクがある');
   assert.equal((await npm(root, ['run', 'check:install'])).status, 0);
 });
 
@@ -324,7 +359,8 @@ test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない
 
   mode = 'hang';
   const before = requests;
-  const { child, exited, done } = startNpm(root, ['run', 'setup'], `cache-hang-${counter}`);
+  useCache(root, `cache-hang-${counter}`);
+  const { child, exited, done } = startNpm(root, ['run', 'setup']);
   const deadline = Date.now() + 60_000;
   while (requests === before) {
     assert.ok(Date.now() < deadline, 'npm ciが依存の取得を始めなかった');
@@ -353,7 +389,7 @@ test('setupはnpm run経由でだけ動き、--forceを拒む', async () => {
   const root = makeProject();
   const direct = spawnSync(process.execPath, [join(repoRoot, 'scripts', 'setup.ts')], {
     cwd: root,
-    env: npmEnv('cache-direct'),
+    env: npmEnv(),
     encoding: 'utf8',
   });
   assert.equal(direct.status, 1, direct.stderr);

@@ -1,8 +1,10 @@
 // `npm run setup`: 依存の導入（ADR-0002、ADR-0008）。
 // 既存の記録を削除し、npm ciが成功したときだけ記録を書く。
 import { spawnSync } from 'node:child_process';
-import { basename } from 'node:path';
-import { currentRuntime, npmCiArguments, runSetup } from './lib/install-record.ts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
+import { currentRuntime, npmChildEnvironment, npmCiArguments, runSetup } from './lib/install-record.ts';
 
 function isTruthy(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== 'false' && value !== '0';
@@ -25,13 +27,22 @@ process.exitCode = runSetup({
   root,
   runtime,
   runNpmCi: () => {
-    // インストールスクリプトの無効化（.npmrcでも指定）と、導入する木を変えうる設定を、
-    // 利用者の設定や環境変数で上書きされないよう、コマンドラインで明示する。
-    const result = spawnSync(process.execPath, [npmCli, ...npmCiArguments(runtime)], {
-      cwd: root,
-      stdio: 'inherit',
-    });
-    return { status: result.status, signal: result.signal, error: result.error };
+    // 子のnpmには、利用者・全体のnpmrcとnpm_で始まる環境変数を渡さない。
+    // 使う設定は、repoの.npmrcと引数だけ（ADR-0008）。
+    const configDir = mkdtempSync(join(tmpdir(), 'kurashi-ledger-setup-'));
+    try {
+      const emptyConfigs = { user: join(configDir, 'user-npmrc'), global: join(configDir, 'global-npmrc') };
+      writeFileSync(emptyConfigs.user, '');
+      writeFileSync(emptyConfigs.global, '');
+      const result = spawnSync(process.execPath, [npmCli, ...npmCiArguments(runtime, emptyConfigs)], {
+        cwd: root,
+        stdio: 'inherit',
+        env: npmChildEnvironment(process.env),
+      });
+      return { status: result.status, signal: result.signal, error: result.error };
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
   },
   log: (line) => console.log(line),
   error: (line) => console.error(line),

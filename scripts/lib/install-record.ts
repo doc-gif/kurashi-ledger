@@ -91,6 +91,17 @@ function isErrnoException(value: unknown): value is NodeJS.ErrnoException {
   return value instanceof Error && 'code' in value;
 }
 
+// リンク自身があるか（リンク先はたどらない）。
+function existsQuietly(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return false;
+    throw error;
+  }
+}
+
 function sha256OfFile(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
@@ -269,18 +280,37 @@ export function syncDirectoryEntries(dir: string): void {
   }
 }
 
-// npm ciに渡す引数。導入する木を変えうる設定（利用者・全体の設定や環境変数で変えられるもの）を、
-// コマンドラインで既定の値に固定する。NODE_ENV=productionによるdevの省略、install-strategy、
-// 別のOS・CPU向けの導入、dry-runを含む（ADR-0008）。
-export function npmCiArguments(runtime: Runtime): string[] {
+// npm ciへ渡す環境変数。npm_ で始まるもの（npm_config_* の設定と、npm runが渡す値）を
+// すべて外す。利用者・全体のnpmrcは、引数の --userconfig・--globalconfig で空のファイルに
+// 差し替える。導入する木を決めるnpmの設定を、repoの.npmrc（記録に結び付けてレビューする）と、
+// 下の引数だけにするため（ADR-0008）。設定の名前を1つずつ数えて固定する方法では、
+// 数え漏らした設定（bin-links等）で木が変わりうる。
+export function npmChildEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const child: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!/^npm_/i.test(key)) child[key] = value;
+  }
+  return child;
+}
+
+// npm ciに渡す引数。emptyConfigsは中身が空の2つのnpmrcのパス（npmは同じファイルを
+// 利用者と全体の両方に使うと止まる）。主な既定の値も明示し、npm自身の組込みの設定
+// （npmの導入先のnpmrc）で変えられないようにする。
+export function npmCiArguments(
+  runtime: Runtime,
+  emptyConfigs: { readonly user: string; readonly global: string },
+): string[] {
   return [
     'ci',
+    `--userconfig=${emptyConfigs.user}`,
+    `--globalconfig=${emptyConfigs.global}`,
     '--ignore-scripts',
     '--dry-run=false',
     '--include=dev',
     '--include=optional',
     '--include=peer',
     '--install-strategy=hoisted',
+    '--bin-links=true',
     `--os=${runtime.platform}`,
     `--cpu=${runtime.arch}`,
   ];
@@ -314,10 +344,18 @@ function matchesPlatformList(list: unknown, value: string): boolean {
   return positive.length === 0 || positive.includes(value);
 }
 
-// npm ciのあとで、導入した木（hidden lockfile）がpackage-lock.jsonと合うかを確かめる。
-// 必須の依存と、このOS・CPUに当たる任意の依存（optional）がすべて同じ版で入り、
-// lockfileにないものが入っていないこと。設定の上書きや任意の依存の取得失敗で、
-// npm ciが成功を返しても木が欠けている場合に、記録を書かないため。
+// 依存の実行ファイルのリンクを置くディレクトリ（そのパッケージがあるnode_modulesの.bin）。
+function binDirectory(packagePath: string): string {
+  const index = packagePath.lastIndexOf('node_modules/');
+  return `${packagePath.slice(0, index)}node_modules/.bin`;
+}
+
+// npm ciのあとで、導入した木がpackage-lock.jsonと合うかを確かめる。
+// - 必須の依存と、このOS・CPUに当たる任意の依存（optional）がすべて同じ版で入り、
+//   lockfileにないものが入っていないこと（hidden lockfileで確かめる）。
+// - 入った依存の実行ファイル（lockfileのbin欄）のリンクが.binにあること（ディスクで確かめる。
+//   Windowsでは.cmdのshimでもよい）。
+// 任意の依存の取得失敗等で、npm ciが成功を返しても木が欠けている場合に、記録を書かないため。
 export function checkInstalledTree(root: string, runtime: Runtime): string[] {
   const locked = readPackages(lockfilePath(root));
   if (locked === null) return ['package-lock.json がない。'];
@@ -336,6 +374,16 @@ export function checkInstalledTree(root: string, runtime: Runtime): string[] {
     }
     for (const key of ['version', 'integrity', 'resolved', 'link']) {
       if (key in entry && entry[key] !== got[key]) problems.push(`${path} の ${key} がpackage-lock.jsonと違う。`);
+    }
+    const bin = entry['bin'];
+    if (typeof bin === 'object' && bin !== null) {
+      for (const name of Object.keys(bin)) {
+        const link = join(root, ...binDirectory(path).split('/'), name);
+        const candidates = runtime.platform === 'win32' ? [link, `${link}.cmd`] : [link];
+        if (!candidates.some((c) => existsQuietly(c))) {
+          problems.push(`${path} の実行ファイル ${name} のリンクが node_modules/.bin 等にない。`);
+        }
+      }
     }
   }
   for (const path of installed.keys()) {

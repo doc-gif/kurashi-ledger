@@ -8,40 +8,43 @@ coverage/
 *.iml
 .DS_Store
 Thumbs.db
-.env
-.env.*
-!.env.example
+# 実データになりうる名前は、大文字小文字を区別せずに除外する（Linuxでも同じになるよう、
+# [pP][dD][fF] のように書く。公開検査も同じく大文字小文字を区別しない）。
+.[eE][nN][vV]
+.[eE][nN][vV].*
+!.[eE][nN][vV].[eE][xX][aA][mM][pP][lL][eE]
 # 実データ・出力・バックアップ用のディレクトリはリポジトリ直下だけを除外する
 # （src/domain/evidence/ のようなソースの置き場所を除外しないため）。
-/data/
-/private/
-/local-data/
-/evidence/
-/exports/
-/backups/
-*.pdf
-*.png
-*.jpg
-*.jpeg
-*.heic
-*.csv
-*.xlsx
-*.sqlite*
-*.db
-*.db-*
-*.zip
-*.log
-*.pem
-*.key
-*.age
+/[dD][aA][tT][aA]/
+/[pP][rR][iI][vV][aA][tT][eE]/
+/[lL][oO][cC][aA][lL]-[dD][aA][tT][aA]/
+/[eE][vV][iI][dD][eE][nN][cC][eE]/
+/[eE][xX][pP][oO][rR][tT][sS]/
+/[bB][aA][cC][kK][uU][pP][sS]/
+*.[pP][dD][fF]
+*.[pP][nN][gG]
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[hH][eE][iI][cC]
+*.[cC][sS][vV]
+*.[xX][lL][sS][xX]
+*.[sS][qQ][lL][iI][tT][eE]*
+*.[dD][bB]
+*.[dD][bB]-*
+*.[zZ][iI][pP]
+*.[lL][oO][gG]
+*.[pP][eE][mM]
+*.[kK][eE][yY]
+*.[aA][gG][eE]
 .venv/
 __pycache__/
 # 例外: 合成データのfixture（tests/fixtures/）とデザイン資産（design/）だけ。
-!/tests/fixtures/**/*.csv
-!/tests/fixtures/**/*.pdf
-!/tests/fixtures/**/*.png
-!/tests/fixtures/**/*.jpg
-!/tests/fixtures/**/*.jpeg
-!/design/**/*.png
-!/design/**/*.jpg
-!/design/**/*.jpeg
+# 場所の名前は小文字だけ（大文字小文字を区別する）。拡張子は区別しない。
+!/tests/fixtures/**/*.[cC][sS][vV]
+!/tests/fixtures/**/*.[pP][dD][fF]
+!/tests/fixtures/**/*.[pP][nN][gG]
+!/tests/fixtures/**/*.[jJ][pP][gG]
+!/tests/fixtures/**/*.[jJ][pP][eE][gG]
+!/design/**/*.[pP][nN][gG]
+!/design/**/*.[jJ][pP][gG]
+!/design/**/*.[jJ][pP][eE][gG]

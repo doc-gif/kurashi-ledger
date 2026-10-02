@@ -60,6 +60,20 @@ const BLOCKED_PATHS = [
   '.env/config',
   'config/.env.local/',
   'ledger.sqlite-dir/',
+  // 大文字小文字の違い（スマートフォンの写真やスキャンの拡張子は大文字のことが多い）
+  'DATA/record.json',
+  'Private/note.md',
+  'BACKUPS/',
+  'photo.PNG',
+  'docs/Scan.JPG',
+  'IMG_0001.HEIC',
+  'statement.Pdf',
+  'backup.tar.AGE',
+  'ledger.SQLite',
+  '.ENV',
+  'config/.Env.Local',
+  'Tests/Fixtures/records.csv',
+  'Design/hero.png',
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',
@@ -82,6 +96,11 @@ const ALLOWED_PATHS = [
   'vendor/',
   'tests/fixtures/evidence/',
   'design/',
+  'tests/fixtures/scan.PNG',
+  'tests/fixtures/records.CSV',
+  'design/hero.JPG',
+  '.ENV.EXAMPLE',
+  'src/Data/record.ts',
 ];
 
 function kindOf(sample: string): ['file' | 'directory', string] {
@@ -108,7 +127,9 @@ test('.gitignoreと公開検査の置き場所の規則が一致する', () => {
     assert.equal(spawnSync('git', ['init', '-q', join(dir, 'repo')], { env }).status, 0);
     copyFileSync(join(repoRoot, '.gitignore'), join(dir, 'repo', '.gitignore'));
     const paths = [...BLOCKED_PATHS, ...ALLOWED_PATHS];
-    const r = spawnSync('git', ['check-ignore', '--no-index', '--stdin', '-z'], {
+    // LinuxのGitと同じく大文字小文字を区別する設定で比べる（MacやWindowsの既定では区別しないので、
+    // 例外の場所の名前が大文字の場合だけ、公開検査の方が厳しくなる）。
+    const r = spawnSync('git', ['-c', 'core.ignorecase=false', 'check-ignore', '--no-index', '--stdin', '-z'], {
       cwd: join(dir, 'repo'),
       env,
       input: `${paths.join('\0')}\0`,

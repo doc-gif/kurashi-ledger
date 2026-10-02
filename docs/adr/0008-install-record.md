@@ -18,7 +18,7 @@ ADR-0002は、依存の導入が、いまの`package-lock.json`と実行環境�
 
 ### 内容（形式1）
 
-記録は、導入した木（`node_modules`）を決める入力のすべてと、導入した木そのものに結び付ける。入力は、repoの中のファイル（`package-lock.json`、`package.json`、`.npmrc`）と実行環境（Node.jsの版、OS、CPU）。repoの外にある入力（利用者・全体のnpmの設定、`NODE_ENV`等の環境変数）は、記録するのではなく、`npm ci`のコマンドラインで既定の値に固定して効かなくする（下の「書き方」の3）。
+記録は、導入した木（`node_modules`）を決める入力のすべてと、導入した木そのものに結び付ける。入力は、repoの中のファイル（`package-lock.json`、`package.json`、`.npmrc`）と実行環境（Node.jsの版、OS、CPU）。repoの外にあるnpmの設定（利用者・全体のnpmrc、`npm_config_`で始まる環境変数、`npm run setup`に付けた引数）は、`npm ci`へ渡さない（下の「書き方」の3）。
 
 JSONで、次の欄だけを持つ。日時、利用者名、パスは記録しない。
 
@@ -37,15 +37,13 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 
 1. 既存の記録を削除し、消えたことを確かめる。削除できなければ導入を始めない。
 2. `package-lock.json`・`package.json`・`.npmrc`のハッシュを求める。lockfileかpackage.jsonを読めなければ終える。
-3. `npm ci`を起動する。npmは`npm run`が環境変数`npm_execpath`で渡すもの（`npm-cli.js`）を使い、setupを実行しているNode.js（`process.execPath`）で直接起動する。シェルを通さないので、MacとWindowsで同じ動きになる。導入する木を変えうる設定は、利用者・全体の設定や環境変数（`npm run setup`に付けた引数を含む）で上書きされないよう、コマンドラインで次の値に固定する。
-   - `--ignore-scripts`（`.npmrc`でも指定。インストールスクリプトを動かさない）
-   - `--dry-run=false`
-   - `--include=dev --include=optional --include=peer`（`NODE_ENV=production`や`omit`の設定でdev等の依存が省かれないようにする。npmは、`include`と`omit`の両方にある種類を入れる）
-   - `--install-strategy=hoisted`（npmの既定。木の形を変える設定を効かなくする）
-   - `--os=<process.platform> --cpu=<process.arch>`（別のOS・CPU向けの依存を入れる設定を効かなくする）
+3. `npm ci`を起動する。npmは`npm run`が環境変数`npm_execpath`で渡すもの（`npm-cli.js`）を使い、setupを実行しているNode.js（`process.execPath`）で直接起動する。シェルを通さないので、MacとWindowsで同じ動きになる。子のnpmが読む設定は、次のものだけにする。
+   - 環境変数から、`npm_`で始まるもの（`npm_config_*`の設定と、`npm run`が渡す値）をすべて外す。
+   - 利用者・全体のnpmrcは、`--userconfig`・`--globalconfig`で、OSの一時ディレクトリに作った空のファイル（それぞれ別のもの。npmは同じファイルを両方に使うと止まる）に差し替える。終わったら消す。
+   - 残る設定は、repoの`.npmrc`（記録に結び付け、PRでレビューする）、npm自身の組込みの設定（npmの導入先のnpmrc）、引数だけになる。引数では、主な既定の値も明示し、組込みの設定やrepoの`.npmrc`の誤りで変わらないようにする: `--ignore-scripts`、`--dry-run=false`、`--include=dev --include=optional --include=peer`（`NODE_ENV=production`による`omit`の既定を打ち消す。npmは`include`と`omit`の両方にある種類を入れる）、`--install-strategy=hoisted`、`--bin-links=true`、`--os=<process.platform>`、`--cpu=<process.arch>`。
 4. 終了コードが0でない、シグナルで止まった、起動できなかった場合は、記録を書かずに失敗で終える。
 5. 2の3つのハッシュが変わっていないことを確かめる（導入の途中で変わっていれば書かない）。
-6. 導入した木を確かめる。hidden lockfileに、`package-lock.json`の必須の依存と、このOS・CPUに当たる任意の依存（`optional`）がすべて、同じ`version`・`integrity`・`resolved`で入っていて、lockfileにないものが入っていないこと。任意の依存は、取得に失敗してもnpm ciが成功を返すため、このOS・CPU向けのもの（例: TypeScriptのOS別の実行ファイル）が欠けたまま記録を書かないようにする。`libc`を指定した任意の依存（Linuxのみ）は、当たるかを判定しないので、欠けていてもよい。合わなければ記録を書かずに失敗で終える。
+6. 導入した木を確かめる。hidden lockfileに、`package-lock.json`の必須の依存と、このOS・CPUに当たる任意の依存（`optional`）がすべて、同じ`version`・`integrity`・`resolved`で入っていて、lockfileにないものが入っていないこと。入った依存がlockfileの`bin`欄に実行ファイルを持つなら、そのリンクが`node_modules/.bin`等にあること（Windowsでは`.cmd`のshimでもよい。hidden lockfileにはリンクの有無が表れないので、ディスクで確かめる）。任意の依存は、取得に失敗してもnpm ciが成功を返すため、このOS・CPU向けのもの（例: TypeScriptのOS別の実行ファイル）が欠けたまま記録を書かないようにする。`libc`を指定した任意の依存（Linuxのみ）は、当たるかを判定しないので、欠けていてもよい。合わなければ記録を書かずに失敗で終える。
 7. `node_modules`の中に一時名で排他的に作り、書き終えてディスクへ反映してから、1回の名前変更で記録の名前にする。途中で止まっても、記録の名前に不完全なファイルは残らない。`node_modules`がリンクであれば書かない。名前変更のあとのディレクトリの反映（POSIXのfsync）に失敗した場合は、置いた記録を消してから失敗で終える。
 8. 書いた記録を照合し直し、一致しなければ削除して失敗で終える。
 
@@ -58,6 +56,8 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 - 配信物のmanifest（T08）のNode.jsの版も、同じく`process.version`の完全一致で比べる（ADR-0002）。
 - `package-lock.json`のハッシュは改行を正規化しない。同じPCの同じcheckoutの中で比べるので、改行が変わった場合も「違う」と判定して導入をやり直させるだけで、安全側に倒れる。
 - `package.json`を記録に結び付けるので、依存の宣言を変えたあとに`npm ci`を直接実行し、lockfileとの不一致で`node_modules`を消す前に失敗した場合（前の記録とhidden lockfileが残る）も、不一致と判定する。
+- **repoの外のnpmの設定を1つずつ固定する方法は取らない。** 木を変えうる設定（`omit`、`install-strategy`、`bin-links`、`install-links`、`os`・`cpu`等）は多く、npmの版で増える。名前を数えて引数で固定すると、数え漏らした設定で木が変わっても記録が有効になる（レビューで、`bin-links=false`で実行ファイルのリンクが作られない例が見つかった）。そこで、子のnpmにrepoの外の設定を渡さないことで、設定の種類によらずまとめて塞ぐ。6の木の確認は、設定以外の原因（任意の依存の取得失敗等）で木が欠けた場合のためにも残す。
+- 利用者のnpmrcを読まないので、そこに書いたプロキシ・証明書・認証・キャッシュの場所は、`npm run setup`では使われない。プロキシは、npmが参照する環境変数（`HTTPS_PROXY`・`HTTP_PROXY`・`NO_PROXY`。`npm_`で始まらない）で渡せる。依存は公開のregistryから取得するので、認証は要らない。CI（T05）でも、利用者のnpmrcを指定する環境変数（`NPM_CONFIG_USERCONFIG`等）は使われない。
 - npmの版は記録しない。導入した木は6でlockfileと照らし合わせ、そのhidden lockfileのハッシュを記録するので、記録のあとでnpmを入れ替えても、木といまの入力の対応は変わらない。
 - `npm ls`は使わない。`npm ls --all`は各パッケージのpackage.jsonの版を確かめるが、展開の途中で止まった中身は見抜けない。npmを起動し直す手間（Windowsでのシェルの扱いを含む）も増える。代わりに、npmが導入の最後に書くhidden lockfileのハッシュで、記録のあとに`npm install`等で導入し直したことを見抜く。
 
@@ -69,6 +69,8 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 
 - 記録を書いたあとで`npm install`等を実行し、それが途中で止まった場合（hidden lockfileは導入の最後に書かれるので変わらない）。日常の作業で`npm install`を使わず、依存を変えたら`npm run setup`をやり直す（[開発環境](../development.md)）。
 - 同じOSユーザーによる意図的な改変（記録や`node_modules`の書換え）。ADR-0002・ADR-0003と同じく対象外。
+- npm自身の組込みの設定（npmの導入先のnpmrc）のうち、引数で明示していないもの。公式の配布物の組込みの設定に、repoの中に導入する木を変えるものがないことは、T02の作業環境（macOS、nvmで入れた公式の配布物）では組込みの設定のファイルがないことを確かめた。公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）では未確認（T05のCI等で確かめる）。
+- `npm run setup`を強制終了したとき、OSの一時ディレクトリに空のnpmrc（2つ）が残ることがある。中身は空で、害はない。
 - Linuxのlibc（glibc・musl）の違い。記録せず、`libc`を指定した任意の依存は6で欠けていても通す。利用環境のMac・Windowsでは関係がなく、CIは毎回新しい環境で導入する。
 
 ## 検討した候補
@@ -81,7 +83,9 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 | `node_modules`の全ファイルのハッシュを記録する | 確実だが、照合のたびに全ファイルを読む。React・Vite・Playwright（T05・T08）を入れると数万ファイルになる。見送り |
 | Node.jsの版をメジャーだけで比べる | 上のとおり。見送り |
 | `package.json`のうち依存の欄だけを比べる | scriptsの変更で導入をやり直さずに済むが、木に効く欄（`overrides`、`workspaces`、`bundleDependencies`等）を数え漏らすと古い記録が通る。ファイル全体を比べる。見送り |
-| 利用者・全体のnpmの設定と環境変数を記録する | 木に効く設定を数え漏らしうるうえ、場所がPCごとに違う。コマンドラインで固定し、6で木を確かめる。見送り |
+| 利用者・全体のnpmの設定と環境変数を記録する | 木に効く設定を数え漏らしうるうえ、場所がPCごとに違う。見送り |
+| 木を変えうる設定を1つずつ引数で固定する（前の版） | 設定の数え漏らしが残る（`bin-links`）。主な既定の値の明示としてだけ残し、repoの外の設定を子のnpmへ渡さない方法に変えた |
+| 導入した木だけを確かめ、設定は制御しない | hidden lockfileに表れない違い（実行ファイルのリンク、ファイルの権限等）を見抜けない。設定の制御と組み合わせる |
 
 ## 影響
 
@@ -93,8 +97,8 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 
 T02で次の試験を作った。実行した環境と結果、まだ実行していない環境（固定した版のNode.js、Windows）は、PR #12に記録する。
 
-- `scripts/install-record.test.ts`: npm ciの代わりに結果を決めた関数を渡し、失敗・シグナルでの中断・起動の失敗・導入中の入力の変化・導入した木の欠け（必須の依存、このOS・CPUの任意の依存）や版の違い・余分な依存・名前変更のあとのディレクトリの反映の失敗で記録が残らないこと、各欄の違いを不一致と判定すること、npm ciに渡す引数。
-- `scripts/setup.test.ts`: 合成の依存を1つ持つ一時プロジェクトと127.0.0.1の合成のregistryで、実際のnpmを使う。`npm run setup`が記録を書き、インストールスクリプトを動かさないこと。`npm ci`を直接実行すると記録が消え、`npm run build`が止まって`npm run setup`を案内すること。依存の取得に失敗したとき、`npm ci`が`node_modules`を消す前に失敗したとき、`npm run setup`をCtrl+C相当で止めたとき（POSIXはプロセスグループへSIGINT、Windowsはプロセスツリーの強制終了）に、記録が残らないこと。`--force`を拒むこと。package.jsonの依存の宣言を変えたあとに`npm ci`を直接実行して失敗した場合に、`npm run build`が止まること。`NODE_ENV=production`・`omit=dev`・`install-strategy=nested`の設定があっても、`npm run setup`がdevの依存を入れて記録すること。
+- `scripts/install-record.test.ts`: npm ciの代わりに結果を決めた関数を渡し、失敗・シグナルでの中断・起動の失敗・導入中の入力の変化・導入した木の欠け（必須の依存、このOS・CPUの任意の依存、実行ファイルのリンク）や版の違い・余分な依存・名前変更のあとのディレクトリの反映の失敗で記録が残らないこと、各欄の違いを不一致と判定すること、npm ciに渡す引数と環境変数。
+- `scripts/setup.test.ts`: 合成の依存を1つ持つ一時プロジェクトと127.0.0.1の合成のregistryで、実際のnpmを使う。`npm run setup`が記録を書き、インストールスクリプトを動かさないこと。`npm ci`を直接実行すると記録が消え、`npm run build`が止まって`npm run setup`を案内すること。依存の取得に失敗したとき、`npm ci`が`node_modules`を消す前に失敗したとき、`npm run setup`をCtrl+C相当で止めたとき（POSIXはプロセスグループへSIGINT、Windowsはプロセスツリーの強制終了）に、記録が残らないこと。`--force`を拒むこと。package.jsonの依存の宣言を変えたあとに`npm ci`を直接実行して失敗した場合に、`npm run build`が止まること。実行ファイルを持つ合成の依存で、利用者のnpmrcと環境変数に`bin-links=false`・`omit=dev`・`install-strategy=nested`・`dry-run=true`、`NODE_ENV=production`があっても、`npm run setup`がdevの依存と実行ファイルのリンクを入れて記録すること（同じ設定の`npm ci`では木が変わることも確かめる）。
 
 ## 出典
 

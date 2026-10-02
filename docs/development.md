@@ -36,7 +36,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 | コマンド | 内容 |
 | --- | --- |
-| `npm run setup` | 依存を導入する。既存の記録を削除し、導入する木を変えうるnpmの設定をコマンドラインで固定して`npm ci`を実行し、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
+| `npm run setup` | 依存を導入する。既存の記録を削除し、repoの`.npmrc`と決めた引数だけで`npm ci`を実行し（利用者のnpmrcや`npm_config_`の環境変数は使わない）、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
 | `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`・`node_modules`とNode.jsの版・OS・CPUに一致するかを確かめる |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
 | `npm run typecheck` | `tsc --noEmit`による型検査だけを行う。JavaScriptは出力しない |
@@ -49,6 +49,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 - `ignore-scripts=true`: 依存のインストールスクリプトを動かさない（ADR-0002）。npmの仕様で、`npm run`で指定したスクリプトは動くが、`prebuild`のようなpre/postスクリプトは動かない。`package.json`のscriptsにpre/postを使わず、必要な確認はスクリプトの中で行う。スクリプトが必要な依存を入れる場合は、理由を確かめてから個別に扱う（ADR-0002）。
 - `save-exact=true`: 依存を追加したときに、範囲ではなく正確な版で`package.json`に書く。
+- `npm run setup`は、利用者のnpmrc（`~/.npmrc`等）と`npm_config_`で始まる環境変数を使わない（ADR-0008）。プロキシが必要な環境では、`HTTPS_PROXY`・`HTTP_PROXY`・`NO_PROXY`の環境変数で渡す。
 
 ## TypeScript
 
