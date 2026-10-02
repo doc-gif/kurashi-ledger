@@ -8,7 +8,8 @@
     "design/figma-map.json",
     "design/tokens.json",
     "docs/implementation-plan.md",
-    "docs/project-status.md"
+    "docs/project-status.md",
+    "docs/implementation-tasks.md"
   ],
   "conflicts": [
     {
@@ -25,6 +26,11 @@
       "description": "2026-10-02の所有者決定: FigmaのファイルURLを公開しない。機能色（赤・黄土色）を承認。",
       "state": "resolved",
       "resolution": "design/・Issue #7・PR #10からURLとfile keyを除き、node IDだけを残した（履歴は1つのcommitにまとめ直し済み）。機能色は変えず、承認を design/README.md に記録した。"
+    },
+    {
+      "description": "Status BadgeとT01の金額・記録の状態の対応を「T01のmain統合後に決める」とだけ残しており、決めるタスクがなく、T08はT01に依存していなかった（Copilot review 5395839447 の「Previously missed」）。",
+      "state": "resolved",
+      "resolution": "台帳のT08節に依存T01と、対応の決定（not-statedの表示の要否、実績・見込み・正式通知の区別を含む）を受入条件として加え、design/README.md・components.mdはその受入条件を参照する。実装計画の依存図にT01→T08を加え、並行作業の表をそろえる。台帳はT08節だけを変える（PR #11・#12と行が重ならない）。"
     }
   ],
   "assessments": [
@@ -70,7 +76,7 @@
         {
           "id": "history",
           "method": "差分に税・保険の計算、制度の年・地域・出典、期待値、計算runの記録が含まれないことを確認する。Status Badgeの状態とT01の契約（unknown / not-stated / not-applicable / known(0)）の対応が未決として残っていることを確認する。",
-          "expected": "T04は計算・制度データ・期待値を追加しない（履歴の再現性に影響しない）。状態の対応はT01のmain統合後に決めると design/README.md に明記されている。"
+          "expected": "T04は計算・制度データ・期待値を追加しない（履歴の再現性に影響しない）。Status BadgeとT01の状態（unknown / not-stated / not-applicable / known(0)、実績・見込み・正式通知）の対応は、T08の受入条件として台帳に置き、T08はT01に依存する。"
         }
       ]
     },
@@ -133,12 +139,12 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T04の完了に合わせて状態資料（docs/project-status.md、docs/implementation-plan.md）を作成済みにそろえる。T08が使う成果物（tokens.json、figma-map.json、components.md）と、T08の受入条件として引き継ぐ確認を design/README.md に置く。package.json・lockfile・CI・Figma以外の共有資源は変更しない。",
+      "reason": "T04の完了に合わせて状態資料（docs/project-status.md、docs/implementation-plan.md）を作成済みにそろえる。T08が使う成果物（tokens.json、figma-map.json、components.md）と、T08の受入条件として引き継ぐ確認を design/README.md に置く。Status BadgeとT01の金額・記録の状態の対応を決めるタスクがなかったため、台帳のT08節に依存（T01）と受入条件を加え、実装計画の依存図と表もそろえる。package.json・lockfile・CI・Figma以外の共有資源は変更しない。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "docs/implementation-tasks.md のT04・T08節と design/README.md の「T08の受入条件として引き継ぐもの」を照合する。差分にpackage.json・lockfile・workflowがないことを確認する。PR #12（T02）がdocs/project-status.mdの別の行を変更しているため、変更する行が重ならないことを確認する。",
-          "expected": "T08の依存（T04・T05・T26）と順序は変わらない。引き継いだ確認はT08の範囲（ブラウザ・CSS生成・フォント）に収まる。lockfile等の同時編集はない。PR #12とは別の行の変更で、後にマージする側が最新mainを取り込めば両立する。"
+          "method": "docs/implementation-tasks.md のT01・T04・T08節、docs/implementation-plan.md の依存図（mermaid）と並行作業の表、design/README.md の「T08の受入条件として引き継ぐもの」を照合する。差分にpackage.json・lockfile・workflowがないことを確認する。PR #11（T01）とPR #12（T02）が変更する台帳の行（T01節、26・34・36・61行目付近）と、このPRが変更するT08節の行が重ならないことを確認する。",
+          "expected": "T08の依存はT01・T04・T05・T26で、台帳・依存図・表の3か所が一致する。T01→T08を加えても循環しない（T01はT00だけに依存する）。Status Badgeと状態の対応の決定はT08の受入条件にあり、T01の契約が確定する前にT08が状態をAPIとして固定しない。引き継いだほかの確認もT08の範囲に収まる。lockfile等の同時編集はない。PR #11・#12とは別の行の変更で、後にマージする側が最新mainを取り込めば両立する。"
         },
         {
           "id": "entrypoints",
