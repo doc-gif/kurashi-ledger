@@ -29,6 +29,14 @@ function makeRepo() {
   const git = (...args: string[]) => {
     const r = spawnSync('git', args, { cwd: repo, env, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trim();
+  };
+  // indexにsymlink（mode 120000）を直接置く。中身はリンク先のパスの文字列。ファイルシステムの
+  // symlinkを作らないので、権限の要るWindowsでも同じように試せる。
+  const stageSymlink = (path: string, target: string) => {
+    const r = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, env, input: target, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    git('update-index', '--add', '--cacheinfo', `120000,${r.stdout.trim()},${path}`);
   };
   const check = (args: string[] = [], extraEnv: NodeJS.ProcessEnv = {}) =>
     spawnSync(process.execPath, [join(repoRoot, 'scripts', 'check-public.ts'), ...args], {
@@ -36,7 +44,7 @@ function makeRepo() {
       env: { ...env, ...extraEnv },
       encoding: 'utf8',
     });
-  return { write, git, check };
+  return { write, git, check, stageSymlink };
 }
 
 test('許可したソースと合成データだけなら通る', () => {
@@ -115,4 +123,34 @@ test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、ディ
   assert.ok(!r.stderr.includes('vendor/allowed'), r.stderr);
   assert.match(r.stderr, /8件のうち6件/); // README.mdと許可の場所のgitlinkは当たらない
   assert.equal(check().status, 1);
+});
+
+test('symlink（mode 120000）は、合成データの場所や許可した拡張子でも止める。通常のファイルと実行可能なファイルは今までどおり', () => {
+  const { write, git, check, stageSymlink } = makeRepo();
+  write('tests/fixtures/records.csv', 'employer,month,gross_yen\nemployer-a,2026-04,unknown\n');
+  write('tests/fixtures/scan.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00]));
+  write('scripts/tool.sh', '#!/bin/sh\necho synthetic\n');
+  write('tests/fixtures/executable.csv', 'a,b\n1,2\n');
+  git('add', 'tests/fixtures/records.csv', 'tests/fixtures/scan.png', 'scripts/tool.sh', 'tests/fixtures/executable.csv');
+  git('update-index', '--chmod=+x', 'scripts/tool.sh', 'tests/fixtures/executable.csv');
+  // 通常のファイル（100644）と実行可能なファイル（100755）だけなら通る。
+  const clean = check(['--staged']);
+  assert.equal(clean.status, 0, clean.stderr);
+
+  // 合成データの場所の中から、禁止の場所を指す相対のリンク（合成の名前）。
+  stageSymlink('tests/fixtures/leak.csv', '../../private/records.csv');
+  // 合成データの場所の中で、同じ場所の許可されたファイルを指すリンク。
+  stageSymlink('tests/fixtures/alias.csv', 'records.csv');
+  // 許可された拡張子でない場所のリンク。
+  stageSymlink('docs/notes-link.md', '../README.md');
+  const r = check(['--staged']);
+  assert.equal(r.status, 1, r.stdout);
+  for (const path of ['tests/fixtures/leak.csv', 'tests/fixtures/alias.csv', 'docs/notes-link.md']) {
+    assert.match(r.stderr, new RegExp(`公開しない: ${path.replace(/\./g, '\\.')}: .*シンボリックリンク`), path);
+  }
+  for (const path of ['tests/fixtures/records.csv', 'tests/fixtures/scan.png', 'scripts/tool.sh', 'tests/fixtures/executable.csv']) {
+    assert.ok(!r.stderr.includes(`公開しない: ${path}:`), `${path}\n${r.stderr}`);
+  }
+  assert.ok(!r.stderr.includes('private/records.csv'), 'リンク先のパスは表示しない');
+  assert.equal(check().status, 1, '追跡中の全件の検査でも止まる');
 });

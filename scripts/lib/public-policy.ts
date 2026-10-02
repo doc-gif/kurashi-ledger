@@ -145,3 +145,30 @@ export function inspectPublicFile(path: string, content: Uint8Array): string[] {
   if (!isBinary(content)) findings.push(...textFindings(Buffer.from(content).toString('utf8')));
   return findings;
 }
+
+// indexの項目の種類（mode）ごとに規則を当てる。contentは、通常のファイルとsymlinkではblobの中身
+// （symlinkならリンク先のパスの文字列）、gitlinkではundefined。
+// - 100644・100755（通常のファイル。実行可能かどうかは問わない）: 置き場所の規則と中身の検査。
+//   合成データの場所の例外を受けるのは、この種類だけ。
+// - 120000（symlink）: 場所・拡張子・リンク先によらず止める。.gitignoreでは区別できないので、
+//   公開検査だけが止める。リンクをたどる処理（試験等）がcheckoutの中の非公開のファイルを読む
+//   経路になり、Windowsでは設定によって通常のファイルとして取り出されるため。
+// - 160000（gitlink、submodule）: 中身はこのrepoにないので、ディレクトリとして置き場所の規則だけを当てる。
+// - それ以外: 知らない種類として止める。
+export function inspectIndexEntry(mode: string, path: string, content: Uint8Array | undefined): string[] {
+  switch (mode) {
+    case '100644':
+    case '100755':
+      if (content === undefined) throw new Error('通常のファイルの中身がない');
+      return inspectPublicFile(path, content);
+    case '120000': {
+      const findings = ['シンボリックリンク（場所・拡張子によらず公開しない）'];
+      if (content !== undefined) findings.push(...textFindings(Buffer.from(content).toString('utf8')));
+      return findings;
+    }
+    case '160000':
+      return pathFindings(path, 'directory');
+    default:
+      return [`種類の分からないindexの項目（mode ${mode}）`];
+  }
+}

@@ -6,7 +6,7 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { inspectPublicFile, pathFindings, textFindings } from './lib/public-policy.ts';
+import { inspectIndexEntry, inspectPublicFile, pathFindings, textFindings } from './lib/public-policy.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const text = (s: string) => new TextEncoder().encode(s);
@@ -224,4 +224,26 @@ test('バイナリは中身を検査せず、置き場所の規則だけを適�
   assert.deepEqual(inspectPublicFile('design/components/button.png', binary), []);
   assert.notDeepEqual(inspectPublicFile('docs/button.png', binary), []);
   assert.notDeepEqual(inspectPublicFile('docs/notes.md', text(secret)), []);
+});
+
+test('indexの項目の種類（mode）ごとに規則を当てる', () => {
+  const csv = text('a,b\n1,2\n');
+  // 通常のファイルと実行可能なファイルは、合成データの場所の例外を受ける。
+  assert.deepEqual(inspectIndexEntry('100644', 'tests/fixtures/records.csv', csv), []);
+  assert.deepEqual(inspectIndexEntry('100755', 'tests/fixtures/records.csv', csv), []);
+  assert.notDeepEqual(inspectIndexEntry('100755', 'docs/records.csv', csv), []);
+  // symlinkは場所・拡張子・リンク先によらず止める。
+  for (const [path, target] of [
+    ['tests/fixtures/leak.csv', '../../private/records.csv'],
+    ['tests/fixtures/alias.csv', 'records.csv'],
+    ['design/hero.png', 'other.png'],
+    ['docs/readme-link.md', '../README.md'],
+  ] as const) {
+    assert.ok(inspectIndexEntry('120000', path, text(target)).some((r) => r.includes('シンボリックリンク')), path);
+  }
+  // gitlinkはディレクトリとして置き場所の規則だけを当てる。
+  assert.deepEqual(inspectIndexEntry('160000', 'vendor/tool', undefined), []);
+  assert.notDeepEqual(inspectIndexEntry('160000', 'tests/fixtures/evidence.pdf', undefined), []);
+  // 知らない種類は止める。
+  assert.ok(inspectIndexEntry('100664', 'docs/a.md', text('ok')).some((r) => r.includes('種類')));
 });

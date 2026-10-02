@@ -4,7 +4,7 @@
 //   --redact-paths 結果にファイル名を出さない（環境変数CI=trueのときも同じ）
 // 検出は追加の防御で、保証ではない。公開する差分は自分で読む。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { inspectPublicFile, pathFindings } from './lib/public-policy.ts';
+import { inspectIndexEntry } from './lib/public-policy.ts';
 
 type IndexEntry = { readonly mode: string; readonly oid: string; readonly path: string };
 
@@ -69,19 +69,14 @@ if (stagedOnly) {
   entries = entries.filter((e) => changed.has(e.path));
 }
 
-// submodule（gitlink、mode 160000）は、このrepoに中身がないので読まないが、ディレクトリとして置き場所の規則を当てる。
+// 項目の種類（mode）ごとの規則は inspectIndexEntry。gitlink（mode 160000）は、このrepoに中身がないので読まない。
 const isGitlink = (e: IndexEntry): boolean => e.mode === '160000';
 const findings: { readonly index: number; readonly path: string; readonly reasons: readonly string[] }[] = [];
 const blobs = readBlobs([...new Set(entries.filter((e) => !isGitlink(e)).map((e) => e.oid))]);
 entries.forEach((entry, i) => {
-  let reasons: string[];
-  if (isGitlink(entry)) {
-    reasons = pathFindings(entry.path, 'directory');
-  } else {
-    const content = blobs.get(entry.oid);
-    if (content === undefined) throw new Error('gitのオブジェクトを読めない');
-    reasons = inspectPublicFile(entry.path, content);
-  }
+  const content = isGitlink(entry) ? undefined : blobs.get(entry.oid);
+  if (!isGitlink(entry) && content === undefined) throw new Error('gitのオブジェクトを読めない');
+  const reasons = inspectIndexEntry(entry.mode, entry.path, content);
   if (reasons.length > 0) findings.push({ index: i + 1, path: entry.path, reasons: [...new Set(reasons)] });
 });
 
