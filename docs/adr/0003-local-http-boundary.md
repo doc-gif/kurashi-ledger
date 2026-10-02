@@ -58,7 +58,7 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
 
 ## 別タスクで行う検証
 
-HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバーと安全境界）で実装する。T26は2026-10-02の所有者決定を受けて台帳に追加した（ADR README「所有者の決定」）。試験はT26で作り、T05で整えたCIでMac/Windows/Linuxの各OS上で実行する。ただし、Viteの開発サーバーの設定（10）はReactとViteを導入するT08で、二重起動の防止（データルートのlock）は起動処理にT07の成果物を組み込むT09で試験する。試験項目は次のとおり。
+HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバーと安全境界）で実装する。T26は2026-10-02の所有者決定を受けて台帳に追加した（ADR README「所有者の決定」）。試験はT26で作り、T05で整えたCIとブラウザ試験の基盤（Playwright）で、Mac/Windows/Linuxの各OS上で実行する。ただし、Viteの開発サーバーの設定（10）はReactとViteを導入するT08で、二重起動の防止（データルートのlock）は起動処理にT07の成果物を組み込むT09で試験する。試験項目は次のとおり。
 
 - 不正なHost（rebinding想定の別名）、Originなし・別Origin・`null` Origin、`Sec-Fetch-Site`が`cross-site`・`same-site`（別ポート）の要求、JSON以外の`Content-Type`が拒否される。
 - トークンなし・使用済みのトークン・別起動のcookieが拒否される。トークンがログや交換後のURLに残らず、一時ファイルが削除される。

@@ -54,14 +54,14 @@ E2Eの道具の比較:
 
 ## 影響
 
-- TypeScriptとlockfileはT02で、ReactとViteは台帳のとおり「初回UI依存追加」としてT08で導入する。lockfileは共有資源なので、同時に変更するのは1名。
+- TypeScriptとlockfileはT02で、PlaywrightはT05で、ReactとViteは台帳のとおり「初回UI依存追加」としてT08で導入する。lockfileは共有資源なので、この順に1名ずつ変更する。
 - Safari固有の不具合はWebKitのE2Eで検出しきれない可能性がある。リリース前の手動確認を手順に入れる。
 - Firefoxで問題が見つかった場合は、対応ブラウザへ格上げするかを所有者が判断する。
 
 ## 別タスクで行う検証
 
-- T05: UIが入ったときにE2EをCIへ追加できる構成にする（台帳のT05の検証項目）。
-- T08以降: UIが入った時点で、PlaywrightのChromium（Mac/Windows/Linux）とWebKit（Mac）をCIに加える。Firefoxを加える費用も見積もる。
+- T05: ブラウザ試験の基盤として、Playwrightを導入し、Chromium（Mac/Windows/Linux）とWebKit（Mac）をCIで実行できるようにする。最初に使うのはT26のcookie交換の試験。
+- T08以降: UIのE2Eをこの基盤に追加する。Firefoxを加える費用も見積もる。
 - T08: キーボード操作、フォーカス、エラーの関連付け、金額「不明」と0の入力を、対応ブラウザごとに確認する。
 - T13: 対応ブラウザでの通し試験。
 

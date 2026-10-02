@@ -31,4 +31,4 @@
 
 T00の構成決定はADRとしてまとめた。実装再開と担当割当の指示後、T01の契約とT02の開発基盤の順に進む。Issueを作成したらタスクIDとの対応を明示する。進捗はIssue・PRを正本とし、本資料に日々の作業一覧を複製しない。
 
-最新方針は、実装AIがDraft/Open PRで止め、Codex側が完了報告と最新SHAを確認してレビューし、実装AIが次の巡回で指摘に対応すること。acceptedでもマージは所有者の明示指示まで待つ。T00は[開始プロンプト](first-worker-prompt.md)により設計作業として行い、製品コードの実装停止は維持した。外部AIの定期実行はユーザーがClaude Code側で登録する方針。手順は[実装側の指示書](external-worker.md)と[worktree運用](local-worktrees.md)。
+最新方針は、実装AIがDraft/Open PRで止め、Codex側が完了報告と最新SHAを確認してレビューし、実装AIが次の巡回で指摘に対応すること。acceptedでもマージは所有者の明示指示まで待つ。T00は[開始プロンプト](first-worker-prompt.md)により設計作業として行い、製品コードの実装停止は維持した。この開始プロンプトはT00専用の記録で、T00の完了後は新しい担当の着手許可として使わない。[実装側の指示書](external-worker.md)にある「最初はT00」も、T00の完了後は適用しない。次の担当は、所有者が実装再開と担当Issue（T01・T02等）を指示してから着手する。外部AIの定期実行はユーザーがClaude Code側で登録する方針。手順は[実装側の指示書](external-worker.md)と[worktree運用](local-worktrees.md)。
