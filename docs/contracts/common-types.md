@@ -189,11 +189,12 @@
 | 改訂の理由（9を参照） | 把握日 |
 | --- | --- |
 | `create`（新規） | 情報源を得た日（明細を受け取った日、通知を受け取った日、入金を確認した日等）。UIは当日を提案してよいが、利用者が確かめずに保存した場合は`unknown` |
-| `correct-input-error`（入力誤りの訂正） | 訂正した改訂の把握日を引き継ぐ（情報源は前から手元にあり、写し誤りを直すだけのため） |
+| `correct-input-error`（入力誤りの訂正） | 訂正した改訂の把握日を引き継ぐ（情報源は前から手元にあり、写し誤りを直すだけのため）。ただし、誤っていたのが把握日そのもの（日付の写し誤り）なら、正しい把握日に直してよい。その場合は`changeNote`に書く |
 | `new-information`（新しい情報の反映） | 新しい情報源を得た日 |
 | `void`（取消）、`unvoid`（取消の取り消し） | 直前の改訂の把握日を引き継ぐ |
 
-- 把握日は、その改訂の記録日時の日付（Asia/Tokyo）より後にできない。
+- 利用者が新しく入力する把握日（`create`・`new-information`、または把握日の写し誤りを直す`correct-input-error`）は、保存のときの時計の日付（Asia/Tokyo）より後にできない（未来の日付を防ぐ保存の検査）。前の改訂から引き継いだ把握日は、この検査をしない（入力したときに検査済みのため）。
+- 記録日時（`recordedAt`）は時計の値で、狂うことがあるので、把握日との大小を不変条件にしない（保存の順序は7の`recordedSeq`で決める）。
 - 発行者が資料を作り直した場合（明細の再発行、変更通知）は、改訂ではなく新しい記録にする（[記録の型](records.md)の「資料の差し替え」）。
 
 ### 時点を指定した見方
@@ -262,6 +263,7 @@
 - 改訂ごとに持つ付帯の項目（`recordedAt`・`recordedSeq`・`knownOn`・`changeNote`・`writeRequestId`）は、どの理由の改訂でも、その改訂の値を持つ（`knownOn`は7の規則に従う）。
 - 取消した記録に続けられる改訂は`unvoid`だけ。取消した記録の内容を直すには、先に取消を取り消す。
 - **保存の検査:** どの改訂の保存（新規・訂正・新しい情報・取消・取消の取り消し）も、記録の種類ごとに定めた保存の検査（差し替えの系列、照合配分の確定の条件、雇用条件の期間の重なり、照合の判断の検証、12の`known`が必要な項目等）を、保存したあとの状態に対して行い、満たさなければ拒否する。
+- **検査の対象は有効な記録だけ（1つの規則）:** 一意性・重なり・食い違い・上限を調べる検査と判定（雇用条件の期間の重なり、照合配分の確定の条件、重複の候補、正式通知の重複、年間資料の採用の候補等）は、**有効な記録**だけを対象にする。有効な記録とは、最新の改訂が`active`で、差し替えの系列の現在の記録であるもの（[記録の型](records.md)の10。差し替えを持たない種類では、最新の改訂が`active`であるもの）。取消した記録や差し替え済みの記録は、存在しない取引・古い資料として扱い、検査を妨げない。取消・取消の取り消しも保存なので、この検査をやり直す。取消の取り消しで、有効な記録どうしの重なりや上限の超過が生じる場合は、その取消の取り消しを拒否する。各検査は、この規則を言い換えずにここを参照する。
 
 `correct-input-error`と`void`の境界: 取引・資料は存在し、勤務先・口座・金額・日付などの写し方だけを誤った場合は、`correct-input-error`で直す（勤務先や口座の取り違えを含む）。記録に当たる取引・資料が存在しない場合は`void`にする。
 
@@ -298,12 +300,23 @@
 | --- | --- | --- |
 | `measure` | `Text` | 何の集計か。採用元の記録の種類と項目名で書く（例 `payslip.grossPay`。[照合の規則](reconciliation.md)の2） |
 | `axis` | `deposit-date`・`scheduled-pay-date`・`expected-month`・`income-year`・`subject-year` | 集計に使った日付の軸（`subject-year`は正式通知の対象の年・年度） |
-| `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: Text, to: Text }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の期間（軸の値の形で書く。例 `2026-09`） |
+| `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: AxisValue, to: AxisValue }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の範囲。`from`・`to`の型は軸で決まり（下の表）、両端を含み、`from` ≤ `to` |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
 | `knownSum` | `Yen` | 値ありの項目の合計 |
 | `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、採用した年間資料の値か、入力済みの記録の合計か。ほかの軸の集計と、年間の値が要判断の場合は`not-applicable` |
+
+`AxisValue`（軸の上の値）は軸ごとに次の型を使う。`from`と`to`は同じ型で、両端を含む。順序は暦の順で、`subject-year`では`from`と`to`の`kind`が同じでなければならない（暦年と年度を1つの範囲にしない）。
+
+| 軸 | `AxisValue`の型 | 例（2026年9月の1か月） |
+| --- | --- | --- |
+| `deposit-date`・`scheduled-pay-date` | `LocalDate` | `from` 2026-09-01、`to` 2026-09-30 |
+| `expected-month` | `YearMonth` | `from` 2026-09、`to` 2026-09 |
+| `income-year` | `CalendarYear` | （年単位）`from` 2026、`to` 2026 |
+| `subject-year` | `{ kind: calendar・fiscal, year: YYYY }` | （年度単位）`from` FY2026、`to` FY2026 |
+
+**coverageが混ざる場合:** 1つの集計値は1つの`coverage`だけを持つ。範囲の支払者の中に、年間資料を採用した支払者と、`entered-payslips`・年間資料なしの支払者が混ざる場合は、`coverage`ごとに分けた集計値の並びを返し、全体の合計は返さない（年間資料の値と、入力済みの明細の合計を、同じものとして足さないため）。すべての支払者が同じ`coverage`なら、集計値は1つ。
 
 `MissingState`（不足の状態）は次の6つだけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も同じ6つを使う（[計算結果](calculation-results.md)）。
 
@@ -338,6 +351,9 @@
 | 改訂の共通の形の`importKey` | `entryChannel`が`import` | `known` |
 | 同 | `entryChannel`が`manual` | `not-applicable` |
 | 給与明細・年間資料・正式通知の`supersedes` | いつでも | `known`（発行者が作り直した資料で、前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）。`unknown`は使わない。作り直しだと分かっていて前の記録が分からなければ、前の記録を確かめてから保存する |
+| 給与明細の`scheduledPayDate` | いつでも | `known`・`unknown`・`not-stated`（集計の軸に使う日付なので`not-applicable`は使わない。分からない場合は11の`MissingState`で不足として挙げられる） |
+| 銀行入金の`depositDate`・`amount` | いつでも | `known`・`unknown`・`not-stated`（`not-applicable`は使わない） |
+| 正式通知の`subjectYear` | `amounts`に`category`が`annual-total`の行、または`category`が分からない行がある | `known`・`unknown`・`not-stated`（決定額の集計の軸に使うので`not-applicable`は使わない） |
 | 年間資料の`includedOtherPayers` | いつでも | `known`か`unknown`（`unknown`の資料は範囲が確定しない。[照合の規則](reconciliation.md)の5） |
 | 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（正） |
 | 同 | `annual-coverage` | `not-applicable` |
