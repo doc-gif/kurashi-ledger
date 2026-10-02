@@ -19,7 +19,7 @@
 | `assumptions` | `key` | 意味はない。同じ`key`の仮定を2つ持たない |
 | `missingInputs` | `field`と`ref`の組 | 意味はない |
 | `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`）。スナップショットの中の`payers`は支払者の`id`、`comparisons`は`field`で一意 | 意味はない |
-| `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（1つのrunでは、同じ記録を1つの版でだけ参照する。下の「入力の閉包と推移的な固定」） | 意味はない |
+| `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（`allocations`・`decisions`は要素の`ref`の`id`。1つのrunでは、同じ記録を1つの版でだけ参照する。下の「入力の閉包と推移的な固定」） | 意味はない |
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
@@ -31,7 +31,8 @@
 - **置き場所:** 閉包の各記録を、種類に応じて固定する。照合配分は`inputs.allocations`、照合の判断は`inputs.decisions`、ほかの記録（マスタを含む）は`inputs.records`に、その版の整数で置く。
 
 - 閉包に欠けがあるrun（含まれていない記録・マスタを指す記録があるrun）は保存しない。
-- runの中の正規のIDの解決、差し替えの系列、二重登録の鎖、確かめ直しの判定は、`inputs.records`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
+- runの中の正規のIDの解決、差し替えの系列、二重登録の鎖は、`inputs`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
+- **導いた状態の写し:** 照合配分の使われ方と照合の判断の前提は、確かめ直しの条件（[照合の規則](reconciliation.md)の9）のように、過去の版（`confirmedAgainst`の版）や過去の時点（確定・保存の`recordedSeq`）の解決と比べて決まるので、run時点の1つの版だけからは導けない。そのため、runの中では導き直さず、runを作ったときに導いた結果を写して持つ（`AdoptionSnapshot`と同じく、実行時に導いた結果の写し）。`inputs.allocations`の各要素は`usageAtRun`（照合の規則の9の使われ方の識別子）、`inputs.decisions`の各要素は`premiseAtRun`（`holds`＝前提を満たす、`broken`＝前提が崩れている、同4）を持つ。計算に使ってよいのは、`usageAtRun`が`valid`の配分と、`premiseAtRun`が`holds`の判断だけ。それ以外の配分・判断は、結果が`unknown`・不足になった理由として固定する（例: 予測の残りが`unknown`になった理由の要再確認の配分）。runを作る処理は、その時点の判定と写しが一致することを確かめてから保存する。
 - 1つのrunの中では、同じ記録を1つの版でだけ参照する。run内のすべての参照（根の項目を含む）は、`inputs`に固定した同じ記録の版と同じ整数でなければ保存しない（版が食い違うrunは、どの版で計算したかを再現できないため）。
 - そのため、過去のrunを表示・再現するときは、配分・判断・差し替え・二重登録・マスタから辿った記録も、runを作ったときの版と解決になる。runのあとで記録やマスタが改訂・取消・取消の取り消しをされても、runの結果と読み方は変わらない（表示で「入力が変わった」と示す。3）。例: runに固定した`tax-year-assertion`の対象の明細を後で改訂しても、そのrunからは改訂前の版が見える。マスタの例はEX-04(a)の「マスタが変わった場合」。
 
@@ -66,8 +67,8 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `records` | `List<Ref>` | 入力に使った記録と、その閉包（1の「入力の閉包と推移的な固定」。差し替えの系列・二重登録の鎖・参照するマスタを含む）。`revision`は必ず整数（固定）。`current`を使わない |
-| `allocations` | `List<Ref>` | 使った照合配分（版を固定） |
-| `decisions` | `List<Ref>` | 使った照合の判断（版を固定） |
+| `allocations` | `List<{ ref: Ref, usageAtRun: not-used・unresolved・duplicate-voided・voided・superseded・stale・needs-recheck・valid }>` | 使った照合配分と、結果に影響した使えない配分（版を固定）。`usageAtRun`は、runを作ったときに導いた使われ方の写し（1の「導いた状態の写し」） |
+| `decisions` | `List<{ ref: Ref, premiseAtRun: holds・broken }>` | 使った照合の判断と、結果に影響した前提の崩れた判断（版を固定）。`premiseAtRun`は、runを作ったときに導いた前提の写し |
 | `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
 
@@ -79,7 +80,7 @@
 
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
-| `key` | `Text` | 結果の項目の識別子（計算器ごとに決める）。run内で一意 |
+| `key` | `Text` | 結果の項目の識別子。計算器の版ごとに決めた一覧の値だけを使う（自由な文字列にしない。[共通の型](common-types.md)の1の「`other`と自由な値をキーにしない」）。run内で一意 |
 | `label` | `Text` | 表示名 |
 | `valueType` | `yen・decimal` | 結果の値の型の識別子（`Assumption`の`valueType`と同じ語）。`yen`なら金額（円の整数）、`decimal`なら小数。`value`の状態が`unknown`・`not-applicable`等で値を持たなくても、型はこの項目で決まる |
 | `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値。`valueType`が`yen`なら`Fact<Yen>`、`decimal`なら`Fact<Decimal>`（合わない値のrunは保存しない）。契約版1.0の`valueType`はこの2つ（金額と小数）だけ。数値以外の結果は下の「数値以外の結果の型」による |

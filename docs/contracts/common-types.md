@@ -30,6 +30,7 @@
 | 照合の判断の`value` | `decisionType`（[照合の規則](reconciliation.md)の4） |
 | 計算runの`ResultItem`の`value`、`Assumption`の`value` | `valueType`（[計算結果](calculation-results.md)の1） |
 | 集計値の`AxisValue` | `axis`（11） |
+| 集計値の`measure`（`AggregateKey`） | `kind`（11の「集計のキー」） |
 | `subjectYear`・`Target.year`の年・年度 | `kind`（`calendar`・`fiscal`） |
 
 新しく2つ以上の型を持つ項目を足すときは、識別子を決めてこの表に加える。
@@ -39,6 +40,8 @@
 - **足してよいかを決めるキー:** 意味の違う金額を分けて集計する種類のキー（正式通知の`noticeType`、通知の金額の`category`）。`other`の記録・行は、その種類の集計に足さない（[照合の規則](reconciliation.md)の2）。
 - **採用の候補を決めるキー:** 年間資料の`documentType`が`other`の資料は、項目の意味が決まらないので、年間の値の採用の候補にしない（同5）。
 - **同一性を決めるキー:** 同じ記録・同じ相手かどうかは、IDと、契約で決めた識別の次元で決め、自由な値では決めない（雇用先・発行者は登録したマスタのIDで参照する）。識別の次元に列挙の項目があり、両方が`other`なら4×4の表では一致になるが、ほかの次元（支払者・日付・発行者・年度）と合わせて使い、`other`だけで同じとはしない。
+
+- **契約が決めるキー:** 集計のキーは`AggregateKey`（11）で、項目名の`field`（集計値と計算runの`missing`・`MissingInput`、比較の`comparisons`・`explainedComparisons`）は、参照先の記録の型の表にある項目名だけを使う（並びの行の項目は`並び名.項目名`。例 `amounts.category`。比較の`field`は年間資料の金額の項目名）。計算runの`ResultItem`・`Assumption`の`key`は、計算器の版ごとに決めた一覧の値だけを使う（一覧はT15以降で計算器と一緒に定める）。表・一覧にない名前は保存しない。表示の並びの重複を避けるための比較（`unconfirmedItems`の同じ文）はキーではないので、この規則の対象外。
 
 上位の量の内訳として、意味が同じ金額に含まれる`other`（給与明細の`otherEarnings`の分類`other`の行も、総支給額の一部）は、上位の量の中で数える（その分類だけの集計は作らない）。表示と照合の候補の提示には、`other`も自由な値も使ってよい。新しく種類を分けて集計する必要が出たら、列挙に値を足す（READMEの「契約の変更」。`other`を細かく分けるキーを自由な値で作らない）。
 
@@ -100,7 +103,7 @@
 | 給与明細・年間資料・正式通知の`supersedes`（同4・6・8） | 記録どうしの関係 | `current` | `whole`だけ | 同じ種類の記録。次元は同10の「差し替えの識別の次元」 |
 | 改訂の共通の形の`duplicateOf`（9） | 記録どうしの関係 | `current` | `whole`だけ | 取り消す記録と同じ種類の記録 |
 | 計算runの`inputs.records` | 固定した写し | 整数 | `whole`だけ | 改訂を持つ記録 |
-| 計算runの`inputs.allocations`・`inputs.decisions` | 固定した写し | 整数 | `whole`だけ | それぞれ照合配分・照合の判断 |
+| 計算runの`inputs.allocations`・`inputs.decisions`の要素の`ref` | 固定した写し | 整数 | `whole`だけ | それぞれ照合配分・照合の判断 |
 | `AdoptionSnapshot`の`adoptedRef` | 固定した写し | 整数 | `whole`だけ | 年間資料で、`targetYear`がスナップショットの`year`と同じ、範囲が確定していてスナップショットの`payers`と同じ集合（範囲の一部だけにしない）、取消・差し替えされていない（その版で）もの。[照合の規則](reconciliation.md)の5で選ばれた資料と同じ |
 | `Assumption`の`ref` | 固定した写し | 整数 | `source`が`forecast`なら予測の行だけ。ほかは`whole`だけ | `source`が`forecast`なら予測。ほかは改訂を持つ記録 |
 | `MissingInput`の`ref`、`ResultItem`の`explanationRefs` | 固定した写し | 整数 | `whole`か、参照先のその版にある行 | 改訂を持つ記録 |
@@ -366,7 +369,7 @@
 
 | 項目 | 型 | 意味 |
 | --- | --- | --- |
-| `measure` | `Text` | 何の集計か。採用元の記録の種類と項目名で書く（例 `payslip.grossPay`。[照合の規則](reconciliation.md)の2） |
+| `measure` | `AggregateKey` | 何の集計か（下の「集計のキー」）。自由な文字列にしない |
 | `axis` | `deposit-date`・`scheduled-pay-date`・`expected-month`・`income-year`・`subject-year` | 集計に使った日付の軸（`subject-year`は正式通知の対象の年・年度） |
 | `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: AxisValue, to: AxisValue }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の範囲。`from`・`to`の型は軸で決まり（下の表）、両端を含み、`from` ≤ `to` |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
@@ -374,6 +377,22 @@
 | `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`ref`の`revision`は整数で、集計を計算した見方で選ばれた版（2の「`current`と整数の使い分け」）。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、`knownSum`の元が採用した年間資料の値か、入力済みの記録の合計か（下の「coverageの決め方」）。ほかの軸の集計と、範囲のどの支払者の値も足せない場合（すべて要判断等）は`not-applicable` |
+
+**集計のキー（`AggregateKey`）:** `kind`で型が決まる、判別できる和の型。修飾子はすべて必須で、値は表に書いた列挙だけ（自由な文字列にしない。1の「`other`と自由な値をキーにしない」）。`kind`ごとに、採用元（[照合の規則](reconciliation.md)の2）、日付の軸、`scope`で使ってよい次元が決まる。
+
+| `kind` | 修飾子 | 採用元 | `axis` | 許す`scope`の次元 |
+| --- | --- | --- | --- | --- |
+| `deposit-amount` | なし | 銀行入金の`amount` | `deposit-date` | `accountIds` |
+| `payslip-item` | `item`: 給与明細の金額の項目名（`grossPay`・`taxablePay`・`nonTaxablePay`・`commutingAllowance`・`incomeTax`・`residentTax`・`healthInsurance`・`nursingCareInsurance`・`pensionInsurance`・`employmentInsurance`・`yearEndAdjustment`・`totalDeductions`・`netPay`・`bankTransferAmount`） | 給与明細の該当項目 | `scheduled-pay-date` | `employerIds` |
+| `payslip-by-income-year` | `item`: 上と同じ給与明細の金額の項目名 | 帰属の年が決まった給与明細の該当項目 | `income-year` | `employerIds` |
+| `annual-value` | `item`: 年間資料の金額の項目名（`paymentAmount`・`incomeAfterEmploymentDeduction`・`totalIncomeDeductions`・`withholdingTax`・`socialInsurancePremiums`） | 採用した年間資料、または明細から示す値（同5） | `income-year` | `employerIds` |
+| `forecast-remaining` | `forecastMeasure`: `gross-pay`・`net-pay`・`bank-transfer`・`deposit-amount` | 予測の行の残り（同6） | `expected-month` | `gross-pay`・`net-pay`・`bank-transfer`は`employerIds`。`deposit-amount`は`employerIds`と`accountIds` |
+| `notice-determination` | `noticeType`: 正式通知の`noticeType`の列挙（`other`の扱いは同2）。`category`: `annual-total`だけ | 正式通知の決定額 | `subject-year` | なし（期間だけ） |
+
+- 表にない`kind`・修飾子の値、`kind`と合わない`axis`の集計の要求は拒否する。
+- **許さない`scope`の次元:** 許す次元以外の次元に空でない値を指定した要求は、黙って無視せず拒否する（例: `deposit-amount`に`employerIds`を指定する要求。入金の支払者は推定の`payerHint`しかなく、それで絞り込まないため）。許す次元が空の並びなら「限定しない」。
+- `kind`と修飾子がすべて同じなら同じ集計とする。ファイルの文字列の表記（CSV/JSON）はT12が決めるが、この構造と1対1にする。
+- 新しい集計を足すときは、この表に行を足す（READMEの「契約の変更」。列挙に値を足すのでメジャーを上げる）。
 
 `AxisValue`（軸の上の値）は軸ごとに次の型を使う。`from`と`to`は同じ型で、両端を含む。順序は暦の順で、`subject-year`では`from`と`to`の`kind`が同じでなければならない（暦年と年度を1つの範囲にしない）。
 
@@ -422,6 +441,7 @@
 - `coverage`が`entered-records-only`の合計は、その期間の全体の合計とは限らない（入力していない明細がありうる）。年間の合計として扱えるのは、採用した年間資料の値だけ（[照合の規則](reconciliation.md)の5）。
 - 計算runの結果（推計）は、この形で返さない。runごとの結果をそのまま示し、runどうしを足さない（[照合の規則](reconciliation.md)の2）。
 - 集計と照合の結果は、記録の入力順・保存順に依存しない。並べる順序が必要な場合は、日付の軸の値、次にIDの文字列の順で決める。
+- **除くと0を分ける（1つの規則）:** 集計で「除く」（対象にしない）と「0として数える」（対象にあって値が0）を分ける。除くのは、存在しない・使わない記録（取消した記録、差し替え済みの記録、使えない関係で決まらない値は`missing`へ）と、別の集計の記録。0として数えるのは、対象にあって値が`known`の0の記録（記載どおりの0円、消し込んだ予測の行の残り、取り下げた予測の行の残り）。対象の記録がすべて除かれれば`no-records`（不足があれば`incomplete`）で、0円と表示しない。0として数えた記録があれば、合計は`complete`の0円になりうる。例はEX-07(b)の「取り下げた場合」。
 - **1回だけ数える（1つの規則）:** 集計は、採用元の記録ごとに1回だけ足す（所得の年の年間の値では、採用した年間資料ごとに1回）。多対多・多対一の関係で同じ記録に複数の道筋で着いても、重ねて足さない。範囲の複数の支払者が同じ年間資料を選ぶ場合（範囲がA・Cの資料をAとCが選ぶ）、照合配分で複数の相手と結ばれた記録（分割入金・合算入金、複数の予測の行を実績化した明細）、`scope`の複数のIDが同じ正規のIDに解決される場合（9の「マスタの取消と二重登録」）が当たる。
 
 ## 12. `known`が必要な項目
