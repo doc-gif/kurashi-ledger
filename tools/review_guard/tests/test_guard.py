@@ -183,38 +183,29 @@ class ReviewGuardTests(unittest.TestCase):
     def test_plan_metadata_does_not_need_to_list_itself(self):
         guard.check(self.catalog, self.ledger, self.plan(), self.paths + [".review/plans/task.json"], self.base)
 
+    def test_multiple_plans_fail_in_core_and_documented_local_cli(self):
+        paths = self.paths + [".review/plans/OPS-1.json", ".review/plans/other.json"]
+        with self.assertRaisesRegex(guard.Invalid, "multiple changed preflight plans"):
+            guard.check(self.catalog, self.ledger, self.plan(), paths, self.base)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for name, value in [("catalog", self.catalog), ("ledger", self.ledger),
+                                ("plan", self.plan()), ("paths", paths)]:
+                (root / (name + ".json")).write_text(json.dumps(value), encoding="utf-8")
+            args = ["check", "--base-sha", self.base]
+            for option in ("catalog", "ledger", "plan"):
+                args += ["--" + option, str(root / (option + ".json"))]
+            args += ["--paths-file", str(root / "paths.json")]
+            output, errors = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                self.assertEqual(guard.main(args), 1)
+            self.assertEqual(output.getvalue(), "")
+            self.assertIn("multiple changed preflight plans", errors.getvalue())
+
     def test_old_name_in_rename_still_selects_storage(self):
         p = guard.prepare(self.catalog, self.ledger, ["storage/old.py", "other/new.py"], self.base)
         self.assertEqual(set(p["context"]), {"root", "lock"})
 
-
-class RepositoryRoutingTests(unittest.TestCase):
-    def test_planned_test_oracle_rules_and_workflow_paths_select_conditions(self):
-        root = Path(__file__).resolve().parents[3]
-        rules, _ = guard.validate(guard.read_json(root / ".review/invariants.json"),
-                                  guard.read_json(root / ".review/findings.json"))
-        for path, expected in [("tests/fixtures/records.json", "INV-RECORDS"),
-                               ("docs/test-oracles/tax.md", "INV-RECORDS"),
-                               ("docs/rules/2026.md", "INV-RECORDS"),
-                               ("e2e/records.test.ts", "INV-HTTP"),
-                               (".github/workflows/ci.yml", "INV-RELEASE")]:
-            with self.subTest(path=path):
-                self.assertIn(expected, guard.affected(rules, [path]))
-
-    def test_t26_http_directory_selects_http_and_release_conditions(self):
-        root = Path(__file__).resolve().parents[3]
-        catalog = guard.read_json(root / ".review/invariants.json")
-        ledger = guard.read_json(root / ".review/findings.json")
-        rules, _ = guard.validate(catalog, ledger)
-        selected = guard.affected(rules, ["src/infrastructure/http/server.ts"])
-        self.assertTrue({"INV-HTTP", "INV-RELEASE", "INV-LOCK"} <= set(selected))
-
-    def test_npm_install_policy_selects_release_conditions(self):
-        root = Path(__file__).resolve().parents[3]
-        catalog = guard.read_json(root / ".review/invariants.json")
-        ledger = guard.read_json(root / ".review/findings.json")
-        rules, _ = guard.validate(catalog, ledger)
-        self.assertIn("INV-RELEASE", guard.affected(rules, [".npmrc"]))
 
 
 if __name__ == "__main__":

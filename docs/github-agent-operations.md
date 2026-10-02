@@ -49,7 +49,7 @@ Open PRだから完成、Draftだから絶対未完成とはみなさない。�
 
 レビュー側は最大3 PR・20分程度を1巡回の目安にし、未処理分は次へ回す。実装側は最初1run最大60分・同一失敗の自動修正2回を目安にする。2回で解消しなければ設計確認へ戻り、見直し後も同じ原因で解決しなければneeds-ownerで止める（詳細はPRレビューループ）。利用するAIの料金・利用枠・実行上限を実行環境で設定する。設定のない有料APIや新しいサービスを勝手に追加しない。
 
-GitHub Actionsを今すぐ追加する必要はない。初期はCodexの定期確認、実装AI側の定期確認、GitHubのPR・コメント・Copilotで連携する。製品CIはT05、より構造化した状態検査はT23/T24で追加する。Actions scheduleを将来使う場合は遅延・欠落・public repoの無活動による停止を考慮し、厳密な時刻保証としない。[公式schedule仕様](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+GitHub Actionsを今すぐ追加する必要はない。初期は差分を作成していない別担当の定期確認、実装AI側の定期確認、GitHubのPR・コメント・Copilotで連携する。製品CIはT05、より構造化した状態検査はT23/T24で追加する。Actions scheduleを将来使う場合は遅延・欠落・public repoの無活動による停止を考慮し、厳密な時刻保証としない。[公式schedule仕様](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 
 ## レビューと権限
 

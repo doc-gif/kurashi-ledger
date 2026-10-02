@@ -1,0 +1,42 @@
+"""Kurashi-specific routing checks; retained here when the generic tool is extracted."""
+import importlib.util
+from pathlib import Path
+import unittest
+
+root = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("guard", root / "tools/review_guard/guard.py")
+guard = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(guard)
+
+
+class RepositoryRoutingTests(unittest.TestCase):
+    def test_planned_test_oracle_rules_and_workflow_paths_select_conditions(self):
+        root = Path(__file__).resolve().parents[2]
+        rules, _ = guard.validate(guard.read_json(root / ".review/invariants.json"),
+                                  guard.read_json(root / ".review/findings.json"))
+        for path, expected in [("tests/fixtures/records.json", "INV-RECORDS"),
+                               ("docs/test-oracles/tax.md", "INV-RECORDS"),
+                               ("docs/rules/2026.md", "INV-RECORDS"),
+                               ("e2e/records.test.ts", "INV-HTTP"),
+                               (".github/workflows/ci.yml", "INV-RELEASE")]:
+            with self.subTest(path=path):
+                self.assertIn(expected, guard.affected(rules, [path]))
+
+    def test_t26_http_directory_selects_http_and_release_conditions(self):
+        root = Path(__file__).resolve().parents[2]
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        rules, _ = guard.validate(catalog, ledger)
+        selected = guard.affected(rules, ["src/infrastructure/http/server.ts"])
+        self.assertTrue({"INV-HTTP", "INV-RELEASE", "INV-LOCK"} <= set(selected))
+
+    def test_npm_install_policy_selects_release_conditions(self):
+        root = Path(__file__).resolve().parents[2]
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        rules, _ = guard.validate(catalog, ledger)
+        self.assertIn("INV-RELEASE", guard.affected(rules, [".npmrc"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

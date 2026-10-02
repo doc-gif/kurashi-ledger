@@ -150,8 +150,10 @@ def check(catalog, ledger, plan, paths, base):
     require(plan.get("schema_version") == 1 and text(plan.get("task_id")), "missing plan version/task_id")
     planned = paths_list(plan.get("planned_paths"))
     actual = paths_list(paths)
-    # The plan itself is review metadata, not an implementation path to be self-listed.
-    actual = [p for p in actual if not (p.startswith(".review/plans/") and p.endswith(".json"))]
+    plans = [p for p in actual if p.startswith(".review/plans/") and p.endswith(".json")]
+    require(len(plans) <= 1, "multiple changed preflight plans are not accepted in one PR")
+    # The single plan is review metadata, not an implementation path to be self-listed.
+    actual = [p for p in actual if p not in plans]
     require(set(actual) <= set(planned), "unplanned paths: " + ", ".join(sorted(set(actual) - set(planned))))
     ids = affected(rules, sorted(set(planned) | set(actual)))
     assessments = index(plan.get("assessments"), "assessments")

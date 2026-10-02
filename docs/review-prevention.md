@@ -61,7 +61,7 @@ Greptileは採用しない。原因の台帳と事前確認はリポジトリ内
 
 `tools/review_guard/`はPython標準ライブラリだけの汎用検査器、`.review/`はkurashi-ledger固有の条件・履歴・計画、`.github/`とActionsテンプレートはGitHubとの接続設定とする。税・給与・保険の意味やGitHubのrepo名を検査コードへ埋め込まない。
 
-移行時は検査器とテストだけを別repoへ移し、こちらは条件・履歴・計画を保持する。JSONの`schema_version`とCLI入出力を維持し、検査器はレビュー済みの固定commitで参照する。共有repoのmainを毎回そのまま実行しない。まずコピーまたは固定版のCLIで接続し、複数repoの利用実績が出るまで常駐サービス・DB・汎用DSLを追加しない。公開ライセンスは所有者の未決事項であり、別repo化を再利用許諾とみなさない。
+移行時は`tools/review_guard/`の検査器と汎用テストを別repoへ移し、こちらは`.review/`の条件・履歴・計画と固有ルーティング試験（`.review/tests/`）を保持する。汎用テストは一時的な合成fixtureを使い、このrepoのJSONやIDを読まない。JSONの`schema_version`とCLI入出力を維持し、検査器はレビュー済みの固定commitで参照する。共有repoのmainを毎回そのまま実行しない。まずコピーまたは固定版のCLIで接続し、複数repoの利用実績が出るまで常駐サービス・DB・汎用DSLを追加しない。公開ライセンスは所有者の未決事項であり、別repo化を再利用許諾とみなさない。
 
 ## 効果の確認
 
