@@ -2,7 +2,7 @@
 
 - 状態: Proposed（このPRがmainに統合された時点でAcceptedとみなす）
 - 日付: 2026-10-02
-- 関連: T00（Issue #1）、ADR-0002、ADR-0004。実装と試験は主にT26で行う（開発サーバーの設定はT08、データルートの検査とlockの組込みはT09）。
+- 関連: T00（Issue #1）、ADR-0002、ADR-0004。実装と試験は主にT26で行う（開発時の構成はT08、データルートの検査とlockの組込みはT09）。
 
 ## 背景
 
@@ -35,7 +35,12 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
 7. **画面の制限:** CSPはHTTPヘッダで返す（`frame-ancestors`は`<meta>`では効かない）。初期値は`default-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`。インラインscriptや`eval`を許可しない。外部のスクリプト・フォント・画像・解析タグを読み込まず、依存はビルド時に同梱する。
 8. **HTTPS:** loopbackでは使わない。`127.0.0.0/8`はブラウザで「潜在的に信頼できる」origin（secure context）として扱われるため、自己署名証明書の導入手順を利用者に課さない。
 9. **外部通信:** サーバーは利用者の操作なしに外部へ通信しない（テレメトリ、更新確認、CDNなし）。制度データ等の取得を将来加える場合は別のADRで決める。
-10. **開発用サーバー:** Viteの開発サーバーは開発時だけ使う。本番の起動ではNode.jsのプロセスがビルド済みの静的ファイルを配信する。開発サーバーは`127.0.0.1`で待ち受け、`--host`や`server.allowedHosts: true`を使わない。Viteは既知の脆弱性を修正した版以上に固定する。開発環境では合成データのデータルートだけを使い、実データのデータルートで起動しない。
+10. **開発時の構成:** 開発時も、ブラウザから見えるoriginは本番と同じ`http://127.0.0.1:<port>`の1つにする。
+    - Node.jsのプロセス（T26のサーバー）を唯一の入口にする。Viteはmiddlewareモードでこのプロセスに組み込み、UIを配信する。HMRのWebSocketも同じHTTPサーバーに載せる。Viteの単独の開発サーバー（別のポート）は、ブラウザから使わない。
+    - トークン交換、API、HMRのWebSocketのupgradeは、本番と同じ検査（Host、`Sec-Fetch-Site`・`Origin`、cookie）を通る。別のoriginや別のポートからの直接の要求は、本番と同じく拒否する。
+    - CORSや認証、Host・Originの検査を、開発時だけ無効にしない（試験用にトークンを注入できるようにはする）。
+    - Viteの設定で外部へ公開しない（`server.host`の指定や`server.allowedHosts: true`を使わない）。Viteは既知の脆弱性を修正した版以上に固定する。
+    - 本番の起動では、Node.jsのプロセスがビルド済みの静的ファイルを配信し、Viteを読み込まない。開発環境では合成データのデータルートだけを使い、実データのデータルートで起動しない。
 11. **ログ:** 要求ログにURLのクエリ、cookie、要求本文、金額を出さない。
 12. **URLと画面のタイトル:** ブラウザの履歴は同期されうるので、URLには不透明なIDだけを使い、金額・勤務先・氏名等を入れない。ページのタイトルも一般的な名前にする。
 13. **静的ファイルの配信範囲:** 静的ファイルは、起動時に固定した1つの配信ルートの中からだけ返す。
@@ -68,7 +73,7 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
 
 ## 別タスクで行う検証
 
-HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバーと安全境界）で実装する。T26は2026-10-02の所有者決定を受けて台帳に追加した（ADR README「所有者の決定」）。試験はT26で作り、T05で整えたCIとブラウザ試験の基盤（Playwright）で、Mac/Windows/Linuxの各OS上で実行する。ただし、Viteの開発サーバーの設定（10）はReactとViteを導入するT08で、二重起動の防止（データルートのlock）は起動処理にT07の成果物を組み込むT09で試験する。試験項目は次のとおり。
+HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバーと安全境界）で実装する。T26は2026-10-02の所有者決定を受けて台帳に追加した（ADR README「所有者の決定」）。試験はT26で作り、T05で整えたCIとブラウザ試験の基盤（Playwright）で、Mac/Windows/Linuxの各OS上で実行する。ただし、開発時の構成（10）は、ViteをT26のサーバーに組み込むT08で試験する。T26は組み込み口（middlewareとWebSocketのupgradeを、同じ検査の後ろに載せる仕組み）を用意する。二重起動の防止（データルートのlock）は、起動処理にT07の成果物を組み込むT09で試験する。試験項目は次のとおり。
 
 - 不正なHost（rebinding想定の別名）、Originなし・別Origin・`null` Origin、`Sec-Fetch-Site`が`cross-site`・`same-site`（別ポート）の要求、JSON以外の`Content-Type`が拒否される。
 - トークンなし・使用済みのトークン・別起動のcookieが拒否される。トークンがログ・サーバーへの要求のURL・交換後のURLに残らず、一時ファイルが削除される。
@@ -77,6 +82,7 @@ HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバー
 - 証憑の取込用エンドポイント以外は、JSON以外の要求を拒否する。APIの応答に`Cache-Control: no-store`が付く。
 - `0.0.0.0`やIPv6で待ち受けていないこと、ポート使用中・二重起動の扱い。
 - CSPで外部資源の読み込みが禁止されていること。
+- 開発時の入口（T26のサーバーとViteのmiddleware）から開いたUIで、トークン交換と、状態を変える要求が成功すること。Viteの単独の開発サーバーや別のポートから直接送った要求は拒否されること。HMRのWebSocketのupgradeも、Host・Origin・cookieの検査を通ること（T08）。
 - 静的配信で、`..`、エンコードされた区切り文字（`%2F`・`%5C`・二重エンコード）、バックスラッシュ、配信ルート外を指すsymlink・junctionによる範囲外のファイルの取得が拒否されること。
 
 ## 出典
@@ -84,7 +90,7 @@ HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバー
 確認日はすべて2026-10-02。
 
 - Node.jsの`listen()`の既定値と`localhost`の名前解決: https://nodejs.org/api/net.html 、https://nodejs.org/api/dns.html
-- Viteの開発サーバー（`allowedHosts`、`cors`、`localhost`の注意）: https://vite.dev/config/server-options
+- Viteの開発サーバー（`allowedHosts`、`cors`、`localhost`の注意、middlewareモード、`server.ws`）: https://vite.dev/config/server-options 、https://vite.dev/config/server-options#server-middlewaremode 、https://vite.dev/guide/ssr#setting-up-the-dev-server
 - Viteの脆弱性（CVE-2025-24010ほか）: https://github.com/vitejs/vite/security/advisories/GHSA-vg6x-rcgg-rjx6 、https://github.com/vitejs/vite/security/advisories
 - Jupyter Serverの前例（Host検査、トークン、リダイレクトファイル）: https://jupyter-server.readthedocs.io/en/latest/operators/security.html 、https://jupyter-server.readthedocs.io/en/latest/other/full-config.html
 - `Sec-Fetch-Site`とsiteの定義: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site 、https://developer.mozilla.org/en-US/docs/Glossary/Site
