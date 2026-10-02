@@ -37,7 +37,7 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | 言語・実行 | TypeScript。サーバー側は型除去でビルドせずに実行し（erasable syntaxのみ）、型検査は`tsc --noEmit`。UIはViteでビルドする | 0002、0004 |
 | 起動手順 | 実利用専用のcloneで`npm ci`→`npm run build`→`npm run start:real`（originと一致し`origin/main`から到達できる注釈付きリリースタグをそのままcheckoutした場合だけ起動する）。起動ごとのトークン付きURLをブラウザで開き、Ctrl+Cで終了する。インストールスクリプトは無効にする。ほかの起動は合成データモードで、合成データのデータルートの指定が必須 | 0002、0003、0006 |
 | 配布・更新 | Gitのタグ付きリリースをソースのまま実行する。インストーラ・署名付き実行ファイル・自動更新は作らない。UIのビルド成果物は、最後に書くmanifestでcommitとlockfileに結び付け、`start:real`がDBを開く前に照合して、メモリから配信する。依存の導入も、lockfileと実行環境に対して成功した記録と照合し、未導入・中断・古い依存では止める。更新はタグのcheckoutと`npm ci`・`npm run build`。migration前に自動で退避する | 0002 |
-| ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（本人だけが読める一時ファイルからURLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。開発時のCSPだけ、応答ごとのnonceでViteのinlineのstyle・scriptを許可する（`unsafe-inline`は使わない）。実装はT26（開発時の構成はT08） | 0003 |
+| ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（本人だけが読める一時ファイルからURLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`（APIと静的ファイルの両方）、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。開発時のCSPだけ、応答ごとのnonceでViteのinlineのstyle・scriptを許可する（`unsafe-inline`は使わない）。実装はT26（開発時の構成はT08） | 0003 |
 | UI | React＋Vite、素のCSSとデザイントークン。部品の基盤（react-aria-components等）はT08で判断する | 0004 |
 | 対応ブラウザ | Chrome・Edgeの最新安定版（Mac・Windows）、Safariの最新メジャー版（Mac）。Firefoxはbest effortで、必須のE2E対象に含めない | 0004 |
 | SQLiteドライバ | 組み込みの`node:sqlite`。代替はbetter-sqlite3（13.0.2以上） | 0005 |
