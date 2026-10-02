@@ -410,14 +410,14 @@
 | --- | --- | --- |
 | 年間資料 | 選択が年間資料で、その資料の範囲全体が集計の`scope`に入る | `coverage` `annual-document`の集計値の`knownSum`に、これらの支払者が選んだ年間資料を資料のIDで重複を除いた集合にして、各資料の値を1回だけ足す（範囲がA・Cの資料は、AとCの両方に選ばれても1回。[照合の規則](reconciliation.md)の5、下の「1回だけ数える」） |
 | 入力済みの記録 | 選択が`entered-payslips`・年間資料なし | `coverage` `entered-records-only`の集計値の`knownSum`に、帰属した明細の値を足す |
-| 値を足せない | 選択が要判断（`adoption-needed`）、または選択が年間資料でも範囲の一部だけが`scope`に入る（`partial-scope`） | どの`coverage`にも入れず、`knownSum`に足さない。`missing`に`adoption-needed`・`partial-scope`で挙げる |
+| 値を足せない | 選択が要判断（`adoption-needed`）、選択が年間資料でも範囲の一部だけが`scope`に入る（`partial-scope`）、または選択が入力済みの記録で、その項目の比較の対応表がまだない（`rule-pending`） | どの`coverage`にも入れず、`knownSum`に足さない。`missing`に`adoption-needed`・`partial-scope`・`rule-pending`で挙げる |
 
 - 年間資料と入力済みの記録の支払者が混ざる場合は、`coverage`ごとに分けた集計値の並びを返し、全体の合計は返さない（年間資料の値と、入力済みの明細の合計を、同じものとして足さないため）。どちらか一方だけなら、集計値は1つ。
 - 値を足せない支払者があれば、その`missing`の行を、返すすべての集計値に挙げる（どの`coverage`に入るはずだったかが分からないため）。そのため、返すすべての集計値は`incomplete`になり、分かっている分（`knownSum`）とその元（`coverage`）は保たれる。
 - 範囲のすべての支払者が値を足せない場合は、`coverage` `not-applicable`の集計値を1つ返す（`knownSum`は0で、`incomplete`。0円とは表示しない）。
 - 例はEX-06(b)の「他の支払者の分を確かめていない場合」（勤務先Cの年間資料の値だけが分かり、勤務先Aが要判断）。
 
-`MissingState`（不足の状態）は次の6つだけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も同じ6つを使う（[計算結果](calculation-results.md)）。
+`MissingState`（不足の状態）は次の7つだけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も同じ6つを使う（[計算結果](calculation-results.md)）。
 
 | 状態 | 使う場面 |
 | --- | --- |
@@ -427,6 +427,7 @@
 | `conflict` | 根拠や記録が食い違って決められないもの: 帰属の根拠の食い違い（同8）、重複の疑いのある正式通知（同2）、整っていない差し替えの系列（[記録の型](records.md)の10） |
 | `adoption-needed` | 年間の値の採用が要判断の支払者（[照合の規則](reconciliation.md)の5） |
 | `partial-scope` | `scope`が、採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+| `rule-pending` | 値を導く規則がまだない（T14が承認する前の、比較の対応表がない年間資料の項目を、明細から示す場合等。同5） |
 
 **不足の項目（`FieldKey`）:** 集計値の`missing`と計算runの`MissingInput`の`field`は、`kind`で判別する次の型にする（自由な文字列にしない）。
 
@@ -443,6 +444,7 @@
 | `income-year` | 給与明細の所得の年の帰属 | 給与明細 | `undetermined`・`conflict` | [照合の規則](reconciliation.md)の8 |
 | `annual-adoption` | 支払者の年間の値の採用 | 雇用先 | `adoption-needed` | 同5 |
 | `annual-scope` | 年間資料の範囲の一部だけが集計の`scope`に入る | 年間資料 | `partial-scope` | 同5 |
+| `annual-mapping` | 明細から示す年間の値（比較の対応表がまだない項目） | 雇用先（支払者） | `rule-pending` | 同5 |
 | `notice-duplicate` | 同じ種類・同じ年度の正式通知が2件以上ある | 正式通知 | `conflict` | 同2 |
 | `supersede-series` | 整っていない差し替えの系列 | 系列の記録 | `conflict` | [記録の型](records.md)の10 |
 | `forecast-remaining` | 予測の行の残り（使えない関係・予測の金額の不明） | 予測（行を指す） | `unknown` | 照合の規則の6・9 |
@@ -452,7 +454,7 @@
 - 派生キーは、どれも`ref`を必要とする。`ref`のない不足は、計算runの`MissingInput`の`calculator-input`だけで表す（`MissingInput.ref`を`not-applicable`にできるのは、`field`の`kind`が`calculator-input`の場合だけ）。集計値の`missing`の`ref`は必ずある。
 - 新しく導く不足を足すときは、この表に行を足す（READMEの「契約の変更」）。表にない`key`は保存しない。
 
-`missing`の1行は（`ref`, `field`）の組ごとに1つで、同じ組に2つ以上の原因が当てはまる場合は、次の優先順で1つの状態にする: `conflict` > `adoption-needed` > `partial-scope` > `undetermined` > `not-stated` > `unknown`（13の「状態の決め方」）。
+`missing`の1行は（`ref`, `field`）の組ごとに1つで、同じ組に2つ以上の原因が当てはまる場合は、次の優先順で1つの状態にする: `conflict` > `adoption-needed` > `partial-scope` > `rule-pending` > `undetermined` > `not-stated` > `unknown`（13の「状態の決め方」）。
 
 集計の状態は、次の表を**上から順に**調べ、最初に当てはまったものに決める（すべての場合にちょうど1つに決まる。13の「状態の決め方」）。「対象の記録」は、集計の採用元として範囲・期間に入る有効な記録（9）で、`missing`に挙げたもの（帰属未判定の明細、日付不明の記録等）は含まない。
 
@@ -565,6 +567,8 @@
 ## 13. 状態の決め方と、値どうしの比較
 
 **状態の決め方（すべての状態の判定に共通）:** 契約で列挙した状態を導く判定は、どれも優先順を付けた表で書く。上から順に調べ、最初に当てはまったものに決める。空の集合（対象の記録・根拠・配分・候補が0件）の場合も、表のどれかに当たるように書く。どの判定も、すべての場合にちょうど1つの状態に決まる。
+
+**規則がまだないとき（1つの規則）:** 有効なキー・入力（`AggregateKey`、比較の項目、帰属等）でも、値を導く規則（T14が承認する比較の対応表・帰属の規則、T15以降の計算器の規則）がまだない場合は、要求を拒否せず、記録なし（`no-records`）や0にもしない。値を決めない状態にする: 集計は`incomplete`で`missing`に`rule-pending`（派生キーは11の表）、比較は`rule-pending`（[照合の規則](reconciliation.md)の5）、帰属は`undetermined`（同8）、計算runは`unsupported`（[計算結果](calculation-results.md)の2）。
 
 **判定の順序（1つの規則）:** 優先順の表は、次の順に条件を置く。
 

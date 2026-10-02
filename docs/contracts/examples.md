@@ -388,7 +388,7 @@
 
 ### 例示の比較の対応表
 
-年間資料と明細の比較の対応表はT14が決める（[照合の規則](reconciliation.md)の5）。この例では、説明のために次の対応表を**仮に**使う。実際の対応ではない。
+年間資料と明細の比較の対応表はT14が決める（[照合の規則](reconciliation.md)の5）。この例では、説明のために次の対応表を**仮に**使う。実際の対応ではない。T14が対応表を承認する前は、比較の状態は`rule-pending`になり、明細から示す年間の値（`coverage` `entered-records-only`）の集計は`incomplete`で、`missing`に支払者を派生キー`annual-mapping`・状態`rule-pending`で挙げる（`no-records`にも0にもしない。[共通の型](common-types.md)の13の「規則がまだないとき」）。年間資料を採用した支払者の値は、対応表がなくても資料の値をそのまま使う。
 
 | 年間資料の項目 | 比べる明細の項目の合計 |
 | --- | --- |
@@ -575,7 +575,15 @@
 | `not-stated` | 口座2 | `not-stated`×`known`／`known`×`not-stated` | 未確定。確定しない |
 | `not-applicable` | 口座2 | `not-applicable`×`known`／`known`×`not-applicable` | 不一致。確定を拒否する（入金の予測では`not-applicable`は使えないので、予測の保存のときにも拒否される） |
 
-入金の予測の`employerId`と入金の`payerHint`は、推定の項目なので4×4の表を使わず、両方が`known`のときだけ比べる（[照合の規則](reconciliation.md)の3の表）。`payerHint`が`unknown`でも、それだけで確定を止めない。
+入金の予測の勤務先（`fc_703`の`employerId`）は、確定に`known`か`not-applicable`（勤務先に結び付けない）が要る（[照合の規則](reconciliation.md)の3の表）。入金の`payerHint`は推定の項目なので4×4の表を使わず、予測の`employerId`と両方が`known`のときだけ比べる。
+
+| `fc_703`の`employerId` | 入金の`payerHint` | 結果 |
+| --- | --- | --- |
+| `known` 勤務先B | `known` 勤務先B | 確定できる（同じ） |
+| `known` 勤務先B | `known` 勤務先A | 確定を拒否する（違う） |
+| `known` 勤務先B | `unknown` | 確定できる（`payerHint`は推定なので比べない。それだけで確定を止めない） |
+| `not-applicable`（勤務先に結び付けない） | どれでも | 確定できる（比べない） |
+| `unknown`・`not-stated` | どれでも | 確定しない（勤務先が決まっていない予測を実績化しない。先に予測を改訂して`known`か`not-applicable`にする） |
 
 ## EX-08 金額の4つの状態
 

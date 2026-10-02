@@ -105,7 +105,7 @@
 
 保存のときに、これらと上の形（`key`の一意性、`itemKey`、`order`の連番、最後の`after`と`value`の一致）をすべて検査する。合わないrunは保存しない（計算器の誤りとして扱う。例は4）。
 
-`MissingInput`（`field`と`ref`の組がrun内で一意。1の「run内の並びの規則」）: `field`（`FieldKey`。[共通の型](common-types.md)の11の「不足の項目」）、`ref`（`Fact<Ref>`。`revision`は整数（固定した写し）。`not-applicable`は`field`の`kind`が`calculator-input`の場合だけ）、`state`（`MissingState`。[共通の型](common-types.md)の11の6つの状態と同じ）。
+`MissingInput`（`field`と`ref`の組がrun内で一意。1の「run内の並びの規則」）: `field`（`FieldKey`。[共通の型](common-types.md)の11の「不足の項目」）、`ref`（`Fact<Ref>`。`revision`は整数（固定した写し）。`not-applicable`は`field`の`kind`が`calculator-input`の場合だけ）、`state`（`MissingState`。[共通の型](common-types.md)の11の7つの状態と同じ）。
 
 ## 2. 結果の状態
 

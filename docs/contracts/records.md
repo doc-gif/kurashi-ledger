@@ -170,8 +170,8 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `subject` | `pay・deposit` | 何の見込みか（給与の支給・入金） |
-| `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定には、[照合の規則](reconciliation.md)の3の「識別の次元」に従って`known`が必要になる。明細の`employerId`（`Fact`でない）との比べ方は[共通の型](common-types.md)の13の「表への当てはめ方」（例はEX-07(c)） |
-| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定には`known`が必要（同3）。入金の`accountId`（`Fact`でない）との比べ方は同じ（例はEX-07(c)） |
+| `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定に要る状態は、[照合の規則](reconciliation.md)の3の「識別の次元」の表だけで決まる（給与の予測は`known`、入金の予測は`known`か`not-applicable`。`unknown`・`not-stated`のままでは確定しない）。明細の`employerId`（`Fact`でない）との比べ方は[共通の型](common-types.md)の13の「表への当てはめ方」（例はEX-07(c)） |
+| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定に要る状態は、同3の「識別の次元」の表だけで決まる（`known`）。入金の`accountId`（`Fact`でない）との比べ方は同じ（例はEX-07(c)） |
 | `measure` | `gross-pay・net-pay・bank-transfer・deposit-amount` | 行の金額が何を表すか。`subject`が`pay`なら`gross-pay`・`net-pay`・`bank-transfer`、`deposit`なら`deposit-amount` |
 | `lines` | `List<ForecastLine>` | 見込みの行。利用者が作る一覧なので、空の並びの予測は保存しない（1行以上） |
 | `basis` | `Fact<contract・past-actuals・user-estimate・other>` | 見込みの根拠（契約・過去の実績・利用者の見積り・その他） |
