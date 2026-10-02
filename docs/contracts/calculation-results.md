@@ -61,7 +61,7 @@
 
 `RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`。同じrunの`results`にある`key`だけを指す）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
 
-ある結果の項目の丸めの手順は、`itemKey`がその項目の`key`である`RoundingStep`を`order`の順に並べたものとする（結果の項目の側には手順の一覧を持たず、`itemKey`だけを正とする。2か所に書いて食い違うことを防ぐため）。
+ある結果の項目の丸めの手順は、`itemKey`がその項目の`key`である`RoundingStep`を`order`の順に並べたものとする（結果の項目の側には手順の一覧を持たず、`itemKey`だけを正とする。2か所に書いて食い違うことを防ぐため）。丸めの手順がある項目の`value`は、その項目の最後の手順の`after`と同じ値にする。`results`・`roundingSteps`がこの形に合わないrunは保存しない（計算器の誤りとして扱う。例は4）。
 
 `MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope`。[共通の型](common-types.md)の11の`missing`と同じ意味）。
 
@@ -86,3 +86,33 @@
 - 過去のrunの入力の版が現在の版と違う場合、表示で「入力が変わった」と示す（記録を書き換えず、そのつど導く）。
 - 制度データが更新されても、過去のrunを新しい制度で計算し直して上書きしない。
 - 過去のrunを再現するために必要な情報（入力の版、制度データの版、計算器の版、アプリのcommit）は、バックアップと復元で保たれる（ADR-0006、T12・T15）。
+
+## 4. 丸めの記録の例
+
+形の例であり、制度の計算ではない（項目・単位・丸め方は架空）。
+
+計算run `run_901`の`results`:
+
+| `key` | `label` | `value` |
+| --- | --- | --- |
+| `item-a` | 項目A | 値あり 12,300 |
+| `item-b` | 項目B | 値あり 4,000 |
+
+`roundingSteps`:
+
+| `order` | `itemKey` | `before` | `after` | `method` | `unit` |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `item-a` | `"12345.6"` | `"12345"` | `floor` | `"1"` |
+| 2 | `item-a` | `"12345"` | `"12300"` | `floor` | `"100"` |
+| 3 | `item-b` | `"4049"` | `"4000"` | `floor` | `"1000"` |
+
+この形から、`item-a`の丸めの手順は`order` 1・2（この順）、`item-b`は`order` 3と一通りに決まる。どちらの項目も、`value`は最後の手順の`after`と同じ。
+
+保存しない形（どれか1つでも当てはまれば、そのrunは保存しない）:
+
+| 形 | 理由 |
+| --- | --- |
+| `results`に`key`が`item-a`の項目が2件ある | `key`がrun内で一意でない。手順の対象が決まらない |
+| `itemKey`が`item-c`の手順がある（`results`に`item-c`がない） | `itemKey`が実在する`key`を指さない |
+| `order`が1・2・4（3がない）、または1・1・2 | `order`が1から始まる連番でない |
+| `item-a`の`value`が12,300で、最後の手順の`after`が`"12345"` | 値と丸めの記録が一致しない |

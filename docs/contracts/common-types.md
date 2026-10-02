@@ -279,7 +279,7 @@
 | `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: Text, to: Text }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の期間（軸の値の形で書く。例 `2026-09`） |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
 | `knownSum` | `Yen` | 値ありの項目の合計 |
-| `missing` | `List<{ ref: Ref, field: Text, state: unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope }>` | 不足の一覧。`undetermined`・`conflict`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+| `missing` | `List<{ ref: Ref, field: Text, state: unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope }>` | 不足の一覧。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、採用した年間資料の値か、入力済みの記録の合計か。ほかの軸の集計と、年間の値が要判断の場合は`not-applicable` |
 

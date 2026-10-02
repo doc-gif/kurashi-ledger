@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -50,7 +50,7 @@
 | `to` | `Ref` | 関係の先（種類ごとに下の表） |
 | `amount` | `Fact<Yen>`（正） | 配分する金額（種類ごとに下の表） |
 | `settlesForecastLine` | `Fact<boolean>` | `forecast-realization`の場合だけ。予測の行を消し込むか。`forecast-realization`を`confirmed`にするときは`known`が必要 |
-| `confirmedAgainst` | `Fact<{ fromRevision: 整数, toRevision: 整数 }>` | `allocationStatus`が`confirmed`の場合だけ。確定したときの両方の記録の版。`confirmed`では`known`が必要（`unknown`のまま確定しない） |
+| `confirmedAgainst` | `Fact<{ fromRevision: 整数, toRevision: 整数 }>` | `allocationStatus`が`confirmed`の場合だけ。確定したときの両方の記録の版。`confirmed`では`known`が必要で、両方の版は、その保存の時点の`from`・`to`の現在の版と同じでなければならない（`unknown`、実在しない版、古い版のまま確定しない） |
 | `proposedBy` | `user・matcher` | 利用者が作ったか、照合の候補を出す処理が作ったか |
 | `note` | `Fact<Text>` | メモ |
 
@@ -74,6 +74,8 @@
 - **照合配分は金額を移さない。** 明細と入金を結んでも、入金額は支給額に加わらず、明細の振込額は入金額に加わらない。明細の`bankTransferAmount`が`known`でないとき、配分の合計で埋めない。
 - 多対多を許す。1件の明細を複数の入金に分けてよい（分割入金）。1件の入金を複数の明細に分けてよい（合算入金）。
 - 確定の条件は、`confirmed`にする保存のときに検査する。条件を超える配分（過剰配分）は確定できない。その保存の要求を拒否し、理由を返す。候補（`proposed`）は、条件を超えていても候補として保存できるが、そのままでは確定できない。
+- 確かめ直し（再確認）は、照合配分の改訂で`confirmedAgainst`をその時点の両方の現在の版に更新し、確定の条件を検査し直して行う。
+- `confirmedAgainst`が`known`でない、または実在しない版を指す確定済みの配分（古いデータの復元等で生じたもの）は、照合の残高・予測の残り・帰属・比較から除き、「要確認」として出す。
 - 確定の条件の検査と保存は、同じ入金・明細・予測の行に関わる配分について、1つのtransactionの中で直列に行う（同時に2件を確定して、両方が条件を通ることがないようにする。T07・T11）。
 - `proposed`（候補）は、集計・照合の残高・帰属のどれにも使わない。候補として表示するだけ。
 - `rejected`（却下）は、同じ組の候補を繰り返し出さないために残す。確定した配分が誤りだった場合も、改訂で`rejected`にする。配分の記録そのものを誤って作った場合（同じ配分を二重に作った等）は、取消（`void`）にする。
@@ -95,7 +97,7 @@
 
 | 種類 | `targets` | `value` | 意味 | 前提が崩れたとき |
 | --- | --- | --- | --- | --- |
-| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | 対象が取消・差し替えされたら要確認（9。`same`で取消した側は例外） |
+| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | `distinct`: 対象が取消・差し替えされたら要確認（9）。`same`: 一方が`duplicateOf`でもう一方を指して取消されている間だけ前提を満たす。両方が有効になった（取消の取り消し等）、または残す側が取消・差し替えされたら要確認 |
 | `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する | 保存のあとで条件を満たさなくなったら、その支払者は要判断（5の手順1） |
 | `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`explainedComparisons`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない | 項目ごとに、現在の比較の値と結んだ明細の集合が、記録したものと1つでも違えば、その項目には適用しない（`mismatch-unresolved`に戻り、判断を「要再確認」と表示） |
 | `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） | 対象が取消・差し替えされたら要確認（9） |
