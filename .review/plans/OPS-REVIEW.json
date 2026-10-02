@@ -66,6 +66,11 @@
       "description": "PR4-R013〜R016: PR説明の古いbase、ローカルcheckの複数計画除外、汎用試験のrepo依存、入口の役割固定が残る。PR #6もREADME・実装計画を変更する。",
       "state": "resolved",
       "resolution": "最新base3672a30の三点差分で再検査してPR説明と引継ぎを更新。core checkは複数計画を除外前に拒否しCLI回帰試験を追加。repoルーティング試験を.review/testsへ分離し両suiteを実行、汎用suiteをrepo設定なしの一時コピーで実行。README・実装計画・巡回手順を差分を作成していない別担当へ統一する。未統合PR #6の製品実装再開・マージ規約は取り込まない。"
+    },
+    {
+      "description": "PR4-R017/R018: 分離したrepo固有suiteがActionsテンプレートから漏れ、計画ファイル名とtask_idの不一致がCLI/CIで通る。",
+      "state": "resolved",
+      "resolution": "未稼働のread-only標準runnerテンプレートのtool-testsへ固有suiteを追加。coreのactual計画パスとlocal CLIの--plan名をtask_idまたはtask_id-partへ照合し、CIもcoreを通す。正常なpart名と不一致のcore/CLI/CI回帰試験を追加する。workflowの信頼限界と未稼働状態は維持。"
     }
   ],
   "assessments": [
@@ -93,7 +98,7 @@
         },
         {
           "id": "trust",
-          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。 core/CLIの複数計画拒否、repo設定なしのツール試験を確認。PR説明と最新head/baseの検証記録を照合。",
+          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。 core/CLIの複数計画拒否、repo設定なしのツール試験を確認。PR説明と最新head/baseの検証記録を照合。 計画名/task_idの一致・不一致をcore/CLI/CIで確認し、テンプレートの両suiteを照合。",
           "expected": "候補codeでは検査を置換できず、baseの必要記入を満たさなければ失敗。条件の変更は将来の採否を独立レビューへ返す。保護されないworkflowは迂回可能と明記し、構造合格を承認にしない。"
         }
       ]
