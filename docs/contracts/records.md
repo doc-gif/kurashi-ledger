@@ -131,7 +131,7 @@
 
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
-| `documentType` | `withholding-slip・other` | 資料の種類（源泉徴収票・その他） |
+| `documentType` | `withholding-slip・other` | 資料の種類（源泉徴収票・その他）。`other`の資料は年間の値の採用の候補にしない（[照合の規則](reconciliation.md)の5） |
 | `documentLabel` | `Text` | 資料の表題。記載どおり |
 | `payerEmployerId` | `Id<Employer>` | 発行した支払者 |
 | `targetYear` | `CalendarYear` | 対象の年（「令和8年分」は`2026`） |
@@ -197,7 +197,7 @@
 
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
-| `noticeType` | `resident-tax-determination・nhi-premium-determination・dependent-eligibility・insurance-qualification・other` | 通知の種類（住民税の決定・国保の保険料の決定・被扶養者の認定・保険の資格・その他） |
+| `noticeType` | `resident-tax-determination・nhi-premium-determination・dependent-eligibility・insurance-qualification・other` | 通知の種類（住民税の決定・国保の保険料の決定・被扶養者の認定・保険の資格・その他）。`other`の通知は、種類を見分けるキーがないので決定額の集計に足さない（[照合の規則](reconciliation.md)の2） |
 | `noticeLabel` | `Text` | 通知の表題。記載どおり |
 | `issuerKind` | `municipality・tax-office・health-insurer・pension-office・employer・other` | 発行者の種類 |
 | `issuerLabel` | `Fact<Text>` | 発行者の表示。記載どおり（表記が揺れるので、同じ発行者かどうかの判定には使わない） |

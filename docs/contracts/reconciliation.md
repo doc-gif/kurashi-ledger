@@ -24,7 +24,7 @@
 | 年間の支払金額・源泉徴収税額等 | 採用した年間資料の該当項目。年間資料がない場合と、採用の判断で明細を選んだ場合は、その年に帰属する明細の、比較の対応表で対応する項目の合計（5） | `income-year` | 採用しなかった側 |
 | 所得の年ごとの明細の合計 | 帰属の年が決まった給与明細（8） | `income-year` | 帰属が決まらない明細（別に一覧を出す） |
 | 見込み | 予測の行の残り（6） | `expected-month` | 実績化した分 |
-| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行。`noticeType`ごとに集計する | `subject-year` | 計算run、給与明細の控除、種類（`noticeType`）の違う通知 |
+| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行。`noticeType`ごとに集計する（`other`の通知は足さない。下の共通の条件） | `subject-year` | 計算run、給与明細の控除、種類（`noticeType`）の違う通知 |
 | 推計 | 集計しない。計算runごとの結果（[計算結果](calculation-results.md)の1の`results`）をそのまま示す | — | 正式通知、ほかの計算run |
 
 共通の条件:
@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。通知の行の`category`が`unknown`・`not-stated`の場合は、その行を黙って除外せず、その通知の種類と年度の集計を`incomplete`にして、`missing`にその行を同じ状態（`unknown`・`not-stated`）で挙げる。通知の`amounts`が`unknown`（読んでいない）の場合も、その通知の種類と年度の集計を`incomplete`にし、`missing`にその通知の`amounts`を`unknown`で挙げる（[共通の型](common-types.md)の12の「並びの空の意味」）。通知の`subjectYear`が`unknown`・`not-stated`の場合は、その種類のすべての年度の集計に、同じように不足として挙げる（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。`noticeType`が`other`の通知は、種類を見分けるキーがないので（[共通の型](common-types.md)の1の「`other`と自由な値をキーにしない」）、決定額の集計に足さない。`noticeType`に`other`を指定した決定額の集計は、合計を返さず`incomplete`（`knownSum`は0。0円と表示しない）にし、その年度の`other`の通知の決定額の行を`missing`に状態`unknown`（項目`noticeType`。具体的な種類が分からない）で挙げる。`other`以外の種類で、同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。通知の行の`category`が`unknown`・`not-stated`の場合は、その行を黙って除外せず、その通知の種類と年度の集計を`incomplete`にして、`missing`にその行を同じ状態（`unknown`・`not-stated`）で挙げる。通知の`amounts`が`unknown`（読んでいない）の場合も、その通知の種類と年度の集計を`incomplete`にし、`missing`にその通知の`amounts`を`unknown`で挙げる（[共通の型](common-types.md)の12の「並びの空の意味」）。通知の`subjectYear`が`unknown`・`not-stated`の場合は、その種類のすべての年度の集計に、同じように不足として挙げる（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -123,6 +123,7 @@
 
 - 年間資料の範囲は、発行した支払者と、`includedOtherPayers`の支払者の集合（[記録の型](records.md)の6）。
 - **範囲が確定しない資料**（`includedOtherPayers`が`unknown`、または支払者が`known`でない行がある）は、どの支払者の候補にもしない。その資料の発行者は、判断で別の選択をしていなければ、範囲が確定するまで要判断になる（下の手順2）。見えていない支払者の分を含んでいるかもしれない資料を採用すると、その支払者の別の資料や明細と重ねて数えるおそれがあるため。
+- 年間資料のうち、`documentType`が`other`の資料は、項目の意味が決まらないので、採用の候補にも、下の手順2の要判断の原因にもしない（表示だけ。[共通の型](common-types.md)の1の「`other`と自由な値をキーにしない」）。以下の「年間資料」は、`documentType`が`withholding-slip`のものを指す。
 - 年`Y`・支払者`P`の候補: 取消されておらず、差し替えの系列の現在の記録である年間資料（[記録の型](records.md)の10）のうち、範囲が確定し、`targetYear`が`Y`で、範囲に`P`を含むもの。年が違う年間資料（前年分等）は候補にならない。
 
 ### 採用の手順（年`Y`）
