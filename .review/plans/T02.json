@@ -31,6 +31,7 @@
     "scripts/lib/public-policy.ts",
     "scripts/public-policy.test.ts",
     "scripts/runtime.test.ts",
+    "scripts/setup-lock.test.ts",
     "scripts/setup.test.ts",
     "scripts/setup.ts",
     "tsconfig.json"
