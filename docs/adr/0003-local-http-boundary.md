@@ -27,6 +27,7 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
    - すべての応答に`Referrer-Policy: no-referrer`を付ける。
    - トークンとcookieの値は、ログ・履歴・URLのクエリに残さない。
    - データを含まない静的ファイル（UIのビルド成果物と交換用のページ）はcookieなしでも返す。データはAPIからだけ返し、API（将来WebSocketを使う場合はそのupgradeも含む）はcookieのない要求を拒否する。cookieは起動ごとに無効になる。
+   - 例外は、トークン交換のエンドポイント（3のPOST）だけ。ここはcookieを発行する前なので、cookieの代わりに、有効な1回限りのトークンを認証として受け付ける。Host・`Sec-Fetch-Site`・`Origin`・`Content-Type`の検査（5）は、ほかのAPIと同じように行う。トークンが無効・使用済み・別の起動のものなら拒否する。交換のエンドポイントはデータを返さない。
 5. **状態を変える要求:** GET/HEAD以外はすべて、次をすべて満たさなければ拒否する。GETで状態を変えない。
    - `Sec-Fetch-Site`があれば`same-origin`であること。`cross-site`だけを拒否するのでは足りない。siteの判定はポートを無視するので、同じPCの別ポートのページからの要求は`same-site`になる。
    - `Sec-Fetch-Site`がなければ、`Origin`が`http://127.0.0.1:<port>`と完全一致すること。どちらもなければ拒否する。
@@ -80,6 +81,7 @@ HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバー
 
 - 不正なHost（rebinding想定の別名）、Originなし・別Origin・`null` Origin、`Sec-Fetch-Site`が`cross-site`・`same-site`（別ポート）の要求、JSON以外の`Content-Type`が拒否される。
 - 一時ファイルの権限が本人だけに限られること（macOSは`0600`、Windowsは本人だけのACL）。作成先に既存のファイルやsymlinkを置いた場合に作成が失敗すること。
+- トークン交換のエンドポイントだけが、cookieなしで有効な1回限りのトークンを受け付ける。ほかのAPIはcookieなしでは拒否される。
 - トークンなし・使用済みのトークン・別起動のcookieが拒否される。トークンがログ・サーバーへの要求のURL・交換後のURLに残らず、一時ファイルが削除される。
 - 一時ファイルから開いたときに、対応ブラウザでcookieの交換が成功する。
 - 交換のあとで戻る操作をしても、トークン付きのURLに戻らない。同じoriginへの要求の`Referer`にトークンが含まれない（`Referrer-Policy: no-referrer`が付いている）。
