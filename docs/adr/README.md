@@ -37,11 +37,11 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | 言語・実行 | TypeScript。サーバー側は型除去でビルドせずに実行し（erasable syntaxのみ）、型検査は`tsc --noEmit`。UIはViteでビルドする | 0002、0004 |
 | 起動手順 | 実利用専用のcloneで`npm ci`→`npm run build`→`npm run start:real`（リリースタグのcheckoutで変更がない場合だけ起動する）。起動ごとのトークン付きURLをブラウザで開き、Ctrl+Cで終了する。インストールスクリプトは無効にする。ほかの起動は合成データモードで、合成データのデータルートの指定が必須 | 0002、0003、0006 |
 | 配布・更新 | Gitのタグ付きリリースをソースのまま実行する。インストーラ・署名付き実行ファイル・自動更新は作らない。更新はタグのcheckoutと`npm ci`・`npm run build`。migration前に自動で退避する | 0002 |
-| ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（URLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。実装はT26（開発時の構成はT08） | 0003 |
+| ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（本人だけが読める一時ファイルからURLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。実装はT26（開発時の構成はT08） | 0003 |
 | UI | React＋Vite、素のCSSとデザイントークン。部品の基盤（react-aria-components等）はT08で判断する | 0004 |
 | 対応ブラウザ | Chrome・Edgeの最新安定版（Mac・Windows）、Safariの最新メジャー版（Mac）。Firefoxはbest effortで、必須のE2E対象に含めない | 0004 |
 | SQLiteドライバ | 組み込みの`node:sqlite`。代替はbetter-sqlite3（13.0.2以上） | 0005 |
-| データ保管先 | macOSは`~/Library/Application Support/KurashiLedger/`、Windowsは`%LOCALAPPDATA%\KurashiLedger\`。checkout内、クラウド同期フォルダ、ネットワークドライブでは起動しない。データルートに実データ／合成データの種別を記録し、実利用モード（専用コマンド）以外の起動は合成データのデータルートしか開けない | 0006 |
+| データ保管先 | macOSは`~/Library/Application Support/KurashiLedger/`、Windowsは`%LOCALAPPDATA%\KurashiLedger\`。checkout内、クラウド同期フォルダ、ネットワークドライブでは起動しない。データルートに実データ／合成データの種別を記録し、実利用モード（`:real`の付いた専用コマンド）以外の起動と保守コマンド（バックアップ、復元、rollback、出力）は合成データのデータルートしか開けない | 0006 |
 | 暗号化・鍵 | 保存中のデータはOSの全ディスク暗号化に任せる。バックアップはage形式でパスフレーズ暗号化する。パスフレーズは既定でアプリが生成し、アプリには保存しない。失うと復元できない | 0006 |
 | バックアップ | DBのスナップショット、証憑、制度データ、manifestをtarにまとめ、age形式で暗号化する。保存先は利用者が設定する。復元はアプリを止めてコマンドで行い、別の作業ディレクトリで検証してから入れ替える。操作画面はT27 | 0006 |
 | 二台間同期 | 提供しない。PCの移行はバックアップと復元による一方向の移行 | 0006 |
