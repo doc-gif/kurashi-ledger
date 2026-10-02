@@ -208,7 +208,7 @@
 | 次元 | 候補に加える年 |
 | --- | --- |
 | 支払予定日 | `scheduledPayDate`が`known`なら、その年 |
-| 勤務期間 | `workPeriod`と行の`linePeriod`のうち、両端が`known`の期間が重なるすべての年。片方の端だけが`known`なら、その端の年 |
+| 勤務期間 | `workPeriod`と行の`linePeriod`が重なるすべての年。端が`known`でない側は、[共通の型](common-types.md)の6の「端が分からない期間の扱い」に従い限りなく開く（例: `start`が不明で`end`が2026-03-31なら、2026年とそれより前のすべての年）。期間そのものが`known`でなければ、この次元からは年を得ない |
 | 入金日 | 確定済みの`transfer-to-deposit`（9で除かれていないもの）で結んだ入金の`depositDate`の年 |
 | 資料の年 | 確定済みの`annual-coverage`（同）で結んだ年間資料の`targetYear` |
 | 利用者の指定 | 有効な`tax-year-assertion`の判断の年 |
