@@ -1,7 +1,17 @@
 // 依存の導入の記録の単体試験。npm ciの代わりに、結果を決めた関数を渡す。
 // 実際のnpm ciを使う試験は setup.test.ts。
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -393,4 +403,75 @@ test('名前変更のあとのディレクトリの反映に失敗したら、�
   assert.equal(existsSync(recordPath(root)), false);
   assert.equal(verifyInstallRecord(root, runtime).ok, false);
   assert.match(lines.join('\n'), /記録は残していない/);
+});
+
+// リポジトリの外の共有の場所（合成）。中に、別の担当の記録と依存に見立てたファイルを置く。
+// snapshotは、中のパスとファイルの中身の一覧（変わっていないことの確認に使う）。
+function makeOutside(): { dir: string; snapshot: () => string[] } {
+  const dir = mkdtempSync(join(tmpdir(), 'kl-install-record-outside-'));
+  roots.push(dir);
+  writeFileSync(join(dir, RECORD_FILE_NAME), '{"other":"worktree"}');
+  mkdirSync(join(dir, 'shared-dep'));
+  writeFileSync(join(dir, 'shared-dep', 'package.json'), '{}');
+  const snapshot = () =>
+    readdirSync(dir, { recursive: true, encoding: 'utf8' })
+      .sort()
+      .map((name) => {
+        const full = join(dir, name);
+        return lstatSync(full).isFile() ? `${name}=${readFileSync(full, 'utf8')}` : `${name}/`;
+      });
+  return { dir, snapshot };
+}
+
+// ディレクトリへのリンク。Windowsではjunction（管理者の権限が要らない）、ほかではsymlink。
+function linkDirectory(target: string, path: string): void {
+  symlinkSync(target, path, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
+test('node_modulesがリポジトリの外へのリンクなら、setupは何も消さず・書かずに止まり、npm ciも始めない', () => {
+  const root = makeProject();
+  const outside = makeOutside();
+  const before = outside.snapshot();
+  linkDirectory(outside.dir, join(root, 'node_modules'));
+  let ran = false;
+  const { code, output } = setup(root, () => {
+    ran = true;
+    return fakeSuccessfulCi(root);
+  });
+  assert.equal(code, 1);
+  assert.equal(ran, false, 'npm ciを始めない');
+  assert.match(output, /node_modules がリンク/);
+  assert.deepEqual(outside.snapshot(), before, 'リンク先の中身は変わらない');
+});
+
+test('node_modulesがリンクなら、照合は不一致とし、記録を書く処理も拒む', () => {
+  const root = makeProject();
+  const outside = makeOutside();
+  const before = outside.snapshot();
+  linkDirectory(outside.dir, join(root, 'node_modules'));
+  const r = verifyInstallRecord(root, runtime);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.problems.join(), /node_modules がリンク/);
+  assert.throws(() => writeInstallRecord(root, observeInstall(root, runtime)), /node_modules がリンク/);
+  assert.deepEqual(outside.snapshot(), before);
+});
+
+test('記録の名前がリンクなら、setupと照合は止まり、リンク先を変えない', () => {
+  const root = makeProject();
+  const outside = makeOutside();
+  const before = outside.snapshot();
+  mkdirSync(join(root, 'node_modules'));
+  linkDirectory(outside.dir, recordPath(root));
+  const r = verifyInstallRecord(root, runtime);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.problems.join(), /記録がリンク/);
+  let ran = false;
+  const { code, output } = setup(root, () => {
+    ran = true;
+    return fakeSuccessfulCi(root);
+  });
+  assert.equal(code, 1);
+  assert.equal(ran, false);
+  assert.match(output, /記録がリンク/);
+  assert.deepEqual(outside.snapshot(), before);
 });

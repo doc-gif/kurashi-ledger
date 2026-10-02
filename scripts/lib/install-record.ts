@@ -9,8 +9,9 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
-  rmSync,
+  unlinkSync,
   writeSync,
 } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -89,6 +90,50 @@ export function installedTreePath(root: string): string {
 
 function isErrnoException(value: unknown): value is NodeJS.ErrnoException {
   return value instanceof Error && 'code' in value;
+}
+
+// node_modulesや記録の名前が、リンク（symlink・junction）だったり、リポジトリの外を指したり
+// していることを表す。記録の削除・書込み・照合は、これを確かめてから行い、当たれば何も変えずに止める。
+export class UnsafeInstallPathError extends Error {}
+
+const UNSAFE_NODE_MODULES =
+  'node_modules がリンク（symlink・junction）か、通常のディレクトリでないか、リポジトリの外を指している。' +
+  'リンクをたどって外の場所を変えないよう、何も変えずに止めた。共有の node_modules は使えない。' +
+  'リンク自身だけを外して（リンク先の中身は消さない）から `npm run setup` を実行する。';
+
+// node_modulesが、リポジトリの直下にある通常のディレクトリか、まだないかを確かめる。
+// lstatでリンクをたどらずに調べ、実体パスもリポジトリの直下と一致することを確かめる。
+export function inspectNodeModules(root: string): 'absent' | 'directory' {
+  const dir = nodeModulesPath(root);
+  let stat;
+  try {
+    stat = lstatSync(dir);
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') return 'absent';
+    throw error;
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new UnsafeInstallPathError(UNSAFE_NODE_MODULES);
+  if (realpathSync(dir) !== join(realpathSync(root), 'node_modules')) {
+    throw new UnsafeInstallPathError(UNSAFE_NODE_MODULES);
+  }
+  return 'directory';
+}
+
+// 記録の名前が、まだないか、通常のファイルかを確かめる（node_modulesを確かめたあとで呼ぶ）。
+function inspectRecordPath(root: string): 'absent' | 'file' {
+  let stat;
+  try {
+    stat = lstatSync(recordPath(root));
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') return 'absent';
+    throw error;
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new UnsafeInstallPathError(
+      `依存の導入の記録がリンクか、通常のファイルでない（${RECORD_FILE_NAME}）。リンク先を変えないよう、何も変えずに止めた。`,
+    );
+  }
+  return 'file';
 }
 
 // リンク自身があるか（リンク先はたどらない）。
@@ -176,20 +221,19 @@ export function compareRecord(recorded: InstallRecord, actual: InstallRecord): s
 }
 
 export function verifyInstallRecord(root: string, runtime: Runtime = currentRuntime()): Verification {
-  let text: string;
+  const missing: Verification = {
+    ok: false,
+    problems: [
+      '依存の導入の記録がない（`npm run setup` を実行していない、`npm ci` を直接実行した、または導入が途中で止まった）。',
+    ],
+  };
   try {
-    text = readFileSync(recordPath(root), 'utf8');
+    if (inspectNodeModules(root) === 'absent' || inspectRecordPath(root) === 'absent') return missing;
   } catch (error) {
-    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
-      return {
-        ok: false,
-        problems: [
-          '依存の導入の記録がない（`npm run setup` を実行していない、`npm ci` を直接実行した、または導入が途中で止まった）。',
-        ],
-      };
-    }
+    if (error instanceof UnsafeInstallPathError) return { ok: false, problems: [error.message] };
     throw error;
   }
+  const text = readFileSync(recordPath(root), 'utf8');
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -229,15 +273,21 @@ export function formatVerificationFailure(problems: readonly string[]): string {
   return [...problems.map((p) => `- ${p}`), SETUP_GUIDANCE].join('\n');
 }
 
+// 記録を消す。node_modulesと記録の名前がリンクでないことを確かめてから、通常のファイルだけを
+// unlinkで消す（リンクをたどらない）。当たれば何も消さずにUnsafeInstallPathErrorを投げる。
 export function removeInstallRecord(root: string): void {
-  rmSync(recordPath(root), { force: true });
+  if (inspectNodeModules(root) === 'absent') return;
+  if (inspectRecordPath(root) === 'absent') return;
+  unlinkSync(recordPath(root));
+  if (inspectRecordPath(root) !== 'absent') throw new Error('依存の導入の記録を削除できなかった。');
+}
+
+function unlinkIfPresent(path: string): void {
   try {
-    lstatSync(recordPath(root));
+    unlinkSync(path);
   } catch (error) {
-    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return;
-    throw error;
+    if (!(isErrnoException(error) && error.code === 'ENOENT')) throw error;
   }
-  throw new Error('依存の導入の記録を削除できなかった。');
 }
 
 // 一時ファイルへ排他的に書いてディスクへ反映し、最後に1回の名前変更で置く。
@@ -249,17 +299,13 @@ export function writeInstallRecord(
   syncDirectory: (dir: string) => void = syncDirectoryEntries,
 ): void {
   const dir = nodeModulesPath(root);
-  let stat;
-  try {
-    stat = lstatSync(dir);
-  } catch (error) {
-    if (!(isErrnoException(error) && error.code === 'ENOENT')) throw error;
+  if (inspectNodeModules(root) === 'absent') {
     mkdirSync(dir);
-    stat = lstatSync(dir);
+    inspectNodeModules(root);
   }
-  if (stat.isSymbolicLink() || !stat.isDirectory()) {
-    throw new Error('node_modules がディレクトリでない（リンク等）ため、記録を書かない。');
-  }
+  // 記録の名前にリンク等があれば止める。通常のファイルがあれば、名前変更で置き換わる。
+  inspectRecordPath(root);
+  // 一時ファイルは排他的に作るので、同じ名前のファイルやリンクがあれば失敗する。
   const temp = join(dir, `${RECORD_FILE_NAME}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
   try {
     const fd = openSync(temp, 'wx', 0o644);
@@ -271,13 +317,13 @@ export function writeInstallRecord(
     }
     renameSync(temp, recordPath(root));
   } catch (error) {
-    rmSync(temp, { force: true });
+    unlinkIfPresent(temp);
     throw error;
   }
   try {
     syncDirectory(dir);
   } catch (error) {
-    rmSync(recordPath(root), { force: true });
+    unlinkIfPresent(recordPath(root));
     throw error;
   }
 }

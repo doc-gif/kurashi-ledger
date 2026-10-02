@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -367,6 +367,30 @@ test('記録のあとで実行ファイルのリンクや依存が消えたら�
   const noDep = await npm(root, ['run', 'check:install']);
   assert.notEqual(noDep.status, 0, describe(noDep));
   assert.match(noDep.stderr, /node_modules にない/);
+});
+
+test('node_modulesがリポジトリの外へのリンクなら、setup・check:install・buildは止まり、リンク先を変えない', async () => {
+  mode = 'ok';
+  const root = makeProject();
+  // 別の場所で共有しているnode_modules（合成）。別の担当の記録と依存に見立てたファイルを置く。
+  const shared = join(work, `shared-node-modules-${counter}`);
+  mkdirSync(join(shared, DEP_NAME), { recursive: true });
+  writeFileSync(join(shared, '.kurashi-ledger-install.json'), '{"other":"worktree"}');
+  writeFileSync(join(shared, DEP_NAME, 'index.js'), 'module.exports = 2;\n');
+  const snapshot = () => readdirSync(shared, { recursive: true, encoding: 'utf8' }).sort().join(',');
+  const before = snapshot();
+  symlinkSync(shared, join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+
+  const setup = await npm(root, ['run', 'setup']);
+  assert.notEqual(setup.status, 0, describe(setup));
+  assert.match(setup.stderr, /node_modules がリンク/);
+  for (const script of ['check:install', 'build']) {
+    const r = await npm(root, ['run', script]);
+    assert.notEqual(r.status, 0, describe(r));
+    assert.match(r.stderr, /node_modules がリンク/);
+  }
+  assert.equal(snapshot(), before, 'リンク先の中身は変わらない');
+  assert.equal(readFileSync(join(shared, '.kurashi-ledger-install.json'), 'utf8'), '{"other":"worktree"}');
 });
 
 test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない', async () => {

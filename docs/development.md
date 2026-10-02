@@ -32,7 +32,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 2. 作業用のworktree（下の「branchとworktree」）で`npm run setup`を実行する。中で`npm ci`を実行し、成功したときだけ依存の導入の記録を書く。
 3. `npm run typecheck`、`npm test`、`npm run check:public`が通ることを確かめる。
 
-新しいcloneでも同じ手順で動く。記録は`node_modules`の中にあるので、worktreeやcloneごとに`npm run setup`を実行する。
+新しいcloneでも同じ手順で動く。記録は`node_modules`の中にあるので、worktreeやcloneごとに`npm run setup`を実行する。`node_modules`をほかの場所へのリンク（symlink・junction）にして共有することはできない（`npm run setup`等が何も変えずに止まる。ADR-0008）。
 
 ## コマンド
 
