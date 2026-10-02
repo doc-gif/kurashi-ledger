@@ -118,7 +118,7 @@
 | `depositDate` | `LocalDate` | **入金日**。通帳・明細に書かれた日付。値が必要 |
 | `amount` | `Yen`（正） | 入金額。値が必要 |
 | `descriptionText` | `Fact<Text>` | 摘要。記載どおり |
-| `payerHint` | `Fact<Id<Employer>>` | 利用者が考える支払者。照合の候補を出すためだけに使う |
+| `payerHint` | `Fact<Id<Employer>>` | 利用者が考える支払者。照合の候補を出すことと、照合配分の確定の検査（`known`なら、結ぶ明細の`employerId`や予測の`employerId`と一致すること。[照合の規則](reconciliation.md)の3の「識別の次元」）に使う。給与の集計には使わない |
 | `purpose` | `Fact<pay・reimbursement・other>` | 利用者の分類（給与の振込・経費の精算・その他）。表示と照合の候補に使う。`pay`でも給与の集計には入らない |
 
 - 入金日と金額が分からない入金は記録しない（見込みとして予測に記録する）。

@@ -318,12 +318,14 @@
 | 同 | `entryChannel`が`manual` | `not-applicable` |
 | 給与明細・年間資料・正式通知の`supersedes` | いつでも | `known`（発行者が作り直した資料で、前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）。`unknown`は使わない。作り直しだと分かっていて前の記録が分からなければ、前の記録を確かめてから保存する |
 | 年間資料の`includedOtherPayers` | いつでも | `known`か`unknown`（`unknown`の資料は範囲が確定しない。[照合の規則](reconciliation.md)の5） |
-| 照合配分の`amount` | `transfer-to-deposit` | `known`（正） |
+| 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（正） |
 | 同 | `annual-coverage` | `not-applicable` |
-| 同 | `forecast-realization`を`confirmed`にする | `known`。ただし`settlesForecastLine`が`true`なら`unknown`も許す |
+| 確定の不変条件の上限に使う実績の金額: `forecast-realization`の「実績の該当の金額」（[照合の規則](reconciliation.md)の3。`grossPay`・`netPay`・`bankTransferAmount`・入金の`amount`）と、実績の行を指す場合はその行の`amount` | その実績から`forecast-realization`を`confirmed`にする | `known`（`known`でなければ確定しない。先に実績の記録を訂正するか、予測の行を取り下げる） |
+| 給与明細の`bankTransferAmount` | `transfer-to-deposit`を`confirmed`にする | どの状態も許す。`known`なら明細の側の上限に使う。`known`でなければ明細の側の上限はなく、入金の側の上限（入金の`amount`は常に値がある）だけで過剰配分を防ぐ。配分の合計を振込額として扱わない |
 | 照合配分の`settlesForecastLine` | `forecast-realization`を`confirmed`にする | `known` |
 | 照合配分の`confirmedAgainst` | `allocationStatus`が`confirmed` | `known`（保存の時点の両方の現在の版） |
 | 照合配分の識別の次元の項目（[照合の規則](reconciliation.md)の3の表） | 確定するとき | 同3の表の条件のとおり |
+| 改訂の共通の形の`knownOn` | いつでも | `known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない。7の時点を指定した見方は、この2つで改訂を選ぶ） |
 | 照合の判断の`scope` | `annual-adoption`・`mismatch-explanation` | `known` |
 | 照合の判断の`explainedComparisons` | `mismatch-explanation` | `known`（1件以上） |
 | 計算runの`ruleSet`・`failure`・`previousRunId` | 結果の状態ごと | 下の「計算runの項目の状態」の表 |
