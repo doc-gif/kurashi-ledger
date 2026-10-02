@@ -63,17 +63,17 @@
     {
       "id": "INV-LOCK",
       "disposition": "not-applicable",
-      "reason": "T02はデータルートとそのlockを扱わない（T07・T09の範囲）。依存の導入の記録はリポジトリのnode_modulesの中のファイルで、データルートのlock（ADR-0006の1、G3）とは別。ADRの差分はG3の定義に触れない。移行用の計画で、実装前に計画したものではない。",
+      "reason": "T02はデータルートとそのlockを扱わない（T07・T09の範囲）。依存の導入の記録はリポジトリのnode_modulesの中のファイルで、データルートのlock（ADR-0006の1、G3）とは別。T02は、npm run setupの同時実行を止めるために、worktreeの直下（node_modulesの外）に作業中の印（.kurashi-ledger-setup.lock）を排他的な作成で置くが、これもデータルートのlockとは別のもの。G3と同じく、残った印をPIDの生死で奪わず、自動では消さずに止めて、確かめ方と消し方を案内する。ADRの差分はG3の定義に触れない。移行用の計画で、実装前に計画したものではない（作業中の印は、Copilotの指摘4169111451への対応で計画を更新して加えた）。",
       "checks": [
         {
           "id": "identity",
-          "method": "ADR-0006・ADR-0007が無変更であること、scriptsにlockやデータルートの処理がないことを差分で確かめる。",
-          "expected": "ADR-0006・0007は無変更。scripts/はnode_modulesとリポジトリのファイルだけを扱い、データルートを開かない。"
+          "method": "ADR-0006・ADR-0007が無変更であること、scriptsにデータルートやそのlockの処理がないことを差分で確かめる。setupの作業中の印が、worktreeの直下の固定の名前で、データルートと関係しないことを確かめる。",
+          "expected": "ADR-0006・0007は無変更。scripts/はnode_modulesとリポジトリのファイルだけを扱い、データルートを開かない。作業中の印はworktreeごとに1つで、同じworktreeの2つ目のsetupを止める。"
         },
         {
           "id": "recovery",
-          "method": "同上。setupの中断（SIGINT・プロセスツリーの終了）は記録を残さないことだけを扱い、lockの取得とは関係しないことを確かめる。",
-          "expected": "lockの取得・再取得の手順は追加も変更もしない。setupを中断しても記録は書かれない（scripts/setup.test.ts）。"
+          "method": "scripts/install-record.test.tsとscripts/setup.test.tsで、同時に起動した2つ目のsetupが依存を変える前に止まること、印を持ったまま失敗したsetupが印を外し記録を残さないこと、強制終了で残った印があると次のsetupが何も変えずに止まり、利用者が印を消すと進めることを、合成のnpmで確かめる。",
+          "expected": "2つ目のsetupはnpm ciも記録の削除もせずに止まり、1つ目の記録は有効なまま。失敗したsetupは記録を残さず印を外す。残った印は自動で消さず、macOSとWindowsの確かめ方・消し方を表示する。Windowsでは未実行（T05）。"
         }
       ]
     },
@@ -101,8 +101,8 @@
         },
         {
           "id": "artifact",
-          "method": "ADR-0008の書き方と試験を読み、記録の書込み（一時ファイル→名前変更）・削除（unlink）・node_modulesのリンクの拒否の試験を実行する。",
-          "expected": "既存の非空のnode_modulesはnpm ciが消してから入れ直す。setupの途中終了では記録の名前に不完全なファイルが残らない。ディレクトリの反映に失敗したら記録を消す。manifestはT08で作り、T02では作らない。"
+          "method": "ADR-0008の書き方と試験を読み、記録の書込み（一時ファイル→名前変更）・削除（unlink）・node_modulesのリンクの拒否の試験を実行する。 同時に2つのsetupを起動する試験（合成のnpm）も実行する。",
+          "expected": "既存の非空のnode_modulesはnpm ciが消してから入れ直す。setupの途中終了では記録の名前に不完全なファイルが残らない。ディレクトリの反映に失敗したら記録を消す。manifestはT08で作り、T02では作らない。 同じworktreeで2つのsetupが同時に依存を入れ替えることはない（2つ目は依存を変える前に止まる）。"
         }
       ]
     },
