@@ -58,8 +58,8 @@
 | `workPeriod` | `Fact<Period>` | **勤務期間**。この支給が対象とする勤務の期間。記載がなければ`not-stated` |
 | `scheduledPayDate` | `Fact<LocalDate>` | **支払予定日**。明細に書かれた支給日。実際の入金日ではない |
 | `grossPay` | `Fact<Yen>`（0以上） | 総支給額。記載どおり |
-| `taxablePay` | `Fact<Yen>`（0以上） | 課税支給額（記載がある場合） |
-| `nonTaxablePay` | `Fact<Yen>`（0以上） | 非課税支給額（記載がある場合） |
+| `taxablePay` | `Fact<Yen>`（0以上） | 課税支給額。記載がなければ`not-stated` |
+| `nonTaxablePay` | `Fact<Yen>`（0以上） | 非課税支給額。記載がなければ`not-stated` |
 | `commutingAllowance` | `Fact<Yen>`（0以上） | 通勤手当 |
 | `commutingAllowanceTaxTreatment` | `Fact<non-taxable・taxable・mixed>` | 通勤手当の課税区分。記載どおり（`mixed`は一部が課税） |
 | `otherEarnings` | `List<EarningLine>` | その他の支給の行 |
@@ -100,7 +100,9 @@
 - 同じ雇用先・同じ月・同じ支払予定日の明細が複数あってよい（給与と賞与、遡及差額の支給、別の種類の支給）。
 - 合計の項目（`grossPay`、`totalDeductions`、`netPay`）は記載どおりに持ち、行や項目から計算した値で上書きしない。行の合計と合計の記載が違う場合（行の入力漏れか、資料の不一致かは区別できない）、差を参考として表示するだけにする（T10・T11）。
 - 銀行入金の額から、総支給額・控除・振込額を逆算しない。
-- 明細の雇用先・勤務期間・支払予定日・金額を変えるのは、入力の誤りを直す改訂（`correct-input-error`）だけ。勤務先が後から支給額を変えた場合は、後の明細の行（遡及差額・回収）か、再発行の明細（10）として記録する。
+- 明細に記載された値（雇用先・勤務期間・支払予定日・金額）を別の値に直すのは、入力の誤りを直す改訂（`correct-input-error`）だけ。雇用先の取り違えもこれで直す（[共通の型](common-types.md)の9の境界）。
+- `unknown`・`not-stated`だった項目を、明細とは別の情報源（勤務先の回答等）に基づいて`known`・`not-applicable`にする場合は、`new-information`の改訂にし、`changeNote`に情報源を書く。同じ明細から入力漏れを埋める場合は`correct-input-error`。
+- 勤務先が後から支給額を変えた場合は、明細を改訂せず、後の明細の行（遡及差額・回収）か、再発行の明細（10）として記録する。
 
 ## 5. 銀行入金（`bank-deposit`）
 
@@ -133,10 +135,10 @@
 | `totalIncomeDeductions` | `Fact<Yen>`（0以上） | 所得控除の額の合計額 |
 | `withholdingTax` | `Fact<Yen>`（0以上） | 源泉徴収税額 |
 | `socialInsurancePremiums` | `Fact<Yen>`（0以上） | 社会保険料等の金額 |
-| `yearEndAdjustmentStatus` | `Fact<adjusted・not-adjusted>` | 年末調整の有無（記載から読み取れる場合） |
+| `yearEndAdjustmentStatus` | `Fact<adjusted・not-adjusted>` | 年末調整の有無。記載から読み取れなければ`not-stated` |
 | `includedOtherPayers` | `List<IncludedPayer>` | 他の支払者の分を含むという記載（前職分等）。記載がなければ空 |
-| `employmentStartDate` | `Fact<LocalDate>` | 就職の年月日（記載がある場合） |
-| `employmentEndDate` | `Fact<LocalDate>` | 退職の年月日（記載がある場合） |
+| `employmentStartDate` | `Fact<LocalDate>` | 就職の年月日。記載がなければ`not-stated` |
+| `employmentEndDate` | `Fact<LocalDate>` | 退職の年月日。記載がなければ`not-stated` |
 | `issuedDate` | `Fact<LocalDate>` | 発行日 |
 | `supersedes` | `Fact<Ref<AnnualDocument>>` | 再発行（訂正版）の場合だけ、差し替える前の資料（下の「資料の差し替え」） |
 
@@ -194,7 +196,7 @@
 | `issuerLabel` | `Fact<Text>` | 発行者の表示 |
 | `issuedDate` | `Fact<LocalDate>` | 発行日。記載どおり |
 | `subjectYear` | `Fact<{ kind: calendar・fiscal, year: YYYY }>` | 通知の対象の年・年度（例 住民税の年度） |
-| `incomeYear` | `Fact<CalendarYear>` | 基になった所得の年（記載がある場合） |
+| `incomeYear` | `Fact<CalendarYear>` | 基になった所得の年。記載がなければ`not-stated` |
 | `applicablePeriod` | `Fact<Period>` | 決定が当てはまる期間 |
 | `amounts` | `List<NoticeAmount>` | 決定された金額の行 |
 | `installments` | `List<Installment>` | 納付・徴収の予定の行 |
@@ -213,7 +215,7 @@
 
 ## 9. 証憑
 
-証憑は、記録を支える資料のファイル（PDF・画像）。ファイル（`EvidenceFile`）と、記録との紐付け（`evidence-link`）に分ける。ADR-0006の「証憑」の規則に従う。
+証憑は、記録を支える資料のファイル（PDF・画像）。ファイル（`EvidenceFile`）と、記録との紐付け（`evidence-link`）に分ける。ADR-0006の1にある証憑の規則（元の場所を参照せずに複製する、ハッシュに基づく保存名、書き終えてからcommitする、参照中は削除しない）に従う。
 
 ### `EvidenceFile`（証憑ファイル）
 
@@ -265,10 +267,10 @@
 
 | 日付 | 持つ記録・項目 | 意味 | 使う集計 | 使わないこと |
 | --- | --- | --- | --- | --- |
-| 勤務期間 | 給与明細`workPeriod`、行の`linePeriod`、予測の行の`workPeriod` | 支給が対象とする勤務の期間 | 勤務期間の表示（期間のまま示す） | 月・年への按分、所得の年の決定 |
+| 勤務期間 | 給与明細`workPeriod`、行の`linePeriod`、予測の行の`workPeriod` | 支給が対象とする勤務の期間 | 勤務期間の表示（期間のまま示す） | 月・年への按分。単独で所得の年を決めること |
 | 支払予定日 | 給与明細`scheduledPayDate`、予測の行の`expectedDate`・`expectedMonth` | 明細に書かれた支給日、見込みの予定 | 支払予定日の軸の集計。所得の年の規則の入力（T14の承認後） | 入金の集計 |
-| 入金日 | 銀行入金`depositDate` | 口座に入った日 | 入金の集計 | 給与の月・所得の年の決定 |
+| 入金日 | 銀行入金`depositDate` | 口座に入った日 | 入金の集計 | 給与の月の決定。単独で所得の年を決めること |
 | 税務上の帰属 | 給与明細ごとに、照合・判断・規則から導く（[照合の規則](reconciliation.md)の8） | 所得の年 | 所得の年の軸の集計、計算 | — |
 
 - 勤務期間から月・年を推測しない。月ごとの表示は、1日に決まる軸（支払予定日・入金日）でだけ行い、勤務期間をまたぐ支給を日割りしない。
-- 入金日は、所得の年の根拠にしない。支払予定日と入金日の年が違っても（年末の支給が年明けに入金された等）、入金日で帰属を決めない。
+- 入金日・勤務期間だけから、所得の年を決めない。支払予定日と入金日の年が違っても（年末の支給が年明けに入金された等）、入金日で帰属を決めない。これらを使う規則が必要かどうかは、T14が一次資料で確かめる（[照合の規則](reconciliation.md)の8）。

@@ -13,7 +13,7 @@
 | `id` | `Id<CalculationRun>` | ID（接頭辞`run`） |
 | `createdAt` | `Instant` | 実行日時（注入した時計） |
 | `calculator` | `{ id: Text, version: Text }` | 計算器の識別子と版（例 所得税の試算はT16で決める）。暗黙の代わりの計算器を使わない |
-| `appCommit` | `Text` | 実行したアプリのcommit（40文字のSHA） |
+| `appCommit` | `Text` | 実行したアプリのcommit（40文字のSHA）。作業ツリーに変更がある状態での実行の扱いは、ADR-0002の実行物の確認と合わせてT15で決める |
 | `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。制度データを使わない計算は`not-applicable` |
 | `target` | `Target` | 計算の対象（年・年度・地域） |
 | `inputs` | `Inputs` | 入力の固定した写し |
@@ -40,10 +40,12 @@
 | `records` | `List<Ref>` | 入力に使った記録。`revision`は必ず整数（固定）。`current`を使わない |
 | `allocations` | `List<Ref>` | 使った照合配分（版を固定） |
 | `decisions` | `List<Ref>` | 使った照合の判断（版を固定） |
-| `adoptions` | `List<{ scope, adoptedRef: Fact<Ref>, coverage: annual-document・entered-records-only, comparisonState }>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
+| `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
 
-`Assumption`: `key`（`Text`）、`value`（`Text`・`Decimal`・`Yen`のどれか）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等）。
+`AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定）、`coverage`（`annual-document・entered-records-only`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態）。
+
+`Assumption`: `key`（`Text`）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等）。
 
 `ResultItem`:
 
@@ -53,7 +55,8 @@
 | `label` | `Text` | 表示名 |
 | `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値 |
 | `nature` | `estimate` | 常に推計。正式通知の値と同じ状態にしない |
-| `explanationRefs` | `List<Ref>` | 根拠の記録・丸めの手順への参照 |
+| `explanationRefs` | `List<Ref>` | 根拠の記録への参照（版を固定） |
+| `roundingOrders` | `List<整数>` | この項目に関わる丸めの手順（`RoundingStep`の`order`） |
 
 `RoundingStep`: `order`（1から始まる整数）、`itemKey`（`Text`）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
 

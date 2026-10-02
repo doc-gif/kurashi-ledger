@@ -38,7 +38,7 @@ T01「記録・照合・計算結果の契約」の成果物。関連Issue: [#8]
 | --- | --- |
 | 成果物: 雇用先、給与明細、銀行入金、年間資料、予測、正式通知、証憑参照、改訂、照合配分、計算結果の型仕様 | [記録の型](records.md)の1・4〜9、[共通の型](common-types.md)の9（改訂）、[照合の規則](reconciliation.md)の3・4（照合配分・判断）、[計算結果](calculation-results.md) |
 | ID・版・単位・日付・通貨・金額状態を定める | [共通の型](common-types.md)の2〜6 |
-| 会社＋月を一意キーにしない | [共通の型](common-types.md)の2「一意キーにしないもの」、[記録の型](records.md)の4の規則。例 EX-02(b)、EX-03 |
+| 会社＋月を一意キーにしない | [共通の型](common-types.md)の2「一意キーにしないもの」、[記録の型](records.md)の4の規則。例 EX-02(b)（口座＋日付＋金額を一意キーにしないことはEX-03） |
 | unknown / not-stated / not-applicable / known(0)が区別される | [共通の型](common-types.md)の5・11。例 EX-08 |
 | 勤務期間・支払予定日・入金日・税務上の帰属の根拠を分ける | [記録の型](records.md)の11、[照合の規則](reconciliation.md)の8。例 EX-05 |
 | 適用期間・把握日・記録日時を定義する | [共通の型](common-types.md)の7。例 EX-04 |
