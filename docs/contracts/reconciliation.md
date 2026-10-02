@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。通知の行の`category`が`unknown`・`not-stated`の場合は、その行を黙って除外せず、その通知の種類と年度の集計を`incomplete`にして、`missing`にその行を同じ状態（`unknown`・`not-stated`）で挙げる。通知の`subjectYear`が`unknown`・`not-stated`の場合は、その種類のすべての年度の集計に、同じように不足として挙げる（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -56,11 +56,11 @@
 
 | 種類 | `from` | `to` | `amount` | 確定の条件（超えたら確定できない） |
 | --- | --- | --- | --- | --- |
-| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`unknown`・`not-stated`なら入金の側だけを確かめる。`not-applicable`（振込がない明細）なら確定しない。[共通の型](common-types.md)の12）。下の「識別の次元」の表の条件 |
+| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額（入金額は確定のときに`known`。[共通の型](common-types.md)の12）。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`unknown`・`not-stated`なら入金の側だけを確かめる。`not-applicable`（振込がない明細）なら確定しない。[共通の型](common-types.md)の12）。下の「識別の次元」の表の条件 |
 | `annual-coverage`（年間資料が明細を含む） | 年間資料 | 給与明細 | `not-applicable` | 下の「識別の次元」の表の条件 |
 | `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行 | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。`known`の正の値（消し込む場合も） | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`。これらの金額は、確定のときに`known`でなければならない（[共通の型](common-types.md)の12）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。下の「識別の次元」の表の条件 |
 
-**識別の次元:** 照合配分を確定するときに比べる次元を、種類ごとにこの表だけで定める（ほかの場所で次元を足さない）。表の条件を満たさない確定は拒否する。予測の側の次元が`unknown`で確定できない場合は、先に予測を改訂して`known`にする。
+**識別の次元:** 照合配分を確定するときに比べる次元を、種類ごとにこの表だけで定める（ほかの場所で次元を足さない）。表の条件を満たさない確定は拒否する。分からない値は一致の根拠にしない（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）ので、識別の値が`unknown`・`not-stated`なら確定しない。予測の側の次元が分からなくて確定できない場合は、先に予測を改訂して`known`にする。推定の項目である入金の`payerHint`だけは、表の行に書いた扱いに従う。
 
 | 種類 | 次元 | 比べる項目 | 確定の条件 |
 | --- | --- | --- | --- |
@@ -92,7 +92,7 @@
 - 確定の条件の検査と保存は、同じ入金・明細・予測の行に関わる配分について、1つのtransactionの中で直列に行う（同時に2件を確定して、両方が条件を通ることがないようにする。T07・T11）。
 - `proposed`（候補）は、集計・照合の残高・帰属のどれにも使わない。候補として表示するだけ。
 - `rejected`（却下）は、同じ組の候補を繰り返し出さないために残す。確定した配分が誤りだった場合も、改訂で`rejected`にする。配分の記録そのものを誤って作った場合（同じ配分を二重に作った等）は、取消（`void`）にする。
-- 照合の残高: 入金ごとの「未照合の額」＝入金額 −（その入金を`to`とする確定済みの`transfer-to-deposit`の合計）。明細ごとの「未照合の振込額」＝`bankTransferAmount` −（その明細を`from`とする確定済みの`transfer-to-deposit`の合計）。`bankTransferAmount`が`known`でなければ、未照合の振込額も`known`にしない。
+- 照合の残高: 入金ごとの「未照合の額」＝入金額 −（その入金を`to`とする確定済みの`transfer-to-deposit`の合計）。明細ごとの「未照合の振込額」＝`bankTransferAmount` −（その明細を`from`とする確定済みの`transfer-to-deposit`の合計）。`bankTransferAmount`が`known`でなければ、未照合の振込額も`known`にしない。入金額が`known`でなければ、その入金の未照合の額も`known`にしない。
 - 未照合の入金は、そのまま「未照合」として表示する。給与以外の入金（経費の精算等）が未照合で残ってよい。
 
 ## 4. 照合の判断（`decision`）
@@ -180,7 +180,7 @@
 
 ## 7. 重複と同額別件
 
-- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類（金額は問わない。再発行の明細で`supersedes`を付け忘れた場合も候補に出るように）。正式通知は種類（`noticeType`）・対象の年度（`subjectYear`）（2の「要確認」と同じ組）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
+- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類（金額は問わない。再発行の明細で`supersedes`を付け忘れた場合も候補に出るように）。正式通知は種類（`noticeType`）・対象の年度（`subjectYear`）（2の「要確認」と同じ組）。比べる値が`unknown`・`not-stated`の記録は、その値で候補から外さない（[共通の型](common-types.md)の5の「分からない値で絞り込まない」。たとえば入金日が分からない入金は、同じ口座・同じ金額の入金と候補になる）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
 - `duplicate-review`の判断が`distinct`（同額別件）: 両方の記録を残し、その組を候補に出さない。
 - `duplicate-review`の判断が`same`（二重登録）: 利用者が一方を取消（`void`、`duplicateOf`で残す方を指す）する。判断は両方を指して残り、**有効のまま**にする（取消した記録の`duplicateOf`が判断のもう一方の対象を指している場合は、9の「参照先が取消された」の例外）。取消した記録の照合配分は無効になる（9）。
 - 再送（同じ`writeRequestId`）と再取込（同じ`importKey`）は、重複の候補ではなく冪等キーで扱う（[共通の型](common-types.md)の10）。
@@ -207,13 +207,14 @@
 
 | 次元 | 候補に加える年 |
 | --- | --- |
-| 支払予定日 | `scheduledPayDate`が`known`なら、その年 |
-| 勤務期間 | `workPeriod`と行の`linePeriod`が重なるすべての年。端が`known`でない側は、[共通の型](common-types.md)の6の「端が分からない期間の扱い」に従い限りなく開く（例: `start`が不明で`end`が2026-03-31なら、2026年とそれより前のすべての年）。期間そのものが`known`でなければ、この次元からは年を得ない |
-| 入金日 | 確定済みの`transfer-to-deposit`（9で除かれていないもの）で結んだ入金の`depositDate`の年 |
+| 支払予定日 | `scheduledPayDate`の年。`unknown`・`not-stated`ならすべての年（[共通の型](common-types.md)の5の「分からない値で絞り込まない」） |
+| 勤務期間 | `workPeriod`が重なるすべての年。端が分からない側は限りなく開き（同6の「端が分からない期間の扱い」。例: `start`が不明で`end`が2026-03-31なら、2026年とそれより前のすべての年）、期間そのものが`unknown`・`not-stated`ならすべての年。`not-applicable`なら、この次元からは年を加えない |
+| 行の期間 | 行の`linePeriod`が`known`なら、それが重なるすべての年（端の扱いは勤務期間と同じ）。行ごとの帰属は持たず（明細全体で1つ）、行の期間は明細の勤務期間に加える情報なので、`not-stated`（行に期間の記載がない）では年を加えない。`unknown`（記載があるが読めない等）ならすべての年 |
+| 入金日 | 確定済みの`transfer-to-deposit`（9で除かれていないもの）で結んだ入金の`depositDate`の年。その日付が`unknown`・`not-stated`ならすべての年。結んだ入金がなければ、この次元からは年を加えない（関係がないことは、分からない値ではない） |
 | 資料の年 | 確定済みの`annual-coverage`（同）で結んだ年間資料の`targetYear` |
 | 利用者の指定 | 有効な`tax-year-assertion`の判断の年 |
 
-表のどの次元からも年が得られない明細は、すべての年の候補とする。
+表のどの次元からも年が得られない明細も、すべての年の候補とする。
 
 - 帰属が`undetermined`・`conflict`の明細は、所得の年の集計に入れず、「帰属未判定」として別に一覧を出す。年`Y`・支払者の範囲`S`の一覧には、`S`の明細のうち、帰属の候補の年に`Y`を含むものを入れる（`conflict`の明細は、根拠に現れたすべての年の一覧に入る）。一覧が空でなければ、年`Y`・範囲`S`の所得の年の集計は`incomplete`にする（`missing`の状態は`undetermined`または`conflict`）。規則の承認前に、あとで帰属しうる年の集計を`complete`に見せないため。
 - 規則が使えない間（T14の承認前）は、年間資料か利用者の指定がない明細の帰属は`undetermined`になる。支払予定日の年の集計（`scheduled-pay-date`の軸）は、帰属とは別の表示として使える。
