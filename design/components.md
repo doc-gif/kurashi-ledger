@@ -117,7 +117,7 @@ Figma: component set `6:58`。プロパティ: `Status`。
 - 寸法: 高さ24px（`size/badge-height`）、左右の余白8px、アイコンと文言の間4px、角丸4px（`radius/sm`）、文字`typography.label.xs`（12px・Bold）。
 - 表示専用で、フォーカスを受けない。文言はそのまま読み上げる。表の列見出し（例: 「状態」）など、何の状態かが周りから分かるように置く。
 - 金額の横に置くときは、金額の表示と矛盾させない（例: 金額が「不明」なら「確定」を付けない）。合計に不明が含まれるときは、合計に「不明」バッジと説明を付け、確定値に見せない（Figma `13:74`）。
-- 6つの状態とT01の契約（unknown / not-stated / not-applicable / known(0)、実績・見込み・正式通知など）との対応は、T01の契約がmainに入ってから決める。
+- これらの状態とT01の契約（unknown / not-stated / not-applicable / known(0)、実績・見込み・正式通知）との対応は、T08で決めて、この文書に記録する（[タスク台帳](../docs/implementation-tasks.md)のT08節の受入条件。T08はT01に依存する）。
 
 ## T08で確かめること
 
