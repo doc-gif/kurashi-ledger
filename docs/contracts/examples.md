@@ -44,6 +44,8 @@
 | 取消・取消の取り消しと二重登録（改訂のモデル） | EX-03 |
 | 正式通知の重複（表記の違い・発行者不明・別の発行者） | EX-04(d) |
 | 雇用条件の期間（不明な境界、継続中と不明の区別） | EX-09 |
+| 参照の粒度（記録全体の関係は`whole`だけ。実在する行を指す拒否の例） | EX-04(b)の「参照の粒度」 |
+| `Fact`と`Fact`でない値の比較（両方向、5つの場合） | EX-07(c) |
 
 ## EX-01 銀行入金だけを記録し、後から明細を追加する
 
@@ -261,6 +263,18 @@
 | 勤務期間の表示 | `pay_402`は 2026-06-21〜2026-07-20、その中の行`l1`は 2026-04-01〜2026-06-20 |
 | 所得の年 | `pay_402`全体で1つ（行ごとの帰属は契約版1では持たない。必要かどうかはT14で確かめ、必要なら契約を変える） |
 
+**参照の粒度（[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」）:** 記録全体についての関係（差し替え・取消・判断）は`line` `whole`だけを指す。`l1`は`pay_402`の現在の版に実在する行だが、記録全体の関係からは指せない。下の表の`pay_403`（勤務先A・給与・支払予定日 2026-07-24の再発行の明細）と`pay_404`（`pay_402`を誤ってもう一度入力した記録）は、この表のための仮の記録。
+
+| 保存しようとした参照 | 結果 |
+| --- | --- |
+| `tax-year-assertion`の判断で、`targets` `{ id: pay_402, revision: current, line: whole }`、年 2026 | 保存できる（明細全体の所得の年を指定する） |
+| 同じ判断で、`targets` `{ id: pay_402, revision: current, line: l1 }` | 拒否。照合の判断の対象は記録全体だけ（[照合の規則](reconciliation.md)の4）。行だけの帰属を指定する判断を作らない |
+| `pay_403`の`supersedes` `{ id: pay_402, revision: current, line: whole }` | 保存できる（差し替えの識別の次元の勤務先・明細の種類・支払予定日も一致。[記録の型](records.md)の10） |
+| `pay_403`の`supersedes` `{ id: pay_402, revision: current, line: l1 }` | 拒否。差し替えは記録全体の関係で、行だけを差し替える意味を持たない |
+| `pay_404`の取消（`void`）で、`duplicateOf` `{ id: pay_402, revision: current, line: whole }` | 保存できる（`pay_402`は自分以外の有効な記録。[共通の型](common-types.md)の9） |
+| `pay_404`の取消で、`duplicateOf` `{ id: pay_402, revision: current, line: l1 }` | 拒否。二重登録の残す方は記録全体 |
+| `forecast-realization`の照合配分の`from` `{ id: pay_402, revision: current, line: l1 }` | 粒度の検査は通る（`otherEarnings`の行を指せる項目で、`l1`は実在する。確定の条件と識別の次元は別に検査する。例はEX-07(b)の`alc_702`） |
+
 しないこと: 4月〜6月の明細を改訂して6,000を配分しない。6,000を4月〜6月の支給額に足さない。7月の236,000に加えて、6,000をもう一度足さない。
 
 ### (c) 正式通知の変更（差し替え）
@@ -277,7 +291,7 @@
 | 正式通知の決定額（年度2026、把握時点の再現 2026-08-01） | `complete` 120,000（`ntc_402`の把握日 2026-08-14 はまだ来ていないので、`ntc_401`が有効） |
 | 住民税（明細の控除、勤務先A、支払予定日 2026-06〜08） | `complete` 30,000（決定額とは別の集計） |
 
-`ntc_402`は`ntc_401`と、差し替えの識別の次元（`issuerId`・`noticeType`・`subjectYear`）がすべて一致するので、差し替えとして保存できる（[記録の型](records.md)の10）。仮に`ntc_402`の`issuerId`を別の発行者（`iss_2`）にしていたら、保存は拒否される。`issuerId`が不明のままなら、未確認の差し替えとして両方の通知が集計から除かれ、`conflict`で挙がる。
+`ntc_402`は`ntc_401`と、差し替えの識別の次元（`issuerId`・`noticeType`・`subjectYear`）がすべて一致するので、差し替えとして保存できる（[記録の型](records.md)の10）。`ntc_402`の`supersedes`は`ntc_401`の記録全体（`line` `whole`）を指す。`ntc_401`の決定額の行を指す`supersedes`は、行が実在していても拒否される（EX-04(b)の「参照の粒度」）。仮に`ntc_402`の`issuerId`を別の発行者（`iss_2`）にしていたら、保存は拒否される。`issuerId`が不明のままなら、未確認の差し替えとして両方の通知が集計から除かれ、`conflict`で挙がる。
 
 `ntc_402`の決定額を11,100と誤って入力していた場合は、`ntc_402`の改訂（`correct-input-error`）で直す。新しい通知の記録は作らない。
 
@@ -474,6 +488,32 @@
 後日（把握日 2027-03-10）、勤務先Bから残りは支払わないと連絡があった。利用者が`alc_702`を改訂（`new-information`）して消し込む（true）と、`fc_702`の`l1`の残りは0、見込みとの差は −35,000になる。
 
 しないこと: `pay_702`の総支給額75,000と、`fc_701`の`l3`の50,000を両方足さない（`l3`の実績化を忘れると、この二重計上が起きる）。`fc_702`の`l1`を60,000のまま見込みに残さない。
+
+### (c) 識別の次元の比較（`Fact`と`Fact`でない値）
+
+`forecast-realization`の識別の次元では、予測の側が`Fact`、実績の側が`Fact`でない値を比べる（[照合の規則](reconciliation.md)の3）。比べ方は[共通の型](common-types.md)の13の「表への当てはめ方」で、`Fact`でない値は`known`として4×4の表に当てはめる。4×4の表は左右対称なので、予測の側を左に置いても、実績の側を左に置いても（両方向）、同じ欄に当たり、同じ結果になる。
+
+勤務先（給与の予測。予測の`employerId`は`Fact<Id<Employer>>`、明細の`employerId`は`Id<Employer>`）。明細は`pay_701`（勤務先B）とする。
+
+| 予測の`employerId` | 明細の`employerId` | 予測→明細の欄 | 明細→予測の欄 | 結果 |
+| --- | --- | --- | --- | --- |
+| `known` 勤務先B | 勤務先B（`known`として当てはめる） | `known`×`known`（同じ） | `known`×`known`（同じ） | 一致。確定できる（`alc_701`） |
+| `known` 勤務先A | 勤務先B | `known`×`known`（違う） | `known`×`known`（違う） | 不一致。確定を拒否する（候補としては保存できる） |
+| `unknown` | 勤務先B | `unknown`×`known` | `known`×`unknown` | 未確定。確定しない（一致とみなさない。先に予測を改訂して`known`にする） |
+| `not-stated` | 勤務先B | `not-stated`×`known` | `known`×`not-stated` | 未確定。確定しない |
+| `not-applicable` | 勤務先B | `not-applicable`×`known` | `known`×`not-applicable` | 不一致。確定を拒否する（給与の予測では`not-applicable`は使えないので、予測の保存のときにも拒否される） |
+
+口座（入金の予測。予測の`accountId`は`Fact<Id<Account>>`、入金の`accountId`は`Id<Account>`）。仮の入金の予測`fc_703`（`subject` 入金、`measure` 入金額）と、口座2への入金を比べる。
+
+| `fc_703`の`accountId` | 入金の`accountId` | 両方向の欄 | 結果 |
+| --- | --- | --- | --- |
+| `known` 口座2 | 口座2 | `known`×`known`（同じ） | 一致。確定できる |
+| `known` 口座1 | 口座2 | `known`×`known`（違う） | 不一致。確定を拒否する |
+| `unknown` | 口座2 | `unknown`×`known`／`known`×`unknown` | 未確定。確定しない（実績化の確定には予測の`accountId`の`known`が必要。[記録の型](records.md)の7） |
+| `not-stated` | 口座2 | `not-stated`×`known`／`known`×`not-stated` | 未確定。確定しない |
+| `not-applicable` | 口座2 | `not-applicable`×`known`／`known`×`not-applicable` | 不一致。確定を拒否する（入金の予測では`not-applicable`は使えないので、予測の保存のときにも拒否される） |
+
+入金の予測の`employerId`と入金の`payerHint`は、推定の項目なので4×4の表を使わず、両方が`known`のときだけ比べる（[照合の規則](reconciliation.md)の3の表）。`payerHint`が`unknown`でも、それだけで確定を止めない。
 
 ## EX-08 金額の4つの状態
 

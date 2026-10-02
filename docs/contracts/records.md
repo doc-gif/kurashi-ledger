@@ -170,8 +170,8 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `subject` | `pay・deposit` | 何の見込みか（給与の支給・入金） |
-| `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定には、[照合の規則](reconciliation.md)の3の「識別の次元」に従って`known`が必要になる |
-| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定には`known`が必要（同3） |
+| `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定には、[照合の規則](reconciliation.md)の3の「識別の次元」に従って`known`が必要になる。明細の`employerId`（`Fact`でない）との比べ方は[共通の型](common-types.md)の13の「表への当てはめ方」（例はEX-07(c)） |
+| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定には`known`が必要（同3）。入金の`accountId`（`Fact`でない）との比べ方は同じ（例はEX-07(c)） |
 | `measure` | `gross-pay・net-pay・bank-transfer・deposit-amount` | 行の金額が何を表すか。`subject`が`pay`なら`gross-pay`・`net-pay`・`bank-transfer`、`deposit`なら`deposit-amount` |
 | `lines` | `List<ForecastLine>` | 見込みの行。利用者が作る一覧なので、空の並びの予測は保存しない（1行以上） |
 | `basis` | `Fact<contract・past-actuals・user-estimate・other>` | 見込みの根拠（契約・過去の実績・利用者の見積り・その他） |
@@ -267,7 +267,7 @@
 
 ## 10. 資料の差し替え（`supersedes`）
 
-発行者が資料を作り直した場合（明細の再発行、訂正版の源泉徴収票、変更通知）は、改訂ではなく**新しい記録**にし、新しい記録の`supersedes`で前の記録を指す。`supersedes`は`known`（前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）だけで、`unknown`のまま保存しない。作り直しだと分かっていて前の記録が分からない場合は、前の記録を確かめてから保存する（前の記録がないまま新しい記録を足すと、新旧を両方数えるおそれがあるため）。
+発行者が資料を作り直した場合（明細の再発行、訂正版の源泉徴収票、変更通知）は、改訂ではなく**新しい記録**にし、新しい記録の`supersedes`で前の記録全体を指す（`line`は`whole`だけ。行を指す`supersedes`は、行が実在しても保存を拒否する。[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」、例はEX-04(b)）。`supersedes`は`known`（前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）だけで、`unknown`のまま保存しない。作り直しだと分かっていて前の記録が分からない場合は、前の記録を確かめてから保存する（前の記録がないまま新しい記録を足すと、新旧を両方数えるおそれがあるため）。
 
 | 変更 | 表し方 | 前の内容 |
 | --- | --- | --- |
