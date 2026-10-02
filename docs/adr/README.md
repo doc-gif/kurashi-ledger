@@ -35,7 +35,7 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | 実行方式 | ローカルブラウザアプリ。Node.jsの1プロセスが`127.0.0.1`でUIとAPIを配信する。使うときだけ起動し、常駐しない | 0002 |
 | ランタイム | Node.jsのLTS。目標はNode 26（2026-10-28にLTS入りの予定）。T02の着手時に利用可能なLTSのうち必要機能を満たす版を固定し、将来のLTSを待たない（それより前ならNode 24の24.15.0以上）。メジャー更新はT28 | 0002 |
 | 言語・実行 | TypeScript。サーバー側は型除去でビルドせずに実行し（erasable syntaxのみ）、型検査は`tsc --noEmit`。UIはViteでビルドする | 0002、0004 |
-| 起動手順 | 実利用専用のcloneで`npm ci`→`npm run build`→`npm run start:real`（リリースタグのcheckoutで変更がない場合だけ起動する）。起動ごとのトークン付きURLをブラウザで開き、Ctrl+Cで終了する。インストールスクリプトは無効にする。ほかの起動は合成データモードで、合成データのデータルートの指定が必須 | 0002、0003、0006 |
+| 起動手順 | 実利用専用のcloneで`npm ci`→`npm run build`→`npm run start:real`（originと一致し`origin/main`から到達できる注釈付きリリースタグをそのままcheckoutした場合だけ起動する）。起動ごとのトークン付きURLをブラウザで開き、Ctrl+Cで終了する。インストールスクリプトは無効にする。ほかの起動は合成データモードで、合成データのデータルートの指定が必須 | 0002、0003、0006 |
 | 配布・更新 | Gitのタグ付きリリースをソースのまま実行する。インストーラ・署名付き実行ファイル・自動更新は作らない。更新はタグのcheckoutと`npm ci`・`npm run build`。migration前に自動で退避する | 0002 |
 | ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（本人だけが読める一時ファイルからURLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。開発時のCSPだけ、応答ごとのnonceでViteのinlineのstyle・scriptを許可する（`unsafe-inline`は使わない）。実装はT26（開発時の構成はT08） | 0003 |
 | UI | React＋Vite、素のCSSとデザイントークン。部品の基盤（react-aria-components等）はT08で判断する | 0004 |
