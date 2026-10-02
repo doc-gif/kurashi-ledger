@@ -53,14 +53,15 @@
 
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
-| `key` | `Text` | 結果の項目の識別子（計算器ごとに決める） |
+| `key` | `Text` | 結果の項目の識別子（計算器ごとに決める）。run内で一意 |
 | `label` | `Text` | 表示名 |
 | `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値 |
 | `nature` | `estimate` | 常に推計。正式通知の値と同じ状態にしない |
 | `explanationRefs` | `List<Ref>` | 根拠の記録への参照（版を固定） |
-| `roundingOrders` | `List<整数>` | この項目に関わる丸めの手順（`RoundingStep`の`order`）。同じrunの`roundingSteps`にある`order`だけを指す |
 
-`RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
+`RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`。同じrunの`results`にある`key`だけを指す）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
+
+ある結果の項目の丸めの手順は、`itemKey`がその項目の`key`である`RoundingStep`を`order`の順に並べたものとする（結果の項目の側には手順の一覧を持たず、`itemKey`だけを正とする。2か所に書いて食い違うことを防ぐため）。
 
 `MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope`。[共通の型](common-types.md)の11の`missing`と同じ意味）。
 

@@ -21,7 +21,7 @@
 | `a`・`b`・`c` | 列挙。並べた値のどれか1つ |
 | `boolean`、整数 | 真偽値（`true`・`false`）、整数（範囲は項目ごとに書く） |
 
-**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。
+**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。その場合に`known`が必要な項目は、説明に「`known`が必要」と書く（書いていなければ、その場合でも`unknown`を許す）。`known`が必要な項目が`known`でない保存は拒否する。
 
 ## 2. IDと参照
 
@@ -220,7 +220,7 @@
 | `recordedAt` | `Instant` | 記録日時 |
 | `knownOn` | `Fact<LocalDate>` | 把握日（7を参照） |
 | `changeNote` | `Fact<Text>` | 改訂の理由のメモ |
-| `duplicateOf` | `Fact<Ref<T>>` | 二重登録として取り消した場合だけ、残す方の記録 |
+| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable` |
 | `entryChannel` | `manual`・`import` | 手入力か取込か |
 | `writeRequestId` | `Text` | 保存の要求の冪等キー（10を参照） |
 | `importKey` | `Fact<Text>` | 取込の冪等キー。取込の場合だけ（10を参照） |
@@ -228,13 +228,19 @@
 
 `recordType`の値: `employer`、`employment-term`、`account`、`payslip`、`bank-deposit`、`annual-document`、`forecast`、`official-notice`、`evidence-link`、`allocation`、`decision`。
 
-| 理由 | 意味 | `status` |
-| --- | --- | --- |
-| `create` | 新規（版1だけ） | `active` |
-| `correct-input-error` | 入力誤りの訂正。同じ情報源からの写し誤り・入力漏れ（`unknown`だった項目を同じ資料から埋める場合を含む）を直す | `active` |
-| `new-information` | 新しい情報源による内容の変更（予測の見直し、問い合わせの回答で分かった値等） | `active` |
-| `void` | 取消。記録そのものが誤り（二重登録、自分の口座でない取引の取込等、存在しない取引・資料の記録） | `voided` |
-| `unvoid` | 取消の取り消し | `active` |
+**改訂のモデル:** 記録の状態は、最新の改訂の`status`と`body`で決まる。改訂の理由ごとに、使える直前の状態、改訂後の状態、変えてよい項目を次の表のとおり定める。表にない組合せの保存は拒否する。
+
+| 理由 | 意味 | 直前の`status` | 改訂後の`status` | `body` |
+| --- | --- | --- | --- | --- |
+| `create` | 新規（版1だけ） | （なし） | `active` | 新しく書く |
+| `correct-input-error` | 入力誤りの訂正。同じ情報源からの写し誤り・入力漏れ（`unknown`だった項目を同じ資料から埋める場合を含む）を直す | `active` | `active` | 変えてよい |
+| `new-information` | 新しい情報源による内容の変更（予測の見直し、問い合わせの回答で分かった値等） | `active` | `active` | 変えてよい |
+| `void` | 取消。記録そのものが誤り（二重登録、自分の口座でない取引の取込等、存在しない取引・資料の記録） | `active` | `voided` | 直前の改訂と同じ（変えない） |
+| `unvoid` | 取消の取り消し | `voided` | `active` | 直前の改訂と同じ（取消の前の内容のまま） |
+
+- **取消と取消の取り消しは`status`だけを変える。** `body`（金額、参照、`supersedes`等）は直前の改訂と同じ値にし、違えば保存を拒否する。内容を変えるのは`correct-input-error`と`new-information`だけで、把握日の規則（7）もそれに従う。
+- 取消した記録に続けられる改訂は`unvoid`だけ。取消した記録の内容を直すには、先に取消を取り消す。
+- **保存の検査:** どの改訂の保存（新規・訂正・新しい情報・取消・取消の取り消し）も、記録の種類ごとに定めた保存の検査（差し替えの系列、照合配分の確定の条件、雇用条件の期間の重なり、照合の判断の検証等）を、保存したあとの状態に対して行い、満たさなければ拒否する。
 
 `correct-input-error`と`void`の境界: 取引・資料は存在し、勤務先・口座・金額・日付などの写し方だけを誤った場合は、`correct-input-error`で直す（勤務先や口座の取り違えを含む）。記録に当たる取引・資料が存在しない場合は`void`にする。
 

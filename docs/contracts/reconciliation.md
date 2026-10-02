@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`・同じ発行者で差し替えられていない通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ等）。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -49,8 +49,8 @@
 | `from` | `Ref` | 関係の元（種類ごとに下の表） |
 | `to` | `Ref` | 関係の先（種類ごとに下の表） |
 | `amount` | `Fact<Yen>`（正） | 配分する金額（種類ごとに下の表） |
-| `settlesForecastLine` | `Fact<boolean>` | `forecast-realization`の場合だけ。予測の行を消し込むか |
-| `confirmedAgainst` | `Fact<{ fromRevision: 整数, toRevision: 整数 }>` | `allocationStatus`が`confirmed`の場合だけ。確定したときの両方の記録の版 |
+| `settlesForecastLine` | `Fact<boolean>` | `forecast-realization`の場合だけ。予測の行を消し込むか。`forecast-realization`を`confirmed`にするときは`known`が必要 |
+| `confirmedAgainst` | `Fact<{ fromRevision: 整数, toRevision: 整数 }>` | `allocationStatus`が`confirmed`の場合だけ。確定したときの両方の記録の版。`confirmed`では`known`が必要（`unknown`のまま確定しない） |
 | `proposedBy` | `user・matcher` | 利用者が作ったか、照合の候補を出す処理が作ったか |
 | `note` | `Fact<Text>` | メモ |
 
@@ -88,8 +88,8 @@
 | --- | --- | --- |
 | `decisionType` | `duplicate-review・annual-adoption・mismatch-explanation・tax-year-assertion` | 判断の種類（下の表） |
 | `targets` | `List<Ref>` | 判断の対象 |
-| `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者 |
-| `explainedComparisons` | `Fact<List<{ field: Text, annualValue: Yen, payslipSum: Yen, coveredPayslips: List<Id<Payslip>> }>>` | `mismatch-explanation`の場合だけ。理由を説明する年間資料の項目（例 `paymentAmount`）ごとに、判断したときの比較の値（年間資料の値と明細の合計）と、結んでいた明細の集合を記録する。1件以上 |
+| `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者。その場合は`known`が必要 |
+| `explainedComparisons` | `Fact<List<{ field: Text, annualValue: Yen, payslipSum: Yen, coveredPayslips: List<Id<Payslip>> }>>` | `mismatch-explanation`の場合だけ（その場合は`known`が必要）。理由を説明する年間資料の項目（例 `paymentAmount`）ごとに、判断したときの比較の値（年間資料の値と明細の合計）と、結んでいた明細の集合を記録する。1件以上 |
 | `value` | 種類ごと（下の表） | 判断の内容 |
 | `reasonNote` | `Text` | 判断の理由。空にしない |
 
@@ -165,7 +165,7 @@
 
 ## 7. 重複と同額別件
 
-- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類・総支給額（または振込額）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
+- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類・総支給額（または振込額）。正式通知は種類（`noticeType`）・対象の年度（`subjectYear`）（2の「要確認」と同じ組）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
 - `duplicate-review`の判断が`distinct`（同額別件）: 両方の記録を残し、その組を候補に出さない。
 - `duplicate-review`の判断が`same`（二重登録）: 利用者が一方を取消（`void`、`duplicateOf`で残す方を指す）する。判断は両方を指して残り、**有効のまま**にする（取消した記録の`duplicateOf`が判断のもう一方の対象を指している場合は、9の「参照先が取消された」の例外）。取消した記録の照合配分は無効になる（9）。
 - 再送（同じ`writeRequestId`）と再取込（同じ`importKey`）は、重複の候補ではなく冪等キーで扱う（[共通の型](common-types.md)の10）。
