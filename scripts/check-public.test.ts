@@ -92,3 +92,20 @@ test('--stagedはcommit済みで変更のないファイルを対象にしない
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /commitしようとしている1件/);
 });
+
+test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、置き場所の規則で止める', () => {
+  const { write, git, check } = makeRepo();
+  write('README.md', 'synthetic\n');
+  git('add', 'README.md');
+  // 実際のsubmoduleの中身は要らない。indexにgitlink（mode 160000）を直接置く。
+  const commit = '0123456789abcdef0123456789abcdef01234567';
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},private/vendor`);
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},exports/archive`);
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},vendor/allowed`);
+  const r = check(['--staged']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.ok(r.stderr.includes('private/vendor'), r.stderr);
+  assert.ok(r.stderr.includes('exports/archive'), r.stderr);
+  assert.ok(!r.stderr.includes('vendor/allowed'), r.stderr);
+  assert.equal(check().status, 1);
+});

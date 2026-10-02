@@ -14,7 +14,7 @@ ADR-0002は、依存の導入が、いまの`package-lock.json`と実行環境�
 
 記録は`node_modules/.kurashi-ledger-install.json`に置く。
 
-`npm ci`は、導入を始める前に`node_modules`の中身を消す（npmの公式資料。npm 11で、`.`で始まるファイルも消えることを試験で確かめた）。記録を`node_modules`の中に置けば、`npm ci`を直接実行した場合は、成功しても途中で止まっても前の記録が残らない。repo直下など`node_modules`の外に置くと、`npm ci`を直接実行して途中で止まったときに古い記録が残り、壊れた`node_modules`を「一致」と判定してしまう。`node_modules`は`.gitignore`の対象で、worktreeごとに別にある。
+`npm ci`は、導入を始める前に`node_modules`の中身を消す（npmの公式資料。npm 11.9.0で、`.`で始まるファイルも消えることを試験で確かめた）。記録を`node_modules`の中に置けば、`npm ci`を直接実行した場合は、成功しても途中で止まっても前の記録が残らない。repo直下など`node_modules`の外に置くと、`npm ci`を直接実行して途中で止まったときに古い記録が残り、壊れた`node_modules`を「一致」と判定してしまう。`node_modules`は`.gitignore`の対象で、worktreeごとに別にある。
 
 ### 内容（形式1）
 
@@ -36,7 +36,7 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 3. `npm ci --ignore-scripts`を起動する。npmは`npm run`が環境変数`npm_execpath`で渡すもの（`npm-cli.js`）を使い、setupを実行しているNode.js（`process.execPath`）で直接起動する。シェルを通さないので、MacとWindowsで同じ動きになる。インストールスクリプトは`.npmrc`でも無効にしているが、利用者の設定や環境変数で上書きされないよう、コマンドラインでも指定する。
 4. 終了コードが0でない、シグナルで止まった、起動できなかった場合は、記録を書かずに失敗で終える。
 5. `package-lock.json`のハッシュが2と同じことを確かめる（導入の途中で変わっていれば書かない）。
-6. `node_modules`の中に一時名で排他的に作り、書き終えてディスクへ反映してから、1回の名前変更で記録の名前にする。途中で止まっても、記録の名前に不完全なファイルは残らない。`node_modules`がリンクであれば書かない。
+6. `node_modules`の中に一時名で排他的に作り、書き終えてディスクへ反映してから、1回の名前変更で記録の名前にする。途中で止まっても、記録の名前に不完全なファイルは残らない。`node_modules`がリンクであれば書かない。名前変更のあとのディレクトリの反映（POSIXのfsync）に失敗した場合は、置いた記録を消してから失敗で終える。
 7. 書いた記録を照合し直し、一致しなければ削除して失敗で終える。
 
 `npm run setup`は`npm run`の経由でだけ動く（`npm_execpath`がなければ終える）。`--force`を付けた実行は拒む。`--force`はdevEnginesによるNode.jsの版の検査を外すため。
@@ -77,9 +77,9 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 
 ## 試験
 
-T02で、次をmacOSで実行した（コマンドと結果はPRに記載）。Windowsでの実行は、T05のCIで行う。
+T02で次の試験を作った。実行した環境と結果、まだ実行していない環境（固定した版のNode.js、Windows）は、PR #12に記録する。
 
-- `scripts/install-record.test.ts`: npm ciの代わりに結果を決めた関数を渡し、失敗・シグナルでの中断・起動の失敗・導入中のlockfileの変化で記録が残らないこと、各欄の違いを不一致と判定すること。
+- `scripts/install-record.test.ts`: npm ciの代わりに結果を決めた関数を渡し、失敗・シグナルでの中断・起動の失敗・導入中のlockfileの変化・名前変更のあとのディレクトリの反映の失敗で記録が残らないこと、各欄の違いを不一致と判定すること。
 - `scripts/setup.test.ts`: 合成の依存を1つ持つ一時プロジェクトと127.0.0.1の合成のregistryで、実際のnpmを使う。`npm run setup`が記録を書き、インストールスクリプトを動かさないこと。`npm ci`を直接実行すると記録が消え、`npm run build`が止まって`npm run setup`を案内すること。依存の取得に失敗したとき、`npm ci`が`node_modules`を消す前に失敗したとき、`npm run setup`をCtrl+C相当で止めたとき（POSIXはプロセスグループへSIGINT、Windowsはプロセスツリーの強制終了）に、記録が残らないこと。`--force`を拒むこと。
 
 ## 出典

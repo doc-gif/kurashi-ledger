@@ -4,7 +4,7 @@
 //   --redact-paths 結果にファイル名を出さない（環境変数CI=trueのときも同じ）
 // 検出は追加の防御で、保証ではない。公開する差分は自分で読む。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { inspectPublicFile } from './lib/public-policy.ts';
+import { inspectPublicFile, pathFindings } from './lib/public-policy.ts';
 
 type IndexEntry = { readonly mode: string; readonly oid: string; readonly path: string };
 
@@ -69,13 +69,19 @@ if (stagedOnly) {
   entries = entries.filter((e) => changed.has(e.path));
 }
 
+// submodule（gitlink、mode 160000）は、このrepoに中身がないので読まないが、置き場所の規則は当てる。
+const isGitlink = (e: IndexEntry): boolean => e.mode === '160000';
 const findings: { readonly index: number; readonly path: string; readonly reasons: readonly string[] }[] = [];
-const files = entries.filter((e) => e.mode !== '160000'); // submodule（gitlink）は中身がない
-const blobs = readBlobs([...new Set(files.map((e) => e.oid))]);
-files.forEach((entry, i) => {
-  const content = blobs.get(entry.oid);
-  if (content === undefined) throw new Error('gitのオブジェクトを読めない');
-  const reasons = inspectPublicFile(entry.path, content);
+const blobs = readBlobs([...new Set(entries.filter((e) => !isGitlink(e)).map((e) => e.oid))]);
+entries.forEach((entry, i) => {
+  let reasons: string[];
+  if (isGitlink(entry)) {
+    reasons = pathFindings(entry.path);
+  } else {
+    const content = blobs.get(entry.oid);
+    if (content === undefined) throw new Error('gitのオブジェクトを読めない');
+    reasons = inspectPublicFile(entry.path, content);
+  }
   if (reasons.length > 0) findings.push({ index: i + 1, path: entry.path, reasons: [...new Set(reasons)] });
 });
 
@@ -86,11 +92,11 @@ if (findings.length > 0) {
     console.error(`公開しない: ${where}: ${f.reasons.join('、')}`);
   }
   console.error(
-    `${scope}${files.length}件のうち${findings.length}件が規則に当たった。中身はここに表示しない。docs/public-data.md の手順で確かめる。`,
+    `${scope}${entries.length}件のうち${findings.length}件が規則に当たった。中身はここに表示しない。docs/public-data.md の手順で確かめる。`,
   );
   process.exitCode = 1;
 } else {
   console.log(
-    `${scope}${files.length}件を検査し、規則に当たるものはなかった。これは追加の防御で、保証ではない。公開する差分は自分で読む。`,
+    `${scope}${entries.length}件を検査し、規則に当たるものはなかった。これは追加の防御で、保証ではない。公開する差分は自分で読む。`,
   );
 }

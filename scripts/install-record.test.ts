@@ -182,3 +182,27 @@ test('package-lock.jsonがなければ、前の記録を消し、npm ciを始め
   assert.equal(ran, false);
   assert.equal(existsSync(recordPath(root)), false);
 });
+
+test('名前変更のあとのディレクトリの反映に失敗したら、置いた記録を消して失敗を返す', () => {
+  const root = makeProject();
+  mkdirSync(join(root, 'node_modules'));
+  const failingSync = () => {
+    throw Object.assign(new Error('synthetic fsync failure'), { code: 'EIO' });
+  };
+  assert.throws(() => writeInstallRecord(root, observeInstall(root, runtime), failingSync), /synthetic fsync failure/);
+  assert.deepEqual(readdirSync(join(root, 'node_modules')), []);
+
+  const lines: string[] = [];
+  const code = runSetup({
+    root,
+    runtime,
+    runNpmCi: () => fakeSuccessfulCi(root),
+    log: (l) => lines.push(l),
+    error: (l) => lines.push(l),
+    syncDirectory: failingSync,
+  });
+  assert.equal(code, 1);
+  assert.equal(existsSync(recordPath(root)), false);
+  assert.equal(verifyInstallRecord(root, runtime).ok, false);
+  assert.match(lines.join('\n'), /記録は残していない/);
+});

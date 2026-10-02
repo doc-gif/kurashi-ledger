@@ -51,6 +51,8 @@ export type SetupDependencies = {
   readonly runNpmCi: () => NpmCiResult;
   readonly log: (line: string) => void;
   readonly error: (line: string) => void;
+  // 試験で、ディレクトリの反映の失敗を起こすために差し替える。
+  readonly syncDirectory?: ((dir: string) => void) | undefined;
 };
 
 export function currentRuntime(): Runtime {
@@ -192,8 +194,13 @@ export function removeInstallRecord(root: string): void {
 }
 
 // 一時ファイルへ排他的に書いてディスクへ反映し、最後に1回の名前変更で置く。
-// 途中で止まっても、記録の名前に不完全なファイルは残らない。
-export function writeInstallRecord(root: string, record: InstallRecord): void {
+// 途中で止まっても、記録の名前に不完全なファイルは残らない。名前変更のあとの
+// ディレクトリの反映に失敗した場合は、置いた記録を消してから失敗を返す。
+export function writeInstallRecord(
+  root: string,
+  record: InstallRecord,
+  syncDirectory: (dir: string) => void = syncDirectoryEntries,
+): void {
   const dir = nodeModulesPath(root);
   let stat;
   try {
@@ -220,14 +227,22 @@ export function writeInstallRecord(root: string, record: InstallRecord): void {
     rmSync(temp, { force: true });
     throw error;
   }
-  if (process.platform !== 'win32') {
-    // ディレクトリのfsyncはWindowsではできないので、POSIXだけで行う。
-    const dirFd = openSync(dir, 'r');
-    try {
-      fsyncSync(dirFd);
-    } finally {
-      closeSync(dirFd);
-    }
+  try {
+    syncDirectory(dir);
+  } catch (error) {
+    rmSync(recordPath(root), { force: true });
+    throw error;
+  }
+}
+
+// 名前変更をディスクへ反映する。ディレクトリのfsyncはWindowsではできないので、POSIXだけで行う。
+export function syncDirectoryEntries(dir: string): void {
+  if (process.platform === 'win32') return;
+  const dirFd = openSync(dir, 'r');
+  try {
+    fsyncSync(dirFd);
+  } finally {
+    closeSync(dirFd);
   }
 }
 
@@ -271,9 +286,9 @@ export function runSetup(deps: SetupDependencies): number {
     return 1;
   }
   try {
-    writeInstallRecord(root, record);
+    writeInstallRecord(root, record, deps.syncDirectory);
   } catch (e) {
-    error(`記録を書けなかった: ${e instanceof Error ? e.message : String(e)}`);
+    error(`記録を書けなかった: ${e instanceof Error ? e.message : String(e)}。記録は残していない。`);
     return 1;
   }
   const check = verifyInstallRecord(root, runtime);
