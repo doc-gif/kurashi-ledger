@@ -52,7 +52,7 @@
       "checks": [
         {
           "id": "public",
-          "method": "origin/mainとの差分と `git log -p origin/main..HEAD` を、Figmaのドメイン・file key・個人のパス（/Users/、C:\\Users）・メールアドレス・トークン/鍵の形式でgrepする。Issue #7とPR #10の本文・コメント・レビュー（全ページ）も同じくgrepする。差分を読み、例の金額・名前が合成であることを確かめる。",
+          "method": "origin/mainとの差分と `git log -p origin/main..HEAD` を、Figmaのドメイン・file key・個人のホームディレクトリのパス・メールアドレス・トークン/鍵の形式でgrepする。Issue #7とPR #10の本文・コメント・レビュー（全ページ）も同じくgrepする。差分を読み、例の金額・名前が合成であることを確かめる。",
           "expected": "どのgrepも0件。例の値は合成（123,456円、250,000円等）で、実在の勤務先・氏名・明細を含まない。新しい外部サービスを使わない。"
         }
       ]
