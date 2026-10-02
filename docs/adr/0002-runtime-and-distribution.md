@@ -83,11 +83,11 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 
 ### 2. 起動と終了
 
-1. `npm start`を実行する。初回は既定のデータルート（ADR-0006）を種別`real`で作る。データルートの検査に通らなければ、理由を表示して終了する。
+1. 実利用モードのコマンド`npm run start:real`を実行する。リリースタグをそのままcheckoutしていること（変更がないこと）を確認してから起動する。初回は確認のうえ、既定のデータルート（ADR-0006）を種別`real`で作る。データルートの検査に通らなければ、理由を表示して終了する。
 2. 起動ごとのトークン付きURL（ADR-0003）が、専用プロファイルのブラウザで開く。自動で開かない場合は、ターミナルに表示されたURLを開く。
 3. 終了するにはターミナルでCtrl+Cを押す。lockを解放し、DBを閉じる。
 
-開発・試験・AIの作業では`npm start`を既定のデータルートで実行しない。合成データのデータルートを`KURASHI_LEDGER_HOME`で明示する（ADR-0006）。データルートや保存先にWindowsの長いパスや日本語を含む場合の注意は、T13で確認する。
+`npm start`等のほかの起動は合成データモードで、`KURASHI_LEDGER_HOME`で合成データのデータルートを指定しないと起動しない。開発・試験・AIの作業はこちらを使う（ADR-0006）。データルートや保存先にWindowsの長いパスや日本語を含む場合の注意は、T13で確認する。
 
 ### 3. 更新
 
@@ -95,7 +95,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 2. リリースノートでmigrationの有無を確認し、バックアップを作る（4の1）。
 3. `git fetch --tags`のあと、新しいリリースタグをcheckoutする。指定のNode.jsの版が変わっていればNode.jsを入れ替える。版が合わなければnpmが止まる。
 4. `npm ci`と`npm run build`を実行する。
-5. `npm start`を実行する。スキーマの更新があれば、アプリがmigrationの前に`snapshots/`へ自動で退避してからmigrationする。
+5. `npm run start:real`を実行する。スキーマの更新があれば、アプリがmigrationの前に`snapshots/`へ自動で退避してからmigrationする。
 6. 戻すときは、前のタグをcheckoutして4を実行する。そのあと、アプリを止めたままコマンドで戻す。migration前の退避からはDBファイルだけを、バックアップからはデータルート全体を入れ替える（ADR-0006）。アプリは、スキーマ版が自分より新しいDBを開かない。
 
 ### 4. バックアップと復元
@@ -116,7 +116,8 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 
 - T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
 - T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。
-- T26: `npm start`で動くHTTPサーバーの骨格と、ADR-0003の境界。
+- T26: HTTPサーバーの骨格と、ADR-0003の境界。
+- T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。
 - T28: Node.jsのメジャー更新（必要時）。
 - T13: 新規のMac/Windows環境で、この手順の起動・終了・バックアップ・復元を実施して記録する。
 - T25: 更新とrollback、Node.jsのメジャー更新後の通し確認、別OSへの移行のリハーサル。
