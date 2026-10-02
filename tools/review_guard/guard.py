@@ -82,8 +82,11 @@ def validate(catalog, ledger):
     findings = index(ledger.get("findings"), "findings")
     keys = set()
     for fid, finding in findings.items():
+        require(re.fullmatch(r"PR[1-9][0-9]*-R[0-9]{3,}", fid) is not None
+                and int(fid.split("-R")[1]) > 0, f"{fid}: invalid shared finding id")
         require(finding.get("invariant_id") in rules, f"{fid}: unknown invariant")
         require(text(finding.get("cause_key")) and text(finding.get("lesson")), f"{fid}: missing cause/lesson")
+        require(finding["cause_key"] == finding["cause_key"].strip(), f"{fid}: cause_key must be trimmed")
         key = (finding["invariant_id"], finding["cause_key"])
         require(key not in keys, f"duplicate cause: {key}")
         keys.add(key)
@@ -205,6 +208,7 @@ def triage(catalog, ledger, candidates):
     for c in candidates:
         require(isinstance(c, dict) and c.get("invariant_id") in rules
                 and text(c.get("cause_key")) and text(c.get("evidence")), "invalid candidate")
+        require(c["cause_key"] == c["cause_key"].strip(), "candidate cause_key must be trimmed")
         key = (c["invariant_id"], c["cause_key"])
         output.append({"existing_id": by_cause.get(key),
                        "action": "update-existing" if key in by_cause else "propose-new",

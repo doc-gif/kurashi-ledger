@@ -61,7 +61,7 @@ PR<N>-R001: <箇所・問題・影響・直してほしい条件>
 PR<N>-R002: <同上>
 ```
 
-新規指摘にはPR番号付きIDを付ける。既存のR-001等はそのPR番号と組み合わせてPR<N>-R001へ対応付け、再採番しない。過去のrole: codex-reviewer / claude-reviewerもreviewerと同じ役割として読み、重複投稿しない。agent_idは協調用の表示で本人確認の証明ではない。同じ指摘は修正後も同じIDで追跡する。decisionと指摘IDは運用記録であり、GitHubの正式Approveに相当するものではない。acceptedにも対象SHAと検証の限界を記載する。
+新規指摘にはPR番号付きIDを付ける。既存のR-001等はそのPR番号と組み合わせてPR<N>-R001へ対応付け、再採番しない。role: reviewer（旧表記）もcodex-reviewer / claude-reviewerと同じ役割として読み、重複投稿しない。agent_idは協調用の表示で本人確認の証明ではない。同じ指摘は修正後も同じIDで追跡する。decisionと指摘IDは運用記録であり、GitHubの正式Approveに相当するものではない。acceptedにも対象SHAと検証の限界を記載する。
 
 ## 4. 実装側の次の巡回
 

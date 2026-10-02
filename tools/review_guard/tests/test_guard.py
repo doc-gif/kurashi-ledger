@@ -167,6 +167,36 @@ class ReviewGuardTests(unittest.TestCase):
         with self.assertRaises(guard.Invalid):
             guard.validate(self.catalog, self.ledger)
 
+    def test_shared_finding_ids_require_pr_namespace_and_positive_number(self):
+        for fid in ("R-007", "arbitrary", "PR0-R007", "PR02-R007", "PR2-R000",
+                    "PR2-R7", "PR2-R007 ", " PR2-R007", "PR2-R٠٠٧"):
+            ledger = copy.deepcopy(self.ledger)
+            ledger["findings"][0]["id"] = fid
+            with self.subTest(fid=fid), self.assertRaisesRegex(guard.Invalid, "finding id"):
+                guard.validate(self.catalog, ledger)
+        for fid in ("PR2-R007", "PR123-R1000"):
+            ledger = copy.deepcopy(self.ledger)
+            ledger["findings"][0]["id"] = fid
+            with self.subTest(fid=fid):
+                self.assertIn(fid, guard.validate(self.catalog, ledger)[1])
+
+    def test_ledger_cause_whitespace_cannot_bypass_duplicate_detection(self):
+        for cause in (" identity ", "identity\n", "\tidentity", "identity\u00a0"):
+            ledger = copy.deepcopy(self.ledger)
+            finding = copy.deepcopy(ledger["findings"][0])
+            finding.update(id="PR2-R099", cause_key=cause)
+            ledger["findings"].append(finding)
+            with self.subTest(cause=cause), self.assertRaisesRegex(guard.Invalid, "trimmed"):
+                guard.validate(self.catalog, ledger)
+
+    def test_triage_cause_whitespace_cannot_propose_duplicate_as_new(self):
+        for cause in (" identity ", "identity\n", "\tidentity", "identity\u00a0"):
+            candidate = {"invariant_id": "lock", "cause_key": cause, "evidence": "synthetic regression"}
+            with self.subTest(cause=cause), self.assertRaisesRegex(guard.Invalid, "trimmed"):
+                guard.triage(self.catalog, self.ledger, [candidate])
+        candidate = {"invariant_id": "lock", "cause_key": "identity", "evidence": "synthetic regression"}
+        self.assertEqual(guard.triage(self.catalog, self.ledger, [candidate])[0]["existing_id"], "PR2-R007")
+
     def test_paths_are_data_not_commands_and_traversal_rejected(self):
         self.assertEqual(guard.paths_list(["src/$(echo harmless).py"]), ["src/$(echo harmless).py"])
         for path in ("../secret", "/absolute", "C:/secret", "a\\b", "a\nb", "a//b"):
