@@ -134,6 +134,7 @@
       "id": "INV-TASKS",
       "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
       "paths": [
+        "README.md",
         "docs/**",
         "AGENTS.md",
         "CLAUDE.md",
@@ -172,7 +173,9 @@
       "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
       "paths": [
         "src/domain/**",
-        "src/application/records/**",
+        "src/application/**",
+        "src/ui/**",
+        "design/**",
         "docs/contracts/**",
         "rules/**",
         "tests/fixtures/**",

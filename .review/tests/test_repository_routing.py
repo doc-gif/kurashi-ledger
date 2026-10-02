@@ -10,6 +10,32 @@ spec.loader.exec_module(guard)
 
 
 class RepositoryRoutingTests(unittest.TestCase):
+    def assert_required_assessment(self, path, invariant, scenarios):
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        base = "a" * 40
+        plan = guard.prepare(catalog, ledger, [path], base)
+        selected = {a["id"]: a for a in plan["assessments"]}
+        self.assertIn(invariant, selected)
+        self.assertEqual({c["id"] for c in selected[invariant]["checks"]}, scenarios)
+        plan["task_id"] = "OPS-ROUTING"
+        for assessment in plan["assessments"]:
+            assessment["reason"] = "Synthetic routing fixture preserves the selected condition"
+            for check in assessment["checks"]:
+                check.update(method="inspect synthetic routing fixture", expected="condition remains covered")
+        self.assertEqual(guard.check(catalog, ledger, plan, [path], base)["result"], "metadata-complete")
+        plan["assessments"] = [a for a in plan["assessments"] if a["id"] != invariant]
+        with self.assertRaisesRegex(ValueError, "missing invariant assessments:.*" + invariant):
+            guard.check(catalog, ledger, plan, [path], base)
+
+    def test_readme_requires_tasks_and_both_entrypoint_scenarios(self):
+        self.assert_required_assessment("README.md", "INV-TASKS", {"dependencies", "entrypoints"})
+
+    def test_ui_design_and_application_require_record_semantics_and_history(self):
+        for path in ["src/ui/AmountInput.tsx", "design/components.md", "src/application/cashflow/project.ts"]:
+            with self.subTest(path=path):
+                self.assert_required_assessment(path, "INV-RECORDS", {"meaning", "history"})
+
     def test_planned_test_oracle_rules_and_workflow_paths_select_conditions(self):
         root = Path(__file__).resolve().parents[2]
         rules, _ = guard.validate(guard.read_json(root / ".review/invariants.json"),
