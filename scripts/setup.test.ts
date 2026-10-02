@@ -351,6 +351,24 @@ test('利用者のnpmrcや環境変数のnpmの設定（bin-links=false、omit=d
   assert.equal((await npm(root, ['run', 'check:install'])).status, 0);
 });
 
+test('記録のあとで実行ファイルのリンクや依存が消えたら、buildが止まる', async () => {
+  mode = 'ok';
+  const root = makeProject();
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  for (const name of [BIN_NAME, `${BIN_NAME}.cmd`, `${BIN_NAME}.ps1`]) {
+    rmSync(join(root, 'node_modules', '.bin', name), { force: true });
+  }
+  const noBin = await npm(root, ['run', 'build']);
+  assert.notEqual(noBin.status, 0, describe(noBin));
+  assert.match(noBin.stderr, /実行ファイル kl-synthetic-bin のリンク/);
+
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  rmSync(join(root, 'node_modules', DEP_NAME), { recursive: true });
+  const noDep = await npm(root, ['run', 'check:install']);
+  assert.notEqual(noDep.status, 0, describe(noDep));
+  assert.match(noDep.stderr, /node_modules にない/);
+});
+
 test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない', async () => {
   mode = 'ok';
   const root = makeProject();

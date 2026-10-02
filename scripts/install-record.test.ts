@@ -83,6 +83,10 @@ function fakeSuccessfulCi(
 ): NpmCiResult {
   rmSync(join(root, 'node_modules'), { recursive: true, force: true });
   mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
+  for (const path of Object.keys(installed)) {
+    mkdirSync(join(root, ...path.split('/')), { recursive: true });
+    writeFileSync(join(root, ...path.split('/'), 'package.json'), '{}');
+  }
   if (binLinks) writeFileSync(join(root, 'node_modules', '.bin', 'required-tool'), '');
   writeFileSync(
     join(root, 'node_modules', '.package-lock.json'),
@@ -200,6 +204,31 @@ test('入った依存の実行ファイルのリンクが.binになければ、�
   const win: Runtime = { ...runtime, platform: 'win32' };
   writeFileSync(join(root, 'node_modules', '.bin', 'required-tool.cmd'), '');
   assert.deepEqual(checkInstalledTree(root, win).filter((p) => p.includes('required-tool')), []);
+});
+
+test('照合のたびに、記録のあとで消えた依存や実行ファイルのリンクを見つける（中身は見ない）', () => {
+  const expectMissing = (remove: (root: string) => void, message: RegExp) => {
+    const root = makeProject();
+    assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+    assert.equal(verifyInstallRecord(root, runtime).ok, true);
+    remove(root);
+    const r = verifyInstallRecord(root, runtime);
+    assert.equal(r.ok, false, String(message));
+    if (!r.ok) {
+      assert.match(r.problems.join(), /記録の時点の導入と違う/);
+      assert.match(r.problems.join(), message);
+    }
+  };
+  expectMissing((root) => rmSync(join(root, 'node_modules', '.bin', 'required-tool')), /required-tool のリンク/);
+  expectMissing(
+    (root) => rmSync(join(root, 'node_modules', 'required-dep'), { recursive: true }),
+    /required-dep が node_modules にない/,
+  );
+  // 中身の書換えは、構造が保たれていれば見ない（改ざんの検出は対象外。ADR-0008）。
+  const root = makeProject();
+  assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+  writeFileSync(join(root, 'node_modules', 'required-dep', 'package.json'), '{"changed":true}');
+  assert.equal(verifyInstallRecord(root, runtime).ok, true);
 });
 
 test('子のnpmへは、npm_で始まる環境変数を渡さない', () => {

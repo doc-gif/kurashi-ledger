@@ -209,7 +209,20 @@ export function verifyInstallRecord(root: string, runtime: Runtime = currentRunt
     throw error;
   }
   const problems = compareRecord(parsed, actual);
-  return problems.length === 0 ? { ok: true, record: parsed } : { ok: false, problems };
+  if (problems.length > 0) return { ok: false, problems };
+  // 記録の入力が一致しても、記録のあとでnode_modulesの一部が消えた場合（手で消した等）に備え、
+  // 安く確かめられる構造（各パッケージのpackage.jsonと実行ファイルのリンクがあること）を確かめる。
+  // ファイルの中身までは確かめない（ADR-0008の「この記録が示すこと・示さないこと」）。
+  let treeProblems: string[];
+  try {
+    treeProblems = checkInstalledTree(root, runtime);
+  } catch (e) {
+    treeProblems = [`導入した依存の一覧を読めない: ${e instanceof Error ? e.message : String(e)}`];
+  }
+  if (treeProblems.length > 0) {
+    return { ok: false, problems: ['node_modules が記録の時点の導入と違う（一部が消えた等）。', ...treeProblems.slice(0, 10)] };
+  }
+  return { ok: true, record: parsed };
 }
 
 export function formatVerificationFailure(problems: readonly string[]): string {
@@ -350,11 +363,11 @@ function binDirectory(packagePath: string): string {
   return `${packagePath.slice(0, index)}node_modules/.bin`;
 }
 
-// npm ciのあとで、導入した木がpackage-lock.jsonと合うかを確かめる。
+// 導入した木がpackage-lock.jsonと合うかを確かめる。setupでは記録を書く前に、照合では毎回行う。
 // - 必須の依存と、このOS・CPUに当たる任意の依存（optional）がすべて同じ版で入り、
 //   lockfileにないものが入っていないこと（hidden lockfileで確かめる）。
-// - 入った依存の実行ファイル（lockfileのbin欄）のリンクが.binにあること（ディスクで確かめる。
-//   Windowsでは.cmdのshimでもよい）。
+// - 入った依存のpackage.jsonと、実行ファイル（lockfileのbin欄）のリンクがディスクにあること
+//   （Windowsでは.cmdのshimでもよい）。ファイルの中身は確かめない。
 // 任意の依存の取得失敗等で、npm ciが成功を返しても木が欠けている場合に、記録を書かないため。
 export function checkInstalledTree(root: string, runtime: Runtime): string[] {
   const locked = readPackages(lockfilePath(root));
@@ -374,6 +387,9 @@ export function checkInstalledTree(root: string, runtime: Runtime): string[] {
     }
     for (const key of ['version', 'integrity', 'resolved', 'link']) {
       if (key in entry && entry[key] !== got[key]) problems.push(`${path} の ${key} がpackage-lock.jsonと違う。`);
+    }
+    if (!existsQuietly(join(root, ...path.split('/'), 'package.json'))) {
+      problems.push(`${path} が node_modules にない（package.json がない）。`);
     }
     const bin = entry['bin'];
     if (typeof bin === 'object' && bin !== null) {
