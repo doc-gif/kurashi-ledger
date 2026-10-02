@@ -2,6 +2,8 @@
 // `git add -f`で追加されたファイルにも適用し、テキストの中身から秘密情報らしい文字列を探す。
 // 検出は追加の防御で、保証ではない。見つけた文字列そのものは結果に含めない。
 
+import { SETUP_LOCK_NAME } from './install-record.ts';
+
 // リポジトリ直下にだけ置かせない、実データ・出力・バックアップ用のディレクトリ。
 export const ROOT_PRIVATE_DIRS: readonly string[] = [
   'data',
@@ -50,12 +52,16 @@ function underLocation(segments: readonly string[], prefix: string): boolean {
 }
 
 // .gitignoreと同じ置き場所の規則を、パスの区切り（/）ごとの名前に当てる。
-// - 実データ用のディレクトリは、リポジトリ直下の名前だけ（/data/ 等）。ディレクトリの項目
-//   （submoduleのgitlink等）は、その項目自身も対象にする。
+// - 実データ用のディレクトリと作業中の印は、リポジトリ直下の名前だけ（/data/、/.kurashi-ledger-setup.lock 等）。
+//   ディレクトリの項目（submoduleのgitlink等）は、その項目自身も対象にする。
 // - .envや拡張子の規則は、.gitignoreのスラッシュを含まないパターンと同じく、
 //   どの階層の名前にも（ファイルにもディレクトリにも）当てる。
-// - 合成データの場所の例外は、その場所の下の通常のファイルの最後の名前にだけ当てる。
-//   途中のディレクトリやディレクトリの項目は、拡張子のような名前でも例外にしない。
+// - 名前による例外（.env.example、合成データの場所の拡張子）は、1つの規則に従う: 通常のファイルの
+//   最後の名前にだけ当て、途中のディレクトリやディレクトリの項目には当てない。.gitignoreでは、例外の行の
+//   あとに、同じ名前のディレクトリだけを除外し直す行（末尾の/）を置く。
+// - 大文字小文字は、実データになりうる名前（ディレクトリ・拡張子・.env）では区別せず、例外の場所の
+//   名前（tests/fixtures/、design/）と作業中の印では区別する。守る名前はすべてASCIIなので、
+//   Unicodeの正規化（NFC・NFD）の違いは生じない。見た目の似た別の文字は別の名前で、例外を受けない。
 export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
   const findings = new Set<string>();
   const segments = path.split('/').filter((s) => s !== '');
@@ -66,14 +72,15 @@ export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
     findings.add('実データ・出力・バックアップ用のディレクトリ');
   }
   // npm run setupの作業中の印（ADR-0008）。commitすると、ほかのcloneのsetupが止まる。
-  if (path === '.kurashi-ledger-setup.lock') findings.add('npm run setupの作業中の印');
+  if (segments[0] === SETUP_LOCK_NAME) findings.add('npm run setupの作業中の印');
   lower.forEach((name, i) => {
-    if ((name === '.env' || name.startsWith('.env.')) && name !== '.env.example') {
+    // 例外を受けられるのは、通常のファイルの最後の名前だけ。
+    const isFinalFile = kind === 'file' && i === segments.length - 1;
+    if ((name === '.env' || name.startsWith('.env.')) && !(isFinalFile && name === '.env.example')) {
       findings.add('環境変数ファイル');
     }
     const ext = BLOCKED_EXTENSIONS.find((e) => e.pattern.test(name));
     if (ext !== undefined) {
-      const isFinalFile = kind === 'file' && i === segments.length - 1;
       const allowed =
         isFinalFile &&
         SYNTHETIC_LOCATIONS.some((loc) => underLocation(segments, loc.prefix) && loc.extensions.includes(ext.key));

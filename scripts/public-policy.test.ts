@@ -91,6 +91,17 @@ const BLOCKED_PATHS = [
   'tests/fixturesX/records.csv',
   'src/tests/fixtures/records.csv/',
   '.kurashi-ledger-setup.lock',
+  // 名前の例外（.env.example）は通常のファイルの最後の名前にだけ当たる。同じ名前のディレクトリは
+  // どの階層でも除外し、その中のファイルも除外する。setupの作業中の印の名前のディレクトリも同じ。
+  'docs/.env.example/credentials.txt',
+  '.env.example/notes.txt',
+  '.env.example/',
+  'config/.env.example/',
+  'a/b/.env.example/c/settings.txt',
+  '.ENV.EXAMPLE/notes.txt',
+  'tests/fixtures/.env.example/records.csv',
+  '.kurashi-ledger-setup.lock/',
+  '.kurashi-ledger-setup.lock/notes.txt',
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',
@@ -124,6 +135,8 @@ const ALLOWED_PATHS = [
   'design/screens/mobile/top.png',
   'design/screens/',
   'tests/fixtures/',
+  'config/deep/.env.example',
+  'tests/fixtures/.env.example',
 ];
 
 function kindOf(sample: string): ['file' | 'directory', string] {

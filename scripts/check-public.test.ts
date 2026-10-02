@@ -60,6 +60,21 @@ test('許可したソースと合成データだけなら通る', () => {
   assert.match(r.stdout, /保証ではない/);
 });
 
+test('.env.exampleという名前のディレクトリの中のファイルは、git add -fで加えても止める。通常のファイルの.env.exampleは通る', () => {
+  const { write, git, check } = makeRepo();
+  write('.env.example', 'KURASHI_LEDGER_HOME=\n');
+  write('config/.env.example', 'KURASHI_LEDGER_HOME=\n');
+  write('docs/.env.example/credentials.txt', 'synthetic\n');
+  git('add', '.env.example', 'config/.env.example');
+  assert.equal(check(['--staged']).status, 0);
+  git('add', '-f', 'docs/.env.example/credentials.txt');
+  const r = check(['--staged']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.ok(r.stderr.includes('公開しない: docs/.env.example/credentials.txt:'), r.stderr);
+  assert.ok(!r.stderr.includes('公開しない: .env.example:'), r.stderr);
+  assert.ok(!r.stderr.includes('公開しない: config/.env.example:'), r.stderr);
+});
+
 test('git add -fで加えた禁止の種類・場所のファイルと、合成の秘密情報を止める', () => {
   const { write, git, check } = makeRepo();
   const secret = 'gh' + 'p_' + 'Z9y8'.repeat(9);
@@ -115,14 +130,16 @@ test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、ディ
   git('update-index', '--add', '--cacheinfo', `160000,${commit},docs/statements.pdf`);
   // 合成データの場所の中でも、拡張子のような名前のgitlinkは例外にしない。
   git('update-index', '--add', '--cacheinfo', `160000,${commit},tests/fixtures/evidence.pdf`);
+  // .env.exampleという名前のgitlink（ディレクトリ）も、ファイル向けの例外を受けない。
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},deep/dir/.env.example`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},vendor/allowed`);
   const r = check(['--staged']);
   assert.equal(r.status, 1, r.stdout);
-  for (const path of ['private/vendor', 'exports/archive', 'data', 'backups', 'docs/statements.pdf', 'tests/fixtures/evidence.pdf']) {
+  for (const path of ['private/vendor', 'exports/archive', 'data', 'backups', 'docs/statements.pdf', 'tests/fixtures/evidence.pdf', 'deep/dir/.env.example']) {
     assert.ok(r.stderr.includes(`公開しない: ${path}:`), `${path}\n${r.stderr}`);
   }
   assert.ok(!r.stderr.includes('vendor/allowed'), r.stderr);
-  assert.match(r.stderr, /8件のうち6件/); // README.mdと許可の場所のgitlinkは当たらない
+  assert.match(r.stderr, /9件のうち7件/); // README.mdと許可の場所のgitlinkは当たらない
   assert.equal(check().status, 1);
 });
 

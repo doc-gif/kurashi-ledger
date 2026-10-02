@@ -25,7 +25,8 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 - 拡張子と`.env`の規則は、`.gitignore`と同じく、パスのどの階層の名前にも当てる（`statements.pdf/readme.md`や`.env/config`も除外する）。
 - 実データになりうる名前（上のディレクトリ、拡張子、`.env`）は、大文字小文字を区別しない（`photo.PNG`、`DATA/`等も除外する）。LinuxのGitでも同じになるよう、`.gitignore`では`*.[pP][dD][fF]`のように書く。例外の場所（`tests/fixtures/`、`design/`）は小文字の名前だけ。MacやWindowsのGitは場所の名前の大文字小文字も区別しないので、`Design/`のような名前は`.gitignore`では除外されないことがあるが、公開検査では止まる。
 - 例外の場所でも、鍵（`.pem`、`.key`）、`.env`、DB（`.sqlite`、`.db`）、`*.age`、Excel、zip、ログは除外したまま。
-- 例外は、例外の場所（リポジトリ直下の`tests/fixtures/`・`design/`）の下にある通常のファイルの、最後の名前の拡張子にだけ当たる。`tests/fixtures/evidence.pdf/`のような拡張子に見える名前のディレクトリ（submoduleを含む）は、例外の場所の中でも除外し、その中のファイルも除外する。
+- 名前による例外（合成データの場所の拡張子と、`.env.example`）は、1つの規則に従う。例外は**通常のファイルの最後の名前**にだけ当たり、途中のディレクトリやディレクトリの項目（submoduleを含む）には当たらない。合成データの場所の拡張子の例外は、さらに例外の場所（リポジトリ直下の`tests/fixtures/`・`design/`）の下に限る。`tests/fixtures/evidence.pdf/`や`docs/.env.example/`のような、例外の名前に見えるディレクトリは、どこにあっても除外し、その中のファイルも除外する。`.gitignore`では、例外の行のあとに、同じ名前のディレクトリだけを除外し直す行（末尾の`/`）を置く。
+- 守る名前はすべてASCIIなので、Unicodeの正規化（NFC・NFD）の違いは生じない。見た目の似た別の文字を使った名前は別の名前として扱い、例外を受けない（`.env.`で始まる名前は除外される）。
 - 公開検査（`npm run check:public`）は、同じ規則を`git add -f`で加えたファイルにも適用する。submodule（gitlink）はディレクトリとして扱い、リポジトリ直下の`data`等の名前そのものも止める。
 - シンボリックリンク（indexのmode 120000）は、場所・拡張子・リンク先によらず公開しない。例外の場所の中のリンクも止める。リンクをたどる処理がcheckoutの中の非公開のファイルを読む経路になり、Windowsでは設定によって通常のファイルとして取り出されるため。`.gitignore`ではリンクと通常のファイルを区別できないので、公開検査だけが止める。実行可能なファイル（mode 100755）は通常のファイルとして扱う。種類の分からない項目は止める。`.gitignore`と公開検査の規則が食い違わないことは、`scripts/public-policy.test.ts`の見本で確かめる。
 
