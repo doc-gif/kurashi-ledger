@@ -115,10 +115,17 @@
 
 **migration前の退避からのrollback:** `snapshots/`にあるのはDBだけなので、データルート全体は入れ替えない。DBファイルだけを入れ替える別の手順にする。
 
+SQLiteのDBの状態は、DBファイルと、存在すればjournal（`<DB名>-journal`。WALなら`-wal`・`-shm`）の組で決まる。migrationの途中で異常終了すると、アプリが止まっていてもjournal（hot journal）が残りうる。DBファイルだけを入れ替えると、残った旧journalが次に開いたときに新しいDBへ適用され、壊れうる。そこで、旧DBとjournalを必ず一式で扱い、新しいDBに旧journalを関連付けない。journalだけを削除することもしない（旧DBを復旧する情報が失われる）。
+
 1. アプリを停止した状態で、コマンドで行う。必要なら、先にADR-0002の手順で前のリリースタグへ戻す。
-2. スナップショットを`db/`内の一時ファイルへ複製し、`PRAGMA integrity_check`、`application_id`、`user_version`を検証する。
-3. 現在のDBファイルを`before-rollback-<日時>`付きの名前へ変えて残し、一時ファイルを正式な名前へ変える。失敗時の戻し方はバックアップからの復元の5と同じ。
-4. 証憑、設定、種別マーカーには触れない。スナップショットより後に取り込んだ証憑は`evidence/`に残る。DBから参照されなくなっても削除しない（扱いはT07で決める）。
+2. スナップショットを`db/`内の一時ファイル（DBとは別の名前）へ複製し、`PRAGMA integrity_check`、`application_id`、`user_version`を検証する。
+3. 現在のDBファイルと、そのjournal（WALなら`-wal`・`-shm`も）を、名前を変えずに一式で`db/before-rollback-<日時>/`へ移して残す。対は崩さないので、旧DBは後からそのディレクトリで開けば復旧できる。
+4. `db/`に、DB名に対応するjournal等が残っていないことを確認する。残っていれば中止する。
+5. 一時ファイルを正式なDB名へ変える。開いて`PRAGMA integrity_check`を行い、正常に閉じて、journalが残らないことを確認する。
+6. 3〜5で失敗した場合は、置いた新しいDBを削除し（元のスナップショットは`snapshots/`に残る）、隔離した一式を元の名前へ戻す。戻すことにも失敗したら、そこで止めてパスを表示し、何も削除しない。
+7. 証憑、設定、種別マーカーには触れない。スナップショットより後に取り込んだ証憑は`evidence/`に残る。DBから参照されなくなっても削除しない（扱いはT07で決める）。
+
+バックアップからの復元では、アーカイブ内のDBは`backup()`等で作った静止状態のファイルで、journalを伴わない（展開前の検査でmanifestにないファイルは拒否する）。旧データルートはjournalごと名前変更して残すので、こちらでもDBとjournalの対は崩れない。
 
 **CSV/JSON出力:**
 
@@ -149,7 +156,7 @@
 
 ## 担当と別タスクで行う検証
 
-- T07: データルートの検査（Git作業ツリー、クラウド同期フォルダ、ネットワークドライブ、種別マーカー）、lock、migration前の退避とDBだけのrollback。symlink・junctionによる回避、解決できないパス、Windowsの長いパス、日本語パス、OneDriveのフォルダリダイレクトを含めて試験する。
+- T07: データルートの検査（Git作業ツリー、クラウド同期フォルダ、ネットワークドライブ、種別マーカー）、lock、migration前の退避とDBだけのrollback。symlink・junctionによる回避、解決できないパス、Windowsの長いパス、日本語パス、OneDriveのフォルダリダイレクトを含めて試験する。rollbackでは、migration途中の強制終了でhot journalが残った状態からスナップショットへ戻して開き直す試験と、途中で失敗したときに旧DBとjournalの対が保たれる試験を行う。
 - T12: アーカイブ（tar＋age）、パスフレーズの生成と最低長、作成直後の検証、世代管理、復元のコマンド。試験には次を含める。
   - 壊れたアーカイブ、未知のフォーマット版、同名の証憑
   - 絶対パス・`..`・symlink・hardlinkを含むエントリ、manifestにないエントリ
@@ -172,6 +179,7 @@
 - FileVault: https://support.apple.com/guide/mac-help/protect-data-on-your-mac-with-filevault-mh11785/mac 、https://support.apple.com/guide/security/volume-encryption-with-filevault-sec4c6dc1b6e/web
 - BitLockerとデバイスの暗号化: https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/ 、https://support.microsoft.com/en-us/windows/device-encryption-in-windows-cf7e2b6f-3e70-4882-9532-18633605b7df
 - SQLiteの破損原因と一貫したスナップショット: https://sqlite.org/howtocorrupt.html 、https://sqlite.org/backup.html 、https://sqlite.org/lang_vacuum.html#vacuuminto
+- DBファイルとhot journalの対: https://sqlite.org/howtocorrupt.html#_mispairing_database_files_and_hot_journals 、https://sqlite.org/lockingv3.html#dealing_with_hot_journals
 - ブラウザのストレージの退避: https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria
 - age形式の仕様と実装: https://github.com/C2SP/C2SP/blob/main/age.md 、https://github.com/FiloSottile/age 、https://github.com/FiloSottile/typage
 - Node.jsのcrypto（scrypt、GCM）: https://nodejs.org/api/crypto.html

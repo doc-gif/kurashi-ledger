@@ -20,6 +20,7 @@
   - `PRAGMA foreign_keys=ON`。`PRAGMA application_id`でこのアプリのDBであることを、`PRAGMA user_version`でスキーマ版を示す。
   - transactionの補助関数はないので、`BEGIN`・`COMMIT`・`ROLLBACK`を確実に対にする小さな関数をinfrastructureに作る。
   - journal modeの初期値はrollback journal（DELETE）。WALに変える場合は、`-wal`・`-shm`ファイルの扱いと復元時の切替手順をT07・T12で試験してから決める。
+  - DBファイルを移動・入れ替える処理では、対応するjournal（WALなら`-wal`・`-shm`）を必ず一式で扱う（ADR-0006のrollback手順）。
 - **整数:** 金額は円単位の整数とする。`node:sqlite`は安全な整数の範囲を超える値を読むと`ERR_OUT_OF_RANGE`で失敗する（黙って精度を失わない）。この挙動を前提に、範囲の検証はdomainで行う（T06）。
 - **バックアップ:** `node:sqlite`の`backup()`、または`VACUUM INTO`でデータルートの`tmp/`へ書き出し（OSの一時フォルダは使わない）、`PRAGMA integrity_check`・`application_id`・`user_version`を確認してから使う。使用中のDBファイルや`-journal`・`-wal`ファイルを直接コピーしない（ADR-0006）。
 

@@ -82,7 +82,7 @@ T00では実装・検証コードを作っていない。必要な検証は次�
 | --- | --- |
 | T02 | Node 26のLTS入りの確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないこと、`.gitignore`の修正、試作コードの棚卸し |
 | T05 | Mac/Windows/LinuxのCIで固定版のNode.jsを使うこと。各タスクが作った試験（ローカルHTTPの境界を含む）を実行し、UIが入ったときにE2Eを追加できる構成にすること |
-| T07 | データルートの検査（実体パスで判定。Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）とlock、migration前の退避とDBだけのrollback、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
+| T07 | データルートの検査（実体パスで判定。Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）とlock、migration前の退避とDBだけのrollback（hot journalの対を崩さない）、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
 | T08 | ReactとViteの導入（初回UI依存）、フォーム部品の基盤の選定、PlaywrightのChromium（全OS）とWebKit（Mac）、対応ブラウザでのキーボード操作・アクセシビリティ |
 | T12 | tar＋age形式のアーカイブ、typageと公式`age`との相互復号、パスフレーズの生成と最低長、作成中の書込みに対する一貫性、作成直後の検証、世代管理、復元のコマンド（展開前のエントリ検査、種別マーカーの再作成、入れ替え失敗時の戻し）、壊れたアーカイブ |
 | T13 | 新規のMac/Windows環境で、起動・終了・バックアップ・復元の手順を実施して記録する |
