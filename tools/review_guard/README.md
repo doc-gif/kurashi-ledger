@@ -44,7 +44,7 @@ python3 tools/review_guard/guard.py prepare --paths-file planned-paths.json --ba
 
 未解決の衝突は`state: "open"`等で残してよいが、実装前に解決する。条件変更を非該当と偽らない。`change-proposed`は決定参照を付ければ構造検査を通せるが、出力の`decisions_to_review`を別担当が評価する。自己申告の参照は所有者の承認を証明しない。
 
-ファイル名は`<task_id>.json`、同じタスクを複数PRに分けるときは`<task_id>-<part>.json`（例: `T07-storage.json`、`T07-migrations.json`）とする。各PRは自分の計画を1つだけ追加・変更する。CLIの`check`も、複数の計画変更をカバレッジ判定から除外する前に拒否する。既存の他PRの計画を流用して編集しない。1PRに複数タスクを混在させない。計画の履歴はGitに残す。
+ファイル名は`<task_id>.json`、同じタスクを複数PRに分けるときは`<task_id>-<part>.json`（例: `T07-storage.json`、`T07-migrations.json`）とする。各PRは自分の計画を1つだけ追加・変更する。local CLIとCIは計画のファイル名が`task_id.json`または`task_id-part.json`に一致することも検査する。CLIの`check`も、複数の計画変更をカバレッジ判定から除外する前に拒否する。既存の他PRの計画を流用して編集しない。1PRに複数タスクを混在させない。計画の履歴はGitに残す。
 
 新規作業では計画を先にcommitする。指摘修正では毎回既存計画を確認するが、base・範囲・前提・方針・検証方法が変わらなければ計画ファイルの書換えは不要。PR全体では最初の計画の差分があるため「変更した計画が1つ」を満たす。変更が必要なときだけ同じ計画を先に更新・commitする。引継ぎには計画のパス、計画commit、今回再確認した結果を書く。
 

@@ -60,7 +60,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Validate catalog and test review tool only
+      - name: Validate catalog and test generic tool and repository routing
         run: |
           python3 -E -s tools/review_guard/guard.py validate
           python3 -E -s -m unittest discover -s tools/review_guard/tests -v
+          python3 -E -s -m unittest discover -s .review/tests -v

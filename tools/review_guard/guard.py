@@ -144,6 +144,15 @@ def prepare(catalog, ledger, paths, base):
                         for rid in ids}}
 
 
+def check_plan_name(plan, path):
+    task = plan.get("task_id")
+    require(text(task), "missing plan task_id")
+    name = Path(path).name
+    stem = name[:-5] if name.endswith(".json") else ""
+    require(stem == task or (stem.startswith(task + "-") and len(stem) > len(task) + 1),
+            "plan filename must match task_id or task_id-part.json")
+
+
 def check(catalog, ledger, plan, paths, base):
     rules, _ = validate(catalog, ledger)
     require(sha(base) and plan.get("base_sha") == base, "stale or invalid base_sha: regenerate/recheck plan")
@@ -152,6 +161,8 @@ def check(catalog, ledger, plan, paths, base):
     actual = paths_list(paths)
     plans = [p for p in actual if p.startswith(".review/plans/") and p.endswith(".json")]
     require(len(plans) <= 1, "multiple changed preflight plans are not accepted in one PR")
+    if plans:
+        check_plan_name(plan, plans[0])
     # The single plan is review metadata, not an implementation path to be self-listed.
     actual = [p for p in actual if p not in plans]
     require(set(actual) <= set(planned), "unplanned paths: " + ", ".join(sorted(set(actual) - set(planned))))
@@ -228,7 +239,9 @@ def main(argv=None):
                 result = prepare(catalog, ledger, paths, args.base_sha)
             else:
                 require(args.plan, "--plan is required")
-                result = check(catalog, ledger, read_json(args.plan), paths, args.base_sha)
+                plan = read_json(args.plan)
+                check_plan_name(plan, args.plan)
+                result = check(catalog, ledger, plan, paths, args.base_sha)
         if args.output:
             write_json(args.output, result)
         else:

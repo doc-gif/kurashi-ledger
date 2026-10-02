@@ -96,3 +96,17 @@ class TrustedBaseTests(unittest.TestCase):
         result = self.run_ci()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("escapes checkout", result.stderr)
+
+    def test_plan_filename_must_match_task_id(self):
+        self.plan["task_id"] = "OTHER"
+        self.write(self.candidate / ".review/plans/OPS.json", self.plan)
+        result = self.run_ci()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("filename", result.stderr)
+
+    def test_part_plan_filename_matches_task(self):
+        old = self.candidate / ".review/plans/OPS.json"
+        old.rename(old.with_name("OPS-storage.json"))
+        self.paths = ["src/save.py", ".review/plans/OPS-storage.json"]
+        result = self.run_ci()
+        self.assertEqual(result.returncode, 0, result.stderr)

@@ -181,7 +181,7 @@ class ReviewGuardTests(unittest.TestCase):
                 guard.read_json(p)
 
     def test_plan_metadata_does_not_need_to_list_itself(self):
-        guard.check(self.catalog, self.ledger, self.plan(), self.paths + [".review/plans/task.json"], self.base)
+        guard.check(self.catalog, self.ledger, self.plan(), self.paths + [".review/plans/OPS-1.json"], self.base)
 
     def test_multiple_plans_fail_in_core_and_documented_local_cli(self):
         paths = self.paths + [".review/plans/OPS-1.json", ".review/plans/other.json"]
@@ -195,12 +195,38 @@ class ReviewGuardTests(unittest.TestCase):
             args = ["check", "--base-sha", self.base]
             for option in ("catalog", "ledger", "plan"):
                 args += ["--" + option, str(root / (option + ".json"))]
+            (root / "plan.json").rename(root / "OPS-1.json")
+            args[args.index("--plan") + 1] = str(root / "OPS-1.json")
             args += ["--paths-file", str(root / "paths.json")]
             output, errors = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                 self.assertEqual(guard.main(args), 1)
             self.assertEqual(output.getvalue(), "")
             self.assertIn("multiple changed preflight plans", errors.getvalue())
+
+    def test_plan_filename_belongs_to_task_in_core_and_cli(self):
+        plan = self.plan()
+        for name in ("OPS-1.json", "OPS-1-storage.json"):
+            with self.subTest(name=name):
+                guard.check(self.catalog, self.ledger, plan,
+                            self.paths + [".review/plans/" + name], self.base)
+        for name in ("OTHER.json", "OPS-1-.json", "OPS-10.json", "OPS-1.txt"):
+            with self.subTest(name=name), self.assertRaisesRegex(guard.Invalid, "filename"):
+                guard.check_plan_name(plan, name)
+        with self.assertRaisesRegex(guard.Invalid, "filename"):
+            guard.check(self.catalog, self.ledger, plan,
+                        self.paths + [".review/plans/OTHER.json"], self.base)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for name, value in [("catalog", self.catalog), ("ledger", self.ledger),
+                                ("OTHER", plan), ("paths", self.paths)]:
+                (root / (name + ".json")).write_text(json.dumps(value), encoding="utf-8")
+            args = ["check", "--catalog", str(root / "catalog.json"),
+                    "--ledger", str(root / "ledger.json"), "--plan", str(root / "OTHER.json"),
+                    "--paths-file", str(root / "paths.json"), "--base-sha", self.base]
+            with contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(guard.main(args), 1)
+            self.assertIn("filename", errors.getvalue())
 
     def test_old_name_in_rename_still_selects_storage(self):
         p = guard.prepare(self.catalog, self.ledger, ["storage/old.py", "other/new.py"], self.base)
