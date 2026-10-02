@@ -37,7 +37,7 @@
 | `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べ、`order`は1から始めて1ずつ増やす（run内で一意の連番） |
 | `missingInputs` | `List<MissingInput>` | 不足した入力 |
 | `unconfirmedItems` | `List<Text>` | 未確認の事項（利用者に確かめてほしいこと） |
-| `previousRunId` | `Fact<Id<CalculationRun>>` | 同じ目的の前のrun（訂正後の再計算等）。最初のrunは`not-applicable`（同じ表） |
+| `previousRunId` | `Fact<Id<CalculationRun>>` | 同じ目的の前のrun（訂正後の再計算等）。その目的の最初のrunは`not-applicable`（同じ表）。保存の条件と、履歴を1本の鎖にする規則は3の「runの履歴」 |
 | `failure` | `Fact<Text>` | `failed`の場合だけ（`known`が必要。同じ表）。失敗の内容（実データの値を含めない） |
 
 `Target`:
@@ -68,11 +68,12 @@
 | --- | --- | --- |
 | `key` | `Text` | 結果の項目の識別子（計算器ごとに決める）。run内で一意 |
 | `label` | `Text` | 表示名 |
-| `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値。契約版1.0の結果の値の型は、この2つ（金額と小数）だけ。数値以外の結果は下の「数値以外の結果の型」による |
+| `valueType` | `yen・decimal` | 結果の値の型の識別子（`Assumption`の`valueType`と同じ語）。`yen`なら金額（円の整数）、`decimal`なら小数。`value`の状態が`unknown`・`not-applicable`等で値を持たなくても、型はこの項目で決まる |
+| `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値。`valueType`が`yen`なら`Fact<Yen>`、`decimal`なら`Fact<Decimal>`（合わない値のrunは保存しない）。契約版1.0の`valueType`はこの2つ（金額と小数）だけ。数値以外の結果は下の「数値以外の結果の型」による |
 | `nature` | `estimate` | 常に推計。正式通知の値と同じ状態にしない |
 | `explanationRefs` | `List<Ref>` | 根拠の記録への参照（版を固定） |
 
-**数値以外の結果の型（T17で足す）:** 真偽・列挙・日付等の数値以外の結果（被扶養者認定の見込み、資格の変更日等）は、契約版1.0では定めない。必要になるT17が、その型を、比較の規則（[共通の型](common-types.md)の13の表への当てはめ方）と結果の状態の規則とともに、この契約に足す。
+**数値以外の結果の型（T17で足す）:** 真偽・列挙・日付等の数値以外の結果（被扶養者認定の見込み、資格の変更日等）は、契約版1.0では定めない。必要になるT17が、その型を、`valueType`の値と`value`の型の組として、比較の規則（[共通の型](common-types.md)の13の表への当てはめ方）と結果の状態の規則とともに、この契約に足す。
 
 - 足すときは追加だけとし、既存の型（`Fact<Yen>`・`Fact<Decimal>`）とその意味、結果の状態の区別は変えない。版の上げ方は[README](README.md)の「契約の変更」に従う（既存の処理が知らない型の値を受け取るので、列挙に値を足す変更と同じくメジャーを上げる）。
 - それまでは、数値以外の結果を`unconfirmedItems`の文や`label`に書いて、型のある結果の代わりにしない（型・状態・再計算での比較を失うため）。
@@ -112,6 +113,14 @@
 
 - **計算runは書き換えない。** 入力の記録が訂正されても、過去のrunの入力（固定した版）と結果は変わらない。
 - 訂正・新しい情報・制度データの更新のあとで計算し直す場合は、新しいrunを作り、`previousRunId`で前のrunを指す。
+
+**runの履歴（1つの規則）:** runの**目的**は、`calculator.id`、`target.year`、`target.jurisdiction`の組とする（`calculator.version`・制度データの版・`scopeNote`は、同じ目的の中で変わってよい）。同じ目的のrunは、`previousRunId`でつながった1本の鎖（分岐も合流もない、最初のrunから最新のrunまでの並び）にする。
+
+- 新しいrunの`previousRunId`が`known`なら、次をすべて満たさなければ保存しない: 指すrunが保存済み（新しいrunより`recordedSeq`が小さい。自分自身は指せない）、`calculator.id`と`target.year`が同じ、`target.jurisdiction`が[共通の型](common-types.md)の13の4×4の表で一致（未確定は満たさない）、指すrunを`previousRunId`で指す別のrunがない（同じ目的の最新のrunである）。
+- 新しいrunの`previousRunId`が`not-applicable`なら、同じ目的（`target.jurisdiction`が`known`で同じもの）のrunがまだない場合だけ保存する（同じ目的に2本目の鎖を作らない）。`target.jurisdiction`が`known`でないrunは目的が決まらないので、鎖の先頭にも途中にもならず、`previousRunId`は`not-applicable`で、ほかのrunから指されない。
+- 失敗したrun（`failed`）も鎖に入る（監査のため）。最新のrunが`failed`でも、次のrunはそれを指す。
+- この検査と保存は、同じ目的のrunについて1つのtransactionの中で直列に行う（同時に2件が同じrunを指して分岐しないように。T07・T15）。
+- 鎖は保存のときの検査で保たれるので、表示では鎖を最新から`previousRunId`でたどり、1通りの履歴として示す。
 - 過去のrunの入力の版が現在の版と違う場合、表示で「入力が変わった」と示す（記録を書き換えず、そのつど導く）。
 - 制度データが更新されても、過去のrunを新しい制度で計算し直して上書きしない。
 - 過去のrunを再現するために必要な情報（入力の版、制度データの版、計算器の版、アプリのcommit）は、バックアップと復元で保たれる（ADR-0006、T12・T15）。
@@ -122,10 +131,10 @@
 
 計算run `run_901`の`results`:
 
-| `key` | `label` | `value` |
-| --- | --- | --- |
-| `item-a` | 項目A | 値あり 12,300 |
-| `item-b` | 項目B | 値あり 4,000 |
+| `key` | `label` | `valueType` | `value` |
+| --- | --- | --- | --- |
+| `item-a` | 項目A | `yen` | 値あり 12,300 |
+| `item-b` | 項目B | `yen` | 値あり 4,000 |
 
 `roundingSteps`:
 
