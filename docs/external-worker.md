@@ -4,7 +4,7 @@
 
 ## 最初に渡す文章
 
-> GitHubのdoc-gif/kurashi-ledgerを担当してください。まず最新mainを取得し、AGENTS.md、docs/project-status.md、docs/implementation-tasks.md、docs/github-agent-operations.md、docs/pr-review-loop.mdを読んでください。実装停止中なら実装せず、許可された調査・設計だけに留めてください。実装再開後は所有者または調整係が割り当てた承認済みIssueを専用branch/worktreeで進め、作業中はDraft PRで進めてください。マージは、AGENTS.mdの条件を満たした自分のPRに限ってください。auto-merge有効化とデプロイはしないでください。レビュー依頼時はOpenへ切り替え、docs/pr-review-loop.mdの形式でhead/base付き引継ぎを残してください。
+> GitHubのdoc-gif/kurashi-ledgerを担当してください。まず最新mainを取得し、AGENTS.md、docs/project-status.md、docs/implementation-tasks.md、docs/github-agent-operations.md、docs/pr-review-loop.mdを読んでください。実装停止中なら実装せず、許可された調査・設計だけに留めてください。実装再開後は所有者または調整係が割り当てた承認済みIssueを専用branch/worktreeで進め、作業中はDraft PRで進めてください。マージは、AGENTS.mdの条件を満たした自分のPRに限ってください。auto-merge有効化とデプロイはしないでください。レビュー依頼時はOpenへ切り替え、docs/pr-review-loop.mdの形式でhead/base付き引継ぎを残してください。そこでいったん作業を止め、別担当のレビューを待ちます。指摘対応後は新head/baseで引き継ぎ直し、別担当の最新head/baseのdecision: accepted後に、AGENTS.mdの全マージ条件を再確認した場合だけ、自分のPRをマージしてください。
 >
 > 10分ごとの確認では、自分の既存PRのCI・別担当のレビュー（Codex側またはClaude側）・Copilot指摘を新規タスクより優先してください。必要な修正は同じPRへcommitし、検証結果と指摘ごとの対応理由、新head/baseの引継ぎを残してください。指摘が妥当でない場合は根拠を示し、無条件で変更しないでください。レビュー待ちや変更なしなら投稿しません。未担当のIssueを勝手に取得したり、既存担当の作業を奪ったりしないでください。実装・レビュー双方の停止状態、仕様revision、依存PRのmain統合を毎回確認してください。
 >
@@ -15,7 +15,7 @@
 対話中のセッションを使うなら、上の文章を渡した後に次を依頼する。
 
 ```text
-/loop 10m 最新mainのAGENTS.mdとdocs/project-status.md、docs/external-worker.mdに従い、担当PRのレビュー指摘対応または承認済み担当タスクの次の作業を確認してください。担当Issueの作業はPR作成とready-for-reviewの引継ぎまでに留め、マージはAGENTS.mdの条件を満たした自分のPRに限ってください。変更がなければ投稿不要です。
+/loop 10m 最新mainのAGENTS.mdとdocs/project-status.md、docs/external-worker.mdに従い、担当PRのレビュー指摘対応または承認済み担当タスクの次の作業を確認してください。担当Issueの作業は、OpenのPRと最新head/baseのready-for-reviewを引き継いだらいったん止め、別担当のレビューを待ってください。指摘があれば修正・検証して新しい引継ぎを出し、別担当の最新head/baseのdecision: accepted後にAGENTS.mdの全マージ条件を再確認した場合だけ、自分のPRをマージしてください。変更がなければ投稿不要です。
 ```
 
 既に別の間隔（30分・1時間等）のジョブがある場合は、既存ジョブを10分ごとへ変更する（確認間隔は所有者指定の10分を基準とする。[現在の状態](project-status.md)）。新旧2本を同時に動かさず、変更できない場合は旧ジョブを停止してから登録する。前runがまだ作業中なら新しいrunを重ねない。

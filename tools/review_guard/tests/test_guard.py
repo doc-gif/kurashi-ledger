@@ -305,6 +305,47 @@ class ReviewGuardTests(unittest.TestCase):
                 self.assertEqual(guard.main(args), 1)
             self.assertIn("filename", errors.getvalue())
 
+    def test_cli_checks_the_changed_plan_file_not_another_same_task_part(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            changed = root / ".review/plans/OPS-1-new.json"
+            changed.parent.mkdir(parents=True)
+            changed.write_text(json.dumps(self.plan()), encoding="utf-8")
+            other = root / "elsewhere/OPS-1-new.json"
+            other.parent.mkdir()
+            old = changed.with_name("OPS-1-old.json")
+            for path in (other, old):
+                path.write_text(json.dumps(self.plan()), encoding="utf-8")
+            for name, value in [("catalog", self.catalog), ("ledger", self.ledger),
+                                ("paths", self.paths + [".review/plans/OPS-1-new.json"])]:
+                (root / (name + ".json")).write_text(json.dumps(value), encoding="utf-8")
+            args = ["check", "--catalog", "catalog.json", "--ledger", "ledger.json",
+                    "--paths-file", "paths.json", "--base-sha", self.base]
+            with contextlib.chdir(root):
+                for specified in (str(old), str(other)):
+                    with self.subTest(specified=specified):
+                        output, errors = io.StringIO(), io.StringIO()
+                        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                            self.assertEqual(guard.main(args + ["--plan", specified]), 1)
+                        self.assertEqual(output.getvalue(), "")
+                        self.assertIn("changed preflight plan path", errors.getvalue())
+                for specified in (str(changed), ".review/plans/OPS-1-new.json",
+                                  "./.review/plans/OPS-1-new.json"):
+                    with self.subTest(specified=specified), contextlib.redirect_stdout(io.StringIO()) as output:
+                        self.assertEqual(guard.main(args + ["--plan", specified]), 0)
+                        self.assertEqual(json.loads(output.getvalue())["result"], "metadata-complete")
+
+    def test_cli_can_recheck_an_unchanged_plan(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for name, value in [("catalog", self.catalog), ("ledger", self.ledger),
+                                ("OPS-1-old", self.plan()), ("paths", self.paths)]:
+                (root / (name + ".json")).write_text(json.dumps(value), encoding="utf-8")
+            with contextlib.chdir(root), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(guard.main(["check", "--catalog", "catalog.json",
+                    "--ledger", "ledger.json", "--plan", "OPS-1-old.json",
+                    "--paths-file", "paths.json", "--base-sha", self.base]), 0)
+
     def test_old_name_in_rename_still_selects_storage(self):
         p = guard.prepare(self.catalog, self.ledger, ["storage/old.py", "other/new.py"], self.base)
         self.assertEqual(set(p["context"]), {"root", "lock"})

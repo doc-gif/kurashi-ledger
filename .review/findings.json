@@ -74,9 +74,10 @@
       "id": "PR2-R008",
       "invariant_id": "INV-TASKS",
       "cause_key": "entrypoint-order",
-      "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。",
+      "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205"
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
       ]
     },
     {
@@ -112,9 +113,10 @@
       "id": "PR4-R018",
       "invariant_id": "INV-REVIEW",
       "cause_key": "plan-task-identity",
-      "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。",
+      "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238"
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
       ]
     },
     {

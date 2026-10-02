@@ -249,6 +249,11 @@ def main(argv=None):
                 plan = read_json(args.plan)
                 check_plan_name(plan, args.plan)
                 result = check(catalog, ledger, plan, paths, args.base_sha)
+                changed_plans = [p for p in paths_list(paths)
+                                 if p.startswith(".review/plans/") and p.endswith(".json")]
+                if changed_plans:
+                    require(Path(args.plan).resolve() == Path(changed_plans[0]).resolve(),
+                            "--plan must refer to the changed preflight plan path")
         if args.output:
             write_json(args.output, result)
         else:
