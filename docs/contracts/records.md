@@ -78,7 +78,7 @@
 | `totalDeductions` | `Fact<Yen>`（0以上） | 控除合計。記載どおり |
 | `netPay` | `Fact<Yen>`（符号あり） | 差引支給額。記載どおり |
 | `bankTransferAmount` | `Fact<Yen>`（0以上） | 振込額。記載どおり。銀行入金の額から埋めない |
-| `supersedes` | `Fact<Ref<Payslip>>` | 再発行された明細の場合だけ、差し替える前の明細（10を参照） |
+| `supersedes` | `Fact<Ref<Payslip>>` | 再発行された明細の場合だけ、差し替える前の明細（10を参照）。`known`か`not-applicable`だけで、`unknown`は使わない（[共通の型](common-types.md)の12） |
 
 `EarningLine`（その他の支給の行）:
 
@@ -144,7 +144,7 @@
 | `employmentStartDate` | `Fact<LocalDate>` | 就職の年月日。記載がなければ`not-stated` |
 | `employmentEndDate` | `Fact<LocalDate>` | 退職の年月日。記載がなければ`not-stated` |
 | `issuedDate` | `Fact<LocalDate>` | 発行日 |
-| `supersedes` | `Fact<Ref<AnnualDocument>>` | 再発行（訂正版）の場合だけ、差し替える前の資料（下の「資料の差し替え」） |
+| `supersedes` | `Fact<Ref<AnnualDocument>>` | 再発行（訂正版）の場合だけ、差し替える前の資料（10）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
 `IncludedPayer`（含まれる他の支払者の分）:
 
@@ -168,8 +168,8 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `subject` | `pay・deposit` | 何の見込みか（給与の支給・入金） |
-| `employerId` | `Fact<Id<Employer>>` | 支払者 |
-| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ） |
+| `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定には、[照合の規則](reconciliation.md)の3の「識別の次元」に従って`known`が必要になる |
+| `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定には`known`が必要（同3） |
 | `measure` | `gross-pay・net-pay・bank-transfer・deposit-amount` | 行の金額が何を表すか。`subject`が`pay`なら`gross-pay`・`net-pay`・`bank-transfer`、`deposit`なら`deposit-amount` |
 | `lines` | `List<ForecastLine>` | 見込みの行 |
 | `basis` | `Fact<contract・past-actuals・user-estimate・other>` | 見込みの根拠（契約・過去の実績・利用者の見積り・その他） |
@@ -206,7 +206,7 @@
 | `amounts` | `List<NoticeAmount>` | 決定された金額の行 |
 | `installments` | `List<Installment>` | 納付・徴収の予定の行 |
 | `statusDates` | `List<StatusDate>` | 資格の取得日・喪失日等の行 |
-| `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（下の「資料の差し替え」） |
+| `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（10）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
 `NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。
 
@@ -255,7 +255,7 @@
 
 ## 10. 資料の差し替え（`supersedes`）
 
-発行者が資料を作り直した場合（明細の再発行、訂正版の源泉徴収票、変更通知）は、改訂ではなく**新しい記録**にし、新しい記録の`supersedes`で前の記録を指す。
+発行者が資料を作り直した場合（明細の再発行、訂正版の源泉徴収票、変更通知）は、改訂ではなく**新しい記録**にし、新しい記録の`supersedes`で前の記録を指す。`supersedes`は`known`（前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）だけで、`unknown`のまま保存しない。作り直しだと分かっていて前の記録が分からない場合は、前の記録を確かめてから保存する（前の記録がないまま新しい記録を足すと、新旧を両方数えるおそれがあるため）。
 
 | 変更 | 表し方 | 前の内容 |
 | --- | --- | --- |
@@ -271,7 +271,7 @@
 4. **系列の現在の記録:** 整った系列のうち、どの有効な記録にも差し替えられていない記録（鎖の最新）を、その系列の**現在の記録**とする。集計・採用・照合には現在の記録だけを使う。ほかの記録は「差し替え済み」として履歴に表示する。系列に入らない記録（差し替えも、差し替えられもしない記録）は、それ自身が現在の記録。
 5. **防御:** 整っていない系列（古いデータの復元等で生じたもの）を見つけた場合は、その系列のすべての記録を、整うまで集計・採用・照合から除き、「要確認」として出す（どれか1件を数えると、二重計上や取り違えになりうるため）。除いた記録が入るはずだった集計は`incomplete`にし、`missing`に状態`conflict`で挙げる（黙って少なく数えない）。
 
-例: `A` ← `B` ← `C`（`B.supersedes`が`A`、`C.supersedes`が`B`）。取消は`status`だけを変え、`supersedes`は変えない（[共通の型](common-types.md)の9）。上の1〜4から、次のとおりに決まる。
+例: `A` ← `B` ← `C`（`B.supersedes`が`A`、`C.supersedes`が`B`）。取消は`status`（と、二重登録なら`duplicateOf`）だけを変え、`body`の`supersedes`は変えない（[共通の型](common-types.md)の9）。上の1〜4から、次のとおりに決まる。
 
 | 取消した記録 | 有効な関係 | 現在の記録 | 差し替え済み |
 | --- | --- | --- | --- |
@@ -282,7 +282,7 @@
 
 どの場合も、数えるのは現在の記録1件だけ（`A`と`C`を両方数えない）。取消した記録は現在の記録にならない。
 
-- **取消の取り消し:** `unvoid`は`status`だけを`active`に戻すので、表の行が戻る。たとえば`B`と`C`を取消したあとで`B`の取消を取り消すと、「`C`だけ」の行になり、現在の記録は`B`になる。
+- **取消の取り消し:** `unvoid`は`status`を`active`に戻し（`duplicateOf`は`not-applicable`に戻る）、`body`は変えないので、表の行が戻る。たとえば`B`と`C`を取消したあとで`B`の取消を取り消すと、「`C`だけ」の行になり、現在の記録は`B`になる。
 - **時点を指定した見方:** その時点で選ばれた改訂の`status`で、同じ表を引く。たとえば`B`を取消す前の時点を記録時点の再現で見ると、「なし」の行になり、現在の記録は`C`になる。
 
 - 前の記録（現在の記録でなくなった記録）を参照していた照合配分は「要確認」になる（[照合の規則](reconciliation.md)の9）。

@@ -16,7 +16,7 @@
 | `createdAt` | `Instant` | 実行日時（注入した時計） |
 | `calculator` | `{ id: Text, version: Text }` | 計算器の識別子と版（例 所得税の試算はT16で決める）。暗黙の代わりの計算器を使わない |
 | `appCommit` | `Text` | 実行したアプリのcommit（40文字のSHA）。作業ツリーに変更がある状態での実行の扱いは、ADR-0002の実行物の確認と合わせてT15で決める |
-| `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。制度データを使わない計算は`not-applicable` |
+| `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。制度データを読み込んだrunでは`known`が必要。制度データを使わない計算器、または読み込む前に`unsupported`・`failed`になったrunは`not-applicable`。`unknown`は使わない（[共通の型](common-types.md)の12） |
 | `target` | `Target` | 計算の対象（年・年度・地域） |
 | `inputs` | `Inputs` | 入力の固定した写し |
 | `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2を参照） |
@@ -45,7 +45,7 @@
 | `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
 
-`AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態）。
+`AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
 
 `Assumption`: `key`（`Text`）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等）。
 
@@ -59,11 +59,20 @@
 | `nature` | `estimate` | 常に推計。正式通知の値と同じ状態にしない |
 | `explanationRefs` | `List<Ref>` | 根拠の記録への参照（版を固定） |
 
-`RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`。同じrunの`results`にある`key`だけを指す）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
+`RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`。同じrunの`results`にある`key`だけを指す）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up`）、`unit`（正の`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
 
-ある結果の項目の丸めの手順は、`itemKey`がその項目の`key`である`RoundingStep`を`order`の順に並べたものとする（結果の項目の側には手順の一覧を持たず、`itemKey`だけを正とする。2か所に書いて食い違うことを防ぐため）。丸めの手順がある項目の`value`は、その項目の最後の手順の`after`と同じ値にする。`results`・`roundingSteps`がこの形に合わないrunは保存しない（計算器の誤りとして扱う。例は4）。
+ある結果の項目の丸めの手順は、`itemKey`がその項目の`key`である`RoundingStep`を`order`の順に並べたものとする（結果の項目の側には手順の一覧を持たず、`itemKey`だけを正とする。2か所に書いて食い違うことを防ぐため）。丸めの手順がある項目の`value`は、その項目の最後の手順の`after`と同じ値にする。
 
-`MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope`。[共通の型](common-types.md)の11の`missing`と同じ意味）。
+**丸めは計算し直せる形にする。** 各手順の`after`は、`before`を`unit`の倍数へ`method`で丸めた値と等しい。
+- `floor`: `before`以下で最大の`unit`の倍数（負の数は0から遠い方へ）。
+- `ceil`: `before`以上で最小の`unit`の倍数。
+- `half-up`: 最も近い`unit`の倍数。ちょうど中間なら0から遠い方。
+
+同じ項目の手順が2つ以上あるときは、`order`の順に並べ、2つ目以降の`before`は直前の手順の`after`と等しい。丸め方はこの3つだけで、ほかの丸め方が必要になったら契約を変える（列挙を足すのでメジャーを上げる）。
+
+保存のときに、これらと上の形（`key`の一意性、`itemKey`、`order`の連番、最後の`after`と`value`の一致）をすべて検査する。合わないrunは保存しない（計算器の誤りとして扱う。例は4）。
+
+`MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`MissingState`。[共通の型](common-types.md)の11の6つの状態と同じ）。
 
 ## 2. 結果の状態
 
@@ -116,3 +125,6 @@
 | `itemKey`が`item-c`の手順がある（`results`に`item-c`がない） | `itemKey`が実在する`key`を指さない |
 | `order`が1・2・4（3がない）、または1・1・2 | `order`が1から始まる連番でない |
 | `item-a`の`value`が12,300で、最後の手順の`after`が`"12345"` | 値と丸めの記録が一致しない |
+| `order` 3の手順が`before` `"100"`・`method` `floor`・`unit` `"1"`・`after` `"999"` | `after`が、`before`を丸めた値（`"100"`）と違う。計算し直すと合わない |
+| `item-a`の`order` 2の`before`が`"12000"`（`order` 1の`after`は`"12345"`） | 同じ項目の手順がつながっていない |
+| `unit`が`"0"`、または`method`が`other` | `unit`が正でない、または定めていない丸め方 |

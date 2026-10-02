@@ -21,7 +21,7 @@
 | `a`・`b`・`c` | 列挙。並べた値のどれか1つ |
 | `boolean`、整数 | 真偽値（`true`・`false`）、整数（範囲は項目ごとに書く） |
 
-**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。その場合に`known`が必要な項目は、説明に「`known`が必要」と書く（書いていなければ、その場合でも`unknown`を許す）。`known`が必要な項目が`known`でない保存は拒否する。
+**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。`known`が必要な項目と、項目ごとに許す状態は、12の表にまとめる（各ファイルの説明の「`known`が必要」は、この表と同じ内容）。表にない`Fact`の項目は`unknown`を許す。表の条件を満たさない保存は拒否する。
 
 ## 2. IDと参照
 
@@ -220,7 +220,7 @@
 | `recordedAt` | `Instant` | 記録日時 |
 | `knownOn` | `Fact<LocalDate>` | 把握日（7を参照） |
 | `changeNote` | `Fact<Text>` | 改訂の理由のメモ |
-| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable` |
+| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表） |
 | `entryChannel` | `manual`・`import` | 手入力か取込か |
 | `writeRequestId` | `Text` | 保存の要求の冪等キー（10を参照） |
 | `importKey` | `Fact<Text>` | 取込の冪等キー。取込の場合だけ（10を参照） |
@@ -228,19 +228,20 @@
 
 `recordType`の値: `employer`、`employment-term`、`account`、`payslip`、`bank-deposit`、`annual-document`、`forecast`、`official-notice`、`evidence-link`、`allocation`、`decision`。
 
-**改訂のモデル:** 記録の状態は、最新の改訂の`status`と`body`で決まる。改訂の理由ごとに、使える直前の状態、改訂後の状態、変えてよい項目を次の表のとおり定める。表にない組合せの保存は拒否する。
+**改訂のモデル:** 記録の状態は、最新の改訂の`status`・`duplicateOf`・`body`で決まる。改訂の理由ごとに、使える直前の状態と、改訂後の状態・項目を次の表のとおり定める。表にない組合せの保存は拒否する。
 
-| 理由 | 意味 | 直前の`status` | 改訂後の`status` | `body` |
-| --- | --- | --- | --- | --- |
-| `create` | 新規（版1だけ） | （なし） | `active` | 新しく書く |
-| `correct-input-error` | 入力誤りの訂正。同じ情報源からの写し誤り・入力漏れ（`unknown`だった項目を同じ資料から埋める場合を含む）を直す | `active` | `active` | 変えてよい |
-| `new-information` | 新しい情報源による内容の変更（予測の見直し、問い合わせの回答で分かった値等） | `active` | `active` | 変えてよい |
-| `void` | 取消。記録そのものが誤り（二重登録、自分の口座でない取引の取込等、存在しない取引・資料の記録） | `active` | `voided` | 直前の改訂と同じ（変えない） |
-| `unvoid` | 取消の取り消し | `voided` | `active` | 直前の改訂と同じ（取消の前の内容のまま） |
+| 理由 | 意味 | 直前の`status` | 改訂後の`status` | `duplicateOf` | `body` |
+| --- | --- | --- | --- | --- | --- |
+| `create` | 新規（版1だけ） | （なし） | `active` | `not-applicable` | 新しく書く |
+| `correct-input-error` | 入力誤りの訂正。同じ情報源からの写し誤り・入力漏れ（`unknown`だった項目を同じ資料から埋める場合を含む）を直す | `active` | `active` | `not-applicable` | 変えてよい |
+| `new-information` | 新しい情報源による内容の変更（予測の見直し、問い合わせの回答で分かった値等） | `active` | `active` | `not-applicable` | 変えてよい |
+| `void` | 取消。記録そのものが誤り（二重登録、自分の口座でない取引の取込等、存在しない取引・資料の記録） | `active` | `voided` | 二重登録なら残す方の記録（`known`）、それ以外は`not-applicable` | 直前の改訂と同じ（変えない） |
+| `unvoid` | 取消の取り消し | `voided` | `active` | `not-applicable` | 直前の改訂と同じ（取消の前の内容のまま） |
 
-- **取消と取消の取り消しは`status`だけを変える。** `body`（金額、参照、`supersedes`等）は直前の改訂と同じ値にし、違えば保存を拒否する。内容を変えるのは`correct-input-error`と`new-information`だけで、把握日の規則（7）もそれに従う。
+- **取消と取消の取り消しは、`status`と`duplicateOf`だけを表のとおりに変える。** `body`（金額、参照、`supersedes`等）は直前の改訂と同じ値にし、違えば保存を拒否する。`duplicateOf`は記録の内容ではなく、取消の理由を表す改訂の項目なので、取消で設定し、取消の取り消しで`not-applicable`に戻す。内容（`body`）を変えるのは`correct-input-error`と`new-information`だけで、把握日の規則（7）もそれに従う。
+- 改訂ごとに持つ付帯の項目（`recordedAt`・`knownOn`・`changeNote`・`writeRequestId`）は、どの理由の改訂でも、その改訂の値を持つ（`knownOn`は7の規則に従う）。
 - 取消した記録に続けられる改訂は`unvoid`だけ。取消した記録の内容を直すには、先に取消を取り消す。
-- **保存の検査:** どの改訂の保存（新規・訂正・新しい情報・取消・取消の取り消し）も、記録の種類ごとに定めた保存の検査（差し替えの系列、照合配分の確定の条件、雇用条件の期間の重なり、照合の判断の検証等）を、保存したあとの状態に対して行い、満たさなければ拒否する。
+- **保存の検査:** どの改訂の保存（新規・訂正・新しい情報・取消・取消の取り消し）も、記録の種類ごとに定めた保存の検査（差し替えの系列、照合配分の確定の条件、雇用条件の期間の重なり、照合の判断の検証、12の`known`が必要な項目等）を、保存したあとの状態に対して行い、満たさなければ拒否する。
 
 `correct-input-error`と`void`の境界: 取引・資料は存在し、勤務先・口座・金額・日付などの写し方だけを誤った場合は、`correct-input-error`で直す（勤務先や口座の取り違えを含む）。記録に当たる取引・資料が存在しない場合は`void`にする。
 
@@ -279,9 +280,20 @@
 | `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: Text, to: Text }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の期間（軸の値の形で書く。例 `2026-09`） |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
 | `knownSum` | `Yen` | 値ありの項目の合計 |
-| `missing` | `List<{ ref: Ref, field: Text, state: unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope }>` | 不足の一覧。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+| `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、採用した年間資料の値か、入力済みの記録の合計か。ほかの軸の集計と、年間の値が要判断の場合は`not-applicable` |
+
+`MissingState`（不足の状態）は次の6つだけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も同じ6つを使う（[計算結果](calculation-results.md)）。
+
+| 状態 | 使う場面 |
+| --- | --- |
+| `unknown` | 項目が不明。日付の軸に使う日付が不明（「日付不明」。[照合の規則](reconciliation.md)の2） |
+| `not-stated` | 項目が資料に記載なし。日付の軸に使う日付が記載なし |
+| `undetermined` | 所得の年の帰属の根拠がない明細（同8） |
+| `conflict` | 根拠や記録が食い違って決められないもの: 帰属の根拠の食い違い（同8）、重複の疑いのある正式通知（同2）、整っていない差し替えの系列（[記録の型](records.md)の10） |
+| `adoption-needed` | 年間の値の採用が要判断の支払者（[照合の規則](reconciliation.md)の5） |
+| `partial-scope` | `scope`が、採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 
 | 状態 | 条件 | 表示の例 |
 | --- | --- | --- |
@@ -293,3 +305,32 @@
 - `coverage`が`entered-records-only`の合計は、その期間の全体の合計とは限らない（入力していない明細がありうる）。年間の合計として扱えるのは、採用した年間資料の値だけ（[照合の規則](reconciliation.md)の5）。
 - 計算runの結果（推計）は、この形で返さない。runごとの結果をそのまま示し、runどうしを足さない（[照合の規則](reconciliation.md)の2）。
 - 集計と照合の結果は、記録の入力順・保存順に依存しない。並べる順序が必要な場合は、日付の軸の値、次にIDの文字列の順で決める。
+
+## 12. `known`が必要な項目
+
+`Fact`の項目は、この表に挙げたものを除き、`unknown`を許す。この表は、記録の種類と状態ごとに、`known`が必要な項目と許す状態を1か所にまとめたもの。各ファイルの説明に書いた「`known`が必要」は、この表と同じ内容を指す（食い違えばこの表を正とし、気づいた作業で直す）。保存のときに満たさなければ拒否する（9の保存の検査）。
+
+| 記録・項目 | 条件 | 許す状態 |
+| --- | --- | --- |
+| 改訂の共通の形の`duplicateOf` | `void`の改訂で、二重登録として取り消す | `known` |
+| 同 | それ以外の改訂 | `not-applicable` |
+| 改訂の共通の形の`importKey` | `entryChannel`が`import` | `known` |
+| 同 | `entryChannel`が`manual` | `not-applicable` |
+| 給与明細・年間資料・正式通知の`supersedes` | いつでも | `known`（発行者が作り直した資料で、前の記録を指す）か`not-applicable`（作り直しでない、または前の資料を記録していない）。`unknown`は使わない。作り直しだと分かっていて前の記録が分からなければ、前の記録を確かめてから保存する |
+| 年間資料の`includedOtherPayers` | いつでも | `known`か`unknown`（`unknown`の資料は範囲が確定しない。[照合の規則](reconciliation.md)の5） |
+| 照合配分の`amount` | `transfer-to-deposit` | `known`（正） |
+| 同 | `annual-coverage` | `not-applicable` |
+| 同 | `forecast-realization`を`confirmed`にする | `known`。ただし`settlesForecastLine`が`true`なら`unknown`も許す |
+| 照合配分の`settlesForecastLine` | `forecast-realization`を`confirmed`にする | `known` |
+| 照合配分の`confirmedAgainst` | `allocationStatus`が`confirmed` | `known`（保存の時点の両方の現在の版） |
+| 照合配分の識別の次元の項目（[照合の規則](reconciliation.md)の3の表） | 確定するとき | 同3の表の条件のとおり |
+| 照合の判断の`scope` | `annual-adoption`・`mismatch-explanation` | `known` |
+| 照合の判断の`explainedComparisons` | `mismatch-explanation` | `known`（1件以上） |
+| 計算runの`ruleSet` | 制度データを読み込んだ（`computed`・`provisional`・`incomplete`、または読み込んだあとに`failed`） | `known` |
+| 同 | 制度データを使わない計算器、または読み込む前に`unsupported`・`failed`になった | `not-applicable` |
+| 計算runの`previousRunId` | いつでも | `known`か`not-applicable` |
+| 計算runの`failure` | `status`が`failed` | `known` |
+| `AdoptionSnapshot`の`adoptedRef`と`coverage` | `selection`が`annual-document` | `adoptedRef`は`known`（版を固定）、`coverage`は`known`の`annual-document` |
+| 同 | `selection`が`entered-payslips`・`no-annual-document` | `adoptedRef`は`not-applicable`、`coverage`は`known`の`entered-records-only` |
+| 同 | `selection`が`adoption-needed` | どちらも`not-applicable` |
+| `Assumption`の`ref` | `source`が`forecast` | `known`（予測の行。版を固定） |

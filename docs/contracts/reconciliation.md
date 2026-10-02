@@ -56,9 +56,22 @@
 
 | 種類 | `from` | `to` | `amount` | 確定の条件（超えたら確定できない） |
 | --- | --- | --- | --- | --- |
-| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`known`でなければ入金の側だけを確かめる） |
-| `annual-coverage`（年間資料が明細を含む） | 年間資料 | 給与明細 | `not-applicable` | 明細の`employerId`が年間資料の範囲に入っている（範囲が確定しない資料では、発行者の明細だけ。5） |
-| `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行 | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。消し込む場合は`unknown`も可 | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額（`known`の場合）。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`（`known`の場合）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。`subject`・`measure`が合うこと（下表） |
+| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`known`でなければ入金の側だけを確かめる）。下の「識別の次元」の表の条件 |
+| `annual-coverage`（年間資料が明細を含む） | 年間資料 | 給与明細 | `not-applicable` | 下の「識別の次元」の表の条件 |
+| `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行 | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。消し込む場合は`unknown`も可 | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額（`known`の場合）。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`（`known`の場合）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。下の「識別の次元」の表の条件 |
+
+**識別の次元:** 照合配分を確定するときに比べる次元を、種類ごとにこの表だけで定める（ほかの場所で次元を足さない）。表の条件を満たさない確定は拒否する。予測の側の次元が`unknown`で確定できない場合は、先に予測を改訂して`known`にする。
+
+| 種類 | 次元 | 比べる項目 | 確定の条件 |
+| --- | --- | --- | --- |
+| `transfer-to-deposit` | 支払者 | 明細の`employerId` ↔ 入金の`payerHint` | `payerHint`が`known`なら一致すること。`payerHint`は利用者の推定なので、`unknown`なら比べない |
+| `transfer-to-deposit` | 日付 | 明細の`scheduledPayDate` ↔ 入金の`depositDate` | 一致を求めない（遅れ・年またぎがある。EX-05） |
+| `annual-coverage` | 支払者 | 明細の`employerId` ↔ 年間資料の範囲 | 範囲に含まれること（範囲が確定しない資料では、発行者の明細だけ。5） |
+| `annual-coverage` | 年 | 年間資料の`targetYear` ↔ 明細の日付 | 一致を求めない（所得の年は結び付けから導くので、日付で決めない。8） |
+| `forecast-realization` | 対象・金額の意味 | 予測の`subject`・`measure` ↔ 実績の種類と項目 | 下の「実績の該当の金額」の表の組合せであること |
+| `forecast-realization` | 勤務先 | 予測の`employerId` ↔ 明細の`employerId`（実績が入金なら`payerHint`） | 予測の`employerId`が`known`なら、実績の側も`known`で一致すること。`unknown`なら確定しない。`not-applicable`（入金の予測で勤務先に結び付けない）なら比べない |
+| `forecast-realization` | 口座 | 予測の`accountId` ↔ 入金の`accountId` | `subject`が`deposit`なら、予測の`accountId`が`known`で一致すること（`unknown`なら確定しない）。`subject`が`pay`なら比べない |
+| `forecast-realization` | 期間 | 予測の行の`expectedMonth`・`workPeriod` ↔ 実績の日付・勤務期間 | 一致を求めない（遅れ・前倒しを許す）。ずれは「見込みとの差」と並べて表示する |
 
 `forecast-realization`の「実績の該当の金額」と組合せ:
 
@@ -120,7 +133,7 @@
    - 候補なし: 年間資料なし。
    - 候補が1件以上: 範囲が**ほかのすべての候補の範囲を含む**候補が1件だけあれば、それを選ぶ（前職分を含む資料が、前職の資料より優先される）。そうでなければ要判断。範囲が同じ候補が2件あれば（`supersedes`の付け忘れ等）、要判断になる。
 3. **整合の検査:** 選ばれた年間資料`D`ごとに、`D`の範囲に含まれるすべての支払者の選択が`D`であることを確かめる。そうでなければ（同じ範囲の支払者が別の資料・`entered-payslips`・要判断を選んでいれば）、`D`の範囲の支払者をすべて要判断にする。判断で選んだ支払者も例外にしない。要判断に変わった支払者を範囲に含むほかの資料についても、変化がなくなるまで同じ検査を繰り返す。
-4. 要判断の支払者の年間の値は`unknown`とし、判断（`annual-adoption`）を求める。
+4. 要判断の支払者の年間の値は`unknown`とし、判断（`annual-adoption`）を求める。その支払者を範囲に含む年間の値の集計は`incomplete`にし、`missing`に状態`adoption-needed`で挙げる。
 
 **範囲の一部だけの集計:** 年間資料の値は、その資料の範囲全体の分けられない合計である。集計の`scope`の支払者が、採用した資料の範囲の一部だけを含む場合（範囲が勤務先A・Cの資料で、勤務先Cだけを集計する等）は、その資料の値を足さず、集計を`incomplete`にして、`missing`に資料と状態`partial-scope`を挙げる（資料の範囲を併せて示す）。範囲全体を含む`scope`で集計すれば値を示せる。
 
@@ -167,7 +180,7 @@
 
 ## 7. 重複と同額別件
 
-- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類・総支給額（または振込額）。正式通知は種類（`noticeType`）・対象の年度（`subjectYear`）（2の「要確認」と同じ組）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
+- **重複の候補:** 同じ種類の有効な記録で、次の組が同じものを候補として表示する。銀行入金は口座・入金日・金額。給与明細は支払者・支払予定日・明細の種類（金額は問わない。再発行の明細で`supersedes`を付け忘れた場合も候補に出るように）。正式通知は種類（`noticeType`）・対象の年度（`subjectYear`）（2の「要確認」と同じ組）。候補は表示だけで、保存を止めず、自動で統合も取消もしない。
 - `duplicate-review`の判断が`distinct`（同額別件）: 両方の記録を残し、その組を候補に出さない。
 - `duplicate-review`の判断が`same`（二重登録）: 利用者が一方を取消（`void`、`duplicateOf`で残す方を指す）する。判断は両方を指して残り、**有効のまま**にする（取消した記録の`duplicateOf`が判断のもう一方の対象を指している場合は、9の「参照先が取消された」の例外）。取消した記録の照合配分は無効になる（9）。
 - 再送（同じ`writeRequestId`）と再取込（同じ`importKey`）は、重複の候補ではなく冪等キーで扱う（[共通の型](common-types.md)の10）。
