@@ -1,6 +1,6 @@
 # Review guard
 
-Python 3.11以上、外部パッケージ不要。Macでは`python3`、Windowsでは`py -3`を使用する。新しいPythonの導入はこの変更では行わない。
+Python 3.11以上、外部パッケージ不要。Macでは`python3`、Windowsでは`py -3`を使用する。Pythonはレビュー運用の開発ツール用で、製品のランタイムには追加しない。Windowsを含めPythonがない環境では別途Python 3.11以上の準備が必要。この変更ではインストールしない。
 
 リポジトリのrootで実行する。実装方針は[修正前確認](../../docs/review-prevention.md)に従う。
 

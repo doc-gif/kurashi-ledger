@@ -122,5 +122,22 @@ class ReviewGuardTests(unittest.TestCase):
         self.assertEqual(set(p["context"]), {"root", "lock"})
 
 
+class RepositoryRoutingTests(unittest.TestCase):
+    def test_t26_http_directory_selects_http_and_release_conditions(self):
+        root = Path(__file__).resolve().parents[3]
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        rules, _ = guard.validate(catalog, ledger)
+        selected = guard.affected(rules, ["src/infrastructure/http/server.ts"])
+        self.assertTrue({"INV-HTTP", "INV-RELEASE", "INV-LOCK"} <= set(selected))
+
+    def test_npm_install_policy_selects_release_conditions(self):
+        root = Path(__file__).resolve().parents[3]
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        rules, _ = guard.validate(catalog, ledger)
+        self.assertIn("INV-RELEASE", guard.affected(rules, [".npmrc"]))
+
+
 if __name__ == "__main__":
     unittest.main()

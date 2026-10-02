@@ -1,8 +1,0 @@
-{
-  "files": [
-    {"path": "docs/review-prevention.md", "description": "Root cause tracking and bounded review protocol"},
-    {"path": ".review/invariants.json", "description": "Cross-cutting invariants and lifecycle scenarios"},
-    {"path": ".review/findings.json", "description": "Historical findings with stable IDs and evidence links"},
-    {"path": "docs/project-status.md", "description": "Product implementation permission and current phase"}
-  ]
-}

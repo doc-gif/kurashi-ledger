@@ -88,7 +88,9 @@
         "src/ui/**",
         "src/application/**",
         "src/server/**",
-        "scripts/**"
+        "scripts/**",
+        "src/infrastructure/http/**",
+        ".npmrc"
       ],
       "related": [
         "INV-STORAGE"
@@ -111,7 +113,8 @@
         "docs/adr/**",
         "src/server/**",
         "src/ui/**",
-        "vite.config.*"
+        "vite.config.*",
+        "src/infrastructure/http/**"
       ],
       "related": [
         "INV-TASKS"
@@ -193,7 +196,6 @@
       "paths": [
         ".review/**",
         "tools/review_guard/**",
-        ".greptile/**",
         ".github/**",
         "AGENTS.md",
         "CLAUDE.md",
