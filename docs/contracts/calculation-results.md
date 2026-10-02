@@ -21,16 +21,19 @@
 | `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`）。スナップショットの中の`payers`は支払者の`id`、`comparisons`は`field`で一意 | 意味はない |
 | `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（`allocations`・`decisions`は要素の`ref`の`id`。1つのrunでは、同じ記録を1つの版でだけ参照する。下の「入力の閉包と推移的な固定」） | 意味はない |
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
+| `inputs.requests` | `kind`と中身の全体（同じ要求を重ねない） | 意味はない |
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 
 **入力の閉包と推移的な固定（1つの規則）:** runの中では、記録への参照（`Ref`）も、記録・マスタの`Id`も、最新の版や最新の解決に読み替えず、runに固定した版で読む。そのため、runの`inputs`は、runを作ったときの見方で選ばれた版で、次の**閉包**をすべて含む。
 
-- **根:** runが持つすべての参照。どの項目にあるかを問わない（`inputs`の各並び、`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`explanationRefs`、`AdoptionSnapshot`の`payers`のような、runが直接持つマスタのIDも含む）。新しく参照を持つ項目をrunに足しても、それは根になる。計算runへの参照（`previousRunId`）だけは、runが不変なので根にしない。
+- **根:** 次の2つの和集合。
+  - **入力の要求から決まる根（runの中身に頼らない）:** 計算器の版ごとに、`target`（年・年度・地域・範囲）から決まる入力の要求の一覧を決める（T15以降で計算器と一緒に定める）。runは、使った要求を`inputs.requests`に写す。要求ごとに、データベース全体から、その要求の対象になりうる記録をすべて根にする。対象になりうる記録には、次元（日付・年度・支払者・口座等）が`unknown`・`not-stated`で対象から外せない記録を含める（[共通の型](common-types.md)の5の「分からない値で絞り込まない」。例: 決定額の要求なら、同じ`noticeType`で`subjectYear`が分からない通知）。
+  - **runが持つ参照:** runが持つすべての参照。どの項目にあるかを問わない（`inputs`の各並び、`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`explanationRefs`、`AdoptionSnapshot`の`payers`のような、runが直接持つマスタのIDも含む）。新しく参照を持つ項目をrunに足しても、それは根になる。計算runへの参照（`previousRunId`）だけは、runが不変なので根にしない。
 - **たどる参照:** 閉包に入った記録が持つ参照を、さらにたどる。照合配分・照合の判断の`from`・`to`・`targets`・`coveredPayslips`・`scope.payers`、記録の`supersedes`・`duplicateOf`（差し替えの系列と、二重登録の取消の鎖の全体）、記録が`Id`で参照するマスタ（雇用先・口座・発行者）と、その二重登録の取消の鎖の先のマスタ（[共通の型](common-types.md)の9の「マスタの取消と二重登録」）。行を指す参照は、その行を持つ記録をたどる。新しく増えるものがなくなるまで繰り返す。
 - **置き場所:** 閉包の各記録を、種類に応じて固定する。照合配分は`inputs.allocations`、照合の判断は`inputs.decisions`、ほかの記録（マスタを含む）は`inputs.records`に、その版の整数で置く。
 
-- **逆向きの参照（閉包の完全性）:** runが使う導いた値（予測の残り、照合の残高、帰属、年間の値、比較の状態、決定額、現在の記録、正規の記録）は、その値を決める記録・関係を指す側からたどれない（例: 予測の行を`to`に持つ`forecast-realization`は、予測からは参照されない）。そのため、閉包には、次の表で、閉包の中の記録に対して決まる記録・関係（逆向きの参照を含む）をすべて加える。取消した記録・関係（二重登録の取消を除く）は結果に影響しないので、加えなくてよい。
+- **逆向きの参照（閉包の完全性）:** runが使う導いた値（予測の残り、照合の残高、帰属、年間の値、比較の状態、決定額、現在の記録、正規の記録）は、その値を決める記録・関係を指す側からたどれない（例: 予測の行を`to`に持つ`forecast-realization`は、予測からは参照されない）。そのため、閉包には、次の表で、閉包の中の記録に対して決まる記録・関係（逆向きの参照を含む）をすべて加える。取消した記録・関係も、たどる途中にあれば除かずに加える（取消した記録は差し替えの系列・二重登録の鎖の橋になり、除くとその先へたどれなくなるため。取消した関係は、使われ方が`not-used`の理由として残る）。
 
 | 閉包の中の記録 | 加える記録・関係（逆向きを含む） | 決まる導いた値 |
 | --- | --- | --- |
@@ -44,7 +47,7 @@
 | どの記録も | それを`duplicateOf`で指す記録（二重登録として取り消した記録）と、その記録を指す照合配分 | 正規の記録と、正規の記録に付く使えない関係（照合の規則の9） |
 
   - 閉包は、根からの順方向のたどりと、この表による逆向きの追加を、増えなくなるまで繰り返したもの。年間の値を入力済みの記録から示す場合は、その年に帰属するその支払者の明細も、計算に使った記録（根）に含める。
-  - **保存のときの検査:** runを作る処理は、保存のときに、runを作ったときの見方で閉包を計算し直し、閉包のすべてが`inputs`にあることを確かめる。欠けがあるrun（含まれていない記録・マスタを指す記録があるrunを含む）は保存しない。runは不変なので、保存のあとに増えた関係では確かめ直さない（表示で「入力が変わった」と示す。3）。
+  - **保存のときの検査:** runを作る処理は、保存のときに、次をすべて確かめる。`inputs.requests`が、計算器の版と`target`から決まる要求の一覧と同じであること。要求から決まる根を、runを作ったときの見方でデータベース全体から求め直し、runが持つ参照と合わせた根から閉包を計算し直して、閉包のすべてが`inputs`にあること。どれかを満たさないrun（含まれていない記録・マスタを指す記録があるrunを含む）は保存しない。runは不変なので、保存のあとに増えた関係では確かめ直さない（表示で「入力が変わった」と示す。3）。
   - 例はEX-07(a)の「予測を使うrunの閉包」。
 - runの中の正規のIDの解決、差し替えの系列、二重登録の鎖は、`inputs`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
 - **導いた状態の写し:** 照合配分の使われ方と照合の判断の前提は、確かめ直しの条件（[照合の規則](reconciliation.md)の9）のように、過去の版（`confirmedAgainst`の版）や過去の時点（確定・保存の`recordedSeq`）の解決と比べて決まるので、run時点の1つの版だけからは導けない。そのため、runの中では導き直さず、runを作ったときに導いた結果を写して持つ（`AdoptionSnapshot`と同じく、実行時に導いた結果の写し）。`inputs.allocations`の各要素は`usageAtRun`（照合の規則の9の使われ方の識別子）、`inputs.decisions`の各要素は`premiseAtRun`（`holds`＝前提を満たす、`broken`＝前提が崩れている、同4）を持つ。計算に使ってよいのは、`usageAtRun`が`valid`の配分と、`premiseAtRun`が`holds`の判断だけ。それ以外の配分・判断は、結果が`unknown`・不足になった理由として固定する（例: 予測の残りが`unknown`になった理由の要再確認の配分）。runを作る処理は、その時点の判定と写しが一致することを確かめてから保存する。
@@ -86,6 +89,7 @@
 | `decisions` | `List<{ ref: Ref, premiseAtRun: holds・broken }>` | 使った照合の判断と、結果に影響した前提の崩れた判断（版を固定）。`premiseAtRun`は、runを作ったときに導いた前提の写し |
 | `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
+| `requests` | `List<InputRequest>` | 入力の要求の写し（1の「入力の閉包と推移的な固定」の根）。`InputRequest`は`kind`で判別する: `aggregate`（`key`: `AggregateKey`、`scope`: 集計値の`scope`と同じ形。[共通の型](common-types.md)の11）か、`records`（`recordType`と、`target`の年・年度と重なる適用期間。端が分からない期間は[共通の型](common-types.md)の6の「端が分からない期間の扱い」で重なりを決める）。一意のキーは`kind`と中身の全体 |
 
 `AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定。指せるのは、`targetYear`が`year`と同じで、範囲が確定していて、その範囲が`payers`と同じ集合である年間資料だけで、照合の規則の5でその年・支払者に選ばれた資料と同じであること（年間資料の値は範囲全体の分けられない合計なので、範囲の一部の支払者だけのスナップショットに年間資料を固定しない。範囲の一部だけの集計は照合の規則の5の`partial-scope`）。[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: 年間資料の金額の項目名, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態で、同じ`field`を2回含まない。1つの項目の比較の状態は1つに決まる（[照合の規則](reconciliation.md)の5）ため）。2つの並びの一意のキーは、[共通の型](common-types.md)の12の並びの表による（重なるスナップショットを持つrunは保存しない）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
 

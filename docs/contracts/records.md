@@ -157,7 +157,7 @@
 | `withholdingTax` | `Fact<Yen>`（0以上） | 記載された源泉徴収税額 |
 | `socialInsurancePremiums` | `Fact<Yen>`（0以上） | 記載された社会保険料等の金額 |
 
-- `includedOtherPayers`では、同じ支払者（`known`の`payerEmployerId`）の行は1件だけにする（保存の検査）。資料に同じ支払者の記載が複数ある場合は、1行にまとめた値を記載どおりに入れ、分けられなければ`unknown`にする。比較（[照合の規則](reconciliation.md)の5）は、この1行と行う。
+- `includedOtherPayers`では、同じ支払者（`known`の`payerEmployerId`。正規のIDで比べる）の行は1件だけにし、発行した支払者（`payerEmployerId`）と同じ支払者の行は持たない（どちらも保存の検査。発行者の分は「他の支払者の分」ではないため）。資料に同じ支払者の記載が複数ある場合は、1行にまとめた値を記載どおりに入れ、分けられなければ`unknown`にする。比較（[照合の規則](reconciliation.md)の5）は、この1行と行う。
 - 年間資料の**範囲**は、`payerEmployerId`と、`includedOtherPayers`の各行の`payerEmployerId`の集合。範囲は、年間資料どうしを重ねて足さないために使う（[照合の規則](reconciliation.md)の5）。
 - `includedOtherPayers`が`unknown`の資料、または`payerEmployerId`が`known`でない行を持つ資料は、**範囲が確定しない**。範囲が確定しない資料は、確定するまで採用しない（[照合の規則](reconciliation.md)の5）。支払者を雇用先として登録していない場合は、登録してから`payerEmployerId`を`known`にする。
 - 各項目の制度上の意味（前職分がどの項目に含まれるか、非課税の支給が支払金額に含まれるか等）は定めない。T14で一次資料を確認して決める。
@@ -199,7 +199,7 @@
 | --- | --- | --- |
 | `noticeType` | `resident-tax-determination・nhi-premium-determination・dependent-eligibility・insurance-qualification・other` | 通知の種類（住民税の決定・国保の保険料の決定・被扶養者の認定・保険の資格・その他）。`other`の通知は、種類を見分けるキーがないので決定額の集計に足さない（[照合の規則](reconciliation.md)の2） |
 | `noticeLabel` | `Text` | 通知の表題。記載どおり |
-| `issuerKind` | `municipality・tax-office・health-insurer・pension-office・employer・other` | 発行者の種類 |
+| `issuerKind` | `municipality・tax-office・health-insurer・pension-office・employer・other` | 発行者の種類。`issuerId`が`known`なら、その正規の発行者の`issuerKind`と同じでなければならない（保存の検査。[共通の型](common-types.md)の9の「マスタの取消と二重登録」の「参照する側との属性の整合」）。通知の種類（`noticeType`）と発行者の種類の対応は制度によるので、T14・T18・T19で決め、契約では検査しない |
 | `issuerLabel` | `Fact<Text>` | 発行者の表示。記載どおり（表記が揺れるので、同じ発行者かどうかの判定には使わない） |
 | `issuerId` | `Fact<Id<Issuer>>` | 利用者が登録した発行者（下の「発行者」）。同じ発行者の通知を結ぶ（差し替え等）ために使う |
 | `issuedDate` | `Fact<LocalDate>` | 発行日。記載どおり |
