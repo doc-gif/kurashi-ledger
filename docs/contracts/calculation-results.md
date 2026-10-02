@@ -24,16 +24,15 @@
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 
-**入力の閉包と推移的な固定（1つの規則）:** runの中の記録は、`current`の参照（配分の`from`・`to`、判断の`targets`、記録の`supersedes`・`duplicateOf`）と`Id`の参照（マスタの`employerId`・`accountId`・`issuerId`等、判断の`coveredPayslips`・`scope.payers`）を持つ。runの中では、これらを最新の版や最新の解決に読み替えず、同じrunの`inputs.records`にある記録の版で読む。そのため、runの`inputs`は、runを作ったときの見方で選ばれた版で、次の**閉包**をすべて含む（記録は`inputs.records`に、照合配分・照合の判断は`inputs.allocations`・`inputs.decisions`に置く）。
+**入力の閉包と推移的な固定（1つの規則）:** runの中では、記録への参照（`Ref`）も、記録・マスタの`Id`も、最新の版や最新の解決に読み替えず、runに固定した版で読む。そのため、runの`inputs`は、runを作ったときの見方で選ばれた版で、次の**閉包**をすべて含む。
 
-1. 計算に使った記録（`adoptedRef`の年間資料、`Assumption`の予測を含む）と、固定した照合配分・照合の判断（`inputs.allocations`・`inputs.decisions`）。
-2. 1の配分・判断が指す記録（`from`・`to`・`targets`・`coveredPayslips`。行を指す場合は、その行を持つ記録）。
-3. 1・2の記録の`supersedes`・`duplicateOf`が指す記録と、それをさらにたどった記録（差し替えの系列と、二重登録の取消の鎖の全体）。
-4. 1〜3の記録が参照するマスタ（雇用先・口座・発行者）と、その二重登録の取消の鎖（`duplicateOf`）の先のマスタ（[共通の型](common-types.md)の9の「マスタの取消と二重登録」）。
+- **根:** runが持つすべての参照。どの項目にあるかを問わない（`inputs`の各並び、`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`explanationRefs`、`AdoptionSnapshot`の`payers`のような、runが直接持つマスタのIDも含む）。新しく参照を持つ項目をrunに足しても、それは根になる。計算runへの参照（`previousRunId`）だけは、runが不変なので根にしない。
+- **たどる参照:** 閉包に入った記録が持つ参照を、さらにたどる。照合配分・照合の判断の`from`・`to`・`targets`・`coveredPayslips`・`scope.payers`、記録の`supersedes`・`duplicateOf`（差し替えの系列と、二重登録の取消の鎖の全体）、記録が`Id`で参照するマスタ（雇用先・口座・発行者）と、その二重登録の取消の鎖の先のマスタ（[共通の型](common-types.md)の9の「マスタの取消と二重登録」）。行を指す参照は、その行を持つ記録をたどる。新しく増えるものがなくなるまで繰り返す。
+- **置き場所:** 閉包の各記録を、種類に応じて固定する。照合配分は`inputs.allocations`、照合の判断は`inputs.decisions`、ほかの記録（マスタを含む）は`inputs.records`に、その版の整数で置く。
 
 - 閉包に欠けがあるrun（含まれていない記録・マスタを指す記録があるrun）は保存しない。
 - runの中の正規のIDの解決、差し替えの系列、二重登録の鎖、確かめ直しの判定は、`inputs.records`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
-- 1つのrunの中では、同じ記録を1つの版でだけ参照する。`inputs`の各並びだけでなく、`adoptedRef`・`Assumption`・`MissingInput`の`ref`・`explanationRefs`が`inputs.records`にある記録を指す場合も、同じ版でなければ保存しない（版が食い違うrunは、どの版で計算したかを再現できないため）。
+- 1つのrunの中では、同じ記録を1つの版でだけ参照する。run内のすべての参照（根の項目を含む）は、`inputs`に固定した同じ記録の版と同じ整数でなければ保存しない（版が食い違うrunは、どの版で計算したかを再現できないため）。
 - そのため、過去のrunを表示・再現するときは、配分・判断・差し替え・二重登録・マスタから辿った記録も、runを作ったときの版と解決になる。runのあとで記録やマスタが改訂・取消・取消の取り消しをされても、runの結果と読み方は変わらない（表示で「入力が変わった」と示す。3）。例: runに固定した`tax-year-assertion`の対象の明細を後で改訂しても、そのrunからは改訂前の版が見える。マスタの例はEX-04(a)の「マスタが変わった場合」。
 
 | 項目 | 型 | 意味と制約 |
