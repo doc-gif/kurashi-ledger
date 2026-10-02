@@ -56,6 +56,27 @@ class TrustedBaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("metadata-complete", result.stdout)
 
+    def test_policy_removed_is_reported_even_when_base_plan_is_complete(self):
+        self.write(self.candidate / ".review/invariants.json", {"schema_version": 1, "invariants": []})
+        result = self.run_ci()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout.splitlines()[0])
+        self.assertEqual(report["policy_changes_to_review"][0]["id"], "safety")
+        self.assertIsNone(report["policy_changes_to_review"][0]["after"])
+
+    def test_candidate_code_is_not_imported_or_executed(self):
+        code = self.candidate / "tools/review_guard"
+        code.mkdir(parents=True)
+        for name in ("guard.py", "ci.py"):
+            (code / name).write_text('raise RuntimeError("candidate code was executed")', encoding="utf-8")
+        result = self.run_ci()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.plan["assessments"] = []
+        self.write(self.candidate / ".review/plans/OPS.json", self.plan)
+        result = self.run_ci()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing invariant", result.stderr)
+
     def test_no_plan_or_multiple_plans_rejected(self):
         for paths in (["src/save.py"], self.paths + [".review/plans/other.json"]):
             self.paths = paths

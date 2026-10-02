@@ -87,10 +87,10 @@
         ".nvmrc",
         "src/ui/**",
         "src/application/**",
-        "src/server/**",
         "scripts/**",
         "src/infrastructure/http/**",
-        ".npmrc"
+        ".npmrc",
+        ".github/workflows/**"
       ],
       "related": [
         "INV-STORAGE"
@@ -111,10 +111,10 @@
       "condition": "開発時も本番と両立する認証・Origin・CSP・静的配信境界を保つ。",
       "paths": [
         "docs/adr/**",
-        "src/server/**",
         "src/ui/**",
         "vite.config.*",
-        "src/infrastructure/http/**"
+        "src/infrastructure/http/**",
+        "e2e/**"
       ],
       "related": [
         "INV-TASKS"
@@ -174,7 +174,11 @@
         "src/domain/**",
         "src/application/records/**",
         "docs/contracts/**",
-        "rules/**"
+        "rules/**",
+        "tests/fixtures/**",
+        "docs/test-oracles/**",
+        "docs/rules/**",
+        "e2e/**"
       ],
       "related": [
         "INV-STORAGE"
@@ -200,7 +204,8 @@
         "AGENTS.md",
         "CLAUDE.md",
         "docs/pr-review-loop.md",
-        "docs/review-prevention.md"
+        "docs/review-prevention.md",
+        "docs/github-agent-operations.md"
       ],
       "related": [
         "INV-TASKS"

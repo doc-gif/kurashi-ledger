@@ -53,7 +53,9 @@
       "cause_key": "artifact-release-coherence",
       "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706"
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
       ]
     },
     {
@@ -62,7 +64,10 @@
       "cause_key": "restore-lock-identity",
       "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706"
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
       ]
     },
     {

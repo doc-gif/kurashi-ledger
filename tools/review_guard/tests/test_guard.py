@@ -1,5 +1,8 @@
 import copy
+import contextlib
+import io
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -42,8 +45,17 @@ class ReviewGuardTests(unittest.TestCase):
         self.assertIn("does not verify", result["notice"])
 
     def test_draft_plan_does_not_pass(self):
-        with self.assertRaises(guard.Invalid):
-            guard.check(self.catalog, self.ledger, guard.prepare(self.catalog, self.ledger, self.paths, self.base), self.paths, self.base)
+        for field in ("task_id", "reason", "method", "expected"):
+            p = self.plan()
+            if field == "task_id":
+                p[field] = "TODO"
+            elif field == "reason":
+                p["assessments"][0][field] = "TODO"
+            else:
+                p["assessments"][0]["checks"][0][field] = "TODO"
+            with self.subTest(field=field), self.assertRaisesRegex(guard.Invalid, {
+                    "task_id": "task_id", "reason": "rationale", "method": "method/expected", "expected": "method/expected"}[field]):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
 
     def test_changed_base_or_added_path_requires_replan(self):
         for paths, base in [(self.paths, "b" * 40), (self.paths + ["new/file.py"], self.base)]:
@@ -86,6 +98,60 @@ class ReviewGuardTests(unittest.TestCase):
         with self.assertRaises(guard.Invalid):
             guard.check(self.catalog, self.ledger, p, self.paths, self.base)
 
+    def test_design_change_with_reference_is_reported_not_approved(self):
+        p = self.plan()
+        p["assessments"][0].update(disposition="change-proposed",
+                                    decision_references=["docs/adr/0020-new-lock.md"])
+        result = guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        self.assertEqual(result["result"], "metadata-complete")
+        self.assertEqual(result["decisions_to_review"], [{"id": "lock", "decision_references": ["docs/adr/0020-new-lock.md"]}])
+        for refs in ([], ["TODO"], "https://example.com/approval"):
+            p["assessments"][0]["decision_references"] = refs
+            with self.subTest(refs=refs), self.assertRaisesRegex(guard.Invalid, "decision_references"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_recheck_base_does_not_require_rewriting_unchanged_assessments(self):
+        p = self.plan()
+        original = copy.deepcopy(p["assessments"])
+        p["base_sha"] = "b" * 40
+        guard.check(self.catalog, self.ledger, p, self.paths, "b" * 40)
+        self.assertEqual(p["assessments"], original)
+
+    def test_policy_removal_narrowing_and_rewording_are_visible(self):
+        after = copy.deepcopy(self.catalog)
+        after["invariants"].pop(1)
+        after["invariants"][0].update(paths=["storage/only.py"], related=[], scenarios=[], condition="changed")
+        changes = guard.policy_changes(self.catalog, after)
+        self.assertEqual([(c["id"], c["field"]) for c in changes], [
+            ("lock", "invariant"), ("root", "condition"), ("root", "paths"),
+            ("root", "related"), ("root", "scenarios")])
+        self.assertEqual(guard.policy_changes(self.catalog, self.catalog), [])
+
+    def test_utf8_bom_and_cli_output_work_with_legacy_console(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            catalog = copy.deepcopy(self.catalog)
+            catalog["invariants"][0]["condition"] = "保存先の確認"
+            for name, value in [("catalog", catalog), ("ledger", self.ledger), ("paths", self.paths)]:
+                (root / (name + ".json")).write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8-sig")
+            args = ["prepare", "--catalog", str(root / "catalog.json"), "--ledger", str(root / "ledger.json"),
+                    "--paths-file", str(root / "paths.json"), "--base-sha", self.base]
+            output = root / "plans/plan.json"
+            # A console limited to ASCII must never have to encode Japanese output.
+            stream = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+            with contextlib.redirect_stdout(stream):
+                self.assertEqual(guard.main(args + ["--output", str(output)]), 0)
+                self.assertEqual(guard.main(args), 0)
+            self.assertIn("保存先の確認", output.read_text(encoding="utf-8"))
+            self.assertEqual(guard.read_json(output)["context"]["root"]["condition"], "保存先の確認")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(guard.main(args + ["--output", str(output)]), 1)
+
+    def test_old_python_fails_with_actionable_error(self):
+        with self.assertRaisesRegex(guard.Invalid, "3.11"):
+            guard.require_runtime((3, 9))
+        guard.require_runtime((3, 11))
+
     def test_same_cause_reuses_id_even_for_new_evidence(self):
         result = guard.triage(self.catalog, self.ledger, [
             {"invariant_id": "lock", "cause_key": "identity", "evidence": "new head reproduces the problem"},
@@ -123,6 +189,18 @@ class ReviewGuardTests(unittest.TestCase):
 
 
 class RepositoryRoutingTests(unittest.TestCase):
+    def test_planned_test_oracle_rules_and_workflow_paths_select_conditions(self):
+        root = Path(__file__).resolve().parents[3]
+        rules, _ = guard.validate(guard.read_json(root / ".review/invariants.json"),
+                                  guard.read_json(root / ".review/findings.json"))
+        for path, expected in [("tests/fixtures/records.json", "INV-RECORDS"),
+                               ("docs/test-oracles/tax.md", "INV-RECORDS"),
+                               ("docs/rules/2026.md", "INV-RECORDS"),
+                               ("e2e/records.test.ts", "INV-HTTP"),
+                               (".github/workflows/ci.yml", "INV-RELEASE")]:
+            with self.subTest(path=path):
+                self.assertIn(expected, guard.affected(rules, [path]))
+
     def test_t26_http_directory_selects_http_and_release_conditions(self):
         root = Path(__file__).resolve().parents[3]
         catalog = guard.read_json(root / ".review/invariants.json")

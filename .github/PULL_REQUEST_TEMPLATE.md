@@ -6,7 +6,8 @@
 
 ## 変更と非対象
 
-- 変更前の計画: `.review/plans/<task-id>.json` / 計画commit:
+- 変更前の計画: `.review/plans/<task-id>[-<part>].json` / 計画commit:
+- 今回の修正前の再確認結果／計画更新点:
 - 関連する不変条件・既存の指摘ID:
 - 既存仕様との矛盾と解消方針（なければ根拠）:
 

@@ -16,6 +16,18 @@ def require(condition, message):
         raise Invalid(message)
 
 
+def require_runtime(version=None):
+    require((version or sys.version_info) >= (3, 11), "Python 3.11 or newer is required")
+
+
+def write_json(path, value):
+    """Create a UTF-8 file, never silently replace an existing plan."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
 def read_json(path):
     def unique(pairs):
         result = {}
@@ -26,7 +38,7 @@ def read_json(path):
     path = Path(path)
     require(not path.is_symlink(), "JSON symlinks are not accepted")
     require(path.stat().st_size <= 1_048_576, "JSON exceeds 1 MiB limit")
-    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique)
+    return json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=unique)
 
 
 def text(value):
@@ -86,6 +98,23 @@ def paths_list(paths):
     return sorted(set(paths))
 
 
+def policy_changes(before, after):
+    """Report structural changes, without guessing if prose or glob changes are safe."""
+    old = index(before.get("invariants"), "base invariants")
+    new = index(after.get("invariants"), "candidate invariants")
+    changes = []
+    for rid in sorted(old.keys() | new.keys()):
+        if rid not in old or rid not in new:
+            changes.append({"id": rid, "field": "invariant",
+                            "before": old.get(rid), "after": new.get(rid)})
+            continue
+        for field in ("condition", "paths", "related", "scenarios"):
+            if old[rid].get(field) != new[rid].get(field):
+                changes.append({"id": rid, "field": field,
+                                "before": old[rid].get(field), "after": new[rid].get(field)})
+    return changes
+
+
 def affected(rules, paths):
     selected = {rid for rid, rule in rules.items()
                 if any(fnmatch.fnmatchcase(p, pattern) for p in paths for pattern in rule["paths"])}
@@ -127,17 +156,23 @@ def check(catalog, ledger, plan, paths, base):
     ids = affected(rules, sorted(set(planned) | set(actual)))
     assessments = index(plan.get("assessments"), "assessments")
     require(set(assessments) <= rules.keys(), "unknown assessment id")
-    require(set(ids) <= assessments.keys(), "missing invariant assessments: " + ", ".join(set(ids) - assessments.keys()))
+    require(set(ids) <= assessments.keys(), "missing invariant assessments: " + ", ".join(sorted(set(ids) - assessments.keys())))
     conflicts = plan.get("conflicts")
     require(isinstance(conflicts, list), "conflicts must be a list")
     for conflict in conflicts:
         require(isinstance(conflict, dict) and text(conflict.get("description"))
                 and conflict.get("state") == "resolved" and text(conflict.get("resolution")),
                 "unresolved design conflict: revise the plan before implementation")
-    for rid in ids:
+    decisions = []
+    for rid in sorted(assessments):
         item = assessments[rid]
-        require(item.get("disposition") in {"preserve", "not-applicable"},
-                f"{rid}: change-proposed requires a separate design decision, not a green preflight")
+        require(item.get("disposition") in {"preserve", "not-applicable", "change-proposed"},
+                f"{rid}: invalid disposition")
+        if item["disposition"] == "change-proposed":
+            refs = item.get("decision_references")
+            require(isinstance(refs, list) and refs and all(text(ref) for ref in refs),
+                    f"{rid}: change-proposed requires decision_references")
+            decisions.append({"id": rid, "decision_references": refs})
         require(text(item.get("reason")), f"{rid}: missing rationale")
         checks = index(item.get("checks"), rid + " checks")
         expected_ids = {s["id"] for s in rules[rid]["scenarios"]}
@@ -145,6 +180,7 @@ def check(catalog, ledger, plan, paths, base):
         for sid, c in checks.items():
             require(text(c.get("method")) and text(c.get("expected")), f"{rid}/{sid}: missing method/expected result")
     return {"result": "metadata-complete", "invariants": ids,
+            "decisions_to_review": decisions,
             "notice": "This checks coverage only. It does not verify claims, resolve design conflicts, or approve implementation/merge."}
 
 
@@ -172,8 +208,10 @@ def main(argv=None):
     parser.add_argument("--base-sha")
     parser.add_argument("--plan")
     parser.add_argument("--candidates")
+    parser.add_argument("--output", help="Create a UTF-8 JSON file; refuses to overwrite existing files")
     args = parser.parse_args(argv)
     try:
+        require_runtime()
         catalog, ledger = read_json(args.catalog), read_json(args.ledger)
         if args.command == "validate":
             rules, findings = validate(catalog, ledger)
@@ -189,7 +227,11 @@ def main(argv=None):
             else:
                 require(args.plan, "--plan is required")
                 result = check(catalog, ledger, read_json(args.plan), paths, args.base_sha)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.output:
+            write_json(args.output, result)
+        else:
+            # ASCII JSON survives redirected legacy Windows console encodings.
+            print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0
     except (Invalid, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         print(f"review-guard: {exc}", file=sys.stderr)

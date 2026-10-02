@@ -1,4 +1,7 @@
 name: Review preparation
+# INERT TEMPLATE. pull_request can modify this workflow itself.
+# This is not a tamper-proof required gate. Protect the workflow independently
+# before relying on it; see docs/review-prevention.md. No secrets or write token.
 
 on:
   pull_request:
@@ -34,13 +37,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python3 -I - <<'PY'
-          import json, os, pathlib, re, subprocess
-          base, head = os.environ['BASE_SHA'], os.environ['HEAD_SHA']
-          assert re.fullmatch('[0-9a-f]{40}', base) and re.fullmatch('[0-9a-f]{40}', head)
-          changed = subprocess.check_output(['git', '-C', 'candidate', 'diff', '--no-renames', '--name-only', '-z', base, head])
-          pathlib.Path('changed.json').write_text(json.dumps([p.decode('utf-8') for p in changed.split(b'\0') if p]), encoding='utf-8')
-          PY
+          if [ ! -f baseline/tools/review_guard/changed_paths.py ]; then
+            echo 'bootstrap: base adapter missing; plan enforcement NOT verified.'
+            exit 1
+          fi
+          python3 -E -s baseline/tools/review_guard/changed_paths.py --repository candidate --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --output changed.json
       - name: Check plan using base policy
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -49,6 +50,7 @@ jobs:
             python3 -E -s baseline/tools/review_guard/ci.py --candidate candidate --paths-file changed.json --base-sha "$BASE_SHA"
           else
             echo 'bootstrap: base has no review guard; plan enforcement is NOT verified. Independent review is required.'
+            exit 1
           fi
   tool-tests:
     runs-on: ubuntu-latest
