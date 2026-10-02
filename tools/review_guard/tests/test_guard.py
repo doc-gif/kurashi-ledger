@@ -160,6 +160,39 @@ class ReviewGuardTests(unittest.TestCase):
         self.assertEqual(result[0]["action"], "update-existing")
         self.assertEqual(result[1]["action"], "propose-new")
 
+    def test_batch_duplicate_existing_and_new_causes_rejected(self):
+        for cause in ("identity", "new-cause"):
+            candidates = [{"invariant_id": "lock", "cause_key": cause, "evidence": evidence}
+                          for evidence in ("first synthetic evidence", "second synthetic evidence")]
+            with self.subTest(cause=cause), self.assertRaisesRegex(guard.Invalid, "duplicate candidate cause"):
+                guard.triage(self.catalog, self.ledger, candidates)
+
+    def test_distinct_causes_and_cross_invariant_causes_preserve_order(self):
+        candidates = [
+            {"invariant_id": "root", "cause_key": "shared", "evidence": "root evidence"},
+            {"invariant_id": "lock", "cause_key": "shared", "evidence": "lock evidence"},
+            {"invariant_id": "lock", "cause_key": "identity", "evidence": "known cause evidence"}]
+        result = guard.triage(self.catalog, self.ledger, candidates)
+        self.assertEqual([row["candidate"] for row in result], candidates)
+        self.assertEqual([row["action"] for row in result], ["propose-new", "propose-new", "update-existing"])
+        self.assertEqual([row["existing_id"] for row in result], [None, None, "PR2-R007"])
+
+    def test_duplicate_batch_cli_emits_no_partial_result(self):
+        candidates = [{"invariant_id": "lock", "cause_key": "new-cause", "evidence": evidence}
+                      for evidence in ("first synthetic evidence", "second synthetic evidence")]
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            args = ["triage"]
+            for option, value in (("catalog", self.catalog), ("ledger", self.ledger), ("candidates", candidates)):
+                path = root / (option + ".json")
+                path.write_text(json.dumps(value), encoding="utf-8")
+                args.extend(["--" + option, str(path)])
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(guard.main(args), 1)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("duplicate candidate cause", stderr.getvalue())
+
     def test_duplicate_root_cause_with_different_id_rejected(self):
         f = copy.deepcopy(self.ledger["findings"][0])
         f["id"] = "PR2-R099"

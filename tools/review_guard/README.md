@@ -73,7 +73,7 @@ python3 tools/review_guard/guard.py check --plan .review/plans/T07-storage.json 
 python3 tools/review_guard/guard.py triage --candidates candidates.json
 ```
 
-候補JSONは`invariant_id`・`cause_key`・`evidence`を持つオブジェクトの配列。台帳のIDは`PR2-R007`形式（`PR<正整数>-R<3桁以上の正の番号>`、ASCII数字、PR番号の先頭ゼロなし）だけを受理する。台帳・候補の`cause_key`に前後空白がある入力は拒否する。過去コメントの`R-007`はそのPR番号と組み合わせた同じIDで、新規指摘ではない。原因の意味の照合・投稿の重複防止・解消判断は担当レビュワーが行う。
+候補JSONは`invariant_id`・`cause_key`・`evidence`を持つオブジェクトの配列。台帳のIDは`PR2-R007`形式（`PR<正整数>-R<3桁以上の正の番号>`、ASCII数字、PR番号の先頭ゼロなし）だけを受理する。台帳・候補の`cause_key`に前後空白がある入力は拒否する。 同じバッチ内の`(invariant_id, cause_key)`重複は、台帳に登録済みかどうかを問わず入力全体を拒否し、結果を出力しない。同じ原因の証拠は1候補にまとめてから入力する。異なる条件で同じ原因キーを使う候補は別候補として扱う。過去コメントの`R-007`はそのPR番号と組み合わせた同じIDで、新規指摘ではない。原因の意味の照合・投稿の重複防止・解消判断は担当レビュワーが行う。
 
 成功時exit 0は記入の充足のみ。入力不備・未記入・未解決の衝突・古いbase・未計画パスはexit 1。未知の版、重複キー・ID、参照不明IDも拒否する。方針の自動修正・承認・ネットワーク操作は行わない。
 

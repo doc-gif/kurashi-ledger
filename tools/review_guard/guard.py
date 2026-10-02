@@ -205,11 +205,14 @@ def triage(catalog, ledger, candidates):
     require(isinstance(candidates, list), "candidates must be a list")
     by_cause = {(f["invariant_id"], f["cause_key"]): f["id"] for f in findings.values()}
     output = []
+    seen = set()
     for c in candidates:
         require(isinstance(c, dict) and c.get("invariant_id") in rules
                 and text(c.get("cause_key")) and text(c.get("evidence")), "invalid candidate")
         require(c["cause_key"] == c["cause_key"].strip(), "candidate cause_key must be trimmed")
         key = (c["invariant_id"], c["cause_key"])
+        require(key not in seen, "duplicate candidate cause")
+        seen.add(key)
         output.append({"existing_id": by_cause.get(key),
                        "action": "update-existing" if key in by_cause else "propose-new",
                        "candidate": c})
