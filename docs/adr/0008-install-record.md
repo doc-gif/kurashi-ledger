@@ -111,7 +111,7 @@ JSONで、次の欄だけを持つ。日時、利用者名、パスは記録し�
 
 ## 試験
 
-T02で次の試験を作った。実行した環境と結果、まだ実行していない環境（固定した版のNode.js、Windows）は、PR #12に記録する。
+T02で次の試験を作った。実行した環境と結果は、PR #12に記録する。固定した版のNode.jsとMac/Windows/Linuxでの実行は、2026-10-02の所有者決定でT05の受入条件にした（T02では固定版とWindowsで実行していない）。
 
 - `scripts/install-record.test.ts`: npm ciの代わりに結果を決めた関数を渡し、失敗・シグナルでの中断・起動の失敗・導入中の入力の変化・導入した木の欠け（必須の依存、このOS・CPUの任意の依存、実行ファイルのリンク）や版の違い・余分な依存・名前変更のあとのディレクトリの反映の失敗で記録が残らないこと、各欄の違いを不一致と判定すること、記録のあとで消えたパッケージや実行ファイルのリンクを照合で見つけること（中身の書換えは見ないこと）、`node_modules`や記録の名前がリポジトリの外へのリンク（Windowsはjunction）のとき、setup・照合・書込みが止まり、リンク先が変わらないこと、npm ciに渡す引数と環境変数。
 - `scripts/setup.test.ts`: 合成の依存を1つ持つ一時プロジェクトと127.0.0.1の合成のregistryで、実際のnpmを使う。`npm run setup`が記録を書き、インストールスクリプトを動かさないこと。`npm ci`を直接実行すると記録が消え、`npm run build`が止まって`npm run setup`を案内すること。依存の取得に失敗したとき、`npm ci`が`node_modules`を消す前に失敗したとき、`npm run setup`をCtrl+C相当で止めたとき（POSIXはプロセスグループへSIGINT、Windowsはプロセスツリーの強制終了）に、記録が残らないこと。`--force`を拒むこと。記録のあとで実行ファイルのリンクや依存を消すと、`npm run build`・`npm run check:install`が止まること。`node_modules`がリポジトリの外へのリンクのとき、`npm run setup`・`check:install`・`build`が止まり、リンク先（合成の別の記録と依存）が変わらないこと。package.jsonの依存の宣言を変えたあとに`npm ci`を直接実行して失敗した場合に、`npm run build`が止まること。実行ファイルを持つ合成の依存で、利用者のnpmrcと環境変数に`bin-links=false`・`omit=dev`・`install-strategy=nested`・`dry-run=true`、`NODE_ENV=production`があっても、`npm run setup`がdevの依存と実行ファイルのリンクを入れて記録すること（同じ設定の`npm ci`では木が変わることも確かめる）。
