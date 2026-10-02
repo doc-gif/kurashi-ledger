@@ -8,6 +8,18 @@
 
 一度だけ書き、改訂を持たない。途中で失敗した場合も、`failed`として書く（状態は2の順序で決める）。
 
+**run内の並びの規則（1つの規則）:** 計算runの中の並びは、それぞれ下の表のキーがrun内で一意であり、順序の意味は表のとおりとする。キーが重なるrunは保存しない（計算器の誤りとして扱う）。再計算や比較では、並びの位置ではなくキーで対応を取る。
+
+| 並び | run内で一意のキー | 並びの順序の意味 |
+| --- | --- | --- |
+| `results` | `key` | 意味はない（表示の順は計算器が決める） |
+| `roundingSteps` | `order` | 適用した順（`order`の連番の順に並べる。下の`RoundingStep`） |
+| `assumptions` | `key` | 意味はない。同じ`key`の仮定を2つ持たない |
+| `missingInputs` | `field`と`ref`の組 | 意味はない |
+| `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`） | 意味はない |
+| `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（1つのrunでは、同じ記録を1つの版でだけ参照する） | 意味はない |
+| `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
+
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 
 | 項目 | 型 | 意味と制約 |
@@ -48,7 +60,7 @@
 
 `AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
 
-`Assumption`: `key`（`Text`）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等）。
+`Assumption`: `key`（`Text`。run内で一意。1の「run内の並びの規則」）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等）。
 
 `ResultItem`:
 
@@ -73,7 +85,7 @@
 
 保存のときに、これらと上の形（`key`の一意性、`itemKey`、`order`の連番、最後の`after`と`value`の一致）をすべて検査する。合わないrunは保存しない（計算器の誤りとして扱う。例は4）。
 
-`MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`MissingState`。[共通の型](common-types.md)の11の6つの状態と同じ）。
+`MissingInput`（`field`と`ref`の組がrun内で一意。1の「run内の並びの規則」）: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`MissingState`。[共通の型](common-types.md)の11の6つの状態と同じ）。
 
 ## 2. 結果の状態
 
