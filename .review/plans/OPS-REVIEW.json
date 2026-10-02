@@ -24,7 +24,8 @@
     "docs/external-worker.md",
     "README.md",
     "docs/implementation-plan.md",
-    ".review/tests/test_repository_routing.py"
+    ".review/tests/test_repository_routing.py",
+    "docs/implementation-tasks.md"
   ],
   "conflicts": [
     {
@@ -71,6 +72,11 @@
       "description": "PR4-R017/R018: 分離したrepo固有suiteがActionsテンプレートから漏れ、計画ファイル名とtask_idの不一致がCLI/CIで通る。",
       "state": "resolved",
       "resolution": "未稼働のread-only標準runnerテンプレートのtool-testsへ固有suiteを追加。coreのactual計画パスとlocal CLIの--plan名をtask_idまたはtask_id-partへ照合し、CIもcoreを通す。正常なpart名と不一致のcore/CLI/CI回帰試験を追加する。workflowの信頼限界と未稼働状態は維持。"
+    },
+    {
+      "description": "所有者がPR #6の運用方針を直接承認し、PR #4の旧停止・マージ禁止の記載と衝突する。",
+      "state": "resolved",
+      "resolution": "PR #6の承認済み運用差分を共有文書へ統合し、レビュー運用ツール・計画先行・固定ID・独立レビュー・Open依頼の規約を保持する。製品タスクはClaude側のT01/T02/T04担当に任せ、自分のPRの条件付きマージだけを許可する。READMEと状態資料を同期し、最新baseが変われば再確認して新引継ぎを作る。"
     }
   ],
   "assessments": [
@@ -106,7 +112,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。外部AIの起動指示の確認間隔も同じ10分基準へそろえる。",
+      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応を保持し、所有者が直接承認したPR #6の実装再開・担当・条件付き自己PRマージを全入口へ整合する。製品コード・CI配置は変更しない。",
       "checks": [
         {
           "id": "dependencies",
@@ -116,7 +122,7 @@
         {
           "id": "entrypoints",
           "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。",
-          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。外部AIに渡す起動指示も10分を使い、実登録は各環境を正本とする どちらのAIが実装しても自己承認せず別担当へ渡す。"
+          "expected": "全入口が別担当の最新head/baseのaccepted、Copilot未対応なし、base不変・競合なし、--match-head-commit付き自己PRマージとpost-merge確認、auto-merge不使用、デプロイ別指示待ちを守る。計画・ツール・固定IDの規約を維持し、レビュー依頼はOpenにする。"
         }
       ]
     }
