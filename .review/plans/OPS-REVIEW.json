@@ -20,7 +20,8 @@
     "tools/review_guard/guard.py",
     "tools/review_guard/tests/test_changed_paths.py",
     "tools/review_guard/tests/test_ci.py",
-    "tools/review_guard/tests/test_guard.py"
+    "tools/review_guard/tests/test_guard.py",
+    "docs/external-worker.md"
   ],
   "conflicts": [
     {
@@ -52,6 +53,11 @@
       "description": "PR #2がmainへ統合され、project-statusの設計状態とPR #4の運用状態が競合する。確認間隔も実装側30分の旧記載が残る。",
       "state": "resolved",
       "resolution": "最新mainを取り込み、T00のADR・T00–T28・Issue #1・実装停止・担当着手条件を保持する。レビュー運用ツールの公開範囲と別担当レビューを併記し、双方の確認間隔は所有者指定の10分を基準、実稼働設定は各実行環境を正本とする。"
+    },
+    {
+      "description": "PR4-R012: 外部AIの登録指示が30分のままで、運用資料の10分基準と衝突する。PR #6が同じ箇所を変更している。",
+      "state": "resolved",
+      "resolution": "指示文・loop例・既存ジョブ変更・セッション外継続の文章を10分へ統一。PR #6の該当文言と照合する。Cloud Routinesの最短1時間の注記と実稼働設定の確認は保持。未統合PR #6の製品実装再開・マージ規約は取り込まない。"
     }
   ],
   "assessments": [
@@ -87,7 +93,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。",
+      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。 外部AIの起動指示の確認間隔も同じ10分基準へそろえる。",
       "checks": [
         {
           "id": "dependencies",
@@ -96,8 +102,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合",
-          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。"
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合",
+          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。。外部AIに渡す起動指示も10分を使い、実登録は各環境を正本とする"
         }
       ]
     }
