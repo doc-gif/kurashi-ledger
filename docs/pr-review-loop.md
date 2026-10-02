@@ -19,6 +19,7 @@ head_sha: <PRの最新head SHA>
 base_sha: <確認したmain SHA>
 
 変更内容:
+README: <更新したREADMEと内容、または「更新不要」と理由（AGENTS.md）>
 受入条件ごとの確認結果:
 実行した検証・対象commit・CIへのリンク:
 未対応事項・確認してほしい点:
