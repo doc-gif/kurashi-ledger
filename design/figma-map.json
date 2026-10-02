@@ -1,0 +1,1417 @@
+{
+  "$description": "FigmaのID（変数・スタイル・ページ・部品）と design/tokens.json のトークン名・CSS変数名の対応表（T04）。Figmaで変更したら、このファイルと tokens.json を同じPRで直す。",
+  "figmaFile": {
+    "name": "Kurashi Ledger — Design System",
+    "source": "所有者のFigmaファイル（URLは公開しない）",
+    "note": "node IDは、このファイルを開ける人がFigmaで node-id として指定して使う"
+  },
+  "verifiedAt": "2026-10-03",
+  "pages": [
+    {
+      "id": "0:1",
+      "name": "00 表紙 Cover"
+    },
+    {
+      "id": "5:106",
+      "name": "01 基礎 Foundations"
+    },
+    {
+      "id": "5:107",
+      "name": "02 部品 Components"
+    },
+    {
+      "id": "5:108",
+      "name": "03 利用例 Usage"
+    }
+  ],
+  "variableCollections": [
+    {
+      "id": "VariableCollectionId:5:2",
+      "name": "Primitives",
+      "modes": [
+        "Value"
+      ],
+      "tokenGroup": "color.<family>.<step>"
+    },
+    {
+      "id": "VariableCollectionId:5:3",
+      "name": "Color",
+      "modes": [
+        "Light"
+      ],
+      "tokenGroup": "color.<role>.<name>"
+    },
+    {
+      "id": "VariableCollectionId:5:4",
+      "name": "Dimension",
+      "modes": [
+        "Value"
+      ],
+      "tokenGroup": "space / radius / border-width / focus / size"
+    }
+  ],
+  "variables": [
+    {
+      "token": "color.gray.0",
+      "cssVar": "--color-gray-0",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/0",
+      "figmaId": "VariableID:5:5",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.50",
+      "cssVar": "--color-gray-50",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/50",
+      "figmaId": "VariableID:5:6",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.100",
+      "cssVar": "--color-gray-100",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/100",
+      "figmaId": "VariableID:5:7",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.200",
+      "cssVar": "--color-gray-200",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/200",
+      "figmaId": "VariableID:5:8",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.300",
+      "cssVar": "--color-gray-300",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/300",
+      "figmaId": "VariableID:5:9",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.400",
+      "cssVar": "--color-gray-400",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/400",
+      "figmaId": "VariableID:5:10",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.500",
+      "cssVar": "--color-gray-500",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/500",
+      "figmaId": "VariableID:5:11",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.600",
+      "cssVar": "--color-gray-600",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/600",
+      "figmaId": "VariableID:5:12",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.700",
+      "cssVar": "--color-gray-700",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/700",
+      "figmaId": "VariableID:5:13",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.800",
+      "cssVar": "--color-gray-800",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/800",
+      "figmaId": "VariableID:5:14",
+      "scopes": []
+    },
+    {
+      "token": "color.gray.900",
+      "cssVar": "--color-gray-900",
+      "figmaCollection": "Primitives",
+      "figmaName": "gray/900",
+      "figmaId": "VariableID:5:15",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.50",
+      "cssVar": "--color-teal-50",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/50",
+      "figmaId": "VariableID:5:16",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.100",
+      "cssVar": "--color-teal-100",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/100",
+      "figmaId": "VariableID:5:17",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.200",
+      "cssVar": "--color-teal-200",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/200",
+      "figmaId": "VariableID:5:18",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.600",
+      "cssVar": "--color-teal-600",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/600",
+      "figmaId": "VariableID:5:19",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.700",
+      "cssVar": "--color-teal-700",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/700",
+      "figmaId": "VariableID:5:20",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.800",
+      "cssVar": "--color-teal-800",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/800",
+      "figmaId": "VariableID:5:21",
+      "scopes": []
+    },
+    {
+      "token": "color.teal.900",
+      "cssVar": "--color-teal-900",
+      "figmaCollection": "Primitives",
+      "figmaName": "teal/900",
+      "figmaId": "VariableID:5:22",
+      "scopes": []
+    },
+    {
+      "token": "color.red.50",
+      "cssVar": "--color-red-50",
+      "figmaCollection": "Primitives",
+      "figmaName": "red/50",
+      "figmaId": "VariableID:5:23",
+      "scopes": []
+    },
+    {
+      "token": "color.red.200",
+      "cssVar": "--color-red-200",
+      "figmaCollection": "Primitives",
+      "figmaName": "red/200",
+      "figmaId": "VariableID:5:24",
+      "scopes": []
+    },
+    {
+      "token": "color.red.700",
+      "cssVar": "--color-red-700",
+      "figmaCollection": "Primitives",
+      "figmaName": "red/700",
+      "figmaId": "VariableID:5:25",
+      "scopes": []
+    },
+    {
+      "token": "color.red.800",
+      "cssVar": "--color-red-800",
+      "figmaCollection": "Primitives",
+      "figmaName": "red/800",
+      "figmaId": "VariableID:5:26",
+      "scopes": []
+    },
+    {
+      "token": "color.red.900",
+      "cssVar": "--color-red-900",
+      "figmaCollection": "Primitives",
+      "figmaName": "red/900",
+      "figmaId": "VariableID:5:27",
+      "scopes": []
+    },
+    {
+      "token": "color.amber.50",
+      "cssVar": "--color-amber-50",
+      "figmaCollection": "Primitives",
+      "figmaName": "amber/50",
+      "figmaId": "VariableID:5:28",
+      "scopes": []
+    },
+    {
+      "token": "color.amber.200",
+      "cssVar": "--color-amber-200",
+      "figmaCollection": "Primitives",
+      "figmaName": "amber/200",
+      "figmaId": "VariableID:5:29",
+      "scopes": []
+    },
+    {
+      "token": "color.amber.800",
+      "cssVar": "--color-amber-800",
+      "figmaCollection": "Primitives",
+      "figmaName": "amber/800",
+      "figmaId": "VariableID:5:30",
+      "scopes": []
+    },
+    {
+      "token": "color.bg.canvas",
+      "cssVar": "--color-bg-canvas",
+      "figmaCollection": "Color",
+      "figmaName": "bg/canvas",
+      "figmaId": "VariableID:5:31",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.surface",
+      "cssVar": "--color-bg-surface",
+      "figmaCollection": "Color",
+      "figmaName": "bg/surface",
+      "figmaId": "VariableID:5:32",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.subtle",
+      "cssVar": "--color-bg-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "bg/subtle",
+      "figmaId": "VariableID:5:33",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.disabled",
+      "cssVar": "--color-bg-disabled",
+      "figmaCollection": "Color",
+      "figmaName": "bg/disabled",
+      "figmaId": "VariableID:5:34",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.neutral-hover",
+      "cssVar": "--color-bg-neutral-hover",
+      "figmaCollection": "Color",
+      "figmaName": "bg/neutral-hover",
+      "figmaId": "VariableID:5:35",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.neutral-pressed",
+      "cssVar": "--color-bg-neutral-pressed",
+      "figmaCollection": "Color",
+      "figmaName": "bg/neutral-pressed",
+      "figmaId": "VariableID:5:36",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.accent",
+      "cssVar": "--color-bg-accent",
+      "figmaCollection": "Color",
+      "figmaName": "bg/accent",
+      "figmaId": "VariableID:5:37",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.accent-hover",
+      "cssVar": "--color-bg-accent-hover",
+      "figmaCollection": "Color",
+      "figmaName": "bg/accent-hover",
+      "figmaId": "VariableID:5:38",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.accent-pressed",
+      "cssVar": "--color-bg-accent-pressed",
+      "figmaCollection": "Color",
+      "figmaName": "bg/accent-pressed",
+      "figmaId": "VariableID:5:39",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.accent-subtle",
+      "cssVar": "--color-bg-accent-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "bg/accent-subtle",
+      "figmaId": "VariableID:5:40",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.danger",
+      "cssVar": "--color-bg-danger",
+      "figmaCollection": "Color",
+      "figmaName": "bg/danger",
+      "figmaId": "VariableID:5:41",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.danger-hover",
+      "cssVar": "--color-bg-danger-hover",
+      "figmaCollection": "Color",
+      "figmaName": "bg/danger-hover",
+      "figmaId": "VariableID:5:42",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.danger-pressed",
+      "cssVar": "--color-bg-danger-pressed",
+      "figmaCollection": "Color",
+      "figmaName": "bg/danger-pressed",
+      "figmaId": "VariableID:5:43",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.danger-subtle",
+      "cssVar": "--color-bg-danger-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "bg/danger-subtle",
+      "figmaId": "VariableID:5:44",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.bg.warning-subtle",
+      "cssVar": "--color-bg-warning-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "bg/warning-subtle",
+      "figmaId": "VariableID:5:45",
+      "scopes": [
+        "FRAME_FILL",
+        "SHAPE_FILL"
+      ]
+    },
+    {
+      "token": "color.text.primary",
+      "cssVar": "--color-text-primary",
+      "figmaCollection": "Color",
+      "figmaName": "text/primary",
+      "figmaId": "VariableID:5:46",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.secondary",
+      "cssVar": "--color-text-secondary",
+      "figmaCollection": "Color",
+      "figmaName": "text/secondary",
+      "figmaId": "VariableID:5:47",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.placeholder",
+      "cssVar": "--color-text-placeholder",
+      "figmaCollection": "Color",
+      "figmaName": "text/placeholder",
+      "figmaId": "VariableID:5:48",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.disabled",
+      "cssVar": "--color-text-disabled",
+      "figmaCollection": "Color",
+      "figmaName": "text/disabled",
+      "figmaId": "VariableID:5:49",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.on-accent",
+      "cssVar": "--color-text-on-accent",
+      "figmaCollection": "Color",
+      "figmaName": "text/on-accent",
+      "figmaId": "VariableID:5:50",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.on-danger",
+      "cssVar": "--color-text-on-danger",
+      "figmaCollection": "Color",
+      "figmaName": "text/on-danger",
+      "figmaId": "VariableID:5:51",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.accent",
+      "cssVar": "--color-text-accent",
+      "figmaCollection": "Color",
+      "figmaName": "text/accent",
+      "figmaId": "VariableID:5:52",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.danger",
+      "cssVar": "--color-text-danger",
+      "figmaCollection": "Color",
+      "figmaName": "text/danger",
+      "figmaId": "VariableID:5:53",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.danger-strong",
+      "cssVar": "--color-text-danger-strong",
+      "figmaCollection": "Color",
+      "figmaName": "text/danger-strong",
+      "figmaId": "VariableID:5:54",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.text.warning",
+      "cssVar": "--color-text-warning",
+      "figmaCollection": "Color",
+      "figmaName": "text/warning",
+      "figmaId": "VariableID:5:55",
+      "scopes": [
+        "TEXT_FILL"
+      ]
+    },
+    {
+      "token": "color.border.subtle",
+      "cssVar": "--color-border-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "border/subtle",
+      "figmaId": "VariableID:5:56",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.control",
+      "cssVar": "--color-border-control",
+      "figmaCollection": "Color",
+      "figmaName": "border/control",
+      "figmaId": "VariableID:5:57",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.disabled",
+      "cssVar": "--color-border-disabled",
+      "figmaCollection": "Color",
+      "figmaName": "border/disabled",
+      "figmaId": "VariableID:5:58",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.accent",
+      "cssVar": "--color-border-accent",
+      "figmaCollection": "Color",
+      "figmaName": "border/accent",
+      "figmaId": "VariableID:5:59",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.accent-subtle",
+      "cssVar": "--color-border-accent-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "border/accent-subtle",
+      "figmaId": "VariableID:5:60",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.danger",
+      "cssVar": "--color-border-danger",
+      "figmaCollection": "Color",
+      "figmaName": "border/danger",
+      "figmaId": "VariableID:5:61",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.danger-subtle",
+      "cssVar": "--color-border-danger-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "border/danger-subtle",
+      "figmaId": "VariableID:5:62",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.border.warning-subtle",
+      "cssVar": "--color-border-warning-subtle",
+      "figmaCollection": "Color",
+      "figmaName": "border/warning-subtle",
+      "figmaId": "VariableID:5:63",
+      "scopes": [
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.primary",
+      "cssVar": "--color-icon-primary",
+      "figmaCollection": "Color",
+      "figmaName": "icon/primary",
+      "figmaId": "VariableID:5:64",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.secondary",
+      "cssVar": "--color-icon-secondary",
+      "figmaCollection": "Color",
+      "figmaName": "icon/secondary",
+      "figmaId": "VariableID:5:65",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.disabled",
+      "cssVar": "--color-icon-disabled",
+      "figmaCollection": "Color",
+      "figmaName": "icon/disabled",
+      "figmaId": "VariableID:5:66",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.on-accent",
+      "cssVar": "--color-icon-on-accent",
+      "figmaCollection": "Color",
+      "figmaName": "icon/on-accent",
+      "figmaId": "VariableID:5:67",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.accent",
+      "cssVar": "--color-icon-accent",
+      "figmaCollection": "Color",
+      "figmaName": "icon/accent",
+      "figmaId": "VariableID:5:68",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.danger",
+      "cssVar": "--color-icon-danger",
+      "figmaCollection": "Color",
+      "figmaName": "icon/danger",
+      "figmaId": "VariableID:5:69",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.icon.warning",
+      "cssVar": "--color-icon-warning",
+      "figmaCollection": "Color",
+      "figmaName": "icon/warning",
+      "figmaId": "VariableID:5:70",
+      "scopes": [
+        "SHAPE_FILL",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "color.focus.ring",
+      "cssVar": "--color-focus-ring",
+      "figmaCollection": "Color",
+      "figmaName": "focus/ring",
+      "figmaId": "VariableID:5:71",
+      "scopes": [
+        "EFFECT_COLOR",
+        "STROKE_COLOR"
+      ]
+    },
+    {
+      "token": "space.1",
+      "cssVar": "--space-1",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/1",
+      "figmaId": "VariableID:5:73",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.2",
+      "cssVar": "--space-2",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/2",
+      "figmaId": "VariableID:5:74",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.3",
+      "cssVar": "--space-3",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/3",
+      "figmaId": "VariableID:5:75",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.4",
+      "cssVar": "--space-4",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/4",
+      "figmaId": "VariableID:5:76",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.5",
+      "cssVar": "--space-5",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/5",
+      "figmaId": "VariableID:5:77",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.6",
+      "cssVar": "--space-6",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/6",
+      "figmaId": "VariableID:5:78",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.8",
+      "cssVar": "--space-8",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/8",
+      "figmaId": "VariableID:5:79",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.10",
+      "cssVar": "--space-10",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/10",
+      "figmaId": "VariableID:5:80",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "space.12",
+      "cssVar": "--space-12",
+      "figmaCollection": "Dimension",
+      "figmaName": "space/12",
+      "figmaId": "VariableID:5:81",
+      "scopes": [
+        "GAP"
+      ]
+    },
+    {
+      "token": "radius.sm",
+      "cssVar": "--radius-sm",
+      "figmaCollection": "Dimension",
+      "figmaName": "radius/sm",
+      "figmaId": "VariableID:5:82",
+      "scopes": [
+        "CORNER_RADIUS"
+      ]
+    },
+    {
+      "token": "radius.md",
+      "cssVar": "--radius-md",
+      "figmaCollection": "Dimension",
+      "figmaName": "radius/md",
+      "figmaId": "VariableID:5:83",
+      "scopes": [
+        "CORNER_RADIUS"
+      ]
+    },
+    {
+      "token": "radius.lg",
+      "cssVar": "--radius-lg",
+      "figmaCollection": "Dimension",
+      "figmaName": "radius/lg",
+      "figmaId": "VariableID:5:84",
+      "scopes": [
+        "CORNER_RADIUS"
+      ]
+    },
+    {
+      "token": "radius.full",
+      "cssVar": "--radius-full",
+      "figmaCollection": "Dimension",
+      "figmaName": "radius/full",
+      "figmaId": "VariableID:5:85",
+      "scopes": [
+        "CORNER_RADIUS"
+      ]
+    },
+    {
+      "token": "border-width.thin",
+      "cssVar": "--border-width-thin",
+      "figmaCollection": "Dimension",
+      "figmaName": "border-width/thin",
+      "figmaId": "VariableID:5:86",
+      "scopes": [
+        "STROKE_FLOAT"
+      ]
+    },
+    {
+      "token": "border-width.thick",
+      "cssVar": "--border-width-thick",
+      "figmaCollection": "Dimension",
+      "figmaName": "border-width/thick",
+      "figmaId": "VariableID:5:87",
+      "scopes": [
+        "STROKE_FLOAT"
+      ]
+    },
+    {
+      "token": "focus.ring-width",
+      "cssVar": "--focus-ring-width",
+      "figmaCollection": "Dimension",
+      "figmaName": "focus/ring-width",
+      "figmaId": "VariableID:5:88",
+      "scopes": [
+        "EFFECT_FLOAT"
+      ]
+    },
+    {
+      "token": "focus.ring-offset",
+      "cssVar": "--focus-ring-offset",
+      "figmaCollection": "Dimension",
+      "figmaName": "focus/ring-offset",
+      "figmaId": "VariableID:5:89",
+      "scopes": [
+        "EFFECT_FLOAT"
+      ]
+    },
+    {
+      "token": "size.control-height",
+      "cssVar": "--size-control-height",
+      "figmaCollection": "Dimension",
+      "figmaName": "size/control-height",
+      "figmaId": "VariableID:5:90",
+      "scopes": [
+        "WIDTH_HEIGHT"
+      ]
+    },
+    {
+      "token": "size.badge-height",
+      "cssVar": "--size-badge-height",
+      "figmaCollection": "Dimension",
+      "figmaName": "size/badge-height",
+      "figmaId": "VariableID:5:91",
+      "scopes": [
+        "WIDTH_HEIGHT"
+      ]
+    },
+    {
+      "token": "size.icon-sm",
+      "cssVar": "--size-icon-sm",
+      "figmaCollection": "Dimension",
+      "figmaName": "size/icon-sm",
+      "figmaId": "VariableID:5:92",
+      "scopes": [
+        "WIDTH_HEIGHT"
+      ]
+    },
+    {
+      "token": "size.checkbox",
+      "cssVar": "--size-checkbox",
+      "figmaCollection": "Dimension",
+      "figmaName": "size/checkbox",
+      "figmaId": "VariableID:5:93",
+      "scopes": [
+        "WIDTH_HEIGHT"
+      ]
+    }
+  ],
+  "textStyles": [
+    {
+      "token": "typography.heading.l",
+      "figmaName": "heading/l",
+      "figmaId": "S:c445ab541d4e7c3477dfb0abde513c455143eef8,"
+    },
+    {
+      "token": "typography.heading.m",
+      "figmaName": "heading/m",
+      "figmaId": "S:aa6596efc4bf19dbde31cdf0fbf8c70f1007963b,"
+    },
+    {
+      "token": "typography.heading.s",
+      "figmaName": "heading/s",
+      "figmaId": "S:03fa1e0b76fed39e24911478b358ea0a7afb34fd,"
+    },
+    {
+      "token": "typography.body.m",
+      "figmaName": "body/m",
+      "figmaId": "S:7da30fd0dc4e0bee7f8f5315904b07caef27bb46,"
+    },
+    {
+      "token": "typography.body.s",
+      "figmaName": "body/s",
+      "figmaId": "S:dda051cf8a41183bf157f0a9487896aa414b9779,"
+    },
+    {
+      "token": "typography.label.m",
+      "figmaName": "label/m",
+      "figmaId": "S:1d73ff9753978ec588c45c9cabbdfdb7a174c348,"
+    },
+    {
+      "token": "typography.label.s",
+      "figmaName": "label/s",
+      "figmaId": "S:a90feb336030836576da1cf4b76862f0efc379ce,"
+    },
+    {
+      "token": "typography.label.xs",
+      "figmaName": "label/xs",
+      "figmaId": "S:4cbfab88aaa30b0a762c8847988c1ec3aba8ef0c,"
+    },
+    {
+      "token": "typography.caption",
+      "figmaName": "caption",
+      "figmaId": "S:1511efb06394082c1fb43d2174480e14fc42f2d3,"
+    },
+    {
+      "token": "typography.amount.m",
+      "figmaName": "amount/m",
+      "figmaId": "S:a2164b6f7da7f7c41b9472636531dd2aa76bca52,"
+    },
+    {
+      "token": "typography.amount.l",
+      "figmaName": "amount/l",
+      "figmaId": "S:908b0170bb268d7e082b62f2f71efec2600a3d6e,"
+    }
+  ],
+  "effectStyles": [
+    {
+      "figmaName": "focus/ring",
+      "figmaId": "S:0345be164e1dcac14275f36765283e3501980895,",
+      "tokens": [
+        "color.focus.ring",
+        "focus.ring-width",
+        "focus.ring-offset"
+      ],
+      "figmaOnly": "Figmaでは透明な隙間を描けないため、隙間の影を bg/surface の色で描く。実装の隙間は透明（outline-offset）",
+      "css": "outline: var(--focus-ring-width) solid var(--color-focus-ring); outline-offset: var(--focus-ring-offset)"
+    }
+  ],
+  "icons": [
+    {
+      "figmaName": "Icon/Check",
+      "figmaId": "6:4"
+    },
+    {
+      "figmaName": "Icon/Question",
+      "figmaId": "6:9"
+    },
+    {
+      "figmaName": "Icon/Alert",
+      "figmaId": "6:14"
+    },
+    {
+      "figmaName": "Icon/Error",
+      "figmaId": "6:19"
+    },
+    {
+      "figmaName": "Icon/Minus",
+      "figmaId": "6:22"
+    },
+    {
+      "figmaName": "Icon/Clock",
+      "figmaId": "6:26"
+    }
+  ],
+  "components": [
+    {
+      "name": "Status Badge",
+      "figmaComponentSetId": "6:58",
+      "spec": "components.md#status-badge",
+      "properties": {
+        "Status": {
+          "type": "VARIANT",
+          "options": [
+            "Confirmed",
+            "Forecast",
+            "Unknown",
+            "NeedsReview",
+            "Error",
+            "NotApplicable"
+          ]
+        }
+      },
+      "variants": [
+        {
+          "figmaId": "6:27",
+          "name": "Status=Confirmed"
+        },
+        {
+          "figmaId": "6:31",
+          "name": "Status=Forecast"
+        },
+        {
+          "figmaId": "6:36",
+          "name": "Status=Unknown"
+        },
+        {
+          "figmaId": "6:42",
+          "name": "Status=NeedsReview"
+        },
+        {
+          "figmaId": "6:48",
+          "name": "Status=Error"
+        },
+        {
+          "figmaId": "6:54",
+          "name": "Status=NotApplicable"
+        }
+      ]
+    },
+    {
+      "name": "Button",
+      "figmaComponentSetId": "7:45",
+      "spec": "components.md#button",
+      "properties": {
+        "Variant": {
+          "type": "VARIANT",
+          "options": [
+            "Primary",
+            "Secondary",
+            "Danger"
+          ]
+        },
+        "State": {
+          "type": "VARIANT",
+          "options": [
+            "Default",
+            "Hover",
+            "Pressed",
+            "Focus",
+            "Disabled"
+          ]
+        },
+        "Label": {
+          "type": "TEXT",
+          "figmaKey": "Label#7:0",
+          "default": "保存する"
+        }
+      },
+      "variants": [
+        {
+          "figmaId": "7:15",
+          "name": "Variant=Primary, State=Default"
+        },
+        {
+          "figmaId": "7:17",
+          "name": "Variant=Primary, State=Hover"
+        },
+        {
+          "figmaId": "7:19",
+          "name": "Variant=Primary, State=Pressed"
+        },
+        {
+          "figmaId": "7:21",
+          "name": "Variant=Primary, State=Focus"
+        },
+        {
+          "figmaId": "7:23",
+          "name": "Variant=Primary, State=Disabled"
+        },
+        {
+          "figmaId": "7:25",
+          "name": "Variant=Secondary, State=Default"
+        },
+        {
+          "figmaId": "7:27",
+          "name": "Variant=Secondary, State=Hover"
+        },
+        {
+          "figmaId": "7:29",
+          "name": "Variant=Secondary, State=Pressed"
+        },
+        {
+          "figmaId": "7:31",
+          "name": "Variant=Secondary, State=Focus"
+        },
+        {
+          "figmaId": "7:33",
+          "name": "Variant=Secondary, State=Disabled"
+        },
+        {
+          "figmaId": "7:35",
+          "name": "Variant=Danger, State=Default"
+        },
+        {
+          "figmaId": "7:37",
+          "name": "Variant=Danger, State=Hover"
+        },
+        {
+          "figmaId": "7:39",
+          "name": "Variant=Danger, State=Pressed"
+        },
+        {
+          "figmaId": "7:41",
+          "name": "Variant=Danger, State=Focus"
+        },
+        {
+          "figmaId": "7:43",
+          "name": "Variant=Danger, State=Disabled"
+        }
+      ]
+    },
+    {
+      "name": "Amount Input",
+      "figmaComponentSetId": "8:210",
+      "spec": "components.md#amount-input",
+      "properties": {
+        "Value": {
+          "type": "VARIANT",
+          "options": [
+            "Empty",
+            "Amount",
+            "Zero",
+            "Unknown"
+          ]
+        },
+        "State": {
+          "type": "VARIANT",
+          "options": [
+            "Default",
+            "FocusInput",
+            "FocusCheckbox",
+            "Error",
+            "Disabled"
+          ],
+          "note": "使ってよい組合せは combinationRule だけから決まる"
+        },
+        "Label": {
+          "type": "TEXT",
+          "figmaKey": "Label#8:0",
+          "default": "総支給額"
+        },
+        "Hint": {
+          "type": "TEXT",
+          "figmaKey": "Hint#8:17",
+          "default": "半角数字で入力（円単位。カンマは不要）"
+        },
+        "Show hint": {
+          "type": "BOOLEAN",
+          "figmaKey": "Show hint#8:34",
+          "default": true
+        },
+        "Allow unknown": {
+          "type": "BOOLEAN",
+          "figmaKey": "Allow unknown#41:0",
+          "default": true,
+          "note": "false のとき「金額がわからない」を出さない（不明を認めない項目）。組合せは combinationRule"
+        }
+      },
+      "combinationRule": {
+        "$description": "design/components.md の「組合せの規則」と同じ規則。requires の各項目は「when が成り立つなら then も成り立つ」。どの項目にも当てはまらない組合せは制約なし",
+        "properties": {
+          "Value": [
+            "Empty",
+            "Amount",
+            "Zero",
+            "Unknown"
+          ],
+          "State": [
+            "Default",
+            "FocusInput",
+            "FocusCheckbox",
+            "Error",
+            "Disabled"
+          ],
+          "Allow unknown": [
+            true,
+            false
+          ]
+        },
+        "requires": [
+          {
+            "when": {
+              "Value": "Unknown"
+            },
+            "then": {
+              "Allow unknown": true
+            }
+          },
+          {
+            "when": {
+              "State": "FocusInput"
+            },
+            "then": {
+              "Value": {
+                "not": "Unknown"
+              }
+            }
+          },
+          {
+            "when": {
+              "State": "Error"
+            },
+            "then": {
+              "Value": {
+                "not": "Unknown"
+              }
+            }
+          },
+          {
+            "when": {
+              "State": "FocusCheckbox"
+            },
+            "then": {
+              "Allow unknown": true
+            }
+          }
+        ],
+        "figmaVariantsAre": {
+          "Allow unknown": true
+        }
+      },
+      "variants": [
+        {
+          "figmaId": "8:15",
+          "name": "Value=Empty, State=Default"
+        },
+        {
+          "figmaId": "8:24",
+          "name": "Value=Empty, State=FocusInput"
+        },
+        {
+          "figmaId": "39:43",
+          "name": "Value=Empty, State=FocusCheckbox"
+        },
+        {
+          "figmaId": "8:34",
+          "name": "Value=Empty, State=Error"
+        },
+        {
+          "figmaId": "8:50",
+          "name": "Value=Empty, State=Disabled"
+        },
+        {
+          "figmaId": "8:59",
+          "name": "Value=Amount, State=Default"
+        },
+        {
+          "figmaId": "8:68",
+          "name": "Value=Amount, State=FocusInput"
+        },
+        {
+          "figmaId": "39:52",
+          "name": "Value=Amount, State=FocusCheckbox"
+        },
+        {
+          "figmaId": "8:78",
+          "name": "Value=Amount, State=Error"
+        },
+        {
+          "figmaId": "8:94",
+          "name": "Value=Amount, State=Disabled"
+        },
+        {
+          "figmaId": "8:103",
+          "name": "Value=Zero, State=Default"
+        },
+        {
+          "figmaId": "8:112",
+          "name": "Value=Zero, State=FocusInput"
+        },
+        {
+          "figmaId": "39:61",
+          "name": "Value=Zero, State=FocusCheckbox"
+        },
+        {
+          "figmaId": "8:122",
+          "name": "Value=Zero, State=Error"
+        },
+        {
+          "figmaId": "8:138",
+          "name": "Value=Zero, State=Disabled"
+        },
+        {
+          "figmaId": "8:147",
+          "name": "Value=Unknown, State=Default"
+        },
+        {
+          "figmaId": "8:161",
+          "name": "Value=Unknown, State=FocusCheckbox"
+        },
+        {
+          "figmaId": "8:196",
+          "name": "Value=Unknown, State=Disabled"
+        }
+      ]
+    }
+  ],
+  "documentationFrames": [
+    {
+      "page": "0:1",
+      "figmaId": "15:280",
+      "name": "表紙 Cover"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "10:2",
+      "name": "基礎 / 概要 Overview"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "10:8",
+      "name": "基礎 / 色 Color"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "11:2",
+      "name": "基礎 / コントラスト Contrast"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "12:2",
+      "name": "基礎 / 文字 Typography"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "12:66",
+      "name": "基礎 / 余白・角丸・線 Spacing, Radius, Border"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "12:116",
+      "name": "基礎 / フォーカス Focus"
+    },
+    {
+      "page": "5:106",
+      "figmaId": "12:136",
+      "name": "基礎 / 金額の表示 Amount display"
+    },
+    {
+      "page": "5:107",
+      "figmaId": "9:43",
+      "name": "アイコン Icons"
+    },
+    {
+      "page": "5:107",
+      "figmaId": "9:53",
+      "name": "状態バッジ Status Badge"
+    },
+    {
+      "page": "5:107",
+      "figmaId": "9:58",
+      "name": "ボタン Button"
+    },
+    {
+      "page": "5:107",
+      "figmaId": "9:71",
+      "name": "金額入力 Amount Input"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "13:5",
+      "name": "利用例 / 給与明細の入力 Form"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "13:68",
+      "name": "利用例 / キーボード操作 Keyboard"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "13:74",
+      "name": "利用例 / 金額の一覧 Amount list"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "15:105",
+      "name": "検証 / 日本語の長文 Long text"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "15:165",
+      "name": "検証 / 200%拡大 640px"
+    },
+    {
+      "page": "5:108",
+      "figmaId": "15:195",
+      "name": "検証 / 400%拡大 320px"
+    }
+  ]
+}
