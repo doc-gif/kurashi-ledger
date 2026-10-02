@@ -8,7 +8,7 @@
 
 - **すべて架空のデータ。** 勤務先・口座・摘要・金額は、実在の人・会社・給与と関係がない。税額・保険料の値は、制度による計算の結果ではなく、例のために置いた数。
 - 各例は独立している。記録のID（`pay_101`等）はその例の中だけで使う。下の「共通の設定」の雇用先・雇用条件・口座だけを共有する。
-- 表に挙げない記録の項目は、その例の期待する結果に影響しない（実際の記録では、入力がなければ`unknown`になる）。
+- 表に挙げない記録の項目は、その例の期待する結果に影響しない（実際の記録では、入力がなければ`unknown`になる）。ただし、資料から写す並び（給与明細の`otherEarnings`・`otherDeductions`、正式通知の`amounts`・`installments`・`statusDates`）は、表に挙げなければ「確かめて行がない」（`known`の空の並び）とする（[共通の型](common-types.md)の12の「並びの空の意味」）。
 - 金額の状態は「値あり 230,000」「不明」「記載なし」「対象外」と書く（[共通の型](common-types.md)の5）。金額は円。
 - 集計は「集計の種類（範囲、軸）」で書く。軸は、入金日・支払予定日・予定月・所得の年のどれか（[照合の規則](reconciliation.md)の2）。期間は短く「入金日 2026-09」のように書く。これは`scope`の`from` 2026-09-01・`to` 2026-09-30（両端を含む。[共通の型](common-types.md)の11の`AxisValue`）を表す。
 - 「しないこと」は、この契約のもとで誤りになる解釈。
@@ -82,14 +82,14 @@
   "nonTaxablePay": {"state": "known", "value": 10000},
   "commutingAllowance": {"state": "known", "value": 10000},
   "commutingAllowanceTaxTreatment": {"state": "known", "value": "non-taxable"},
-  "otherEarnings": [],
+  "otherEarnings": {"state": "known", "value": []},
   "incomeTax": {"state": "known", "value": 4000},
   "residentTax": {"state": "known", "value": 10000},
   "healthInsurance": {"state": "known", "value": 11500},
   "nursingCareInsurance": {"state": "not-applicable", "note": "架空の設定で対象外"},
   "pensionInsurance": {"state": "known", "value": 21000},
   "employmentInsurance": {"state": "known", "value": 1500},
-  "otherDeductions": [],
+  "otherDeductions": {"state": "known", "value": []},
   "yearEndAdjustment": {"state": "not-applicable"},
   "totalDeductions": {"state": "known", "value": 48000},
   "netPay": {"state": "known", "value": 182000},

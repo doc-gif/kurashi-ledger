@@ -66,14 +66,14 @@
 | `nonTaxablePay` | `Fact<Yen>`（0以上） | 非課税支給額。記載がなければ`not-stated` |
 | `commutingAllowance` | `Fact<Yen>`（0以上） | 通勤手当 |
 | `commutingAllowanceTaxTreatment` | `Fact<non-taxable・taxable・mixed>` | 通勤手当の課税区分。記載どおり（`mixed`は一部が課税） |
-| `otherEarnings` | `List<EarningLine>` | その他の支給の行 |
+| `otherEarnings` | `Fact<List<EarningLine>>` | その他の支給の行。資料を確かめて行がなければ`known`の空の並び、写していなければ`unknown`（既定）。`known`か`unknown`だけ（[共通の型](common-types.md)の12の「並びの空の意味」） |
 | `incomeTax` | `Fact<Yen>`（0以上） | 所得税（源泉徴収税額） |
 | `residentTax` | `Fact<Yen>`（0以上） | 住民税（特別徴収） |
 | `healthInsurance` | `Fact<Yen>`（0以上） | 健康保険料 |
 | `nursingCareInsurance` | `Fact<Yen>`（0以上） | 介護保険料 |
 | `pensionInsurance` | `Fact<Yen>`（0以上） | 厚生年金保険料 |
 | `employmentInsurance` | `Fact<Yen>`（0以上） | 雇用保険料 |
-| `otherDeductions` | `List<DeductionLine>` | その他の控除の行 |
+| `otherDeductions` | `Fact<List<DeductionLine>>` | その他の控除の行。`otherEarnings`と同じく、`known`（空は確かめて行がない）か`unknown`（写していない）だけ |
 | `yearEndAdjustment` | `Fact<Yen>`（符号あり） | 年末調整の過不足。正は本人への還付、負は追加の徴収 |
 | `totalDeductions` | `Fact<Yen>`（0以上） | 控除合計。記載どおり |
 | `netPay` | `Fact<Yen>`（符号あり） | 差引支給額。記載どおり |
@@ -173,7 +173,7 @@
 | `employerId` | `Fact<Id<Employer>>` | 支払者。入金の予測で勤務先に結び付けない場合は`not-applicable`。実績化の確定には、[照合の規則](reconciliation.md)の3の「識別の次元」に従って`known`が必要になる |
 | `accountId` | `Fact<Id<Account>>` | 入金先（`subject`が`deposit`の場合だけ）。実績化の確定には`known`が必要（同3） |
 | `measure` | `gross-pay・net-pay・bank-transfer・deposit-amount` | 行の金額が何を表すか。`subject`が`pay`なら`gross-pay`・`net-pay`・`bank-transfer`、`deposit`なら`deposit-amount` |
-| `lines` | `List<ForecastLine>` | 見込みの行 |
+| `lines` | `List<ForecastLine>` | 見込みの行。利用者が作る一覧なので、空の並びの予測は保存しない（1行以上） |
 | `basis` | `Fact<contract・past-actuals・user-estimate・other>` | 見込みの根拠（契約・過去の実績・利用者の見積り・その他） |
 | `basisNote` | `Fact<Text>` | 根拠のメモ |
 
@@ -206,9 +206,9 @@
 | `subjectYear` | `Fact<{ kind: calendar・fiscal, year: YYYY }>` | 通知の対象の年・年度（例 住民税の年度） |
 | `incomeYear` | `Fact<CalendarYear>` | 基になった所得の年。記載がなければ`not-stated` |
 | `applicablePeriod` | `Fact<Period>` | 決定が当てはまる期間 |
-| `amounts` | `List<NoticeAmount>` | 決定された金額の行 |
-| `installments` | `List<Installment>` | 納付・徴収の予定の行 |
-| `statusDates` | `List<StatusDate>` | 資格の取得日・喪失日等の行 |
+| `amounts` | `Fact<List<NoticeAmount>>` | 決定された金額の行。通知を確かめて金額の行がなければ`known`の空の並び、読んでいなければ`unknown`（既定）。`known`か`unknown`だけ（[共通の型](common-types.md)の12の「並びの空の意味」）。`unknown`なら、その種類・年度の決定額の集計は`incomplete`になる（[照合の規則](reconciliation.md)の2） |
+| `installments` | `Fact<List<Installment>>` | 納付・徴収の予定の行。`amounts`と同じく`known`か`unknown`だけ |
+| `statusDates` | `Fact<List<StatusDate>>` | 資格の取得日・喪失日等の行。`amounts`と同じく`known`か`unknown`だけ |
 | `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（10）。`revision`は`current`（記録どうしの関係。[共通の型](common-types.md)の2）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
 `NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。`category`と`amount`は`not-applicable`を使わない（[共通の型](common-types.md)の12の既定）。

@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。通知の行の`category`が`unknown`・`not-stated`の場合は、その行を黙って除外せず、その通知の種類と年度の集計を`incomplete`にして、`missing`にその行を同じ状態（`unknown`・`not-stated`）で挙げる。通知の`subjectYear`が`unknown`・`not-stated`の場合は、その種類のすべての年度の集計に、同じように不足として挙げる（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`で、差し替えの系列の現在の記録である通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ、二重登録等）。その集計は`incomplete`にし、`missing`にそれらの通知を状態`conflict`で挙げる。通知の行の`category`が`unknown`・`not-stated`の場合は、その行を黙って除外せず、その通知の種類と年度の集計を`incomplete`にして、`missing`にその行を同じ状態（`unknown`・`not-stated`）で挙げる。通知の`amounts`が`unknown`（読んでいない）の場合も、その通知の種類と年度の集計を`incomplete`にし、`missing`にその通知の`amounts`を`unknown`で挙げる（[共通の型](common-types.md)の12の「並びの空の意味」）。通知の`subjectYear`が`unknown`・`not-stated`の場合は、その種類のすべての年度の集計に、同じように不足として挙げる（[共通の型](common-types.md)の5の「分からない値で絞り込まない」）。発行者の表示（`issuerLabel`）は表記が揺れ、不明でもありうるので、この判定に使わない。利用者が`duplicate-review`の判断で`distinct`（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -217,7 +217,7 @@
 | --- | --- |
 | 支払予定日 | `scheduledPayDate`の年。`unknown`・`not-stated`ならすべての年（[共通の型](common-types.md)の5の「分からない値で絞り込まない」） |
 | 勤務期間 | `workPeriod`が重なるすべての年。端が分からない側は限りなく開き（同6の「端が分からない期間の扱い」。例: `start`が不明で`end`が2026-03-31なら、2026年とそれより前のすべての年）、期間そのものが`unknown`・`not-stated`ならすべての年。`not-applicable`なら、この次元からは年を加えない |
-| 行の期間 | 行の`linePeriod`が`known`なら、それが重なるすべての年（端の扱いは勤務期間と同じ）。行ごとの帰属は持たず（明細全体で1つ）、行の期間は明細の勤務期間に加える情報なので、`not-stated`（行に期間の記載がない）では年を加えない。`unknown`（記載があるが読めない等）ならすべての年 |
+| 行の期間 | 行の並び（`otherEarnings`）が`unknown`（写していない）ならすべての年。`known`なら、各行の`linePeriod`が`known`のとき、それが重なるすべての年（端の扱いは勤務期間と同じ）。行ごとの帰属は持たず（明細全体で1つ）、行の期間は明細の勤務期間に加える情報なので、`not-stated`（行に期間の記載がない）では年を加えない。`unknown`（記載があるが読めない等）ならすべての年 |
 | 入金日 | 確定済みの`transfer-to-deposit`（9で除かれていないもの）で結んだ入金の`depositDate`の年。その日付が`unknown`・`not-stated`ならすべての年。結んだ入金がなければ、この次元からは年を加えない（関係がないことは、分からない値ではない） |
 | 資料の年 | 確定済みの`annual-coverage`（同）で結んだ年間資料の`targetYear` |
 | 利用者の指定 | 有効な`tax-year-assertion`の判断の年 |

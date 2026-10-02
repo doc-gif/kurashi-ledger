@@ -12,7 +12,7 @@
 | --- | --- |
 | `Yen` | 日本円の整数（4を参照） |
 | `Fact<T>` | 状態付きの値。`T`の値と、4つの状態のどれか（5を参照） |
-| `List<T>` | `T`の並び。空の並びを許す。並びの順序に意味がある場合は項目の説明に書く |
+| `List<T>` | `T`の並び。並びの順序に意味がある場合は項目の説明に書く。空の並びの意味は12の「並びの空の意味」による |
 | `Id<T>`、`LineId`、`Ref<T>` | 記録のID、記録の中の行のID、記録への参照（2を参照） |
 | `LocalDate`、`YearMonth`、`CalendarYear`、`FiscalYear`、`Instant`、`Period` | 日付と期間（6を参照） |
 | `Text` | 文字列。資料の記載や利用者のメモ。意味を解釈せず、そのまま持つ |
@@ -68,17 +68,22 @@
 - **記録どうしの関係**（照合配分の`from`・`to`、照合の判断の`targets`、証憑の紐付けの`target`、`supersedes`、`duplicateOf`）は、`revision`に`current`だけを使う。関係が確定した時点の版は、関係そのものに整数で固定せず、専用の項目（照合配分の`confirmedAgainst`、`mismatch-explanation`の`explainedComparisons`）で持つ。関係と確定の時点を2か所で持って食い違うことを防ぐため。
 - **固定した写し**（計算runの中のすべての参照。[計算結果](calculation-results.md)の1）は、`revision`に整数だけを使う。
 - **集計の結果**（集計値の`missing`の`ref`。11）は、`revision`に整数だけを使う。その整数は、集計を計算した見方（7。現在の見方なら最新の版）で選ばれた参照先の版とする。後から改訂されても、出力した結果の参照が別の版に変わらないようにするため。
+- **参照先の種類と次元（1つの規則）:** `Ref`の項目は、下の表の「参照先」に書いた種類の記録（と行）だけを指す。表に一致が必要な識別の次元を書いた項目は、参照先がその次元を満たさなければ指せない（比較は13の4×4の表。未確定なら満たさないとする）。違う保存は拒否する。保存のあとの改訂で満たさなくなった参照は、その項目を使う規則（照合配分の使われ方、判断の前提等）に従って要確認・要判断になる。
 - 契約の`Ref`の項目は、すべて上の3つのどれかに当たり、その項目の説明にどちらを使うかを書く。新しく`Ref`の項目を足すときも、どれに当たるかを決めて説明に書く。
 
-| `Ref`の項目 | 区分 | `revision` |
-| --- | --- | --- |
-| 照合配分の`from`・`to`（[照合の規則](reconciliation.md)の3） | 記録どうしの関係 | `current` |
-| 照合の判断の`targets`（同4） | 記録どうしの関係 | `current` |
-| 証憑の紐付けの`target`（[記録の型](records.md)の9） | 記録どうしの関係 | `current` |
-| 給与明細・年間資料・正式通知の`supersedes`（同4・6・8） | 記録どうしの関係 | `current` |
-| 改訂の共通の形の`duplicateOf`（9） | 記録どうしの関係 | `current` |
-| 計算runの`inputs`の`records`・`allocations`・`decisions`、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`（[計算結果](calculation-results.md)の1） | 固定した写し | 整数 |
-| 集計値の`missing`の`ref`（11） | 集計の結果 | 整数（集計を計算した見方で選ばれた版） |
+| `Ref`の項目 | 区分 | `revision` | 参照先（種類と、一致が必要な次元） |
+| --- | --- | --- | --- |
+| 照合配分の`from`・`to`（[照合の規則](reconciliation.md)の3） | 記録どうしの関係 | `current` | 種類ごとの表（同3）の`from`・`to`の種類。次元は同3の「識別の次元」 |
+| 照合の判断の`targets`（同4） | 記録どうしの関係 | `current` | 判断の種類ごとの表（同4）の種類と件数。`annual-adoption`の年間資料は同4の保存の検証 |
+| 証憑の紐付けの`target`（[記録の型](records.md)の9） | 記録どうしの関係 | `current` | 改訂を持つ記録（証憑の紐付けそのものを除く） |
+| 給与明細・年間資料・正式通知の`supersedes`（同4・6・8） | 記録どうしの関係 | `current` | 同じ種類の記録。次元は同10の「差し替えの識別の次元」 |
+| 改訂の共通の形の`duplicateOf`（9） | 記録どうしの関係 | `current` | 取り消す記録と同じ種類の記録 |
+| 計算runの`inputs.records` | 固定した写し | 整数 | 改訂を持つ記録 |
+| 計算runの`inputs.allocations`・`inputs.decisions` | 固定した写し | 整数 | それぞれ照合配分・照合の判断 |
+| `AdoptionSnapshot`の`adoptedRef` | 固定した写し | 整数 | 年間資料で、`targetYear`がスナップショットの`year`と同じ、範囲が確定していてスナップショットの`payers`をすべて含み、取消・差し替えされていない（その版で）もの。[照合の規則](reconciliation.md)の5で選ばれた資料と同じ |
+| `Assumption`の`ref` | 固定した写し | 整数 | `source`が`forecast`なら予測の行。ほかは改訂を持つ記録 |
+| `MissingInput`の`ref`、`ResultItem`の`explanationRefs` | 固定した写し | 整数 | 改訂を持つ記録 |
+| 集計値の`missing`の`ref`（11） | 集計の結果 | 整数（集計を計算した見方で選ばれた版） | 改訂を持つ記録 |
 
 参照先が存在しない参照は保存できない（T06・T07で検証する）。
 
@@ -267,7 +272,7 @@
 | `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表）。`revision`は`current`（記録どうしの関係。2） |
 | `entryChannel` | `manual`・`import` | 手入力か取込か |
 | `writeRequestId` | `Text` | 保存の要求の冪等キー（10を参照） |
-| `importKey` | `Fact<Text>` | 取込の冪等キー。取込の場合だけ（10を参照） |
+| `importKey` | `Fact<{ source: Text, key: Text }>` | 取込の冪等キー。取込の場合だけ（10を参照）。`source`は取込元の識別子、`key`はその取込元の中での取引のキー |
 | `body` | 記録の種類ごとの内容 | [記録の型](records.md)、[照合の規則](reconciliation.md) |
 
 `recordType`の値: `employer`、`employment-term`、`account`、`issuer`、`payslip`、`bank-deposit`、`annual-document`、`forecast`、`official-notice`、`evidence-link`、`allocation`、`decision`。
@@ -308,11 +313,11 @@
 | キー | 作る人 | 意味 | 同じキーが来たとき |
 | --- | --- | --- | --- |
 | `writeRequestId` | 画面・APIが、保存の操作ごとに作る | 1回の保存の操作 | 新しい記録・改訂を作らず、最初の結果を返す |
-| `importKey` | 取込処理が、取込元ごとに作る | 取込元の1件の取引 | 同じ取込元・同じキーの記録があれば作らない |
+| `importKey` | 取込処理が、取込元ごとに作る | 取込元（`source`）の中の1件の取引（`key`） | 同じ記録の種類で、`source`と`key`の組が同じ記録があれば作らない |
 
 - `writeRequestId`は内容から作らない。同じ内容でも、別の操作なら別の記録として保存できる（同じ日・同じ金額の別件）。
 - 同じ`writeRequestId`で内容が違う要求が来た場合は、誤りとして拒否する（最初の結果を返さず、新しい記録・改訂も作らない）。
-- `importKey`は、取込元が持つ取引の識別子から作る。取込元が識別子を持たない場合の作り方はT09で決める。その場合も、同じ日・同じ金額の別の取引を1件にまとめない方式にする。
+- `importKey`は、取込元の識別子（`source`）と、取込元の中での取引のキー（`key`）の組として保存する。一意性は`recordType`・`source`・`key`の組で判定し、別の取込元で同じ`key`が使われても、別の取引として扱う。`key`は、取込元が持つ取引の識別子から作る。`source`の決め方（口座ごとの明細の形式等）はT09で決める。取込元が識別子を持たない場合の作り方はT09で決める。その場合も、同じ日・同じ金額の別の取引を1件にまとめない方式にする。
 - 金額と日付が同じかどうか（同額判定）は冪等キーと別に扱い、重複候補の提示にだけ使う（[照合の規則](reconciliation.md)の7）。
 
 ## 11. 集計値の形
@@ -383,6 +388,7 @@
 | 給与明細の`scheduledPayDate` | いつでも | `known`・`unknown`・`not-stated`（集計の軸に使う日付なので`not-applicable`は使わない。分からない場合は11の`MissingState`で不足として挙げられる） |
 | 銀行入金の`depositDate`・`amount` | いつでも | `known`・`unknown`・`not-stated`（`not-applicable`は使わない） |
 | 正式通知の`subjectYear` | `amounts`に`category`が`annual-total`の行、または`category`が分からない行がある | `known`・`unknown`・`not-stated`（決定額の集計の軸に使うので`not-applicable`は使わない） |
+| 給与明細の`otherEarnings`・`otherDeductions`、正式通知の`amounts`・`installments`・`statusDates` | いつでも | `known`か`unknown`だけ（下の「並びの空の意味」。資料から写す並び） |
 | 年間資料の`includedOtherPayers` | いつでも | `known`か`unknown`（`unknown`の資料は範囲が確定しない。[照合の規則](reconciliation.md)の5） |
 | 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（正） |
 | 同 | `annual-coverage` | `not-applicable` |
@@ -424,6 +430,22 @@
 | `ResultItem`の`value` | [計算結果](calculation-results.md)の2の表で許す状態のとき（その結果の項目が当てはまらない） |
 
 金額の合計や比較に使う項目（給与明細の`grossPay`・`taxablePay`・`nonTaxablePay`・`totalDeductions`・`netPay`、行の`amount`、年間資料の金額、正式通知の行の`category`と`amount`、入金の`amount`等）は、この表にないので`not-applicable`を使わない。`not-applicable`は集計から除かれ、不足にも数えないので、これらに使うと値を黙って落とすことになるため。
+
+**並びの空の意味（1つの規則）:** 並びは、空の並びが何を意味するかで、次の2つに分ける。契約のすべての並びは、下の表のどちらかに当たる。
+
+- **資料から写す並び:** 利用者が資料の行を写す並び。空の並びが「確かめて行がない」とも「まだ読んでいない・写していない」とも読めるので、`Fact<List<…>>`にし、`known`（空なら確かめて行がない）か`unknown`（写していない。既定）だけを許す。`unknown`の並びは、5の「分からない値で絞り込まない」に従って扱う（その並びを使う集計は不足に挙げ、候補の年等を狭めない）。
+- **作った時点で完全な並び:** アプリ・計算器・利用者の操作が作る並び。空は「該当なし」の意味で一通りに決まる（または空を許さない）ので、`List<…>`のままにする。
+
+| 並び | 区分 | 空の並び |
+| --- | --- | --- |
+| 給与明細の`otherEarnings`・`otherDeductions`（[記録の型](records.md)の4） | 資料から写す | `known`の空は行がない。`unknown`は写していない |
+| 年間資料の`includedOtherPayers`（同6） | 資料から写す | `known`の空は他の支払者の分がない。`unknown`は確かめていない（範囲が確定しない） |
+| 正式通知の`amounts`・`installments`・`statusDates`（同8） | 資料から写す | `known`の空は行がない。`unknown`は読んでいない |
+| 予測の`lines`（同7） | 利用者の操作が作る | 空を許さない（1行以上） |
+| 照合の判断の`targets`、`scope.payers`、`explainedComparisons`（[照合の規則](reconciliation.md)の4） | 利用者の操作が作る | 判断の種類ごとの件数（同4の表）。`entered-payslips`の`targets`だけが空 |
+| 集計値の`scope`の`employerIds`・`accountIds`（11） | 利用者の操作が作る | 空は「限定しない」 |
+| 集計値の`missing`（11） | アプリが作る | 空は不足がない |
+| 計算runの`results`・`roundingSteps`・`missingInputs`・`unconfirmedItems`・`assumptions`・`adoptions`・`inputs`の各並び、`explanationRefs`、`AdoptionSnapshot.payers`（[計算結果](calculation-results.md)の1） | 計算器が作る | 空は該当なし（`AdoptionSnapshot.payers`は空を許さない） |
 
 **計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
 
