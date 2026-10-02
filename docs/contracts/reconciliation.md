@@ -56,9 +56,9 @@
 
 | 種類 | `from` | `to` | `amount` | 確定の条件（超えたら確定できない） |
 | --- | --- | --- | --- | --- |
-| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額（入金額は確定のときに`known`。[共通の型](common-types.md)の12）。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`unknown`・`not-stated`なら入金の側だけを確かめる。`not-applicable`（振込がない明細）なら確定しない。[共通の型](common-types.md)の12）。下の「識別の次元」の表の条件 |
-| `annual-coverage`（年間資料が明細を含む） | 年間資料 | 給与明細 | `not-applicable` | 下の「識別の次元」の表の条件 |
-| `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行 | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。`known`の正の値（消し込む場合も） | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`。これらの金額は、確定のときに`known`でなければならない（[共通の型](common-types.md)の12）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。下の「識別の次元」の表の条件 |
+| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金（`whole`） | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額（入金額は確定のときに`known`。[共通の型](common-types.md)の12）。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`unknown`・`not-stated`なら入金の側だけを確かめる。`not-applicable`（振込がない明細）なら確定しない。[共通の型](common-types.md)の12）。下の「識別の次元」の表の条件 |
+| `annual-coverage`（年間資料が明細を含む） | 年間資料（`whole`） | 給与明細（`whole`） | `not-applicable` | 下の「識別の次元」の表の条件 |
+| `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行（行だけ。`whole`は使わない） | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。`known`の正の値（消し込む場合も） | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`。これらの金額は、確定のときに`known`でなければならない（[共通の型](common-types.md)の12）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。下の「識別の次元」の表の条件 |
 
 **識別の次元:** 照合配分を確定するときに比べる次元を、種類ごとにこの表だけで定める（ほかの場所で次元を足さない）。「一致すること」と書いた次元は、[共通の型](common-types.md)の13の「値どうしの比較（4×4の表）」で比べ、一致なら満たす、不一致なら確定を拒否、未確定なら確定しない（分からない値は一致の根拠にしない。同5）。予測の側の次元が分からなくて確定できない場合は、先に予測を改訂して`known`にする。推定の項目である入金の`payerHint`は識別の値ではないので、4×4の表を使わず、表の行に書いた扱いに従う。
 
@@ -104,7 +104,7 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `decisionType` | `duplicate-review・annual-adoption・mismatch-explanation・tax-year-assertion` | 判断の種類（下の表） |
-| `targets` | `List<Ref>` | 判断の対象。`revision`は`current`だけ（[共通の型](common-types.md)の2） |
+| `targets` | `List<Ref>` | 判断の対象。`revision`は`current`だけで、`line`は`whole`だけ（判断は記録全体についてのもので、行を指す判断は保存しない。[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」） |
 | `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者。その場合は`known`が必要 |
 | `explainedComparisons` | `Fact<List<{ field: Text, annualValue: Yen, payslipSum: Yen, coveredPayslips: List<Id<Payslip>> }>>` | `mismatch-explanation`の場合だけ（その場合は`known`が必要）。理由を説明する年間資料の項目（例 `paymentAmount`）ごとに、判断したときの比較の値（年間資料の値と明細の合計）と、結んでいた明細の集合を記録する。1件以上 |
 | `value` | 種類ごと（下の表） | 判断の内容 |
@@ -112,7 +112,7 @@
 
 | 種類 | `targets` | `value` | 意味 | 前提が崩れたとき |
 | --- | --- | --- | --- | --- |
-| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | `distinct`: 対象が取消・差し替えされたら要確認（9）。`same`: 一方が`duplicateOf`でもう一方を指して取消されている間だけ前提を満たす。両方が有効になった（取消の取り消し等）、または残す側が取消・差し替えされたら要確認。時点を指定した見方で`duplicateOf`や`targets`の参照先を解決できない場合も、前提を確かめられないので要確認（[共通の型](common-types.md)の2の「`current`の解決」） |
+| `duplicate-review` | 同じ種類の異なる2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | `distinct`: 対象が取消・差し替えされたら要確認（9）。`same`: 一方が`duplicateOf`でもう一方を指して取消されている間だけ前提を満たす。両方が有効になった（取消の取り消し等）、または残す側が取消・差し替えされたら要確認。時点を指定した見方で`duplicateOf`や`targets`の参照先を解決できない場合も、前提を確かめられないので要確認（[共通の型](common-types.md)の2の「`current`の解決」） |
 | `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する | 保存のあとで条件を満たさなくなったら、その支払者は要判断（5の手順1） |
 | `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`explainedComparisons`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない | 項目ごとに、現在の比較の値と結んだ明細の集合が、記録したものと1つでも違えば、その項目には適用しない（`mismatch-unresolved`に戻り、判断を「要再確認」と表示） |
 | `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） | 対象が取消・差し替えされたら要確認（9） |
