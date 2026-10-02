@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "task_id": "T01",
+  "base_sha": "c6834b76afbc08f706f5031cae8fed4e903ce52a",
+  "planned_paths": [
+    "docs/contracts/README.md",
+    "docs/contracts/calculation-results.md",
+    "docs/contracts/common-types.md",
+    "docs/contracts/examples.md",
+    "docs/contracts/reconciliation.md",
+    "docs/contracts/records.md",
+    "docs/implementation-tasks.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01は単一起動のlockや保守コマンドの排他を定めない（ADR-0006・0007のG3、T07の範囲）。契約が定めるtransactionでの直列化（照合配分の確定、差し替えの系列の保存の検査）はDBの中の検査の順序で、保存先のlockとは別の話である。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "契約の文書にlockファイルや保存先の排他の記述がないことを確かめる。transactionの記述（reconciliation 3、records 10）がlockの代わりを主張していないことを読む。",
+          "expected": "lockの規則は契約になく、ADR-0006・0007が正本のまま。契約のtransactionは、1つのDBの中の検査と保存の直列化だけを指す。"
+        },
+        {
+          "id": "recovery",
+          "method": "契約に、強制終了・PID・空環境でのlockの取得の記述がないことを確かめる。",
+          "expected": "該当の記述はなく、T07の試験の範囲のまま。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 契約と合成例は架空の勤務先・口座・摘要・金額だけを使う。税額・保険料は制度による計算の結果ではなく、例のために置いた数である。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "公開差分を、個人のパス・メールアドレス・トークン・鍵のパターンで検索し、合成例の名前・金額が架空であることを目視で確かめる。PRコメント・引継ぎにも実データを書かない。",
+          "expected": "該当なし。勤務先A〜C、口座1・2、架空市等の架空の表記だけで、実在の人・会社・給与に結び付く情報はない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "preserve",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01は記録・照合・計算結果の契約そのものであり、この条件を契約の規則として定める。未知値と0は4つの状態と既定の許す状態（common-types 5・12）、銀行入金と給与は集計の採用元（reconciliation 2）、実績・見込み・正式通知は記録の区分（common-types 8）、二重計上の防止は採用元・照合配分・年間資料の採用（reconciliation 3・5・10）、計算履歴の再現は不変の計算runと版の固定（calculation-results 1〜3、common-types 2・7）で扱う。今回の修正（採用の参照の種類と次元の一致、取込の冪等キーの名前空間、空の並びの状態）もこの条件を強める方向で、緩めない。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "合成例EX-01（銀行のみ→明細追加）、EX-06（年間資料と月次）、EX-08（4つの状態）を、契約の規則から導き直して照合する。今回の修正後も、空の並び（正式通知のamounts等）が「記載がないことを確かめた」と「読んでいない」を区別し、未読の空を0や完了として扱わないことを、規則と例で確かめる。",
+          "expected": "銀行入金が支給額に加わらず、明細追加で収入が二重にならない。年間資料と明細を足さない。unknown・not-statedを0や対象外として集計しない。読んでいない空の並びは不足（incomplete）になり、確かめた空だけが値ありの0件として扱われる。"
+        },
+        {
+          "id": "history",
+          "method": "EX-04（遡及訂正と計算run・時計の巻き戻り）とcalculation-results 1〜3の規則を照合する。採用の参照（AdoptionSnapshot.adoptedRef）が、種類と識別の次元の一致する記録だけを指せることを、今回の修正後の規則で確かめる。税・保険の制度の年・地域・出典・丸めは契約では値を決めず、T14が一次資料で決めることを確かめる。",
+          "expected": "過去のrunは入力の版を固定したまま変わらず、新しいrunはpreviousRunIdでつながる。adoptedRefは対象の年・支払者の年間資料だけを指し、別の種類・別の年・範囲外の支払者の記録は保存で拒否される。制度の値はT14の範囲として例示に留まる。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "not-applicable",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01はpackage.json・lockfile・Node.jsの版・UIの成果物・起動手順を変えない。INV-STORAGEの関連条件として選ばれたが、差分は文書だけである。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "差分のファイルがdocs/contracts/とdocs/implementation-tasks.mdだけで、実行物・依存・起動の設定を含まないことをgit diff --name-onlyで確かめる。",
+          "expected": "実行物・依存・ランタイムの変更はない。"
+        },
+        {
+          "id": "artifact",
+          "method": "契約に配信成果物やmanifest（ビルド）の扱いの記述がないことを確かめる。",
+          "expected": "成果物の扱いはADR-0002・T08・T09の範囲のまま。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01の差分はdocs/contracts/と台帳の1行だけで、データルートの識別・作成・復元途中の区別を定めない（ADR-0006・0007、T07の範囲）。INV-STORAGEの関連条件として選ばれたが、契約はルートのパスや作成手順に触れない。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "契約の文書にデータルートの作成・初期化・復元途中の扱いの記述がないことを、docs/contracts/の検索（データルート、作成、復元の語）で確かめる。",
+          "expected": "データルートの作成・初期化の規則は契約にない。ADR-0006とT07がそのまま正本である。"
+        },
+        {
+          "id": "aliases",
+          "method": "契約の文書に、実体パス・symlink・junction・大小文字の扱いの記述がないことを確かめる。",
+          "expected": "パスの別表記の扱いは契約になく、ADR-0006・0007（G1）が正本のまま。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "preserve",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01はDB・journal・migrationを定めない（ADR-0005・0006、T07・T12の範囲）。ただし契約は、証憑ファイルを書き終えてから記録をcommitする順序、証憑の参照、保存の連番recordedSeq、改訂の追記だけ、round tripで保つ項目を定めるので、これらがADR-0006の証憑・バックアップの規則と食い違わないことを維持する。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "契約がmigrationやDBファイルの扱いを定めていないこと、改訂を追記だけにしてDBの行を書き換えないことを、common-types 9とrecords 9をADR-0005・0006と照合して確かめる。",
+          "expected": "契約にDBとjournalの対を崩す操作の指示はない。rollbackの手順はADR-0006・T07に任されている。"
+        },
+        {
+          "id": "restore",
+          "method": "README（後続タスクへの引継ぎ）のT12の行と、common-types 7の保存の連番、records 9の証憑の規則を、ADR-0006の復元の規則と照合する。",
+          "expected": "復元で保つ項目（4つの状態・0・ID・日付・改訂・recordedSeq・関係）がT12のround tripの受入に引き継がれている。証憑は書き換えず、参照中は削除しない。"
+        },
+        {
+          "id": "manifest",
+          "method": "契約がバックアップのmanifestの形を定めていないこと、証憑のsha256・保存名がADR-0006の記述と一致することを確かめる。",
+          "expected": "manifestの形はADR-0006・T12の範囲のまま。契約の証憑の項目（sha256、storageName、importedAt、recordedSeq）はADR-0006と矛盾しない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "この計画は、PR #11（T01）の作業中にreview-guard（PR #4）がmainへ入ったため、実際の差分から作った移行用の計画である（実装前に計画済みとは記録しない）。このあとの修正（Copilotの18回目の指摘3件）は、この計画をcommitしてから行う。 T01は台帳（docs/implementation-tasks.md）のT01節に成果物の所在を1行足すだけで、依存や開始条件を変えない。契約は後続タスク（T03・T06・T07・T09〜T12・T14・T15）への引継ぎをREADMEに書き、決めないこと（制度の規則はT14、形式はT12等）を明記している。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "docs/contracts/README.mdの「後続タスクへの引継ぎ」と台帳の各タスクの依存（T03・T06・T14はT01に依存）を照合する。契約が後続タスクの範囲を先取りして決めていないか（制度の規則、DBの形、CSVの形式）を確かめる。",
+          "expected": "依存の向きは台帳と一致し、契約は後続の範囲を例示と引継ぎに留める。共有資源（契約定義）の変更規則がREADMEにある。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "台帳のT01節の追記、Issue #8、PR本文、引継ぎが同じ開始条件と担当を指すことを確かめる。最新mainの作業規約（AGENTS.md、pr-review-loop.mdの引継ぎ書式）に合わせて引継ぎを書く。",
+          "expected": "T01の開始条件・担当・範囲がIssue・台帳・PRで一致する。引継ぎはplan_path・plan_commit・plan_recheck・READMEの行を含む。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RECORDS": {
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        }
+      ]
+    }
+  }
+}
