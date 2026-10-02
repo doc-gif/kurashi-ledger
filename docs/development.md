@@ -22,6 +22,8 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 
 版が合わないと、npmは`npm ci`・`npm run`の前に`EBADDEVENGINES`で止まる。`--force`で検査を外さない（`npm run setup`は`--force`を拒む）。
 
+既知の制約: T02の作業環境のMac（Node.js 24.14.0）では、この版の検査でnpmのスクリプト（`npm run setup`等）が止まる。Node.jsを24.15.0以上に更新するまで続く。所有者は当面更新しないと決め、固定した版での確認はT05のCIで行う（下の「所有者の決定」の1）。
+
 ## 初めて使うとき
 
 macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポリシーを変えず、`npm`の代わりに`npm.cmd`を使う（ADR-0002）。
@@ -111,7 +113,7 @@ T02で所有者の判断を求めた事項について、所有者が2026-10-02�
 
 | # | 事項 | 決定 |
 | --- | --- | --- |
-| 1 | 固定した版（24.15.0以上）での確認 | 所有者が、Node.js 24 LTS（24.21.0）を公式インストーラでローカルに入れる。入れたあとで、`npm run setup`・`npm run typecheck`・`npm test`を固定した版で実行し直す。それまで、固定した版での確認は未了として扱う。Windowsでの確認は、この決定の対象外で未了 |
+| 1 | 固定した版（24.15.0以上）とWindowsでの確認 | ローカルのNode.jsは当面24.14.0のままにする。固定した範囲（`>=24.15.0 <25`）とWindowsでの確認（`npm run setup`・`npm run typecheck`・`npm test`・`npm run build`）は、T05の受入条件に移す（[タスク台帳](implementation-tasks.md)のT05）。T02では、固定した版とWindowsで一度も実行していない |
 | 2 | 元checkoutの未追跡の試作と`node_modules` | 当面残す。T02の統合後に扱いを見直す。削除しない |
 | 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める |
 | 4 | `npm run setup`が利用者の`~/.npmrc`を読まないこと | 受け入れる（プロキシや独自のregistryは使っていない）。プロキシが必要になったら、`HTTPS_PROXY`等の環境変数で渡す（上の「npmの設定」） |
