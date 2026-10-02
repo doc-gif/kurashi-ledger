@@ -6,7 +6,7 @@
 
 ## 1. 計算run（`CalculationRun`）
 
-一度だけ書き、改訂を持たない。途中で失敗した場合も、`failed`として書く。
+一度だけ書き、改訂を持たない。途中で失敗した場合も、`failed`として書く（状態は2の順序で決める）。
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 
@@ -19,7 +19,7 @@
 | `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。結果の状態を問わず、制度データを読み込んだrunでは`known`（読み込んだあとで`unsupported`・`failed`になった場合を含む）、読み込まなかったrunでは`not-applicable`。`unknown`は使わない（[共通の型](common-types.md)の12の「計算runの項目の状態」の表） |
 | `target` | `Target` | 計算の対象（年・年度・地域） |
 | `inputs` | `Inputs` | 入力の固定した写し |
-| `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2を参照） |
+| `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2の順序で1つに決める） |
 | `results` | `List<ResultItem>` | 結果の項目 |
 | `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べ、`order`は1から始めて1ずつ増やす（run内で一意の連番） |
 | `missingInputs` | `List<MissingInput>` | 不足した入力 |
@@ -76,15 +76,17 @@
 
 ## 2. 結果の状態
 
-| 状態 | 条件 | 結果の値 |
-| --- | --- | --- |
-| `unsupported` | 対象の年・年度・地域・範囲に、承認済みの規則がない、または地域が`unknown` | すべて`unknown`。0にしない |
-| `incomplete` | 必要な入力が足りない（`unknown`・`not-stated`の項目、帰属の`undetermined`・`conflict`、年間の値の「要判断」、年間資料の範囲の一部だけの値（`partial-scope`）） | 不足の影響を受ける項目は`unknown`。`missingInputs`に列挙する |
-| `provisional` | 計算できたが、見込み・仮定、または`coverage`が`entered-records-only`の年間の値を使った | 値あり。「暫定」と表示する |
-| `computed` | 上のどれにも当たらない | 値あり。それでも推計で、正式通知ではない |
-| `failed` | 計算の途中で異常終了した | 使わない。監査のために残す |
+結果の状態（`status`）は、次の表の**上から順に**条件を調べ、最初に当てはまったものに決める。各行の条件は、それより上の行に当てはまらなかったことを前提にせず、単独で書いてある（どの順に調べても、同じ優先順で1つに決まる）。優先順は`failed` > `unsupported` > `incomplete` > `provisional` > `computed`。
 
-- 状態は上の表の上から順に判定する（`failed`は異常終了したときだけ）。
+| 順 | 状態 | 条件 | 結果の値（`results`の`value`） |
+| --- | --- | --- | --- |
+| 1 | `failed` | 計算が異常終了した（ほかの条件が同時に成り立っていても、この状態にする。障害を隠さないため） | 使わない（状態を問わず保存するが、表示・比較に使わない）。監査のために残す |
+| 2 | `unsupported` | 異常終了しておらず、対象の年・年度・地域・範囲に承認済みの規則がない、または地域が`unknown` | すべて`unknown`。0にしない |
+| 3 | `incomplete` | 異常終了しておらず、対象に承認済みの規則があり、必要な入力が足りない（`MissingState`のどれかに当たる入力がある。[共通の型](common-types.md)の11） | 不足の影響を受ける項目は`unknown`。`missingInputs`に1件以上挙げる |
+| 4 | `provisional` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定、または`coverage`が`entered-records-only`の年間の値を使った | `known`か`not-applicable`。「暫定」と表示する |
+| 5 | `computed` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定・`entered-records-only`の年間の値を使っていない | `known`か`not-applicable`。それでも推計で、正式通知ではない |
+
+- 計算runの項目のうち状態で決まるもの（`ruleSet`・`failure`・`previousRunId`）は、この表で決まった状態ごとに、[共通の型](common-types.md)の12の「計算runの項目の状態」の表に従う。
 - 入力が足りないときに、不足を0や前年の値で補わない。補う仮定を使う場合は、利用者が選んだ仮定として`assumptions`に記録し、状態を`provisional`にする。
 - 計算結果と正式通知の値は、比べて差を示すだけで、どちらも書き換えない。
 

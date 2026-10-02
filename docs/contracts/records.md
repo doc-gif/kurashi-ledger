@@ -246,7 +246,7 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `evidenceFileId` | `Id<EvidenceFile>` | 証憑ファイル |
-| `target` | `Ref<任意の記録>` | 支える記録。版は`current`、または特定の版。`current`は、その見方で選ばれた版を指す（[共通の型](common-types.md)の2）ので、過去の時点を再現したときに、その時点になかった版へ結び付いて見えることはない |
+| `target` | `Ref<任意の記録>` | 支える記録。`revision`は`current`だけ（記録どうしの関係。[共通の型](common-types.md)の2）。`current`は、その見方で選ばれた版を指すので、過去の時点を再現したときに、その時点になかった版へ結び付いて見えることはない |
 | `locator` | `Fact<Text>` | ファイルの中の位置（例「2ページ目」） |
 | `role` | `source・supporting` | 記録の写し元か、補足の資料か |
 

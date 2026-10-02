@@ -60,8 +60,14 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `id` | `Id<T>` | 参照先の記録 |
-| `revision` | 1以上の整数、または`current` | `current`は、その参照を読む見方で選ばれた参照先の版を指す（照合配分・照合の判断・証憑の紐付け等の関係）。現在の見方では最新の版、時点を指定した見方ではその時点で選ばれる版（7）なので、過去の時点を再現しても、その時点に存在しなかった版には結び付かない。整数は、その版に固定する（計算runの入力、照合を確定したときの版の記録） |
+| `revision` | 1以上の整数、または`current` | `current`は、その参照を読む見方で選ばれた参照先の版を指す。現在の見方では最新の版、時点を指定した見方ではその時点で選ばれる版（7）なので、過去の時点を再現しても、その時点に存在しなかった版には結び付かない。整数は、その版に固定する |
 | `line` | `LineId`、または`whole` | `whole`は記録全体。行を指す場合は行ID |
+
+**`current`と整数の使い分け（1つの規則）:**
+
+- **記録どうしの関係**（照合配分の`from`・`to`、照合の判断の`targets`、証憑の紐付けの`target`、`supersedes`、`duplicateOf`）は、`revision`に`current`だけを使う。関係が確定した時点の版は、関係そのものに整数で固定せず、専用の項目（照合配分の`confirmedAgainst`、`mismatch-explanation`の`explainedComparisons`）で持つ。関係と確定の時点を2か所で持って食い違うことを防ぐため。
+- **固定した写し**（計算runの中のすべての参照。[計算結果](calculation-results.md)の1）は、`revision`に整数だけを使う。
+- このほかの場所で`Ref`を使う場合は、どちらを使うかを説明に書く。
 
 参照先が存在しない参照は保存できない（T06・T07で検証する）。
 
@@ -323,7 +329,7 @@
 | 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（正） |
 | 同 | `annual-coverage` | `not-applicable` |
 | 確定の不変条件の上限に使う実績の金額: `forecast-realization`の「実績の該当の金額」（[照合の規則](reconciliation.md)の3。`grossPay`・`netPay`・`bankTransferAmount`・入金の`amount`）と、実績の行を指す場合はその行の`amount` | その実績から`forecast-realization`を`confirmed`にする | `known`（`known`でなければ確定しない。先に実績の記録を訂正するか、予測の行を取り下げる） |
-| 給与明細の`bankTransferAmount` | `transfer-to-deposit`を`confirmed`にする | どの状態も許す。`known`なら明細の側の上限に使う。`known`でなければ明細の側の上限はなく、入金の側の上限（入金の`amount`は常に値がある）だけで過剰配分を防ぐ。配分の合計を振込額として扱わない |
+| 給与明細の`bankTransferAmount` | `transfer-to-deposit`を`confirmed`にする | `known`、`unknown`、`not-stated`を許す。`known`なら明細の側の上限に使う。`unknown`・`not-stated`なら明細の側の上限はなく、入金の側の上限（入金の`amount`は常に値がある）だけで過剰配分を防ぐ。配分の合計を振込額として扱わない。`not-applicable`（振込がない明細。現金払い等）なら確定しない |
 | 照合配分の`settlesForecastLine` | `forecast-realization`を`confirmed`にする | `known` |
 | 照合配分の`confirmedAgainst` | `allocationStatus`が`confirmed` | `known`（保存の時点の両方の現在の版） |
 | 照合配分の識別の次元の項目（[照合の規則](reconciliation.md)の3の表） | 確定するとき | 同3の表の条件のとおり |
@@ -336,7 +342,7 @@
 | 同 | `selection`が`adoption-needed` | どちらも`not-applicable` |
 | `Assumption`の`ref` | `source`が`forecast` | `known`（予測の行。版を固定） |
 
-**計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の値（`results`の`value`）の状態は、[計算結果](calculation-results.md)の2の表による。
+**計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
 
 | 項目 | `computed` | `provisional` | `incomplete` | `unsupported` | `failed` |
 | --- | --- | --- | --- | --- | --- |

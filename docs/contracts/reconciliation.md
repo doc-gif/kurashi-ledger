@@ -46,8 +46,8 @@
 | --- | --- | --- |
 | `kind` | `transfer-to-deposit・annual-coverage・forecast-realization` | 関係の種類（下の表） |
 | `allocationStatus` | `proposed・confirmed・rejected` | 候補・確定・却下（改訂の共通の形の`status`とは別） |
-| `from` | `Ref` | 関係の元（種類ごとに下の表） |
-| `to` | `Ref` | 関係の先（種類ごとに下の表） |
+| `from` | `Ref` | 関係の元（種類ごとに下の表）。`revision`は`current`だけ（[共通の型](common-types.md)の2。確定した時点の版は`confirmedAgainst`で持つ） |
+| `to` | `Ref` | 関係の先（種類ごとに下の表）。`revision`は`current`だけ（同上） |
 | `amount` | `Fact<Yen>`（正） | 配分する金額（種類ごとに下の表） |
 | `settlesForecastLine` | `Fact<boolean>` | `forecast-realization`の場合だけ。予測の行を消し込むか。`forecast-realization`を`confirmed`にするときは`known`が必要 |
 | `confirmedAgainst` | `Fact<{ fromRevision: 整数, toRevision: 整数 }>` | `allocationStatus`が`confirmed`の場合だけ。確定したときの両方の記録の版。`confirmed`では`known`が必要で、両方の版は、その保存の時点の`from`・`to`の現在の版と同じでなければならない（`unknown`、実在しない版、古い版のまま確定しない） |
@@ -56,7 +56,7 @@
 
 | 種類 | `from` | `to` | `amount` | 確定の条件（超えたら確定できない） |
 | --- | --- | --- | --- | --- |
-| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`known`でなければ入金の側だけを確かめる）。下の「識別の次元」の表の条件 |
+| `transfer-to-deposit`（明細と入金） | 給与明細（`whole`） | 銀行入金 | `known`の正の値 | その入金を`to`とする確定済みの`transfer-to-deposit`の合計 ≤ 入金額。その明細を`from`とする確定済みの`transfer-to-deposit`の合計 ≤ `bankTransferAmount`（`known`の場合だけ。`unknown`・`not-stated`なら入金の側だけを確かめる。`not-applicable`（振込がない明細）なら確定しない。[共通の型](common-types.md)の12）。下の「識別の次元」の表の条件 |
 | `annual-coverage`（年間資料が明細を含む） | 年間資料 | 給与明細 | `not-applicable` | 下の「識別の次元」の表の条件 |
 | `forecast-realization`（予測の実績化） | 給与明細（`whole`、または`otherEarnings`の行）、または銀行入金（`whole`） | 予測の行 | 実績のうち、予測の行に充てる額（予測の`measure`と同じ意味の金額）。`known`の正の値（消し込む場合も） | 同じ実績の記録から、同じ「実績の該当の金額」（下表）に充てる確定済みの`forecast-realization`の合計（実績の行を指すものを含む） ≤ その金額。実績の行（`from.line`）を指す確定済みの配分の合計 ≤ その行の`amount`。これらの金額は、確定のときに`known`でなければならない（[共通の型](common-types.md)の12）。予測の行（`to`）への配分の合計には上限がない（予測を超えた分は6の「見込みとの差」）。下の「識別の次元」の表の条件 |
 
@@ -102,7 +102,7 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `decisionType` | `duplicate-review・annual-adoption・mismatch-explanation・tax-year-assertion` | 判断の種類（下の表） |
-| `targets` | `List<Ref>` | 判断の対象 |
+| `targets` | `List<Ref>` | 判断の対象。`revision`は`current`だけ（[共通の型](common-types.md)の2） |
 | `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者。その場合は`known`が必要 |
 | `explainedComparisons` | `Fact<List<{ field: Text, annualValue: Yen, payslipSum: Yen, coveredPayslips: List<Id<Payslip>> }>>` | `mismatch-explanation`の場合だけ（その場合は`known`が必要）。理由を説明する年間資料の項目（例 `paymentAmount`）ごとに、判断したときの比較の値（年間資料の値と明細の合計）と、結んでいた明細の集合を記録する。1件以上 |
 | `value` | 種類ごと（下の表） | 判断の内容 |
