@@ -67,7 +67,18 @@
 
 - **記録どうしの関係**（照合配分の`from`・`to`、照合の判断の`targets`、証憑の紐付けの`target`、`supersedes`、`duplicateOf`）は、`revision`に`current`だけを使う。関係が確定した時点の版は、関係そのものに整数で固定せず、専用の項目（照合配分の`confirmedAgainst`、`mismatch-explanation`の`explainedComparisons`）で持つ。関係と確定の時点を2か所で持って食い違うことを防ぐため。
 - **固定した写し**（計算runの中のすべての参照。[計算結果](calculation-results.md)の1）は、`revision`に整数だけを使う。
-- このほかの場所で`Ref`を使う場合は、どちらを使うかを説明に書く。
+- **集計の結果**（集計値の`missing`の`ref`。11）は、`revision`に整数だけを使う。その整数は、集計を計算した見方（7。現在の見方なら最新の版）で選ばれた参照先の版とする。後から改訂されても、出力した結果の参照が別の版に変わらないようにするため。
+- 契約の`Ref`の項目は、すべて上の3つのどれかに当たり、その項目の説明にどちらを使うかを書く。新しく`Ref`の項目を足すときも、どれに当たるかを決めて説明に書く。
+
+| `Ref`の項目 | 区分 | `revision` |
+| --- | --- | --- |
+| 照合配分の`from`・`to`（[照合の規則](reconciliation.md)の3） | 記録どうしの関係 | `current` |
+| 照合の判断の`targets`（同4） | 記録どうしの関係 | `current` |
+| 証憑の紐付けの`target`（[記録の型](records.md)の9） | 記録どうしの関係 | `current` |
+| 給与明細・年間資料・正式通知の`supersedes`（同4・6・8） | 記録どうしの関係 | `current` |
+| 改訂の共通の形の`duplicateOf`（9） | 記録どうしの関係 | `current` |
+| 計算runの`inputs`の`records`・`allocations`・`decisions`、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`（[計算結果](calculation-results.md)の1） | 固定した写し | 整数 |
+| 集計値の`missing`の`ref`（11） | 集計の結果 | 整数（集計を計算した見方で選ばれた版） |
 
 参照先が存在しない参照は保存できない（T06・T07で検証する）。
 
@@ -253,7 +264,7 @@
 | `recordedSeq` | 1以上の整数 | 保存の連番。データベース全体で一意で、commitの順に1ずつ増える（7の「保存の順序」） |
 | `knownOn` | `Fact<LocalDate>` | 把握日（7を参照） |
 | `changeNote` | `Fact<Text>` | 改訂の理由のメモ |
-| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表） |
+| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表）。`revision`は`current`（記録どうしの関係。2） |
 | `entryChannel` | `manual`・`import` | 手入力か取込か |
 | `writeRequestId` | `Text` | 保存の要求の冪等キー（10を参照） |
 | `importKey` | `Fact<Text>` | 取込の冪等キー。取込の場合だけ（10を参照） |
@@ -315,7 +326,7 @@
 | `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: AxisValue, to: AxisValue }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の範囲。`from`・`to`の型は軸で決まり（下の表）、両端を含み、`from` ≤ `to` |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
 | `knownSum` | `Yen` | 値ありの項目の合計 |
-| `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+| `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`ref`の`revision`は整数で、集計を計算した見方で選ばれた版（2の「`current`と整数の使い分け」）。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、採用した年間資料の値か、入力済みの記録の合計か。ほかの軸の集計と、年間の値が要判断の場合は`not-applicable` |
 

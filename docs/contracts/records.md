@@ -78,7 +78,7 @@
 | `totalDeductions` | `Fact<Yen>`（0以上） | 控除合計。記載どおり |
 | `netPay` | `Fact<Yen>`（符号あり） | 差引支給額。記載どおり |
 | `bankTransferAmount` | `Fact<Yen>`（0以上） | 振込額。記載どおり。銀行入金の額から埋めない |
-| `supersedes` | `Fact<Ref<Payslip>>` | 再発行された明細の場合だけ、差し替える前の明細（10を参照）。`known`か`not-applicable`だけで、`unknown`は使わない（[共通の型](common-types.md)の12） |
+| `supersedes` | `Fact<Ref<Payslip>>` | 再発行された明細の場合だけ、差し替える前の明細（10を参照）。`revision`は`current`（記録どうしの関係。[共通の型](common-types.md)の2）。`known`か`not-applicable`だけで、`unknown`は使わない（[共通の型](common-types.md)の12） |
 
 `EarningLine`（その他の支給の行）:
 
@@ -145,7 +145,7 @@
 | `employmentStartDate` | `Fact<LocalDate>` | 就職の年月日。記載がなければ`not-stated` |
 | `employmentEndDate` | `Fact<LocalDate>` | 退職の年月日。記載がなければ`not-stated` |
 | `issuedDate` | `Fact<LocalDate>` | 発行日 |
-| `supersedes` | `Fact<Ref<AnnualDocument>>` | 再発行（訂正版）の場合だけ、差し替える前の資料（10）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
+| `supersedes` | `Fact<Ref<AnnualDocument>>` | 再発行（訂正版）の場合だけ、差し替える前の資料（10）。`revision`は`current`（記録どうしの関係。[共通の型](common-types.md)の2）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
 `IncludedPayer`（含まれる他の支払者の分）:
 
@@ -209,7 +209,7 @@
 | `amounts` | `List<NoticeAmount>` | 決定された金額の行 |
 | `installments` | `List<Installment>` | 納付・徴収の予定の行 |
 | `statusDates` | `List<StatusDate>` | 資格の取得日・喪失日等の行 |
-| `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（10）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
+| `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（10）。`revision`は`current`（記録どうしの関係。[共通の型](common-types.md)の2）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
 `NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。`category`と`amount`は`not-applicable`を使わない（[共通の型](common-types.md)の12の既定）。
 
