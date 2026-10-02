@@ -275,7 +275,7 @@
 | `knownSum` | `Yen` | 値ありの項目の合計 |
 | `missing` | `List<{ ref: Ref, field: Text, state: unknown・not-stated・undetermined・conflict・adoption-needed }>` | 不足の一覧。`undetermined`・`conflict`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`adoption-needed`は年間の値の採用が要判断の支払者（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
-| `coverage` | `annual-document`・`entered-records-only` | 年間の値として採用した年間資料の値か、入力済みの記録の合計か |
+| `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、採用した年間資料の値か、入力済みの記録の合計か。ほかの軸の集計と、年間の値が要判断の場合は`not-applicable` |
 
 | 状態 | 条件 | 表示の例 |
 | --- | --- | --- |
@@ -285,4 +285,5 @@
 | `no-records` | 対象の記録が0件 | 「記録なし」。0円と表示しない |
 
 - `coverage`が`entered-records-only`の合計は、その期間の全体の合計とは限らない（入力していない明細がありうる）。年間の合計として扱えるのは、採用した年間資料の値だけ（[照合の規則](reconciliation.md)の5）。
+- 計算runの結果（推計）は、この形で返さない。runごとの結果をそのまま示し、runどうしを足さない（[照合の規則](reconciliation.md)の2）。
 - 集計と照合の結果は、記録の入力順・保存順に依存しない。並べる順序が必要な場合は、日付の軸の値、次にIDの文字列の順で決める。

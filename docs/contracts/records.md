@@ -136,7 +136,7 @@
 | `withholdingTax` | `Fact<Yen>`（0以上） | 源泉徴収税額 |
 | `socialInsurancePremiums` | `Fact<Yen>`（0以上） | 社会保険料等の金額 |
 | `yearEndAdjustmentStatus` | `Fact<adjusted・not-adjusted>` | 年末調整の有無。記載から読み取れなければ`not-stated` |
-| `includedOtherPayers` | `List<IncludedPayer>` | 他の支払者の分を含むという記載（前職分等）。記載がなければ空 |
+| `includedOtherPayers` | `Fact<List<IncludedPayer>>` | 他の支払者の分を含むという記載（前職分等）。資料を確かめて記載がなければ`known`の空の並び。確かめていなければ`unknown`（既定）。この項目は`known`と`unknown`だけを使う |
 | `employmentStartDate` | `Fact<LocalDate>` | 就職の年月日。記載がなければ`not-stated` |
 | `employmentEndDate` | `Fact<LocalDate>` | 退職の年月日。記載がなければ`not-stated` |
 | `issuedDate` | `Fact<LocalDate>` | 発行日 |
@@ -152,7 +152,8 @@
 | `withholdingTax` | `Fact<Yen>`（0以上） | 記載された源泉徴収税額 |
 | `socialInsurancePremiums` | `Fact<Yen>`（0以上） | 記載された社会保険料等の金額 |
 
-- 年間資料の**範囲**は、`payerEmployerId`と、`includedOtherPayers`の`payerEmployerId`（`known`のもの）の集合。範囲は、年間資料どうしを重ねて足さないために使う（[照合の規則](reconciliation.md)の5）。
+- 年間資料の**範囲**は、`payerEmployerId`と、`includedOtherPayers`の各行の`payerEmployerId`の集合。範囲は、年間資料どうしを重ねて足さないために使う（[照合の規則](reconciliation.md)の5）。
+- `includedOtherPayers`が`unknown`の資料、または`payerEmployerId`が`known`でない行を持つ資料は、**範囲が確定しない**。範囲が確定しない資料は、確定するまで採用しない（[照合の規則](reconciliation.md)の5）。支払者を雇用先として登録していない場合は、登録してから`payerEmployerId`を`known`にする。
 - 各項目の制度上の意味（前職分がどの項目に含まれるか、非課税の支給が支払金額に含まれるか等）は定めない。T14で一次資料を確認して決める。
 - 年間資料の値を月に配分した記録を作らない。
 
@@ -259,7 +260,8 @@
 | 後の支給での調整（遡及差額・回収） | 後の明細の行 | 前の明細は変えない |
 
 - 差し替えられた記録（有効な記録の`supersedes`から指されている記録）は、集計・照合の採用から除き、履歴として表示する。
-- `supersedes`は同じ種類の記録だけを指す。差し替えの連鎖は1本にする（同じ記録を指す有効な記録が2つあれば、「要確認」として出す）。
+- `supersedes`は同じ種類の記録だけを指す。差し替えの連鎖は1本にする。保存（新規・改訂・取消の取り消し）の結果、同じ記録を指す有効な後継が2件以上になる場合は、保存を拒否する（もう一度作り直された資料は、最新の後継を指す）。この検査と保存は1つのtransactionで行う（T07）。
+- それでも同じ記録を指す有効な後継が2件以上ある状態（古いデータの復元等）を見つけた場合は、前の記録とそれらの後継をすべて、分岐が解消するまで集計・採用・照合から除き、「要確認」として出す（どちらか一方を数えると二重計上や取り違えになりうるため）。
 - 前の記録を参照していた照合配分は「要確認」になる（[照合の規則](reconciliation.md)の9）。
 - 時点を指定した見方（[共通の型](common-types.md)の7）では、その見方で選ばれた記録の`supersedes`だけで差し替えを判定する（把握時点の再現で、まだ把握していない変更通知は、前の通知を差し替えない）。
 
