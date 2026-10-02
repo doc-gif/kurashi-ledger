@@ -1,0 +1,64 @@
+name: Review preparation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-preparation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read trusted base
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline
+          persist-credentials: false
+      - name: List actual paths without executing candidate code
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 -I - <<'PY'
+          import json, os, pathlib, re, subprocess
+          base, head = os.environ['BASE_SHA'], os.environ['HEAD_SHA']
+          assert re.fullmatch('[0-9a-f]{40}', base) and re.fullmatch('[0-9a-f]{40}', head)
+          changed = subprocess.check_output(['git', '-C', 'candidate', 'diff', '--no-renames', '--name-only', '-z', base, head])
+          pathlib.Path('changed.json').write_text(json.dumps([p.decode('utf-8') for p in changed.split(b'\0') if p]), encoding='utf-8')
+          PY
+      - name: Check plan using base policy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -f baseline/tools/review_guard/ci.py ]; then
+            python3 -E -s baseline/tools/review_guard/ci.py --candidate candidate --paths-file changed.json --base-sha "$BASE_SHA"
+          else
+            echo 'bootstrap: base has no review guard; plan enforcement is NOT verified. Independent review is required.'
+          fi
+  tool-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Validate catalog and test review tool only
+        run: |
+          python3 -E -s tools/review_guard/guard.py validate
+          python3 -E -s -m unittest discover -s tools/review_guard/tests -v

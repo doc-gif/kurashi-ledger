@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "note": "原因と教訓の索引。解消状態の正本ではない。最新head/baseのレビュー・引継ぎをghで確認する。R番号はPR単位なのでPR番号で名前空間を分ける。",
+  "findings": [
+    {
+      "id": "PR2-R001",
+      "invariant_id": "INV-STORAGE",
+      "cause_key": "database-journal-pair",
+      "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+      ]
+    },
+    {
+      "id": "PR2-R002",
+      "invariant_id": "INV-ROOT",
+      "cause_key": "first-use-vs-interruption",
+      "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+      ]
+    },
+    {
+      "id": "PR2-R003",
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+      ]
+    },
+    {
+      "id": "PR2-R004",
+      "invariant_id": "INV-HTTP",
+      "cause_key": "development-origin",
+      "lesson": "開発サーバーの別Originを禁止するなら、開発UIの認証とAPI利用が成立する入口も設計する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388188283"
+      ]
+    },
+    {
+      "id": "PR2-R005",
+      "invariant_id": "INV-HTTP",
+      "cause_key": "development-csp",
+      "lesson": "開発HMRとReact更新がCSPで停止しないか。許可の変更後に本番の境界も確認する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388308985"
+      ]
+    },
+    {
+      "id": "PR2-R006",
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "artifact-release-coherence",
+      "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706"
+      ]
+    },
+    {
+      "id": "PR2-R007",
+      "invariant_id": "INV-LOCK",
+      "cause_key": "restore-lock-identity",
+      "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706"
+      ]
+    },
+    {
+      "id": "PR2-R008",
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205"
+      ]
+    }
+  ]
+}

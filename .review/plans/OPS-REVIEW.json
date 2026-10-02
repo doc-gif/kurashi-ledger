@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "base_sha": "a7cfc84797f34856d2d8cec2a75e0e57b098fa1a",
+  "task_id": "OPS-REVIEW / #3",
+  "planned_paths": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/copilot-instructions.md",
+    ".greptile/config.json",
+    ".greptile/files.json",
+    ".review/findings.json",
+    ".review/invariants.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-prevention.md",
+    "tools/review_guard/README.md",
+    "tools/review_guard/adapters/github-actions.yml",
+    "tools/review_guard/ci.py",
+    "tools/review_guard/guard.py",
+    "tools/review_guard/tests/test_ci.py",
+    "tools/review_guard/tests/test_guard.py"
+  ],
+  "conflicts": [
+    {
+      "description": "初回導入前のmainには検査器と事前計画の規約がなく、この計画の記録はツール作成後である。",
+      "state": "resolved",
+      "resolution": "初回導入の例外を手順に明記。CIはbootstrapと表示し、計画の事前検証や独立承認を済ませたとは報告しない。以後のPRは計画先行にする。"
+    },
+    {
+      "description": "GitHub認証にworkflow scopeがなく、Actionsの有効化はできない。",
+      "state": "resolved",
+      "resolution": "実行されない導入用テンプレートとして保管する。ローカルCLIの運用を先行し、CI未稼働を明記。権限を持つ担当が独立レビュー後に配置する。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "公開レビューURLと一般化した原因のみ。私的な会話、給与明細、実金額、個人パスを入力にしない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分の目視と限定的な秘密情報パターン検査、CIのpermissionsと外部送信先の確認",
+          "expected": "実データ・秘密の該当なし。Greptile自動起動なし、CIはcontents:readのみ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "base側の条件で計画を検査し、履歴は原因の索引に限定。最新head/baseのレビュー結果と権限を代用しない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "同一原因キーの別ID拒否とtriageの既存ID返却を単体試験。再発の新証拠を入力する",
+          "expected": "同一原因を新IDにせずupdate-existing。抑制だけで未解決を隠さない。"
+        },
+        {
+          "id": "trust",
+          "method": "候補catalogから必須条件を消した状態でbase検査器を起動する統合試験。base SHA変更、TODO、未計画パスも試験",
+          "expected": "条件緩和・未記入・対象変更は失敗する。成功表示はmetadata-completeで、内容の正しさや承認を示さない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "独立したレビュー運用ツールとして導入し、製品のT00やT05を完了扱いしない。PR #2のADR・台帳・実装計画に触れず、状態資料は公開範囲だけ整合する。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "既存PR #2の変更範囲と新ツールの標準ライブラリ依存を照合",
+          "expected": "製品ランタイム・lockfile・データ契約に依存せず、別branch/worktreeで作業できる。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS/CLAUDE/Copilot/Greptile/PR templateとpr-review-loopのリンク・許可範囲を照合",
+          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205"
+          ]
+        }
+      ]
+    }
+  }
+}

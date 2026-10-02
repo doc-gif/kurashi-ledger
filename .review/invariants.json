@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "note": "変更時に参照する確認観点。正式な仕様・権限は最新mainと所有者指示。過去PRの解決案を永久の実装方式として固定しない。",
+  "invariants": [
+    {
+      "id": "INV-STORAGE",
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "paths": [
+        "docs/adr/**",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**",
+        "migrations/**"
+      ],
+      "related": [
+        "INV-ROOT",
+        "INV-LOCK",
+        "INV-RELEASE"
+      ],
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "paths": [
+        "docs/adr/**",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**",
+        "src/application/**"
+      ],
+      "related": [
+        "INV-LOCK"
+      ],
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-LOCK",
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "paths": [
+        "docs/adr/**",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**",
+        "src/application/**"
+      ],
+      "related": [
+        "INV-ROOT"
+      ],
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "paths": [
+        "docs/adr/**",
+        "package.json",
+        "package-lock.json",
+        ".nvmrc",
+        "src/ui/**",
+        "src/application/**",
+        "src/server/**",
+        "scripts/**"
+      ],
+      "related": [
+        "INV-STORAGE"
+      ],
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ]
+    },
+    {
+      "id": "INV-HTTP",
+      "condition": "開発時も本番と両立する認証・Origin・CSP・静的配信境界を保つ。",
+      "paths": [
+        "docs/adr/**",
+        "src/server/**",
+        "src/ui/**",
+        "vite.config.*"
+      ],
+      "related": [
+        "INV-TASKS"
+      ],
+      "scenarios": [
+        {
+          "id": "browser-flow",
+          "question": "起動トークン交換→API→CSS/React HMR→再読込が同じ入口とCSPで成立するか。漏洩と迂回も試験するか。"
+        },
+        {
+          "id": "static",
+          "question": "配信ルート外への要求や未検証の生成物を拒否するか。認証を開発時だけ解除していないか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "paths": [
+        "docs/**",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/**",
+        ".review/**",
+        "tools/review_guard/**"
+      ],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "paths": [
+        "*"
+      ],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "paths": [
+        "src/domain/**",
+        "src/application/records/**",
+        "docs/contracts/**",
+        "rules/**"
+      ],
+      "related": [
+        "INV-STORAGE"
+      ],
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "paths": [
+        ".review/**",
+        "tools/review_guard/**",
+        ".greptile/**",
+        ".github/**",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/pr-review-loop.md",
+        "docs/review-prevention.md"
+      ],
+      "related": [
+        "INV-TASKS"
+      ],
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ]
+    }
+  ]
+}
