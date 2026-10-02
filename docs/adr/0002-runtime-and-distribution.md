@@ -36,12 +36,13 @@
   - `npm run build`は、アプリを停止した状態で実行する（更新の手順のとおり）。ディレクトリの名前変更による入れ替えはしない（中身のあるディレクトリは、1回の名前変更では原子的に置き換えられない。Windowsでは置き換え先があると失敗する）。
   - `npm run build`は、ビルドの前に作業ツリーに変更がない（追跡しているファイルの変更と、ビルドの入力となる場所の未追跡のファイルがない）ことを確かめ、manifestを書く直前にもう一度確かめる。変更があれば、manifestを書かずに終え、その旨を表示する。HEADを記録しても、変更した入力でビルドしたあとに元へ戻すと、記録と`dist/`が合わなくなるため。manifestのない`dist/`は、開発中の合成データモードの起動や試験には使えるが、`start:real`は起動しない（下の照合）。この確認は、変更が残ったまま、またはcommitし忘れたままビルドする誤りを防ぐためのものである。ビルドの最中に入力を変えて元に戻すような、同じOSユーザーによる意図的な改変は対象外とする。同じユーザーとして動くプロセスは`dist/`とmanifestを直接書き換えられるので、ADR-0003の「この境界で守らないもの」と同じ扱いにする。
   - `npm run build`は、最初に既存のmanifestを削除し、`dist/`へ出力し、すべてのファイルを書き終えてから最後にmanifest（ビルドしたcommitのSHA、`package-lock.json`のハッシュ、Node.jsの版、各ファイルのハッシュ）を書く。ビルドが失敗したり途中で止まったりした場合は、manifestがない状態になる。manifestは`dist/`の固定のパスに置き、自分自身はハッシュの一覧と「余分なファイル」の判定から除く。
-  - `npm run start:real`は、DBを開く前にmanifestを確かめる。manifestがある、commitとlockfileのハッシュがいまのHEADと`package-lock.json`に一致する、manifestのNode.jsの版がいまの実行環境の版と一致する（比べ方は依存の導入の記録と同じにし、T02で決める）、manifestにあるファイルがすべてあってハッシュが合い、manifestにないファイルがない。どれかが満たされなければ、ビルドし直すよう案内して起動しない。Node.jsを切り替えたあとは、`npm ci`だけでなく`npm run build`もやり直す（更新の手順の4）。
+  - `npm run start:real`は、DBを開く前にmanifestを確かめる。manifestがある、commitとlockfileのハッシュがいまのHEADと`package-lock.json`に一致する、manifestのNode.jsの版がいまの実行環境の版と一致する（比べ方は依存の導入の記録と同じにし、T02で決める）、manifestにあるファイルがすべてあってハッシュが合い、manifestにないファイルがない。どれかが満たされなければ、ビルドし直すよう案内して起動しない。Node.jsを切り替えたあとは、依存の導入（`npm run setup`）だけでなく`npm run build`もやり直す（更新の手順の4）。
   - 確かめた内容をメモリに読み込んで配信する。起動後にディスク上の`dist/`が変わっても、配信する内容は変わらない。
 - **依存の導入とリリースの対応:** `dist/`とlockfileを照合しても、実際に読み込む`node_modules`が古いまま（タグの切り替え後に`npm ci`を省略・中断した等）であることは見抜けない。そこで、依存の導入が、いまの`package-lock.json`と実行環境（Node.jsの版、OS、CPU）に対して成功したことを記録し、それと結び付ける。
   - 実データを開く起動（`npm run start:real`）と保守コマンド（`:real`の付いたもの）は、DBを開く前に、この記録がいまのlockfileと実行環境に一致することを確かめる。未導入・中断・古い依存の状態では止める。
   - `npm run build`も、ビルドの前に同じ記録を確かめる。
-  - 記録の具体的な方式（導入に成功したときにだけ書く記録ファイル、起動時の照合、`npm ls`等の併用）はT02で決め、T08・T09・T12で使う。
+  - 依存の導入は、専用のコマンド`npm run setup`で行う。インストールスクリプトを無効にしているので、`npm ci`のあとに記録を書く処理を自動では動かせないため。`npm run setup`は、最初に既存の記録を削除し、`npm ci`を実行し、成功したときだけ記録を書く（依存のないNode.jsのスクリプトで、Mac・Windowsで同じように動かす）。`npm ci`を直接実行した場合は記録が書かれないので、`npm run build`・`start:real`・`:real`の保守コマンドは止まり、`npm run setup`を案内する。CIも同じコマンドで導入する。
+  - 記録の形式と照合の方法（`npm ls`等の併用を含む）はT02で決め、T08・T09・T12で使う。
 - リリースタグは、mainにあり必要なCIとレビューを通ったcommitに、所有者の承認を得て付ける注釈付きタグ（`vX.Y.Z`、試験用は`vX.Y.Z-rc.N`）とし、originへpushする。実利用モードは、originのタグと一致し`origin/main`から到達できるリリースでだけ動く（ADR-0006）。最初のタグはT13で付け、手順はT25で正式化する。
 - 単一実行ファイル化（Node.jsのSingle Executable Applications）やデスクトップシェル（Electron、Tauri）は、T13（記録版の統合）後に必要性を確認してから別ADRで再評価する。
 - 公証済みの公式Node.js（macOS版はNode.js Foundationの署名付き）の上でソースを実行するので、アプリ側で署名が必要な実行ファイルを作らない。
@@ -90,7 +91,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 2. 拡張機能を入れていない専用のブラウザプロファイルを用意する（ADR-0003）。
 3. Gitと、`package.json`の`devEngines`で指定した版のNode.js（公式インストーラ、またはバージョン管理ツール）を入れる。macOSは公式の`.pkg`、Windowsは公式の`.msi`（x64・arm64）を使える。
 4. 実利用専用のcloneを作り、最新のリリースタグをcheckoutする。開発用のworktreeとは分け、クラウド同期フォルダの外に置く。
-5. `npm ci`で依存を導入し（インストールスクリプトは`.npmrc`で無効）、`npm run build`でUIをビルドする。
+5. `npm run setup`で依存を導入し（中で`npm ci`を実行する。インストールスクリプトは`.npmrc`で無効）、`npm run build`でUIをビルドする。
 
 ### 2. 起動と終了
 
@@ -105,7 +106,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 1. アプリを終了する。
 2. リリースノートでmigrationの有無を確認し、バックアップを作る（4の1）。
 3. `git fetch --tags`のあと、新しいリリースタグをcheckoutする。指定のNode.jsの版が変わっていればNode.jsを入れ替える。版が合わなければnpmが止まる。
-4. `npm ci`と`npm run build`を実行する。
+4. `npm run setup`と`npm run build`を実行する。
 5. `npm run start:real`を実行する。スキーマの更新があれば、アプリがmigrationの前に`snapshots/`へ自動で退避してからmigrationする。
 6. 戻すときは、前のタグをcheckoutする。そのタグが`devEngines`で指定するNode.jsの版が今のものと違えば（メジャー更新を戻す場合など）、先にNode.jsをその版へ戻してから4を実行する。版が合わないままだと、npmの検査で`npm ci`や保守コマンドが止まる。そのあと、アプリを止めたまま、実利用モードの専用コマンド（`:real`の付いたもの）で戻す。migration前の退避からはDBファイルだけを、バックアップからはデータルート全体を入れ替える（ADR-0006）。アプリは、スキーマ版が自分より新しいDBを開かない。
 
@@ -128,7 +129,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 - T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
 - T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。
 - T26: HTTPサーバーの骨格と、ADR-0003の境界。
-- T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。開発時の起動も同じ検査に通すこと（ADR-0007のG1〜G5）。`npm run start:real`での依存の導入の記録と配信物のmanifest（commit、lockfile、Node.jsの版、ファイルのハッシュ、余分なファイル）の照合。Node.jsの版を変えて`npm ci`だけをやり直し、ビルドし直していない場合に止まること。
+- T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。開発時の起動も同じ検査に通すこと（ADR-0007のG1〜G5）。`npm run start:real`での依存の導入の記録と配信物のmanifest（commit、lockfile、Node.jsの版、ファイルのハッシュ、余分なファイル）の照合。Node.jsの版を変えて依存の導入だけをやり直し、ビルドし直していない場合に止まること。
 - T28: Node.jsのメジャー更新（必要時）。
 - T13: 新規のMac/Windows環境で、この手順の起動・終了・バックアップ・復元を実施して記録する。
 - T25: 更新とrollback、Node.jsのメジャー更新後の通し確認、別OSへの移行のリハーサル。
