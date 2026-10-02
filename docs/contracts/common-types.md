@@ -93,7 +93,7 @@
 | 改訂の共通の形の`duplicateOf`（9） | 記録どうしの関係 | `current` | `whole`だけ | 取り消す記録と同じ種類の記録 |
 | 計算runの`inputs.records` | 固定した写し | 整数 | `whole`だけ | 改訂を持つ記録 |
 | 計算runの`inputs.allocations`・`inputs.decisions` | 固定した写し | 整数 | `whole`だけ | それぞれ照合配分・照合の判断 |
-| `AdoptionSnapshot`の`adoptedRef` | 固定した写し | 整数 | `whole`だけ | 年間資料で、`targetYear`がスナップショットの`year`と同じ、範囲が確定していてスナップショットの`payers`をすべて含み、取消・差し替えされていない（その版で）もの。[照合の規則](reconciliation.md)の5で選ばれた資料と同じ |
+| `AdoptionSnapshot`の`adoptedRef` | 固定した写し | 整数 | `whole`だけ | 年間資料で、`targetYear`がスナップショットの`year`と同じ、範囲が確定していてスナップショットの`payers`と同じ集合（範囲の一部だけにしない）、取消・差し替えされていない（その版で）もの。[照合の規則](reconciliation.md)の5で選ばれた資料と同じ |
 | `Assumption`の`ref` | 固定した写し | 整数 | `source`が`forecast`なら予測の行だけ。ほかは`whole`だけ | `source`が`forecast`なら予測。ほかは改訂を持つ記録 |
 | `MissingInput`の`ref`、`ResultItem`の`explanationRefs` | 固定した写し | 整数 | `whole`か、参照先のその版にある行 | 改訂を持つ記録 |
 | 集計値の`missing`の`ref`（11） | 集計の結果 | 整数（集計を計算した見方で選ばれた版） | `whole`か、参照先のその版にある行（不足が行にある場合。正式通知の`category`が分からない行等） | 改訂を持つ記録 |
