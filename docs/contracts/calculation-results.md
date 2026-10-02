@@ -13,7 +13,8 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `id` | `Id<CalculationRun>` | ID（接頭辞`run`） |
-| `createdAt` | `Instant` | 実行日時（注入した時計） |
+| `createdAt` | `Instant` | 実行日時（注入した時計。順序には使わない） |
+| `recordedSeq` | 1以上の整数 | 保存の連番（[共通の型](common-types.md)の7の「保存の順序」） |
 | `calculator` | `{ id: Text, version: Text }` | 計算器の識別子と版（例 所得税の試算はT16で決める）。暗黙の代わりの計算器を使わない |
 | `appCommit` | `Text` | 実行したアプリのcommit（40文字のSHA）。作業ツリーに変更がある状態での実行の扱いは、ADR-0002の実行物の確認と合わせてT15で決める |
 | `ruleSet` | `Fact<{ id: Text, version: Text }>` | 使った制度データと版。結果の状態を問わず、制度データを読み込んだrunでは`known`（読み込んだあとで`unsupported`・`failed`になった場合を含む）、読み込まなかったrunでは`not-applicable`。`unknown`は使わない（[共通の型](common-types.md)の12の「計算runの項目の状態」の表） |

@@ -71,6 +71,7 @@
 | `forecast-realization` | 対象・金額の意味 | 予測の`subject`・`measure` ↔ 実績の種類と項目 | 下の「実績の該当の金額」の表の組合せであること |
 | `forecast-realization` | 勤務先 | 予測の`employerId` ↔ 明細の`employerId`（実績が入金なら`payerHint`） | 予測の`employerId`が`known`なら、実績の側も`known`で一致すること。`unknown`なら確定しない。`not-applicable`（入金の予測で勤務先に結び付けない）なら比べない |
 | `forecast-realization` | 口座 | 予測の`accountId` ↔ 入金の`accountId` | `subject`が`deposit`なら、予測の`accountId`が`known`で一致すること（`unknown`なら確定しない）。`subject`が`pay`なら比べない |
+| `forecast-realization` | 予測の行の状態 | 予測の行の`lineStatus` | `open`であること（`withdrawn`の行には確定しない。確定のあとで取り下げた場合は、9により確かめ直すまで除かれ、`open`に戻さない限り確かめ直せない） |
 | `forecast-realization` | 期間 | 予測の行の`expectedMonth`・`workPeriod` ↔ 実績の日付・勤務期間 | 一致を求めない（遅れ・前倒しを許す）。ずれは「見込みとの差」と並べて表示する |
 
 `forecast-realization`の「実績の該当の金額」と組合せ:
