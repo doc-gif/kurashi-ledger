@@ -36,6 +36,13 @@ class RepositoryRoutingTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assert_required_assessment(path, "INV-RECORDS", {"meaning", "history"})
 
+    def test_persistence_portability_and_migrations_require_record_semantics_and_history(self):
+        for path in ["src/infrastructure/storage/records.ts",
+                     "src/infrastructure/portability/export.ts",
+                     "migrations/0001.sql"]:
+            with self.subTest(path=path):
+                self.assert_required_assessment(path, "INV-RECORDS", {"meaning", "history"})
+
     def test_planned_test_oracle_rules_and_workflow_paths_select_conditions(self):
         root = Path(__file__).resolve().parents[2]
         rules, _ = guard.validate(guard.read_json(root / ".review/invariants.json"),

@@ -181,7 +181,10 @@
         "tests/fixtures/**",
         "docs/test-oracles/**",
         "docs/rules/**",
-        "e2e/**"
+        "e2e/**",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**",
+        "migrations/**"
       ],
       "related": [
         "INV-STORAGE"

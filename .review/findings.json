@@ -94,10 +94,12 @@
       "id": "PR4-R009",
       "invariant_id": "INV-REVIEW",
       "cause_key": "known-path-routing-gap",
-      "lesson": "利用者向けREADMEやUI・design・application等の既知パスが条件選択から漏れないか、予定タスクの実パスと照合し、必要assessmentの欠落拒否まで確かめる。",
+      "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
-        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
       ]
     },
     {
