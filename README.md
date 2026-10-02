@@ -20,6 +20,8 @@
 - [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
 - [テスト方針](docs/testing.md)
+- [開発環境と作業の規約（Node.jsの版、`npm run setup`）](docs/development.md)
+- [公開範囲と公開前の点検](docs/public-data.md)
 - [公開・運用方針](SECURITY.md)
 - [OpenFiscaの検証項目](experiments/openfisca/README.md)
 
@@ -37,4 +39,6 @@ Copilotの自動レビュー用repoルールは設定済みです。Draftはrepo
 
 コードを追加するときも、一般化した仕様と合成データのみを使用します。実際の明細、金額、勤務先、住所、口座情報、通知書、秘密情報は保存しません。実データは将来のアプリでリポジトリ外に保存する設計です。
 
-ライセンスは未選択です。publicであることと、OSSとして再利用を許諾することは別です。
+合成データとデザイン資産を置ける場所、commit前の点検（`npm run check:public -- --staged`）、誤って公開したときの手順は[公開範囲と公開前の点検](docs/public-data.md)にあります。検査は追加の防御で、保証ではありません。
+
+ライセンスは未選択です（所有者が選ぶまで、OSSとは呼びません）。publicであることと、OSSとして再利用を許諾することは別です。

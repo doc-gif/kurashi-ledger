@@ -26,8 +26,9 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | [0005](0005-sqlite-driver.md) | SQLiteドライバ | Proposed |
 | [0006](0006-data-location-backup-encryption.md) | データ保管先・バックアップ・暗号化・同期の扱い | Proposed |
 | [0007](0007-shared-safety-checks.md) | 共通の安全確認（G1〜G7）と、操作ごとの適用表（修正の影響範囲の一覧） | Proposed |
+| [0008](0008-install-record.md) | 依存の導入の記録の形式と照合の方法（T02。ADR-0002で後に決めるとした部分） | Proposed |
 
-`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0008以降の番号を使う。
+`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0009以降の番号を使う（0008はT02で使った）。
 
 ## T00の決定の要約
 
@@ -75,6 +76,8 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | `CLAUDE.md`、`.github/copilot-instructions.md`、`.github/PULL_REQUEST_TEMPLATE.md` | AIとPRの作業手順 | 実行環境や技術構成の設定は含まない。ADRと矛盾しないので変更しない |
 | `package.json`、lockfile、Node.jsの版指定、tsconfig、workflow | mainには存在しない | T02でADR-0002・0004に沿って作る |
 | 元checkoutにある未公開の試作コード | T00では読んでいない。コピー・公開もしていない | T02で採否を棚卸しする。確認する観点の例はNode.jsの版、依存、SQLiteドライバ、workflow。ADRと食い違えば、試作をADRに合わせるか、ADRを置き換える提案をする |
+
+T02の結果（2026-10-03、Issue #9）: `.gitignore`の2点を直し、合成データとデザイン資産の置き場所と点検の手順を決めた（[公開範囲と公開前の点検](../public-data.md)）。`package.json`・lockfile・Node.jsの版の指定・tsconfigを作った（[開発環境と作業の規約](../development.md)、[ADR-0008](0008-install-record.md)）。元checkoutの試作の採否は、[開発環境と作業の規約](../development.md)の「元checkoutの未公開の試作の棚卸し」に記録した。ADRを置き換える必要のある食い違いはなかった。
 
 ## 別タスクへ切り出す検証
 

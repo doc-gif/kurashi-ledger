@@ -32,6 +32,7 @@
 ## T02 — 公開用初期構成と複数AIの作業手順
 
 - 依存: T00。担当: 開発運用。範囲: README、AGENTS、SECURITY、Issue/PR原稿、開発設定。共有資源: repo設定、依存lockfile。
+- 成果物の所在: [開発環境と作業の規約](development.md)、[公開範囲と公開前の点検](public-data.md)、[ADR-0008](adr/0008-install-record.md)（依存の導入の記録）、`package.json`・`scripts/`・`.gitignore`・`.github/ISSUE_TEMPLATE/`。
 - 成果物: 既存基礎コードの採否、公私データ境界、branch/worktree・引継ぎ・レビュー規約。公開ライセンスは所有者の選択を記録し、未選択ならOSSと称しない。
 - 実行環境（ADR-0002）: `devEngines`・`engines`・`.nvmrc`、lockfile、`.npmrc`（`ignore-scripts`）、TypeScript（型検査のみ）を整える。Node.jsは、着手時に利用可能なLTSのうちADR-0002の必要機能を満たす版を確認して固定する。将来のLTSを待つことを開始条件にしない。メジャー更新はT28で行う。`.gitignore`がソースや合成fixtureまで除外している点を直す（ADR README「既存設定の棚卸し」）。依存の導入が、いまのlockfileと実行環境（Node.jsの版、OS、CPU）に対して成功したことを記録する方式を決め、導入のコマンド`npm run setup`（既存の記録を削除し、`npm ci`が成功したときだけ記録を書く）を作る（ADR-0002の「依存の導入とリリースの対応」）。CI（T05）も同じコマンドで導入する。`npm ci`が失敗・中断したときに記録が残らないこと、`npm ci`を直接実行した場合に`npm run build`が止まって`npm run setup`を案内すること、Mac・Windowsで同じように動くことを試験する。
 - 受入: 新たに公開するファイルは、公開対象を点検してからcommitする（repoとT00のIssue #1は作成済み）。個人情報のある既存資料を丸ごと移さない。秘密情報検査は保証ではなく追加防御と明記。誤公開時の手順あり。
