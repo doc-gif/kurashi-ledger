@@ -24,7 +24,7 @@
 | 年間の支払金額・源泉徴収税額等 | 採用した年間資料の該当項目。年間資料がない場合と、採用の判断で明細を選んだ場合は、その年に帰属する明細の、比較の対応表で対応する項目の合計（5） | `income-year` | 採用しなかった側 |
 | 所得の年ごとの明細の合計 | 帰属の年が決まった給与明細（8） | `income-year` | 帰属が決まらない明細（別に一覧を出す） |
 | 見込み | 予測の行の残り（6） | `expected-month` | 実績化した分 |
-| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行 | `subject-year` | 計算run、給与明細の控除 |
+| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行。`noticeType`ごとに集計する | `subject-year` | 計算run、給与明細の控除、種類（`noticeType`）の違う通知 |
 | 推計 | 集計しない。計算runごとの結果（[計算結果](calculation-results.md)の1の`results`）をそのまま示す | — | 正式通知、ほかの計算run |
 
 共通の条件:
@@ -33,7 +33,7 @@
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
-- 正式通知の決定額は、同じ`noticeType`・同じ`subjectYear`・同じ発行者で差し替えられていない通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ等）。
+- 正式通知の決定額は、`noticeType`ごとに集計し、種類の違う通知（住民税の決定と国保の保険料の決定等）を足さない。集計の`measure`には、通知の種類と金額の分類を添えて書く（例 `official-notice.amounts.amount`（`resident-tax-determination`・`annual-total`））。同じ`noticeType`・同じ`subjectYear`・同じ発行者で差し替えられていない通知が2件以上あれば、足さずに「要確認」とする（`supersedes`の付け忘れ等）。
 - 実績と見込みを合わせて表示する場合は、実績と見込みの内訳を必ず並べ、「見込みを含む」と表示する。実績と、予測の行の全額を足さない（残りだけを足す）。
 - 正式通知と推計は、同じ集計に足さない。比べて差を示すだけ。計算runの結果は集計値の形で返さず、runどうしも足さない（対象の年・年度・地域はrunの`target`で示す）。
 - 集計の結果は[共通の型](common-types.md)の11「集計値の形」で返す。
@@ -89,6 +89,7 @@
 | `decisionType` | `duplicate-review・annual-adoption・mismatch-explanation・tax-year-assertion` | 判断の種類（下の表） |
 | `targets` | `List<Ref>` | 判断の対象 |
 | `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者 |
+| `fields` | `Fact<List<Text>>` | `mismatch-explanation`の場合だけ。理由を説明する年間資料の項目名（例 `paymentAmount`）。1件以上 |
 | `value` | 種類ごと（下の表） | 判断の内容 |
 | `reasonNote` | `Text` | 判断の理由。空にしない |
 
@@ -96,7 +97,7 @@
 | --- | --- | --- | --- |
 | `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） |
 | `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する |
-| `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を残す（5）。値は書き換えない |
+| `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`fields`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない |
 | `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） |
 
 ## 5. 年間資料と月次資料（採用と不一致）
@@ -119,6 +120,8 @@
 3. **整合の検査:** 選ばれた年間資料`D`ごとに、`D`の範囲に含まれるすべての支払者の選択が`D`であることを確かめる。そうでなければ（同じ範囲の支払者が別の資料・`entered-payslips`・要判断を選んでいれば）、`D`の範囲の支払者をすべて要判断にする。判断で選んだ支払者も例外にしない。要判断に変わった支払者を範囲に含むほかの資料についても、変化がなくなるまで同じ検査を繰り返す。
 4. 要判断の支払者の年間の値は`unknown`とし、判断（`annual-adoption`）を求める。
 
+**範囲の一部だけの集計:** 年間資料の値は、その資料の範囲全体の分けられない合計である。集計の`scope`の支払者が、採用した資料の範囲の一部だけを含む場合（範囲が勤務先A・Cの資料で、勤務先Cだけを集計する等）は、その資料の値を足さず、集計を`incomplete`にして、`missing`に資料と状態`partial-scope`を挙げる（資料の範囲を併せて示す）。範囲全体を含む`scope`で集計すれば値を示せる。
+
 整合の検査を通った結果、採用した年間資料どうしの範囲は重ならず、`entered-payslips`・年間資料なしの支払者は、どの採用した資料の範囲にも入らない。範囲の重なりを判断で解消するには、資料の範囲のすべての支払者について同じ選択をする（例えば`scope.payers`に範囲全体を入れた判断にする）。年`Y`の年間の値は、採用した資料（重複を除いた集合）の該当項目の合計と、`entered-payslips`・年間資料なしの支払者の明細から示す値を、**分けて**示す（`coverage`で区別する）。
 
 ### 比べ方と不一致
@@ -131,8 +134,8 @@
 | `no-coverage` | 確定済みの`annual-coverage`がない |
 | `incomplete` | 結んだ明細の該当項目に`unknown`・`not-stated`がある、または年間資料の項目が`known`でない |
 | `match` | 両方が`known`で一致 |
-| `mismatch-unresolved` | 両方が`known`で異なり、`mismatch-explanation`の判断がない |
-| `mismatch-explained` | 両方が`known`で異なり、`mismatch-explanation`の判断がある |
+| `mismatch-unresolved` | 両方が`known`で異なり、その項目を`fields`に含む`mismatch-explanation`の判断がない |
+| `mismatch-explained` | 両方が`known`で異なり、その項目を`fields`に含む`mismatch-explanation`の判断がある |
 
 規則:
 

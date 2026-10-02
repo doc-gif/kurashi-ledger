@@ -62,14 +62,14 @@
 
 `RoundingStep`: `order`（1から始まる整数）、`itemKey`（`Text`）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
 
-`MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed`）。
+`MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope`。[共通の型](common-types.md)の11の`missing`と同じ意味）。
 
 ## 2. 結果の状態
 
 | 状態 | 条件 | 結果の値 |
 | --- | --- | --- |
 | `unsupported` | 対象の年・年度・地域・範囲に、承認済みの規則がない、または地域が`unknown` | すべて`unknown`。0にしない |
-| `incomplete` | 必要な入力が足りない（`unknown`・`not-stated`の項目、帰属の`undetermined`・`conflict`、年間の値の「要判断」） | 不足の影響を受ける項目は`unknown`。`missingInputs`に列挙する |
+| `incomplete` | 必要な入力が足りない（`unknown`・`not-stated`の項目、帰属の`undetermined`・`conflict`、年間の値の「要判断」、年間資料の範囲の一部だけの値（`partial-scope`）） | 不足の影響を受ける項目は`unknown`。`missingInputs`に列挙する |
 | `provisional` | 計算できたが、見込み・仮定、または`coverage`が`entered-records-only`の年間の値を使った | 値あり。「暫定」と表示する |
 | `computed` | 上のどれにも当たらない | 値あり。それでも推計で、正式通知ではない |
 | `failed` | 計算の途中で異常終了した | 使わない。監査のために残す |
