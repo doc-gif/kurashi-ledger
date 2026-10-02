@@ -551,3 +551,99 @@ test('実行ファイルのリンクと本体、package.jsonは、node_modules�
     /required-tool のリンク/,
   );
 });
+
+const LOCK = '.kurashi-ledger-setup.lock';
+
+test('同時に起動した2つ目のsetupは、依存を変える前に止まり、1つ目の記録は有効なまま', () => {
+  const root = makeProject();
+  assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+  let second: { code: number; output: string } | undefined;
+  let secondRan = false;
+  let treeDuringSecond: string[] = [];
+  const first = setup(root, () => {
+    // 1つ目がnpm ciを実行している最中に、2つ目を起動する。
+    const before = readdirSync(root).sort();
+    second = setup(root, () => {
+      secondRan = true;
+      return fakeSuccessfulCi(root);
+    });
+    treeDuringSecond = readdirSync(root).sort();
+    assert.deepEqual(treeDuringSecond, before, '2つ目は何も変えない');
+    return fakeSuccessfulCi(root);
+  });
+  assert.equal(first.code, 0, first.output);
+  assert.ok(second !== undefined);
+  assert.equal(second.code, 1);
+  assert.equal(secondRan, false, '2つ目はnpm ciを始めない');
+  assert.match(second.output, /別の `npm run setup` が動いている/);
+  assert.equal(verifyInstallRecord(root, runtime).ok, true, '1つ目の記録は有効');
+  assert.equal(existsSync(join(root, LOCK)), false, '1つ目は終わったら印を外す');
+});
+
+test('印を持ったまま失敗・中断したsetupは、記録を残さず、印を外す', () => {
+  for (const result of [
+    { status: 1, signal: null },
+    { status: null, signal: 'SIGINT' },
+  ] as const) {
+    const root = makeProject();
+    assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+    let lockedDuringCi = false;
+    const { code } = setup(root, () => {
+      lockedDuringCi = existsSync(join(root, LOCK));
+      return result;
+    });
+    assert.notEqual(code, 0);
+    assert.equal(lockedDuringCi, true, 'npm ciの間は印がある');
+    assert.equal(existsSync(recordPath(root)), false);
+    assert.equal(existsSync(join(root, LOCK)), false);
+    assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0, '次のsetupは進める');
+  }
+});
+
+test('強制終了で残った印があると、setupは何も変えずに止まり、照合も不一致。印は自動で消さず、消し方を案内する', () => {
+  const root = makeProject();
+  assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+  const record = readFileSync(recordPath(root), 'utf8');
+  const left = JSON.stringify({ format: 1, token: 'synthetic-crashed-run', pid: 4242, startedAt: '2026-10-03T00:00:00.000Z' });
+  writeFileSync(join(root, LOCK), left);
+  let ran = false;
+  const { code, output } = setup(root, () => {
+    ran = true;
+    return fakeSuccessfulCi(root);
+  });
+  assert.equal(code, 1);
+  assert.equal(ran, false);
+  assert.equal(readFileSync(recordPath(root), 'utf8'), record, '記録を消していない');
+  assert.equal(readFileSync(join(root, LOCK), 'utf8'), left, '印を自動で消さない');
+  assert.match(output, /4242/);
+  assert.match(output, /Remove-Item/);
+  assert.match(output, /rm /);
+  const check = verifyInstallRecord(root, runtime);
+  assert.equal(check.ok, false);
+  if (!check.ok) assert.match(check.problems.join(), /作業中の印/);
+  rmSync(join(root, LOCK));
+  assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0, '利用者が印を消せば進める');
+});
+
+test('印の名前がリンクや別のものなら、setupは止まり、リンク先を変えない', () => {
+  const root = makeProject();
+  const outside = makeOutside();
+  const before = outside.snapshot();
+  linkDirectory(outside.dir, join(root, LOCK));
+  const { code, output } = setup(root, () => fakeSuccessfulCi(root));
+  assert.equal(code, 1);
+  assert.match(output, /作業中の印/);
+  assert.deepEqual(outside.snapshot(), before);
+});
+
+test('自分の印でなくなっていたら（途中で差し替えられた等）、終わっても消さない', () => {
+  const root = makeProject();
+  const replaced = JSON.stringify({ format: 1, token: 'synthetic-other-run', pid: 1, startedAt: '2026-10-03T00:00:00.000Z' });
+  const { code, output } = setup(root, () => {
+    writeFileSync(join(root, LOCK), replaced);
+    return fakeSuccessfulCi(root);
+  });
+  assert.equal(code, 0, output);
+  assert.equal(readFileSync(join(root, LOCK), 'utf8'), replaced);
+  assert.match(output, /自分の印でない/);
+});

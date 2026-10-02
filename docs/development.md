@@ -45,6 +45,8 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`の試験を実行する |
 | `npm run check:public` | 公開検査。`-- --staged`でcommitしようとしている変更だけを見る（[公開範囲と公開前の点検](public-data.md)） |
 
+`npm run setup`は、worktreeの直下に作業中の印`.kurashi-ledger-setup.lock`を作ってから導入し、終わったら消す。同じworktreeで2つ目を起動すると、依存を変えずに止まる。setupを強制終了（Ctrl+C等）すると印が残り、次のsetupと照合（`check:install`・`build`）が止まる。動いているsetupがないことを確かめてから（macOS: `ps -p <番号>`やアクティビティモニタ、Windows: タスク マネージャー）、印を消す（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）。印は自動では消さない（ADR-0008）。
+
 `npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
 
 ## npmの設定（`.npmrc`）

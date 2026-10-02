@@ -439,9 +439,16 @@ test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない
   assert.ok(result.status !== 0 || result.signal !== null, `中断されていない: ${describe(result)}`);
 
   assert.equal(existsSync(join(root, RECORD)), false);
+  // 強制的に止めたsetupの作業中の印は残り、次のsetupと照合を止める（自動では消さない。ADR-0008）。
+  assert.ok(existsSync(join(root, '.kurashi-ledger-setup.lock')), '作業中の印が残る');
   const check = await npm(root, ['run', 'check:install']);
   assert.notEqual(check.status, 0);
   assert.match(check.stderr, /npm run setup/);
+  const again = await npm(root, ['run', 'setup']);
+  assert.notEqual(again.status, 0, describe(again));
+  assert.match(again.stderr, /Remove-Item \.kurashi-ledger-setup\.lock/);
+  rmSync(join(root, '.kurashi-ledger-setup.lock'));
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0, '印を消せば進める');
 });
 
 test('setupはnpm run経由でだけ動き、--forceを拒む', async () => {

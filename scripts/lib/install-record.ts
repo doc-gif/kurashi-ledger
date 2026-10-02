@@ -19,6 +19,8 @@ import { basename, join, sep } from 'node:path';
 
 export const RECORD_FORMAT = 1;
 export const RECORD_FILE_NAME = '.kurashi-ledger-install.json';
+// npm run setupの作業中の印。npm ciが消すnode_modulesの外（worktreeの直下）に置く（ADR-0008）。
+export const SETUP_LOCK_NAME = '.kurashi-ledger-setup.lock';
 export const SETUP_GUIDANCE =
   '対処: `npm run setup` を実行して依存を導入し直す（WindowsのPowerShellでは `npm.cmd run setup`）。`npm ci` や `npm install` を直接実行しても記録は書かれない。';
 
@@ -137,6 +139,105 @@ function inspectRecordPath(root: string): 'absent' | 'file' {
   return 'file';
 }
 
+// その名前の項目があるか（リンクはたどらない。宙に浮いたリンクもあるとみなす）。
+function pathEntryExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return false;
+    throw error;
+  }
+}
+
+export function setupLockPath(root: string): string {
+  return join(root, SETUP_LOCK_NAME);
+}
+
+export class SetupLockError extends Error {}
+
+type SetupLock = { readonly token: string };
+
+// 残っている印の中身（プロセス番号と開始時刻）を、案内のために読む。リンクはたどらない。
+function describeSetupLock(root: string): string {
+  const path = setupLockPath(root);
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    return '';
+  }
+  if (!stat.isFile()) return '（印の名前が通常のファイルでない（リンク等）。リンクなら、リンク自身だけを外す）';
+  try {
+    const info = JSON.parse(readFileSync(path, 'utf8')) as { pid?: unknown; startedAt?: unknown };
+    const pid = typeof info.pid === 'number' ? String(info.pid) : '不明';
+    const startedAt = typeof info.startedAt === 'string' ? info.startedAt : '不明';
+    return `（記録されたプロセス番号 ${pid}、開始 ${startedAt}）`;
+  } catch {
+    return '（印の中身を読めない）';
+  }
+}
+
+// worktree単位の排他。排他的な作成（wx。既存のファイルやリンクがあれば失敗する）で印を作り、
+// 作れなければ何も変えずに止める。残った印を、プロセス番号の生死で判断して自動で消すことはしない
+// （番号は再利用されうる。ADR-0006のG3と同じ考え方）。
+export function acquireSetupLock(root: string): SetupLock {
+  const path = setupLockPath(root);
+  const token = randomBytes(16).toString('hex');
+  let fd: number;
+  try {
+    fd = openSync(path, 'wx', 0o644);
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'EEXIST') {
+      throw new SetupLockError(
+        [
+          `別の \`npm run setup\` が動いているか、前の \`npm run setup\` が強制終了（Ctrl+C等）して作業中の印が残っている。依存は何も変えずに止めた。`,
+          `作業中の印: このworktreeの直下の ${SETUP_LOCK_NAME}${describeSetupLock(root)}`,
+          '動いている setup がないことを確かめてから（macOS: `ps -p <番号>` やアクティビティモニタ、Windows: タスク マネージャーで node.exe を確かめる。プロセス番号は再利用されることがあるので、番号だけで判断しない）、印を消して（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）、`npm run setup` をやり直す。',
+        ].join('\n'),
+      );
+    }
+    throw error;
+  }
+  try {
+    writeSync(fd, `${JSON.stringify({ format: 1, token, pid: process.pid, startedAt: new Date().toISOString() })}\n`);
+    fsyncSync(fd);
+  } catch (error) {
+    closeSync(fd);
+    unlinkIfPresent(path);
+    throw error;
+  }
+  closeSync(fd);
+  return { token };
+}
+
+// 自分の印だけを消す。消えていたり差し替えられていたりすれば消さずに、その旨を返す。
+export function releaseSetupLock(root: string, lock: SetupLock): string | null {
+  const path = setupLockPath(root);
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') {
+      return `作業中の印（${SETUP_LOCK_NAME}）が、終わる前に消えていた。`;
+    }
+    throw error;
+  }
+  let token: unknown;
+  if (stat.isFile()) {
+    try {
+      token = (JSON.parse(readFileSync(path, 'utf8')) as { token?: unknown }).token;
+    } catch {
+      token = undefined;
+    }
+  }
+  if (token !== lock.token) {
+    return `作業中の印（${SETUP_LOCK_NAME}）が自分の印でない（途中で差し替えられた等）ので、消さずに残した。中身を確かめてから消す。`;
+  }
+  unlinkSync(path);
+  return null;
+}
+
 // pathをたどって（リンクを解決して）、通常のファイルに届き、その実体パスがbaseの中にあるか。
 // リンク先がない（宙に浮いたリンク）、ディレクトリ、baseの外を指すものは、届かないとする。
 function reachesRegularFile(path: string, base: string): 'absent' | 'ok' | 'invalid' {
@@ -234,6 +335,19 @@ export function compareRecord(recorded: InstallRecord, actual: InstallRecord): s
 }
 
 export function verifyInstallRecord(root: string, runtime: Runtime = currentRuntime()): Verification {
+  return verifyInstallRecordImpl(root, runtime, false);
+}
+
+// ownSetupLockがtrueなのは、setup自身が印を持ったまま最後に照合するときだけ。
+function verifyInstallRecordImpl(root: string, runtime: Runtime, ownSetupLock: boolean): Verification {
+  if (!ownSetupLock && pathEntryExists(setupLockPath(root))) {
+    return {
+      ok: false,
+      problems: [
+        `依存の導入の作業中の印（${SETUP_LOCK_NAME}）がある。\`npm run setup\` が動いているか、強制終了して印が残っている（\`npm run setup\` を実行すると、確かめ方と消し方を表示する）。`,
+      ],
+    };
+  }
   const missing: Verification = {
     ok: false,
     problems: [
@@ -483,8 +597,29 @@ function describeNpmCiFailure(result: NpmCiResult): string {
   return `npm ci が失敗した（終了コード ${String(result.status)}）`;
 }
 
-// `npm run setup` の本体。既存の記録を消し、npm ciが成功したときだけ記録を書く。
+// `npm run setup` の本体。worktree単位の作業中の印を取ってから、既存の記録を消し、npm ciが成功したときだけ
+// 記録を書き、最後に印を外す。印を取れなければ、記録もnode_modulesも変えずに止まる。
 export function runSetup(deps: SetupDependencies): number {
+  let lock: SetupLock;
+  try {
+    lock = acquireSetupLock(deps.root);
+  } catch (e) {
+    deps.error(
+      e instanceof SetupLockError
+        ? e.message
+        : `作業中の印を作れないので、導入を始めない: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return 1;
+  }
+  try {
+    return runSetupLocked(deps);
+  } finally {
+    const warning = releaseSetupLock(deps.root, lock);
+    if (warning !== null) deps.error(warning);
+  }
+}
+
+function runSetupLocked(deps: SetupDependencies): number {
   const { root, runtime, log, error } = deps;
   try {
     removeInstallRecord(root);
@@ -538,7 +673,7 @@ export function runSetup(deps: SetupDependencies): number {
     error(`記録を書けなかった: ${e instanceof Error ? e.message : String(e)}。記録は残していない。`);
     return 1;
   }
-  const check = verifyInstallRecord(root, runtime);
+  const check = verifyInstallRecordImpl(root, runtime, true);
   if (!check.ok) {
     removeInstallRecord(root);
     error(`書いた記録を確かめられなかったので削除した。\n${formatVerificationFailure(check.problems)}`);

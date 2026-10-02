@@ -44,7 +44,8 @@ function makeRepo() {
       env: { ...env, ...extraEnv },
       encoding: 'utf8',
     });
-  return { write, git, check, stageSymlink };
+  const gitStatus = (...args: string[]) => spawnSync('git', args, { cwd: repo, env, encoding: 'utf8' }).status;
+  return { write, git, check, stageSymlink, gitStatus };
 }
 
 test('許可したソースと合成データだけなら通る', () => {
@@ -126,7 +127,7 @@ test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、ディ
 });
 
 test('symlink（mode 120000）は、合成データの場所や許可した拡張子でも止める。通常のファイルと実行可能なファイルは今までどおり', () => {
-  const { write, git, check, stageSymlink } = makeRepo();
+  const { write, git, check, stageSymlink, gitStatus } = makeRepo();
   write('tests/fixtures/records.csv', 'employer,month,gross_yen\nemployer-a,2026-04,unknown\n');
   write('tests/fixtures/scan.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00]));
   write('scripts/tool.sh', '#!/bin/sh\necho synthetic\n');
@@ -143,9 +144,14 @@ test('symlink（mode 120000）は、合成データの場所や許可した拡�
   stageSymlink('tests/fixtures/alias.csv', 'records.csv');
   // 許可された拡張子でない場所のリンク。
   stageSymlink('docs/notes-link.md', '../README.md');
+  // ディレクトリを指すリンクも、indexでは同じmode 120000。
+  stageSymlink('tests/fixtures/shared', '../../private');
+  // リンクの先の階層のパス（途中の名前がリンク）は、Gitがindexに入れない（ファイルとディレクトリの衝突）。
+  const blob = git('hash-object', '-w', '--stdin');
+  assert.notEqual(gitStatus('update-index', '--add', '--cacheinfo', `100644,${blob},tests/fixtures/shared/records.csv`), 0);
   const r = check(['--staged']);
   assert.equal(r.status, 1, r.stdout);
-  for (const path of ['tests/fixtures/leak.csv', 'tests/fixtures/alias.csv', 'docs/notes-link.md']) {
+  for (const path of ['tests/fixtures/leak.csv', 'tests/fixtures/alias.csv', 'docs/notes-link.md', 'tests/fixtures/shared']) {
     assert.match(r.stderr, new RegExp(`公開しない: ${path.replace(/\./g, '\\.')}: .*シンボリックリンク`), path);
   }
   for (const path of ['tests/fixtures/records.csv', 'tests/fixtures/scan.png', 'scripts/tool.sh', 'tests/fixtures/executable.csv']) {

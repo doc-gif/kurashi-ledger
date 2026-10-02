@@ -2,6 +2,8 @@
 # 主な境界は「実データのデータルートをrepoの外に置く」こと（ADR-0006）。
 # 例外を変えるときは scripts/lib/public-policy.ts と試験の見本も同じPRで直す。
 node_modules/
+# npm run setupの作業中の印（ADR-0008）。commitすると、ほかのcloneのsetupが止まる。
+/.kurashi-ledger-setup.lock
 dist/
 coverage/
 .idea/

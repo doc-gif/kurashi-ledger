@@ -90,6 +90,7 @@ const BLOCKED_PATHS = [
   'tests/fixtures.pdf/records.csv',
   'tests/fixturesX/records.csv',
   'src/tests/fixtures/records.csv/',
+  '.kurashi-ledger-setup.lock',
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',

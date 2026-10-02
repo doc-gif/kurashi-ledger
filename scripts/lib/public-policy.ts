@@ -65,6 +65,8 @@ export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
   if (directoryCount > 0 && first !== undefined && ROOT_PRIVATE_DIRS.includes(first)) {
     findings.add('実データ・出力・バックアップ用のディレクトリ');
   }
+  // npm run setupの作業中の印（ADR-0008）。commitすると、ほかのcloneのsetupが止まる。
+  if (path === '.kurashi-ledger-setup.lock') findings.add('npm run setupの作業中の印');
   lower.forEach((name, i) => {
     if ((name === '.env' || name.startsWith('.env.')) && name !== '.env.example') {
       findings.add('環境変数ファイル');
