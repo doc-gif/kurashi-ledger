@@ -33,7 +33,7 @@
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `year` | `{ kind: calendar・fiscal, year: YYYY }` | 対象の年（所得の年）か年度 |
-| `jurisdiction` | `Fact<{ kind: national・prefecture・municipality・insurer, code: Text }>` | 対象の地域・保険者。地域の符号の体系はT14で決める。分からなければ`unknown` |
+| `jurisdiction` | `Fact<{ kind: national・prefecture・municipality・insurer, code: Text }>` | 対象の地域・保険者。地域の符号の体系はT14で決める。`known`か`unknown`だけ（国の制度でも`{ kind: national, code }`として`known`にする。[共通の型](common-types.md)の12） |
 | `scopeNote` | `Fact<Text>` | 対象の範囲の補足 |
 
 `Inputs`:
@@ -82,7 +82,7 @@
 | 順 | 状態 | 条件 | 結果の値（`results`の`value`） |
 | --- | --- | --- | --- |
 | 1 | `failed` | 計算が異常終了した（ほかの条件が同時に成り立っていても、この状態にする。障害を隠さないため） | 使わない（状態を問わず保存するが、表示・比較に使わない）。監査のために残す |
-| 2 | `unsupported` | 異常終了しておらず、対象の年・年度・地域・範囲に承認済みの規則がない、または地域が`unknown` | すべて`unknown`。0にしない |
+| 2 | `unsupported` | 異常終了しておらず、対象の年・年度・地域・範囲に承認済みの規則がない、または`jurisdiction`が`known`でない | すべて`unknown`。0にしない |
 | 3 | `incomplete` | 異常終了しておらず、対象に承認済みの規則があり、必要な入力が足りない（`MissingState`のどれかに当たる入力がある。[共通の型](common-types.md)の11） | 不足の影響を受ける項目は`unknown`。`missingInputs`に1件以上挙げる |
 | 4 | `provisional` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定、または`coverage`が`entered-records-only`の年間の値を使った | `known`か`not-applicable`。「暫定」と表示する |
 | 5 | `computed` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定・`entered-records-only`の年間の値を使っていない | `known`か`not-applicable`。それでも推計で、正式通知ではない |

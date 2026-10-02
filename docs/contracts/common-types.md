@@ -21,7 +21,7 @@
 | `a`・`b`・`c` | 列挙。並べた値のどれか1つ |
 | `boolean`、整数 | 真偽値（`true`・`false`）、整数（範囲は項目ごとに書く） |
 
-**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。`known`が必要な項目と、項目ごとに許す状態は、12の表にまとめる（各ファイルの説明の「`known`が必要」は、この表と同じ内容）。表にない`Fact`の項目は`unknown`を許す。表の条件を満たさない保存は拒否する。
+**項目の省略:** 表に書いた項目は省略しない。`Fact<T>`の項目に入力がなければ、状態を`unknown`（不明）として持つ。`Fact`でない項目は、必ず値を持つ。「〜の場合だけ」と書いた`Fact`の項目は、その場合でなければ`not-applicable`（対象外）を持つ。`Fact`の項目が許す状態は、12で1か所にまとめる。既定は`known`・`unknown`・`not-stated`の3つで、`not-applicable`は12の「`not-applicable`を許す項目」の表に挙げた項目だけで使える。`known`が必要な場合や、既定より狭い場合は、12の「`known`が必要な項目」の表に書く（各ファイルの説明の「`known`が必要」は、この表と同じ内容）。表の条件を満たさない保存は拒否する。
 
 ## 2. IDと参照
 
@@ -119,7 +119,7 @@
 
 - 未入力は`unknown`。UIは空欄を0にしない。0を保存するのは、利用者が0を入力・確認した場合だけ。
 - `not-stated`は、確かめた資料がある場合にだけ使う。資料がなく、記憶から入力する場合の不明は`unknown`。
-- `not-applicable`は、利用者が根拠を持って判断した場合に使う。根拠はメモ（`note`）に書ける。
+- `not-applicable`は、利用者が根拠を持って判断した場合に使う。根拠はメモ（`note`）に書ける。使える項目は12の「`not-applicable`を許す項目」の表に挙げたものだけ（既定では使えない）。
 - `known`の値は、項目の型の制約（0以上等）を満たす。
 - 状態は金額以外にも使う（`Fact<LocalDate>`、`Fact<Period>`、列挙、参照等）。意味は上の表と同じ。
 - **分からない値で絞り込まない（1つの規則）:** 集合を絞り込む判定では、使う値が`unknown`・`not-stated`なら、その値で対象を除外しない。対象は候補・不足・要確認のまま残し、黙って除外しない。また、分からない値を一致の根拠にしない（分からない値どうしを一致とみなさない）。この規則を使う判定は次のとおりで、どれも規則を言い換えずにここを参照する。
@@ -342,7 +342,9 @@
 
 ## 12. `known`が必要な項目
 
-`Fact`の項目は、この表に挙げたものを除き、`unknown`を許す。この表は、記録の種類と状態ごとに、`known`が必要な項目と許す状態を1か所にまとめたもの。各ファイルの説明に書いた「`known`が必要」は、この表と同じ内容を指す（食い違えばこの表を正とし、気づいた作業で直す）。保存のときに満たさなければ拒否する（9の保存の検査）。
+**既定（すべての`Fact`の項目）:** 許す状態は`known`・`unknown`・`not-stated`の3つ。`not-applicable`は、下の「`not-applicable`を許す項目」の表に挙げた項目と条件だけで使える（挙げていない項目に`not-applicable`を保存しない）。既定より狭くする場合（`known`だけ、`known`と`unknown`だけ等）は、次の「`known`が必要な項目」の表に書く。2つの表と既定で、契約のすべての`Fact`の項目の許す状態が決まる。
+
+**`known`が必要な項目（既定より狭い項目）:** 記録の種類と状態ごとに、`known`が必要な項目と許す状態を1か所にまとめたもの。各ファイルの説明に書いた「`known`が必要」は、この表と同じ内容を指す（食い違えばこの表を正とし、気づいた作業で直す）。保存のときに満たさなければ拒否する（9の保存の検査）。
 
 | 記録・項目 | 条件 | 許す状態 |
 | --- | --- | --- |
@@ -363,6 +365,7 @@
 | 照合配分の`settlesForecastLine` | `forecast-realization`を`confirmed`にする | `known` |
 | 照合配分の`confirmedAgainst` | `allocationStatus`が`confirmed` | `known`（保存の時点の両方の現在の版） |
 | 照合配分の識別の次元の項目（[照合の規則](reconciliation.md)の3の表） | 確定するとき | 同3の表の条件のとおり |
+| 計算runの`target.jurisdiction` | いつでも | `known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない。`known`でなければ結果の状態は`unsupported`。[計算結果](calculation-results.md)の2） |
 | 改訂の共通の形の`knownOn` | いつでも | `known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない。7の時点を指定した見方は、この2つで改訂を選ぶ） |
 | 照合の判断の`scope` | `annual-adoption`・`mismatch-explanation` | `known` |
 | 照合の判断の`explainedComparisons` | `mismatch-explanation` | `known`（1件以上） |
@@ -371,6 +374,29 @@
 | 同 | `selection`が`entered-payslips`・`no-annual-document` | `adoptedRef`は`not-applicable`、`coverage`は`known`の`entered-records-only` |
 | 同 | `selection`が`adoption-needed` | どちらも`not-applicable` |
 | `Assumption`の`ref` | `source`が`forecast` | `known`（予測の行。版を固定） |
+
+**`not-applicable`を許す項目:** この表にない`Fact`の項目は`not-applicable`を使わない。
+
+| 項目 | `not-applicable`の意味・条件 |
+| --- | --- |
+| メモ・根拠の文の項目: 改訂の共通の形の`changeNote`、雇用先・口座・発行者・照合配分の`note`、雇用条件の`payScheduleNote`、予測の`basisNote`、計算runの`scopeNote`、`RoundingStep`の`ruleRef` | 書くことがない |
+| 「〜の場合だけ」と書いた項目（`duplicateOf`、`importKey`、照合配分の`settlesForecastLine`・`confirmedAgainst`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`、計算runの`failure`等） | その場合でない（1の規則） |
+| `Period`の`end` | 終わりの定めがない（継続中。6） |
+| 雇用条件の`scheduledWeeklyMinutes` | 所定労働時間の定めがない |
+| 給与明細の`workPeriod`、予測の行の`workPeriod`、正式通知の`applicablePeriod` | 期間という概念が当てはまらない（6） |
+| 給与明細の`commutingAllowance`・`commutingAllowanceTaxTreatment`・`incomeTax`・`residentTax`・`healthInsurance`・`nursingCareInsurance`・`pensionInsurance`・`employmentInsurance`・`yearEndAdjustment` | その支給・控除がその人に当てはまらない（制度・雇用条件による。利用者の根拠をメモに書ける） |
+| 給与明細の`bankTransferAmount` | 振込がない（現金払い等）。入金と結べない（[照合の規則](reconciliation.md)の3） |
+| 給与明細・年間資料・正式通知の`supersedes` | 作り直しでない、または前の資料を記録していない（上の表） |
+| 予測の`employerId` | 入金の予測で勤務先に結び付けない |
+| 正式通知の`subjectYear` | 決定額の行（`category`が`annual-total`または分からない行）がない場合だけ（上の表） |
+| 正式通知の`incomeYear` | 所得に基づかない通知（資格の通知等） |
+| 証憑の紐付けの`locator` | ファイル全体を指す |
+| 計算runの`ruleSet`・`previousRunId` | 下の「計算runの項目の状態」の表のとおり |
+| `AdoptionSnapshot`の`adoptedRef`・`coverage`、集計値の`coverage` | 上の表と11のとおり |
+| `Assumption`・`MissingInput`の`ref` | 参照する記録がない |
+| `ResultItem`の`value` | [計算結果](calculation-results.md)の2の表で許す状態のとき（その結果の項目が当てはまらない） |
+
+金額の合計や比較に使う項目（給与明細の`grossPay`・`taxablePay`・`nonTaxablePay`・`totalDeductions`・`netPay`、行の`amount`、年間資料の金額、正式通知の行の`category`と`amount`、入金の`amount`等）は、この表にないので`not-applicable`を使わない。`not-applicable`は集計から除かれ、不足にも数えないので、これらに使うと値を黙って落とすことになるため。
 
 **計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
 

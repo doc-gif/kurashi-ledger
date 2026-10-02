@@ -211,7 +211,7 @@
 | `statusDates` | `List<StatusDate>` | 資格の取得日・喪失日等の行 |
 | `supersedes` | `Fact<Ref<OfficialNotice>>` | 変更通知等の場合だけ、置き換える前の通知（10）。`known`か`not-applicable`だけ（[共通の型](common-types.md)の12） |
 
-`NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。
+`NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。`category`と`amount`は`not-applicable`を使わない（[共通の型](common-types.md)の12の既定）。
 
 `Installment`: `lineId`、`label`（例「第1期」）、`dueDate`（`Fact<LocalDate>`）、`amount`（`Fact<Yen>`、0以上）、`collectionMethod`（`Fact<special・ordinary・other>`。特別徴収・普通徴収・その他）。
 
