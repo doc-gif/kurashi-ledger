@@ -31,6 +31,16 @@
       "description": "GitHub認証にworkflow scopeがなく、Actionsの有効化はできない。",
       "state": "resolved",
       "resolution": "実行されない導入用テンプレートとして保管する。ローカルCLIの運用を先行し、CI未稼働を明記。権限を持つ担当が独立レビュー後に配置する。"
+    },
+    {
+      "description": "所有者はGreptileを使用しない方針を選択した。",
+      "state": "resolved",
+      "resolution": "設定2ファイルを削除し、Codex/Claudeの役割交代とCopilotの補助レビューだけで同じ台帳を参照する。既存のGitHub権限・製品実装可否を変更しない。"
+    },
+    {
+      "description": "連携コメントでT26の実際の予定パスと条件の対象パスのずれが指摘された。",
+      "state": "resolved",
+      "resolution": "INV-HTTP/RELEASEにsrc/infrastructure/http/**、INV-RELEASEに.npmrcを追加し、repo固有のルーティング試験を追加する。T23/T24との関係と導入前後の運用を説明する。"
     }
   ],
   "assessments": [
@@ -42,7 +52,7 @@
         {
           "id": "public",
           "method": "差分の目視と限定的な秘密情報パターン検査、CIのpermissionsと外部送信先の確認",
-          "expected": "実データ・秘密の該当なし。Greptile自動起動なし、CIはcontents:readのみ。"
+          "expected": "実データ・秘密の該当なし。Greptile設定を削除し、外部レビューサービスへの追加依存なし、CIはcontents:readのみ。"
         }
       ]
     },
@@ -75,7 +85,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/Greptile/PR templateとpr-review-loopのリンク・許可範囲を照合",
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合",
           "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。"
         }
       ]
