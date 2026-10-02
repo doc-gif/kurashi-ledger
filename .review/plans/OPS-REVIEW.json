@@ -77,6 +77,11 @@
       "description": "所有者がPR #6の運用方針を直接承認し、PR #4の旧停止・マージ禁止の記載と衝突する。",
       "state": "resolved",
       "resolution": "PR #6の承認済み運用差分を共有文書へ統合し、レビュー運用ツール・計画先行・固定ID・独立レビュー・Open依頼の規約を保持する。製品タスクはClaude側のT01/T02/T04担当に任せ、自分のPRの条件付きマージだけを許可する。READMEと状態資料を同期し、最新baseが変われば再確認して新引継ぎを作る。"
+    },
+    {
+      "description": "PR4-R019〜R021: レビューroleの正表記が入口で食い違い、台帳IDの非正規形と原因キーの前後空白を検査器が許す。",
+      "state": "resolved",
+      "resolution": "codex-reviewer / claude-reviewerを正、reviewerを旧表記として統一。共有IDはPR正整数-R3桁以上の正整数だけに制限し、省略形は履歴の説明に限定する。ledgerとtriage双方でcause_keyのtrim済みを要求し、空白違いの別原因登録を拒否する。合成fixtureによる境界・回帰試験を追加し、汎用と固有suiteを確認する。"
     }
   ],
   "assessments": [
@@ -99,7 +104,7 @@
       "checks": [
         {
           "id": "duplicates",
-          "method": "同一原因キーの別ID拒否とtriageの既存ID返却を単体試験。再発の新証拠を入力する",
+          "method": "同一原因キーの別ID拒否とtriageの既存ID返却を単体試験。再発の新証拠を入力する 非正規台帳ID（省略形・ゼロ・先頭ゼロ・空白）を拒否し、3桁以上の正規IDを受理。ledger/triageの空白原因キーを拒否する。",
           "expected": "同一原因を新IDにせずupdate-existing。抑制だけで未解決を隠さない。"
         },
         {
@@ -121,7 +126,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。",
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。 レビューroleの書式例・旧表記・COMMENT運用の3か所を照合。",
           "expected": "全入口が別担当の最新head/baseのaccepted、Copilot未対応なし、base不変・競合なし、--match-head-commit付き自己PRマージとpost-merge確認、auto-merge不使用、デプロイ別指示待ちを守る。計画・ツール・固定IDの規約を維持し、レビュー依頼はOpenにする。"
         }
       ]
