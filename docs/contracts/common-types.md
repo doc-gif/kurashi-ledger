@@ -21,6 +21,8 @@
 | `a`・`b`・`c` | 列挙。並べた値のどれか1つ |
 | `boolean`、整数 | 真偽値（`true`・`false`）、整数（範囲は項目ごとに書く） |
 
+**列挙の数を書かない（1つの規則）:** 別の場所で定義した列挙（`MissingState`、結果の状態、使われ方等）を指すときは、数ではなく列挙の名前で指す（「`MissingState`のどれか」）。数を書くのは、その場で並べて定義する場合と、契約の基本の区別として名前を付けた場合（`Fact`の4つの状態、3つの時間軸、4つの日付）だけとし、列挙を変える変更で同じときに直す。
+
 **型の識別子（1つの規則）:** 1つの項目が2つ以上の型のどれかを持つ場合（「`A`または`B`」、種類ごとの型、複数の種類の記録を指す参照）は、どの型かを、値がない状態（`unknown`・`not-applicable`等）でも決められる識別子で示す。値の形から型を推し量らない。契約の項目は、次のどれかで識別する。
 
 | 項目 | 識別子 |
@@ -417,7 +419,7 @@
 - 範囲のすべての支払者が値を足せない場合は、`coverage` `not-applicable`の集計値を1つ返す（`knownSum`は0で、`incomplete`。0円とは表示しない）。
 - 例はEX-06(b)の「他の支払者の分を確かめていない場合」（勤務先Cの年間資料の値だけが分かり、勤務先Aが要判断）。
 
-`MissingState`（不足の状態）は次の7つだけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も同じ6つを使う（[計算結果](calculation-results.md)）。
+`MissingState`（不足の状態）は、次の表に挙げた状態だけ。どの文書で「要確認」「要判断」として集計から外すものも、このどれかで`missing`に挙げ、黙って少なく数えない。計算runの`MissingInput.state`も、同じ`MissingState`を使う（[計算結果](calculation-results.md)）。
 
 | 状態 | 使う場面 |
 | --- | --- |
@@ -554,7 +556,7 @@
 | `AdoptionSnapshot`の`payers`（同1） | 計算器が作る | 空を許さない | 支払者の`id` |
 | `AdoptionSnapshot`の`comparisons`（同1） | 計算器が作る | 空は比較する項目がない | `field` |
 
-**計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、5つの状態すべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
+**計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、結果の状態のすべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
 
 | 項目 | `computed` | `provisional` | `incomplete` | `unsupported` | `failed` |
 | --- | --- | --- | --- | --- | --- |
