@@ -98,6 +98,8 @@
 
 **保存中のDBと証憑:** アプリ独自の暗号化は初期範囲に含めない。OSの全ディスク暗号化を、実データを扱う前提条件とする。アプリから有効かどうかを確実には判定できないため、起動手順の確認項目として扱う。前提を満たせない環境では実データを扱わない。
 
+- 前提の対象は、実データのデータルートを置くボリュームである。`KURASHI_LEDGER_HOME`でシステムボリューム以外（外付けドライブ、別のパーティション等）を指定する場合は、そのボリュームも暗号化する（macOS: 暗号化したAPFS、Windows: BitLocker。取り外せるドライブではBitLocker To Go）。システムボリュームの暗号化は、ほかのボリュームを保護しないため。暗号化できないボリュームには、実データのデータルートを置かない。
+
 - macOS: FileVaultを有効にする。Apple siliconやT2のMacは常に暗号化しているが、FileVaultを有効にして初めて、復号にログインパスワードが必要になる。
 - Windows: Pro以上はBitLocker、Homeは「デバイスの暗号化」を使う。デバイスの暗号化は、Microsoftアカウント等でサインインしていないと（ローカルアカウントだけでは）、データが暗号化されていても保護されていない状態になる。手順書で注意する。
 - ディスク暗号化の回復キーを失うと、PCのデータ全体を失う。アプリのバックアップ（3）とは別に管理する。
@@ -257,6 +259,7 @@ SQLiteのDBの状態は、DBファイルと、存在すればjournal（`<DB名>-
 - iCloudの「デスクトップと書類」とストレージ最適化: https://support.apple.com/en-us/109344 、https://support.apple.com/guide/mac-help/optimize-storage-space-sysp4ee93ca4/mac
 - macOSのファイルアクセスの許可: https://support.apple.com/guide/security/controlling-app-access-to-files-secddd1d86a6/web
 - FileVault: https://support.apple.com/guide/mac-help/protect-data-on-your-mac-with-filevault-mh11785/mac 、https://support.apple.com/guide/security/volume-encryption-with-filevault-sec4c6dc1b6e/web
+- 外付けのボリュームの暗号化: https://support.apple.com/guide/disk-utility/encrypt-protect-a-storage-device-password-dskutl35612/mac 、https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/bitlocker-to-go-faq
 - BitLockerとデバイスの暗号化: https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/ 、https://support.microsoft.com/en-us/windows/device-encryption-in-windows-cf7e2b6f-3e70-4882-9532-18633605b7df
 - SQLiteの破損原因と一貫したスナップショット: https://sqlite.org/howtocorrupt.html 、https://sqlite.org/backup.html 、https://sqlite.org/lang_vacuum.html#vacuuminto
 - DBファイルとhot journalの対: https://sqlite.org/howtocorrupt.html#_mispairing_database_files_and_hot_journals 、https://sqlite.org/lockingv3.html#dealing_with_hot_journals

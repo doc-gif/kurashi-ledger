@@ -85,7 +85,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 
 ### 1. 準備（初回のみ）
 
-1. OSの全ディスク暗号化を有効にする（macOS: FileVault、Windows: BitLockerまたはデバイスの暗号化）。macOSでTime Machineを使っている場合は、バックアップディスクを暗号化するか、データルートを対象から外す（ADR-0006）。
+1. OSの全ディスク暗号化を有効にする（macOS: FileVault、Windows: BitLockerまたはデバイスの暗号化）。データルートを外付けドライブ等の別のボリュームに置く場合は、そのボリュームも暗号化する（macOS: 暗号化したAPFS、Windows: BitLocker To Go等。ADR-0006の2）。macOSでTime Machineを使っている場合は、バックアップディスクを暗号化するか、データルートを対象から外す（ADR-0006）。
 2. 拡張機能を入れていない専用のブラウザプロファイルを用意する（ADR-0003）。
 3. Gitと、`package.json`の`devEngines`で指定した版のNode.js（公式インストーラ、またはバージョン管理ツール）を入れる。macOSは公式の`.pkg`、Windowsは公式の`.msi`（x64・arm64）を使える。
 4. 実利用専用のcloneを作り、最新のリリースタグをcheckoutする。開発用のworktreeとは分け、クラウド同期フォルダの外に置く。
