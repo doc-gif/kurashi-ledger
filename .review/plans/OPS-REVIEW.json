@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "a7cfc84797f34856d2d8cec2a75e0e57b098fa1a",
+  "base_sha": "3672a30fd942890852c86eef04eb0b055d324c1e",
   "task_id": "OPS-REVIEW",
   "planned_paths": [
     ".github/PULL_REQUEST_TEMPLATE.md",
@@ -47,6 +47,11 @@
       "description": "PR4-R001〜R008: CIの信頼境界の過大な説明、条件変更・base更新・計画書式・別担当レビュー・停止条件・Windows入力が不十分。",
       "state": "resolved",
       "resolution": "R001(b): workflow保護は別途必要と限定し、既存pull_requestテンプレートのまま権限を拡大しない。条件変更はbaseとの差分を報告。baseの祖先確認と三点diff、決定参照付きchange-proposedの構造検査、UTF-8出力、役割と停止条件の文書整合、回帰試験を追加する。任意R009の関連条件の縮小は効果測定後に判断し、既知パス漏れは今回修正。"
+    },
+    {
+      "description": "PR #2がmainへ統合され、project-statusの設計状態とPR #4の運用状態が競合する。確認間隔も実装側30分の旧記載が残る。",
+      "state": "resolved",
+      "resolution": "最新mainを取り込み、T00のADR・T00–T28・Issue #1・実装停止・担当着手条件を保持する。レビュー運用ツールの公開範囲と別担当レビューを併記し、双方の確認間隔は所有者指定の10分を基準、実稼働設定は各実行環境を正本とする。"
     }
   ],
   "assessments": [
@@ -82,12 +87,12 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "製品のT00/T05を完了扱いせず、PR #2のADR・台帳・実装計画に触れない。状態資料は公開範囲、別担当レビューの例外、現在の確認間隔だけ整合する。PR #2と同じ状態段落を変更するため、後から統合する担当へ競合確認を引き継ぐ。",
+      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "既存PR #2の変更範囲と新ツールの標準ライブラリ依存を照合",
-          "expected": "製品ランタイム・lockfile・データ契約に依存せず、別branch/worktreeで作業できる。"
+          "method": "最新main@3672a30のPR #2成果物と統合後の三点差分を照合",
+          "expected": "PR #2のADR・台帳・計画を改変せず、状態資料に統合済み設計と運用ツールを両立する。"
         },
         {
           "id": "entrypoints",
