@@ -374,7 +374,8 @@
 解決のしかた（どちらか）:
 
 - **明細が見つかった:** `pay_606`（勤務期間 2026-09-01〜09-30、支払予定日 2026-10-30、50,000、課税支給額 50,000、所得税 1,500）を入力し、`ann_603`と結ぶ。比較は`match`になり、支払予定日 2026-10の支給額は50,000になる。
-- **見つからない:** `dcs_601`（`mismatch-explanation`、対象 `ann_603`、範囲 2026・勤務先B、`fields` `paymentAmount`・`withholdingTax`、`explained`、理由「9月勤務分の明細を紛失。年間資料の値を使う」）を記録する。比較は`mismatch-explained`になる。値は変わらず、支払予定日 2026-10の支給額は`no-records`のまま。
+- **見つからない:** `dcs_601`（`mismatch-explanation`、対象 `ann_603`、範囲 2026・勤務先B、`explained`、理由「9月勤務分の明細を紛失。年間資料の値を使う」）を記録する。`explainedComparisons`は2項目: `paymentAmount`（年間資料 150,000、明細の合計 100,000、結んだ明細 `pay_604`・`pay_605`）と`withholdingTax`（4,500、3,000、同じ明細）。比較は2項目とも`mismatch-explained`になる。値は変わらず、支払予定日 2026-10の支給額は`no-records`のまま。
+- **説明のあとで値が変わった場合:** `dcs_601`を記録したあとで、`pay_605`の課税支給額を入力誤りとして48,000に直した（`correct-input-error`）とする。`paymentAmount`の明細の合計が98,000になり、記録した100,000と違うので、`dcs_601`は`paymentAmount`には適用されない。比較は`mismatch-unresolved`（差 52,000）に戻り、`dcs_601`は「要再確認」と表示される。`withholdingTax`は値も明細の集合も変わらないので、`mismatch-explained`のまま。その後に9月勤務分の明細（`pay_606`）が見つかって結んだ場合は、明細の集合が変わるので、説明は適用されず、比較は値どおりに判定する。
 
 年間資料の値を使わない場合（勤務先が年間資料を訂正して再発行する予定等）は、`annual-adoption`の判断で`entered-payslips`を選び、理由を残す。そのときの勤務先Bの年間の支払金額は、2026年に帰属する明細の合計（`pay_604`・`pay_605`は`ann_603`との結び付けで2026年に帰属）の100,000で、`coverage`は`entered-records-only`。これを使う計算runは`provisional`になる。
 

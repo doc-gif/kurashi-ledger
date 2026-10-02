@@ -29,7 +29,7 @@
 
 共通の条件:
 
-- 取消した記録と、差し替えられた記録と、差し替えが分岐している記録（[記録の型](records.md)の10）は除く。
+- 取消した記録と、差し替えの系列の現在の記録でない記録（差し替え済みの記録と、整っていない系列の記録。[記録の型](records.md)の10）は除く。
 - `measure`の識別子は、採用元の記録の種類と項目名で書く（例 `bank-deposit.amount`、`payslip.grossPay`、`payslip.incomeTax`、`annual-document.paymentAmount`、`forecast.lines.amount`、`official-notice.amounts.amount`）。`scope`は、勤務先のID・口座のIDの並びと、軸の上の期間（開始と終了）で書く。
 - 日付の軸に使う日付が`known`でない記録（支払予定日が分からない給与明細等）は、その軸のどの期間の集計にも入れず、「日付不明」として一覧に出す。その記録と同じ勤務先・口座を範囲に含む、その軸の集計は`incomplete`にする（`missing`に、その日付の項目と状態を挙げる）。
 - 見込みの集計は、予測の`measure`（`gross-pay`・`bank-transfer`等）ごとに行い、`measure`の違う予測（総支給額と振込額等）を足さない。集計の`measure`には、予測の`measure`を添えて書く（例 `forecast.lines.amount`（`gross-pay`））。
@@ -82,23 +82,23 @@
 
 ## 4. 照合の判断（`decision`）
 
-利用者の判断を残す記録。改訂を持つ。判断を変える場合は改訂、判断をやめる場合は取消（`void`）で行う。
+利用者の判断を残す記録。改訂を持つ。判断を変える場合は改訂、判断をやめる場合は取消（`void`）で行う。判断は、判断したときの前提（下の表の「前提が崩れたとき」）が保たれている間だけ適用する。前提が崩れた判断は、記録を書き換えずに、そのつど「要確認」「要再確認」として扱う。確かめ直す場合は、判断の改訂で前提を新しくする。
 
 | 項目 | 型 | 意味と制約 |
 | --- | --- | --- |
 | `decisionType` | `duplicate-review・annual-adoption・mismatch-explanation・tax-year-assertion` | 判断の種類（下の表） |
 | `targets` | `List<Ref>` | 判断の対象 |
 | `scope` | `Fact<{ year: CalendarYear, payers: List<Id<Employer>> }>` | `annual-adoption`と`mismatch-explanation`の場合だけ。対象の年と支払者 |
-| `fields` | `Fact<List<Text>>` | `mismatch-explanation`の場合だけ。理由を説明する年間資料の項目名（例 `paymentAmount`）。1件以上 |
+| `explainedComparisons` | `Fact<List<{ field: Text, annualValue: Yen, payslipSum: Yen, coveredPayslips: List<Id<Payslip>> }>>` | `mismatch-explanation`の場合だけ。理由を説明する年間資料の項目（例 `paymentAmount`）ごとに、判断したときの比較の値（年間資料の値と明細の合計）と、結んでいた明細の集合を記録する。1件以上 |
 | `value` | 種類ごと（下の表） | 判断の内容 |
 | `reasonNote` | `Text` | 判断の理由。空にしない |
 
-| 種類 | `targets` | `value` | 意味 |
-| --- | --- | --- | --- |
-| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） |
-| `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する |
-| `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`fields`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない |
-| `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） |
+| 種類 | `targets` | `value` | 意味 | 前提が崩れたとき |
+| --- | --- | --- | --- | --- |
+| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | 対象が取消・差し替えされたら要確認（9。`same`で取消した側は例外） |
+| `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する | 保存のあとで条件を満たさなくなったら、その支払者は要判断（5の手順1） |
+| `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`explainedComparisons`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない | 項目ごとに、現在の比較の値と結んだ明細の集合が、記録したものと1つでも違えば、その項目には適用しない（`mismatch-unresolved`に戻り、判断を「要再確認」と表示） |
+| `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） | 対象が取消・差し替えされたら要確認（9） |
 
 ## 5. 年間資料と月次資料（採用と不一致）
 
@@ -106,7 +106,7 @@
 
 - 年間資料の範囲は、発行した支払者と、`includedOtherPayers`の支払者の集合（[記録の型](records.md)の6）。
 - **範囲が確定しない資料**（`includedOtherPayers`が`unknown`、または支払者が`known`でない行がある）は、どの支払者の候補にもしない。その資料の発行者は、判断で別の選択をしていなければ、範囲が確定するまで要判断になる（下の手順2）。見えていない支払者の分を含んでいるかもしれない資料を採用すると、その支払者の別の資料や明細と重ねて数えるおそれがあるため。
-- 年`Y`・支払者`P`の候補: 取消・差し替えされていない年間資料（差し替えが分岐している資料を除く。[記録の型](records.md)の10）のうち、範囲が確定し、`targetYear`が`Y`で、範囲に`P`を含むもの。年が違う年間資料（前年分等）は候補にならない。
+- 年`Y`・支払者`P`の候補: 取消されておらず、差し替えの系列の現在の記録である年間資料（[記録の型](records.md)の10）のうち、範囲が確定し、`targetYear`が`Y`で、範囲に`P`を含むもの。年が違う年間資料（前年分等）は候補にならない。
 
 ### 採用の手順（年`Y`）
 
@@ -134,8 +134,8 @@
 | `no-coverage` | 確定済みの`annual-coverage`がない |
 | `incomplete` | 結んだ明細の該当項目に`unknown`・`not-stated`がある、または年間資料の項目が`known`でない |
 | `match` | 両方が`known`で一致 |
-| `mismatch-unresolved` | 両方が`known`で異なり、その項目を`fields`に含む`mismatch-explanation`の判断がない |
-| `mismatch-explained` | 両方が`known`で異なり、その項目を`fields`に含む`mismatch-explanation`の判断がある |
+| `mismatch-unresolved` | 両方が`known`で異なり、その項目に適用できる`mismatch-explanation`の判断がない（判断がない、または前提が崩れている） |
+| `mismatch-explained` | 両方が`known`で異なり、その項目の`explainedComparisons`の値（年間資料の値・明細の合計）と結んだ明細の集合が、現在と同じ`mismatch-explanation`の判断がある |
 
 規則:
 
@@ -197,7 +197,7 @@
 | --- | --- |
 | 参照先に新しい改訂ができ、確定の条件に使う項目（入金額、`bankTransferAmount`、明細の`employerId`、年間資料の`targetYear`と範囲、実績の該当の金額、予測の行の金額）が変わった | 確定済みの配分を「要再確認」として表示する。金額の項目だけが変わった場合は、条件を満たしている間は使い続け、条件（合計を含む）を満たさなくなったら、その記録に結ばれた確定済みの配分のうち、`confirmedAgainst`の版がその記録の現在の版より古いものをすべて、照合の残高・予測の残り・帰属の計算から除く。`annual-coverage`で、年間資料の`targetYear`か範囲、または明細の`employerId`が変わった場合は、条件を満たしていても、`confirmedAgainst`を新しい版にする（確かめ直す）まで、帰属と比較から除く（帰属の年が確かめないまま別の年へ移らないようにするため） |
 | 参照先が取消された | 配分・判断は無効。照合の残高・予測の残り・帰属から除き、「要確認」に出す。ただし`same`の`duplicate-review`の判断で、取消した記録の`duplicateOf`がその判断のもう一方の対象を指すものは、有効のまま（7） |
-| 参照先が差し替えられた | 前の記録への配分・判断は「要確認」。新しい記録への配分は利用者が作り直す（自動では移さない） |
+| 参照先が差し替えられた（差し替えの系列の現在の記録でなくなった。[記録の型](records.md)の10） | 前の記録への配分・判断は「要確認」。新しい記録への配分は利用者が作り直す（自動では移さない） |
 | 条件に使わない項目だけが変わった | 影響しない |
 
 - 「要再確認」「無効」は、記録を書き換えず、集計のたびに導く状態。配分を確かめ直す場合は、照合配分の改訂で`confirmedAgainst`を新しい版にする。

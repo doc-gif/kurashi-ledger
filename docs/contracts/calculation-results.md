@@ -21,7 +21,7 @@
 | `inputs` | `Inputs` | 入力の固定した写し |
 | `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2を参照） |
 | `results` | `List<ResultItem>` | 結果の項目 |
-| `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べる |
+| `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べ、`order`は1から始めて1ずつ増やす（run内で一意の連番） |
 | `missingInputs` | `List<MissingInput>` | 不足した入力 |
 | `unconfirmedItems` | `List<Text>` | 未確認の事項（利用者に確かめてほしいこと） |
 | `previousRunId` | `Fact<Id<CalculationRun>>` | 同じ目的の前のrun（訂正後の再計算等）。最初のrunは`not-applicable` |
@@ -58,9 +58,9 @@
 | `value` | `Fact<Yen>`または`Fact<Decimal>` | 結果の値 |
 | `nature` | `estimate` | 常に推計。正式通知の値と同じ状態にしない |
 | `explanationRefs` | `List<Ref>` | 根拠の記録への参照（版を固定） |
-| `roundingOrders` | `List<整数>` | この項目に関わる丸めの手順（`RoundingStep`の`order`） |
+| `roundingOrders` | `List<整数>` | この項目に関わる丸めの手順（`RoundingStep`の`order`）。同じrunの`roundingSteps`にある`order`だけを指す |
 
-`RoundingStep`: `order`（1から始まる整数）、`itemKey`（`Text`）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
+`RoundingStep`: `order`（適用した順の連番。run内で一意で、1から始まり1ずつ増える）、`itemKey`（`Text`）、`before`（`Decimal`）、`after`（`Decimal`）、`method`（`floor・ceil・half-up・other`）、`unit`（`Decimal`。例 `"1"`、`"100"`、`"1000"`）、`ruleRef`（`Fact<Text>`。丸めの根拠の制度の箇所）。
 
 `MissingInput`: `field`（`Text`）、`ref`（`Fact<Ref>`）、`state`（`unknown・not-stated・undetermined・conflict・adoption-needed・partial-scope`。[共通の型](common-types.md)の11の`missing`と同じ意味）。
 
