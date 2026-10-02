@@ -87,6 +87,11 @@
       "description": "PR4-R009の既知パス照合: READMEがINV-TASKS、UI/design/applicationの一部がINV-RECORDSから漏れている（Copilot 5394714363）。",
       "state": "resolved",
       "resolution": "README.mdとsrc/ui/**・design/**・src/application/**を既存条件に追加し、固有試験でprepareが条件と全シナリオを生成すること、assessmentを抜けばcheckで拒否することを確認する。未知値・表示区分と入口の既存条件を拡張せず漏れだけを補い、広い関連条件の縮小は効果測定後に判断する。"
+    },
+    {
+      "description": "PR4-R021/R016の新証拠: triageの同一バッチ内の原因重複がpropose-newへ通り、入口にDraftでもレビュー依頼できる旧表記が残る（Copilot 5394853014）。",
+      "state": "resolved",
+      "resolution": "同一(invariant_id,cause_key)のバッチ重複は台帳登録の有無を問わず入力全体を拒否する。異なる原因・同じ原因でも別条件は順序を保ち、CLIは重複入力に結果を出さずexit1。関連する入口とREADMEを作業中Draft・レビュー依頼Openへ統一し、利用者向けツールREADMEと正本へバッチ拒否条件を記載する。"
     }
   ],
   "assessments": [
@@ -109,7 +114,7 @@
       "checks": [
         {
           "id": "duplicates",
-          "method": "同一原因キーの別ID拒否とtriageの既存ID返却を単体試験。再発の新証拠を入力する 非正規台帳ID（省略形・ゼロ・先頭ゼロ・空白）を拒否し、3桁以上の正規IDを受理。ledger/triageの空白原因キーを拒否する。",
+          "method": "同一原因キーの別ID拒否とtriageの既存ID返却を単体試験。再発の新証拠を入力する 非正規台帳ID（省略形・ゼロ・先頭ゼロ・空白）を拒否し、3桁以上の正規IDを受理。ledger/triageの空白原因キーを拒否する。 同じバッチの新規/既存原因の重複を拒否し、異なる原因・別条件は保持、CLIで部分結果が出ないことを回帰試験。",
           "expected": "同一原因を新IDにせずupdate-existing。抑制だけで未解決を隠さない。"
         },
         {
@@ -131,7 +136,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。 レビューroleの書式例・旧表記・COMMENT運用の3か所を照合。",
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。 レビューroleの書式例・旧表記・COMMENT運用の3か所を照合。 全入口の作業中Draft・レビュー依頼Open表記とroot READMEの運用要約を照合。",
           "expected": "全入口が別担当の最新head/baseのaccepted、Copilot未対応なし、base不変・競合なし、--match-head-commit付き自己PRマージとpost-merge確認、auto-merge不使用、デプロイ別指示待ちを守る。計画・ツール・固定IDの規約を維持し、レビュー依頼はOpenにする。"
         }
       ]
