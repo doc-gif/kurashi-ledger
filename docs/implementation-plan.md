@@ -6,7 +6,7 @@
 
 別のAIは、この資料 → [タスク台帳](implementation-tasks.md) → [GitHub・複数AI運用設計](github-agent-operations.md) の順に読む。タスクIDは設計上の識別子であり、GitHub Issue番号ではない。Issue作成時に対応表を作る。進捗の正本は、運用開始後のGitHub Issue・PRとし、本資料に日々の状態を書き写さない。
 
-このリポジトリで共有しているのは設計資料と作業規約。利用可能なアプリではなく、製品コード・実行可能なActions workflowはまだ公開していない。以前ローカルで用意した基礎コードもT02で棚卸しし、検証してから採用する。Figmaはファイル作成済みだがデザインシステム未作成。タスクIDとGitHub Issueの対応はT00（#1）から付け始めた。現在の実装可否は [project-status.md](project-status.md) を確認する。
+このリポジトリで共有しているのは設計資料と作業規約。利用可能なアプリではなく、製品コード・実行可能なActions workflowはまだ公開していない。以前ローカルで用意した基礎コードもT02で棚卸しし、検証してから採用する。Figmaには、基礎（色・文字・余白・角丸・線・フォーカス）と最初の3部品（Button / Amount Input / Status Badge）をT04で作成した。トークンと仕様は[design/](../design/README.md)にある。タスクIDとGitHub Issueの対応はT00（#1）から付け始めた。現在の実装可否は [project-status.md](project-status.md) を確認する。
 
 ## 実装の順番
 
