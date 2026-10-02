@@ -8,6 +8,16 @@
 
 最初に [AGENTS.md](AGENTS.md) と [現在の状態](docs/project-status.md) を読んでください。最新mainと関連Issue・PRを確認し、実装の許可・担当・依存関係が揃ってからタスク専用worktreeで着手します。古い会話やcloneの状態だけで進めません。
 
+## 開発環境
+
+いま使えるのは、開発用の設定・スクリプトとその試験だけです。アプリの起動、UIのビルド、製品の試験・CIはまだありません。
+
+- Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
+- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
+- レビュー運用ツール（Python 3.11以上）は、`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査します（[手順](tools/review_guard/README.md)）。
+
+詳しくは[開発環境と作業の規約](docs/development.md)を見てください。
+
 ## 設計資料
 
 - [実装順序・並行作業](docs/implementation-plan.md)

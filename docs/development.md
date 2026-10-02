@@ -79,6 +79,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 ## commit・Issue・PR・引継ぎ
 
+- 新しい作業とレビューの指摘の修正の前に、[修正前の整合確認](review-prevention.md)の計画（`.review/plans/<タスクID>.json`）を作るか確かめる（[AGENTS.md](../AGENTS.md)）。
 - stageするファイルを明示し（`git add .`を使わない）、`git diff --cached`で差分を読み、`npm run check:public -- --staged`を実行してからcommitする（[公開範囲と公開前の点検](public-data.md)）。Gitのhookは自動では入れない（理由は同じ資料）。
 - Issueは`.github/ISSUE_TEMPLATE/task.md`の項目で作る（GitHubの画面では「タスク」の雛形）。Issue番号を推測で書かない。
 - PRは`.github/PULL_REQUEST_TEMPLATE.md`に沿って書き、作業中はDraftにする。完了したら[PRレビューのループ](pr-review-loop.md)の形式で、40文字のhead/baseのSHAを再取得して引継ぎコメントを書く。
