@@ -21,7 +21,10 @@
     "tools/review_guard/tests/test_changed_paths.py",
     "tools/review_guard/tests/test_ci.py",
     "tools/review_guard/tests/test_guard.py",
-    "docs/external-worker.md"
+    "docs/external-worker.md",
+    "README.md",
+    "docs/implementation-plan.md",
+    ".review/tests/test_repository_routing.py"
   ],
   "conflicts": [
     {
@@ -58,6 +61,11 @@
       "description": "PR4-R012: 外部AIの登録指示が30分のままで、運用資料の10分基準と衝突する。PR #6が同じ箇所を変更している。",
       "state": "resolved",
       "resolution": "指示文・loop例・既存ジョブ変更・セッション外継続の文章を10分へ統一。PR #6の該当文言と照合する。Cloud Routinesの最短1時間の注記と実稼働設定の確認は保持。未統合PR #6の製品実装再開・マージ規約は取り込まない。"
+    },
+    {
+      "description": "PR4-R013〜R016: PR説明の古いbase、ローカルcheckの複数計画除外、汎用試験のrepo依存、入口の役割固定が残る。PR #6もREADME・実装計画を変更する。",
+      "state": "resolved",
+      "resolution": "最新base3672a30の三点差分で再検査してPR説明と引継ぎを更新。core checkは複数計画を除外前に拒否しCLI回帰試験を追加。repoルーティング試験を.review/testsへ分離し両suiteを実行、汎用suiteをrepo設定なしの一時コピーで実行。README・実装計画・巡回手順を差分を作成していない別担当へ統一する。未統合PR #6の製品実装再開・マージ規約は取り込まない。"
     }
   ],
   "assessments": [
@@ -85,7 +93,7 @@
         },
         {
           "id": "trust",
-          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。",
+          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。 core/CLIの複数計画拒否、repo設定なしのツール試験を確認。PR説明と最新head/baseの検証記録を照合。",
           "expected": "候補codeでは検査を置換できず、baseの必要記入を満たさなければ失敗。条件の変更は将来の採否を独立レビューへ返す。保護されないworkflowは迂回可能と明記し、構造合格を承認にしない。"
         }
       ]
@@ -93,7 +101,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。 外部AIの起動指示の確認間隔も同じ10分基準へそろえる。",
+      "reason": "統合済みPR #2のT00設計・ADR・T00–T28・Issue対応・製品実装停止を保持する。状態資料の競合を解消し、PR #4の公開範囲・別担当レビューと所有者指定の10分基準を整合する。製品コードとCI配置は変更しない。外部AIの起動指示の確認間隔も同じ10分基準へそろえる。",
       "checks": [
         {
           "id": "dependencies",
@@ -102,8 +110,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合",
-          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。。外部AIに渡す起動指示も10分を使い、実登録は各環境を正本とする"
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。",
+          "expected": "入口は共通文書を参照し、製品実装停止・マージ許可の条件を緩めない。外部AIに渡す起動指示も10分を使い、実登録は各環境を正本とする どちらのAIが実装しても自己承認せず別担当へ渡す。"
         }
       ]
     }
