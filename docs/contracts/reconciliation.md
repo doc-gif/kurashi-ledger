@@ -112,7 +112,7 @@
 
 | 種類 | `targets` | `value` | 意味 | 前提が崩れたとき |
 | --- | --- | --- | --- | --- |
-| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | `distinct`: 対象が取消・差し替えされたら要確認（9）。`same`: 一方が`duplicateOf`でもう一方を指して取消されている間だけ前提を満たす。両方が有効になった（取消の取り消し等）、または残す側が取消・差し替えされたら要確認 |
+| `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） | `distinct`: 対象が取消・差し替えされたら要確認（9）。`same`: 一方が`duplicateOf`でもう一方を指して取消されている間だけ前提を満たす。両方が有効になった（取消の取り消し等）、または残す側が取消・差し替えされたら要確認。時点を指定した見方で`duplicateOf`や`targets`の参照先を解決できない場合も、前提を確かめられないので要確認（[共通の型](common-types.md)の2の「`current`の解決」） |
 | `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について選ぶ（5の手順1。既定の選び方（手順2）より優先するが、手順3の整合の検査は受ける）。`annual-document`の判断は、保存のときに、選んだ資料が取消・差し替えされておらず、範囲が確定していて、`targetYear`が`scope.year`と一致し、範囲が`scope.payers`をすべて含むことを確かめ、満たさなければ保存を拒否する | 保存のあとで条件を満たさなくなったら、その支払者は要判断（5の手順1） |
 | `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を、`explainedComparisons`の項目について残す（5）。ほかの項目の不一致は説明しない。値は書き換えない | 項目ごとに、現在の比較の値と結んだ明細の集合が、記録したものと1つでも違えば、その項目には適用しない（`mismatch-unresolved`に戻り、判断を「要再確認」と表示） |
 | `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） | 対象が取消・差し替えされたら要確認（9） |

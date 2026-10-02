@@ -16,7 +16,7 @@
 | `roundingSteps` | `order` | 適用した順（`order`の連番の順に並べる。下の`RoundingStep`） |
 | `assumptions` | `key` | 意味はない。同じ`key`の仮定を2つ持たない |
 | `missingInputs` | `field`と`ref`の組 | 意味はない |
-| `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`） | 意味はない |
+| `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`）。スナップショットの中の`payers`は支払者の`id`、`comparisons`は`field`で一意 | 意味はない |
 | `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（1つのrunでは、同じ記録を1つの版でだけ参照する） | 意味はない |
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
 
@@ -58,7 +58,7 @@
 | `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
 
-`AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`。空を許さない）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定。指せるのは、`targetYear`が`year`と同じで、範囲が確定していて`payers`をすべて含む年間資料だけで、照合の規則の5でその年・支払者に選ばれた資料と同じであること。[共通の型](common-types.md)の2の「参照先の種類と次元」）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
+`AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定。指せるのは、`targetYear`が`year`と同じで、範囲が確定していて`payers`をすべて含む年間資料だけで、照合の規則の5でその年・支払者に選ばれた資料と同じであること。[共通の型](common-types.md)の2の「参照先の種類と次元」）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: Text, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態で、同じ`field`を2回含まない。1つの項目の比較の状態は1つに決まる（[照合の規則](reconciliation.md)の5）ため）。2つの並びの一意のキーは、[共通の型](common-types.md)の12の並びの表による（重なるスナップショットを持つrunは保存しない）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
 
 `Assumption`: `key`（`Text`。run内で一意。1の「run内の並びの規則」）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等。`revision`は整数（固定した写し））。
 
