@@ -149,7 +149,7 @@
 
 ## T17 — 扶養確認と保険切替の進捗管理
 
-- 依存: T15、T14の保険資格部分。担当: 計算B。範囲: `src/domain/insurance-status/`、`src/ui/features/insurance/`。
+- 依存: T15、T14の保険資格部分。担当: 計算B。範囲: `src/domain/insurance-status/`、`src/ui/features/insurance/`。共有資源: 契約定義の`docs/contracts/calculation-results.md`（数値以外の結果の型を足す。[契約の変更](contracts/README.md)の手順と版の規則に従う）、T15が作る計算runの共通の結果型（T15と調整して足す）。
 - 成果物: 被扶養者認定の確認事項、勤務先での加入確認、問い合わせ・通知・資格変更の記録、見込みと正式結果の別表示。
 - 受入: 暦年累計だけで資格喪失日を確定しない。契約・見込収入等の保険者別根拠、適用日と把握日を保持。確認先・不足情報・次の手続を出す。計算runの結果に必要な数値以外の型（真偽・列挙・日付等）を、型の識別子（`valueType`）・状態・比較・丸めの対象外の規則を含めて[計算結果の契約](contracts/calculation-results.md)へ追加だけで足す（契約版1.0の計算runは数値の計算に限る。既存の型と意味は変えない。`unconfirmedItems`の文で代えない）。
 - 検証: 遡及通知、勤務先変更、複数勤務先、年齢判定、基準改定、未回答・矛盾する通知。未確認条件をAIが補って確定しない。
