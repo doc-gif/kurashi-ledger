@@ -56,6 +56,19 @@ class RepositoryRoutingTests(unittest.TestCase):
         selected = guard.affected(rules, ["src/infrastructure/http/server.ts"])
         self.assertTrue({"INV-HTTP", "INV-RELEASE", "INV-LOCK"} <= set(selected))
 
+    def test_pr4_lessons_are_retrievable_without_renumbering(self):
+        catalog = guard.read_json(root / ".review/invariants.json")
+        ledger = guard.read_json(root / ".review/findings.json")
+        candidates = [
+            {"invariant_id": "INV-TASKS", "cause_key": "draft-open-entrypoint-coherence", "evidence": "new template evidence"},
+            {"invariant_id": "INV-REVIEW", "cause_key": "batch-cause-duplication", "evidence": "new batch evidence"}]
+        result = guard.triage(catalog, ledger, candidates)
+        self.assertEqual([(r["existing_id"], r["action"]) for r in result],
+                         [("PR4-R022", "update-existing"), ("PR4-R023", "update-existing")])
+        plan = guard.prepare(catalog, ledger, ["tools/review_guard/guard.py"], "a" * 40)
+        history = {f["id"] for context in plan["context"].values() for f in context["history"]}
+        self.assertTrue({"PR4-R014", "PR4-R018", "PR4-R022", "PR4-R023"} <= history)
+
     def test_npm_install_policy_selects_release_conditions(self):
         root = Path(__file__).resolve().parents[2]
         catalog = guard.read_json(root / ".review/invariants.json")

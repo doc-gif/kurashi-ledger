@@ -78,6 +78,92 @@
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205"
       ]
+    },
+    {
+      "id": "PR4-R001",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+      ]
+    },
+    {
+      "id": "PR4-R009",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "known-path-routing-gap",
+      "lesson": "利用者向けREADMEやUI・design・application等の既知パスが条件選択から漏れないか、予定タスクの実パスと照合し、必要assessmentの欠落拒否まで確かめる。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+      ]
+    },
+    {
+      "id": "PR4-R014",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "multiple-plan-exemption",
+      "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+      ]
+    },
+    {
+      "id": "PR4-R018",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-task-identity",
+      "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238"
+      ]
+    },
+    {
+      "id": "PR4-R019",
+      "invariant_id": "INV-TASKS",
+      "cause_key": "review-role-spelling",
+      "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+      ]
+    },
+    {
+      "id": "PR4-R020",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "finding-id-normalization",
+      "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+      ]
+    },
+    {
+      "id": "PR4-R021",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "cause-key-whitespace",
+      "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+      ]
+    },
+    {
+      "id": "PR4-R022",
+      "invariant_id": "INV-TASKS",
+      "cause_key": "draft-open-entrypoint-coherence",
+      "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+      ]
+    },
+    {
+      "id": "PR4-R023",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "batch-cause-duplication",
+      "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+      ]
     }
   ]
 }

@@ -246,6 +246,20 @@ class ReviewGuardTests(unittest.TestCase):
     def test_plan_metadata_does_not_need_to_list_itself(self):
         guard.check(self.catalog, self.ledger, self.plan(), self.paths + [".review/plans/OPS-1.json"], self.base)
 
+    def test_single_plan_metadata_exemption_does_not_exempt_other_review_files(self):
+        catalog = copy.deepcopy(self.catalog)
+        catalog["invariants"][0]["paths"] = [".review/**"]
+        plan = guard.prepare(catalog, self.ledger, [], self.base)
+        plan["task_id"] = "OPS-1"
+        paths = [".review/plans/OPS-1.json"]
+        result = guard.check(catalog, self.ledger, plan, paths, self.base)
+        self.assertEqual(result["result"], "metadata-complete")
+        self.assertEqual(result["invariants"], [])
+        self.assertIn("does not verify", result["notice"])
+        plan["planned_paths"] = [".review/findings.json"]
+        with self.assertRaisesRegex(guard.Invalid, "missing invariant assessments"):
+            guard.check(catalog, self.ledger, plan, paths + [".review/findings.json"], self.base)
+
     def test_multiple_plans_fail_in_core_and_documented_local_cli(self):
         paths = self.paths + [".review/plans/OPS-1.json", ".review/plans/other.json"]
         with self.assertRaisesRegex(guard.Invalid, "multiple changed preflight plans"):
