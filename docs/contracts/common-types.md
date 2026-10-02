@@ -31,6 +31,7 @@
 | 計算runの`ResultItem`の`value`、`Assumption`の`value` | `valueType`（[計算結果](calculation-results.md)の1） |
 | 集計値の`AxisValue` | `axis`（11） |
 | 集計値の`measure`（`AggregateKey`） | `kind`（11の「集計のキー」） |
+| 集計値の`missing`と`MissingInput`の`field`（`FieldKey`） | `kind`（11の「不足の項目」） |
 | `subjectYear`・`Target.year`の年・年度 | `kind`（`calendar`・`fiscal`） |
 
 新しく2つ以上の型を持つ項目を足すときは、識別子を決めてこの表に加える。
@@ -41,7 +42,7 @@
 - **採用の候補を決めるキー:** 年間資料の`documentType`が`other`の資料は、項目の意味が決まらないので、年間の値の採用の候補にしない（同5）。
 - **同一性を決めるキー:** 同じ記録・同じ相手かどうかは、IDと、契約で決めた識別の次元で決め、自由な値では決めない（雇用先・発行者は登録したマスタのIDで参照する）。識別の次元に列挙の項目があり、両方が`other`なら4×4の表では一致になるが、ほかの次元（支払者・日付・発行者・年度）と合わせて使い、`other`だけで同じとはしない。
 
-- **契約が決めるキー:** 集計のキーは`AggregateKey`（11）で、項目名の`field`（集計値と計算runの`missing`・`MissingInput`、比較の`comparisons`・`explainedComparisons`）は、参照先の記録の型の表にある項目名だけを使う（並びの行の項目は`並び名.項目名`。例 `amounts.category`。比較の`field`は年間資料の金額の項目名）。計算runの`ResultItem`・`Assumption`の`key`は、計算器の版ごとに決めた一覧の値だけを使う（一覧はT15以降で計算器と一緒に定める）。表・一覧にない名前は保存しない。表示の並びの重複を避けるための比較（`unconfirmedItems`の同じ文）はキーではないので、この規則の対象外。
+- **契約が決めるキー:** 集計のキーは`AggregateKey`（11）。不足の`field`（集計値の`missing`、計算runの`MissingInput`）は`FieldKey`（11）で、記録の項目は記録の型の表にある項目名、規則で導く不足は派生キーの表の値、計算器の入力は計算器の版ごとの一覧の値だけを使う。比較の`field`（`comparisons`・`explainedComparisons`）は、年間資料の金額の項目名（`AggregateKey`の`annual-value`の`item`と同じ列挙）だけを使う。計算runの`ResultItem`・`Assumption`の`key`は、計算器の版ごとに決めた一覧の値だけを使う（一覧はT15以降で計算器と一緒に定める）。表・一覧にない名前は保存しない。表示の並びの重複を避けるための比較（`unconfirmedItems`の同じ文）はキーではないので、この規則の対象外。
 
 上位の量の内訳として、意味が同じ金額に含まれる`other`（給与明細の`otherEarnings`の分類`other`の行も、総支給額の一部）は、上位の量の中で数える（その分類だけの集計は作らない）。表示と照合の候補の提示には、`other`も自由な値も使ってよい。新しく種類を分けて集計する必要が出たら、列挙に値を足す（READMEの「契約の変更」。`other`を細かく分けるキーを自由な値で作らない）。
 
@@ -374,7 +375,7 @@
 | `scope` | `{ employerIds: List<Id<Employer>>, accountIds: List<Id<Account>>, from: AxisValue, to: AxisValue }` | 対象の勤務先・口座（空なら限定しない）と、軸の上の範囲。`from`・`to`の型は軸で決まり（下の表）、両端を含み、`from` ≤ `to` |
 | `state` | `complete`・`incomplete`・`not-applicable`・`no-records` | 集計の状態（下の表） |
 | `knownSum` | `Yen` | 値ありの項目の合計 |
-| `missing` | `List<{ ref: Ref, field: Text, state: MissingState }>` | 不足の一覧。`ref`の`revision`は整数で、集計を計算した見方で選ばれた版（2の「`current`と整数の使い分け」）。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+| `missing` | `List<{ ref: Ref, field: FieldKey, state: MissingState }>` | 不足の一覧。`ref`の`revision`は整数で、集計を計算した見方で選ばれた版（2の「`current`と整数の使い分け」）。`undetermined`は所得の年の帰属が決まらない明細（[照合の規則](reconciliation.md)の8）、`conflict`は根拠や記録が食い違って決められないもの（帰属の根拠の食い違い、重複の疑いのある正式通知、整っていない差し替えの系列。同2、[記録の型](records.md)の10）、`adoption-needed`は年間の値の採用が要判断の支払者、`partial-scope`は`scope`が採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
 | `excludedCount` | `Count` | 対象外・取消・差し替え済みで除いた件数 |
 | `coverage` | `Fact<annual-document・entered-records-only>` | 所得の年の軸（`income-year`）の年間の値で、`knownSum`の元が採用した年間資料の値か、入力済みの記録の合計か（下の「coverageの決め方」）。ほかの軸の集計と、範囲のどの支払者の値も足せない場合（すべて要判断等）は`not-applicable` |
 
@@ -426,6 +427,30 @@
 | `conflict` | 根拠や記録が食い違って決められないもの: 帰属の根拠の食い違い（同8）、重複の疑いのある正式通知（同2）、整っていない差し替えの系列（[記録の型](records.md)の10） |
 | `adoption-needed` | 年間の値の採用が要判断の支払者（[照合の規則](reconciliation.md)の5） |
 | `partial-scope` | `scope`が、採用した年間資料の範囲の一部だけを含む場合のその資料（同5） |
+
+**不足の項目（`FieldKey`）:** 集計値の`missing`と計算runの`MissingInput`の`field`は、`kind`で判別する次の型にする（自由な文字列にしない）。
+
+| `kind` | 値 | 使う場面 |
+| --- | --- | --- |
+| `record-item` | `name`: 参照先の記録の型の表にある項目名（並びの行の項目は`並び名.項目名`。例 `scheduledPayDate`、`amounts.category`） | 記録の項目そのものが不足（`unknown`・`not-stated`等） |
+| `derived` | `key`: 下の派生キーの表の値 | 記録の項目ではなく、規則で導く値が決まらない |
+| `calculator-input` | `key`: 計算器の版ごとに決めた入力の一覧の値（計算runの`MissingInput`だけ） | 計算器が必要とする入力がない・決まらない |
+
+派生キー（`derived`の`key`。この表だけで決める）:
+
+| `key` | 決まらない値 | `ref`が指すもの | 状態（`MissingState`） | 定める場所 |
+| --- | --- | --- | --- | --- |
+| `income-year` | 給与明細の所得の年の帰属 | 給与明細 | `undetermined`・`conflict` | [照合の規則](reconciliation.md)の8 |
+| `annual-adoption` | 支払者の年間の値の採用 | 雇用先 | `adoption-needed` | 同5 |
+| `annual-scope` | 年間資料の範囲の一部だけが集計の`scope`に入る | 年間資料 | `partial-scope` | 同5 |
+| `notice-duplicate` | 同じ種類・同じ年度の正式通知が2件以上ある | 正式通知 | `conflict` | 同2 |
+| `supersede-series` | 整っていない差し替えの系列 | 系列の記録 | `conflict` | [記録の型](records.md)の10 |
+| `forecast-remaining` | 予測の行の残り（使えない関係・予測の金額の不明） | 予測（行を指す） | `unknown` | 照合の規則の6・9 |
+| `unreconciled-amount` | 照合の残高（使えない関係） | 銀行入金・給与明細 | `unknown` | 同3・9 |
+| `save-check` | 保存の検査をすり抜けたデータで、使えない記録 | その記録 | `conflict` | 9の「保存の検査をすり抜けたデータ」 |
+
+- 派生キーは、どれも`ref`を必要とする。`ref`のない不足は、計算runの`MissingInput`の`calculator-input`だけで表す（`MissingInput.ref`を`not-applicable`にできるのは、`field`の`kind`が`calculator-input`の場合だけ）。集計値の`missing`の`ref`は必ずある。
+- 新しく導く不足を足すときは、この表に行を足す（READMEの「契約の変更」）。表にない`key`は保存しない。
 
 `missing`の1行は（`ref`, `field`）の組ごとに1つで、同じ組に2つ以上の原因が当てはまる場合は、次の優先順で1つの状態にする: `conflict` > `adoption-needed` > `partial-scope` > `undetermined` > `not-stated` > `unknown`（13の「状態の決め方」）。
 
@@ -498,7 +523,7 @@
 | 証憑の紐付けの`locator` | ファイル全体を指す |
 | 計算runの`ruleSet`・`previousRunId` | 下の「計算runの項目の状態」の表のとおり |
 | `AdoptionSnapshot`の`adoptedRef`・`coverage`、集計値の`coverage` | 上の表と11のとおり |
-| `Assumption`・`MissingInput`の`ref` | 参照する記録がない |
+| `Assumption`・`MissingInput`の`ref` | 参照する記録がない（`MissingInput`は、`field`の`kind`が`calculator-input`の場合だけ。11の「不足の項目」） |
 | `ResultItem`の`value` | [計算結果](calculation-results.md)の2の表で許す状態のとき（その結果の項目が当てはまらない） |
 
 金額の合計や比較に使う項目（給与明細の`grossPay`・`taxablePay`・`nonTaxablePay`・`totalDeductions`・`netPay`、行の`amount`、年間資料の金額、正式通知の行の`category`と`amount`、入金の`amount`等）は、この表にないので`not-applicable`を使わない。`not-applicable`は集計から除かれ、不足にも数えないので、これらに使うと値を黙って落とすことになるため。
