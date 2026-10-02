@@ -1,6 +1,6 @@
 # PRの引継ぎとレビューのループ
 
-2026-10-02。実装側はPRまで、変更を作成していない別担当は内容レビューまで。マージは所有者の明示指示まで待つ。製品実装は現在停止中。
+2026-10-02。実装側はPRまで、実装していない別の担当は内容レビューまで。マージは、[AGENTS.md](../AGENTS.md)の条件を満たした自分のPRに限り、実装側が行う。2026-10-02に製品実装の停止を解除した。
 
 ## 1. 実装側の完了報告
 
@@ -22,6 +22,7 @@ plan_commit: <計画を記録・更新した40文字SHA>
 plan_recheck: <今回の修正での再確認結果、または更新点>
 
 変更内容:
+README: <更新したREADMEと内容、または「更新不要」と理由（AGENTS.md）>
 受入条件ごとの確認結果:
 実行した検証・対象commit・CIへのリンク:
 未対応事項・確認してほしい点:
@@ -48,8 +49,8 @@ plan_recheck: <今回の修正での再確認結果、または更新点>
 
 ```text
 <!-- kurashi-ledger:review:v1 -->
-role: reviewer
-agent_id: <レビューセッションID>
+role: codex-reviewer | claude-reviewer
+agent_id: <レビューした担当のagent/session ID>
 head_sha: <対象head SHA>
 base_sha: <対象base SHA>
 decision: changes-requested | accepted | needs-owner
@@ -64,11 +65,11 @@ PR<N>-R002: <同上>
 
 ## 4. 実装側の次の巡回
 
-自分の未完了PRを先に確認し、差分を作成していない別担当（Claude・Codex・人）とCopilotの指摘を取得する。修正するときは同じbranch/PRを使い、指摘IDごとに「修正したcommitと検証」「対応不要の理由」「仕様判断待ち」を記録する。
+自分の未完了PRを先に確認し、別担当（Codex側・Claude側）・Copilot・人の指摘を取得する。修正するときは同じbranch/PRを使い、指摘IDごとに「修正したcommitと検証」「対応不要の理由」「仕様判断待ち」を記録する。
 
 他者のレビューthreadを、コメントに返信しただけで勝手にresolveしない。解消確認は原則レビュワーが行う。新push後は検証と新しい引継ぎを作り、再レビューを待つ。Copilotから同じ指摘が繰り返された場合も、既存指摘と対応付けて重複作業を避ける。
 
-自分のPRがreviewingなら待つ。accepted-awaiting-ownerなら実装作業は完了しているが、依存タスクの完了条件はまだ満たさない。所有者のマージ後に依存を解放する。
+自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。マージの条件（AGENTS.md）を確かめてマージし、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでから、依存を解放する。
 
 ## 5. 重複防止と止めどころ
 
