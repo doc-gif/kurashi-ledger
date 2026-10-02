@@ -2,4 +2,4 @@
 
 @AGENTS.md
 
-実装担当として動く場合は、最新mainのdocs/project-status.mdとdocs/external-worker.md、docs/pr-review-loop.mdも読んでください。現在の製品実装停止を守り、再開後も担当Issueの作業はDraft/Open PRで止めます。マージ・auto-merge・デプロイはしません。このファイルは定期実行を自動登録しません。
+実装担当として動く場合は、最新mainのdocs/project-status.mdとdocs/external-worker.md、docs/pr-review-loop.mdも読んでください。担当Issueの作業はDraft/Open PRとready-for-reviewの引継ぎで止め、レビューを待ちます。マージはAGENTS.mdの条件を満たした自分のPRに限ります。auto-merge・デプロイはしません。このファイルは定期実行を自動登録しません。

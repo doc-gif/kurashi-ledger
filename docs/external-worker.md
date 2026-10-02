@@ -15,7 +15,7 @@
 対話中のセッションを使うなら、上の文章を渡した後に次を依頼する。
 
 ```text
-/loop 30m 最新mainのAGENTS.mdとdocs/project-status.md、docs/external-worker.mdに従い、担当PRのレビュー指摘対応または承認済み担当タスクの次の作業を確認してください。実装停止中は実装せず、PR作成までに留め、マージしないでください。変更がなければ投稿不要です。
+/loop 30m 最新mainのAGENTS.mdとdocs/project-status.md、docs/external-worker.mdに従い、担当PRのレビュー指摘対応または承認済み担当タスクの次の作業を確認してください。担当Issueの作業はPR作成とready-for-reviewの引継ぎまでに留め、マージはAGENTS.mdの条件を満たした自分のPRに限ってください。変更がなければ投稿不要です。
 ```
 
 既に1時間ごとのジョブがある場合は、既存ジョブを30分ごとへ変更する。新旧2本を同時に動かさず、変更できない場合は旧ジョブを停止してから登録する。前runがまだ作業中なら新しいrunを重ねない。

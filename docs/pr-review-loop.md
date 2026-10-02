@@ -1,6 +1,6 @@
 # PRの引継ぎとレビューのループ
 
-2026-10-02。実装側はPRまで、Codex側は内容レビューまで。マージは所有者の明示指示まで待つ。製品実装は現在停止中。
+2026-10-02。実装側はPRまで、実装していない別の担当は内容レビューまで。マージは、[AGENTS.md](../AGENTS.md)の条件を満たした自分のPRに限り、実装側が行う。2026-10-02に製品実装の停止を解除した。
 
 ## 1. 実装側の完了報告
 
@@ -35,7 +35,7 @@ base_sha: <確認したmain SHA>
 
 更新が止まった時間、Open状態、古いCI成功だけでは完了とみなさない。baseだけ変わった場合も新しい確認報告を求める。開始条件の不足は同じheadに一度だけ知らせる。
 
-## 3. Codex側のレビュー
+## 3. 別担当のレビュー（Codex側・Claude側）
 
 受入条件、データの意味、unknownと0、二重計上、履歴、制度の適用範囲・出典・丸め、テスト期待値、UIの表示、秘密情報を確認する。Copilot指摘も読み、妥当性と対応状況を独立に評価する。
 
@@ -43,7 +43,8 @@ base_sha: <確認したmain SHA>
 
 ```text
 <!-- kurashi-ledger:review:v1 -->
-role: codex-reviewer
+role: codex-reviewer | claude-reviewer
+agent_id: <レビューした担当のagent/session ID>
 head_sha: <対象head SHA>
 base_sha: <対象base SHA>
 decision: changes-requested | accepted | needs-owner
@@ -62,7 +63,7 @@ R-002: <同上>
 
 他者のレビューthreadを、コメントに返信しただけで勝手にresolveしない。解消確認は原則レビュワーが行う。新push後は検証と新しい引継ぎを作り、再レビューを待つ。Copilotから同じ指摘が繰り返された場合も、既存指摘と対応付けて重複作業を避ける。
 
-自分のPRがreviewingなら待つ。accepted-awaiting-ownerなら実装作業は完了しているが、依存タスクの完了条件はまだ満たさない。所有者のマージ後に依存を解放する。
+自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。マージの条件（AGENTS.md）を確かめてマージしたあとで、依存を解放する。
 
 ## 5. 重複防止と止めどころ
 

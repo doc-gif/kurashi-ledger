@@ -1,17 +1,17 @@
 # GitHubを介した実装AIとレビューAIの運用
 
-更新日: 2026-10-02。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。製品実装の停止は継続し、レビュー運用の設定・文書整備のみ先に進める。
+更新日: 2026-10-02。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。2026-10-02に所有者が製品実装の停止を解除し、マージの条件を決めた。
 
 ## 分担
 
 | 担当 | 行うこと | 終了地点 |
 | --- | --- | --- |
-| 所有者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、最終マージ判断 | 範囲と担当を明示 |
-| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応 | DraftまたはOpen PRと、対象SHA付き引継ぎ |
-| レビューAI（Codex側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
+| 所有者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定 | 範囲と担当を明示 |
+| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応。条件を満たした自分のPRをマージ | DraftまたはOpen PRと、対象SHA付き引継ぎ。条件を満たせばマージ |
+| レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
 
-**いずれのAIも自動マージしない。** acceptedはレビューの結果であり、マージ許可ではない。所有者が明示的に指示するまでPRを残す。auto-mergeは無効のままにする。
+**いずれのAIも自動マージしない。** auto-mergeは無効のままにする。実装担当は、自分のPRに限り、最新head/baseで次をすべて確かめてから、`--match-head-commit`付きのマージコミットでマージしてよい: 実装していない別の担当の`decision: accepted`、Copilotの未対応の指摘がないこと、baseが変わっておらず競合がないこと。ほかの担当のPRはマージしない（2026-10-02の所有者決定。[AGENTS.md](../AGENTS.md)）。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
 
@@ -27,7 +27,7 @@ Issueにはtask_id、目的、非対象、spec_revision、承認したrevision�
 
 `backlog → ready → claimed → working → ready-for-review → reviewing → changes-requested → working`
 
-修正不要なら `reviewing → accepted-awaiting-owner → merged/done`。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
+修正不要なら `reviewing → accepted → merged/done`（実装担当がマージの条件を確かめてマージする）。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
 
 Open PRだから完成、Draftだから絶対未完成とはみなさない。完了したhead/baseと検証結果を明記した引継ぎで判定する。作業中の古いready報告は無効。
 
