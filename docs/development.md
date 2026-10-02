@@ -49,7 +49,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 - `ignore-scripts=true`: 依存のインストールスクリプトを動かさない（ADR-0002）。npmの仕様で、`npm run`で指定したスクリプトは動くが、`prebuild`のようなpre/postスクリプトは動かない。`package.json`のscriptsにpre/postを使わず、必要な確認はスクリプトの中で行う。スクリプトが必要な依存を入れる場合は、理由を確かめてから個別に扱う（ADR-0002）。
 - `save-exact=true`: 依存を追加したときに、範囲ではなく正確な版で`package.json`に書く。
-- `npm run setup`は、利用者のnpmrc（`~/.npmrc`等）と`npm_config_`で始まる環境変数を使わない（ADR-0008）。プロキシが必要な環境では、`HTTPS_PROXY`・`HTTP_PROXY`・`NO_PROXY`の環境変数で渡す。
+- `npm run setup`は、利用者のnpmrc（`~/.npmrc`等）と`npm_config_`で始まる環境変数を使わない（ADR-0008）。プロキシが必要な環境では、`HTTPS_PROXY`・`HTTP_PROXY`・`NO_PROXY`の環境変数で渡す。所有者はこの扱いを受け入れた（下の「所有者の決定」の4）。
 
 ## TypeScript
 
@@ -96,11 +96,22 @@ T00の棚卸し（[ADR一覧](adr/README.md)の「既存設定の棚卸し」）
 | `package.json`と`package-lock.json` | 書き直して採用 | 型検査・試験・公開検査のscriptsの考え方を引き継ぎ、`npm run setup`・記録の確認を加えた。lockfileは新しく作った |
 | `tsconfig.json` | 書き直して採用 | 型検査だけ、`erasableSyntaxOnly`等の方針はADR-0002と合っていた |
 | 公開検査のスクリプトとその試験 | 書き直して採用 | 秘密情報や個人のパスを探す考え方を引き継いだ。`evidence`等の名前をどの階層でも拒んでソースの置き場所と衝突する点、合成データの置き場所の例外がない点、`*.age`がない点を直した |
-| コミット前のGitのhook（公開検査） | 不採用 | hookの設定はworktreeの間で共有され、ほかの担当の作業に影響する。手動で`npm run check:public -- --staged`を実行する手順にした |
+| コミット前のGitのhook（公開検査） | 不採用（所有者の決定の3） | hookの設定はworktreeの間で共有され、ほかの担当の作業に影響する。手動で`npm run check:public -- --staged`を実行する手順にした |
 | CIのworkflow | 不採用（T05） | CIはT05の範囲。`npm run setup`ではなく`npm ci`を直接使っていて、Node.jsの版も24系の範囲でしか指定していない。T05はADR-0002・ADR-0008に沿って作る |
-| 依存の自動更新の設定 | 不採用 | 自動のPRがlockfile（共有資源）を変え、担当の割当の外で作業が生まれる。依存の更新の頻度はT25で決める |
+| 依存の自動更新の設定 | 不採用（所有者の決定の3） | 自動のPRがlockfile（共有資源）を変え、担当の割当の外で作業が生まれる。依存の更新の運用はT25で決める |
 | エディタの設定、改行の正規化の設定 | 不採用 | T02の受入条件に不要。改行の扱いで問題が出たら、T05で判断する |
 | 金額の状態を表すドメインの型とその試験 | 不採用 | 金額の状態（unknown・not-stated・not-applicable・known）の定義はT01の契約、実装はT06の範囲。T06は確定した契約から書き起こす |
 | 制度データ・application層の説明文 | 不採用 | 制度データはT14、層の方針は[architecture.md](architecture.md)にある。置き場所は各タスクで作る |
 
-試作の中に、実データ・秘密情報は見当たらなかった。
+試作の中に、実データ・秘密情報は見当たらなかった。元checkoutの試作と、その`node_modules`は、所有者の決定（下の2）により当面残す。
+
+## 所有者の決定（2026-10-02）
+
+T02で所有者の判断を求めた事項について、所有者が2026-10-02に、実装側のセッションのチャットで次のとおり決めた（PR #12で記録）。
+
+| # | 事項 | 決定 |
+| --- | --- | --- |
+| 1 | 固定した版（24.15.0以上）での確認 | 所有者が、Node.js 24 LTS（24.21.0）を公式インストーラでローカルに入れる。入れたあとで、`npm run setup`・`npm run typecheck`・`npm test`を固定した版で実行し直す。それまで、固定した版での確認は未了として扱う。Windowsでの確認は、この決定の対象外で未了 |
+| 2 | 元checkoutの未追跡の試作と`node_modules` | 当面残す。T02の統合後に扱いを見直す。削除しない |
+| 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める |
+| 4 | `npm run setup`が利用者の`~/.npmrc`を読まないこと | 受け入れる（プロキシや独自のregistryは使っていない）。プロキシが必要になったら、`HTTPS_PROXY`等の環境変数で渡す（上の「npmの設定」） |
