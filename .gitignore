@@ -48,3 +48,13 @@ __pycache__/
 !/design/**/*.[pP][nN][gG]
 !/design/**/*.[jJ][pP][gG]
 !/design/**/*.[jJ][pP][eE][gG]
+# 例外は通常のファイルだけ。拡張子のような名前のディレクトリは、例外の場所の中でも除外する
+# （末尾の / はディレクトリだけに当たる。あとに書いた行が優先される）。
+/tests/fixtures/**/*.[cC][sS][vV]/
+/tests/fixtures/**/*.[pP][dD][fF]/
+/tests/fixtures/**/*.[pP][nN][gG]/
+/tests/fixtures/**/*.[jJ][pP][gG]/
+/tests/fixtures/**/*.[jJ][pP][eE][gG]/
+/design/**/*.[pP][nN][gG]/
+/design/**/*.[jJ][pP][gG]/
+/design/**/*.[jJ][pP][eE][gG]/

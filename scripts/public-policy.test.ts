@@ -74,6 +74,22 @@ const BLOCKED_PATHS = [
   'config/.Env.Local',
   'Tests/Fixtures/records.csv',
   'Design/hero.png',
+  // 例外の拡張子は、例外の場所の下の通常のファイルの最後の名前にだけ当たる。
+  // 拡張子のような名前のディレクトリは、例外の場所の中でも外でも除外する。
+  'tests/fixtures/evidence.pdf/records.json',
+  'tests/fixtures/evidence.pdf/',
+  'tests/fixtures/scans.png/page1.png',
+  'tests/fixtures/nested/report.csv/notes.md',
+  'tests/fixtures/archive.zip/records.csv',
+  'tests/fixtures/backup.age/',
+  'tests/fixtures/.env/records.csv',
+  'design/mock.png/readme.md',
+  'design/mock.png/',
+  'design/sub/hero.jpg/x.png',
+  'docs/report.pdf/notes.md',
+  'tests/fixtures.pdf/records.csv',
+  'tests/fixturesX/records.csv',
+  'src/tests/fixtures/records.csv/',
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',
@@ -101,6 +117,12 @@ const ALLOWED_PATHS = [
   'design/hero.JPG',
   '.ENV.EXAMPLE',
   'src/Data/record.ts',
+  'tests/fixtures/nested/deeper/receipt.pdf',
+  'tests/fixtures/data/records.csv',
+  'tests/fixtures/evidence/records.json',
+  'design/screens/mobile/top.png',
+  'design/screens/',
+  'tests/fixtures/',
 ];
 
 function kindOf(sample: string): ['file' | 'directory', string] {

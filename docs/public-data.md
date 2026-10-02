@@ -25,13 +25,14 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 - 拡張子と`.env`の規則は、`.gitignore`と同じく、パスのどの階層の名前にも当てる（`statements.pdf/readme.md`や`.env/config`も除外する）。
 - 実データになりうる名前（上のディレクトリ、拡張子、`.env`）は、大文字小文字を区別しない（`photo.PNG`、`DATA/`等も除外する）。LinuxのGitでも同じになるよう、`.gitignore`では`*.[pP][dD][fF]`のように書く。例外の場所（`tests/fixtures/`、`design/`）は小文字の名前だけ。MacやWindowsのGitは場所の名前の大文字小文字も区別しないので、`Design/`のような名前は`.gitignore`では除外されないことがあるが、公開検査では止まる。
 - 例外の場所でも、鍵（`.pem`、`.key`）、`.env`、DB（`.sqlite`、`.db`）、`*.age`、Excel、zip、ログは除外したまま。
+- 例外は、例外の場所（リポジトリ直下の`tests/fixtures/`・`design/`）の下にある通常のファイルの、最後の名前の拡張子にだけ当たる。`tests/fixtures/evidence.pdf/`のような拡張子に見える名前のディレクトリ（submoduleを含む）は、例外の場所の中でも除外し、その中のファイルも除外する。
 - 公開検査（`npm run check:public`）は、同じ規則を`git add -f`で加えたファイルにも適用する。submodule（gitlink）はディレクトリとして扱い、リポジトリ直下の`data`等の名前そのものも止める。`.gitignore`と公開検査の規則が食い違わないことは、`scripts/public-policy.test.ts`の見本で確かめる。
 
 ### 例外を変える手順
 
 場所や種類を加えるときは、1つのPRで次をそろえ、PRに理由を書く。
 
-1. `.gitignore`の例外の行。
+1. `.gitignore`の例外の行（`!/tests/fixtures/**/*.[cC][sS][vV]`のような行と、同じ名前のディレクトリを除外し直す`/tests/fixtures/**/*.[cC][sS][vV]/`の行の両方）。
 2. `scripts/lib/public-policy.ts`の`SYNTHETIC_LOCATIONS`（`.gitignore`の拡張子は大文字小文字を区別しない書き方にする）。
 3. `scripts/public-policy.test.ts`の見本（許す例と、許さない例の両方）。
 4. この資料の表。

@@ -30,7 +30,8 @@ const BLOCKED_EXTENSIONS: readonly { readonly key: string; readonly pattern: Reg
   { key: 'sqlite', pattern: /\.sqlite[^/]*$/i },
 ];
 
-// 合成データ・デザイン資産だけを置く場所と、そこで許す拡張子。
+// 合成データ・デザイン資産だけを置く場所（リポジトリ直下からのディレクトリ）と、そこで許す拡張子。
+// 例外は、この場所の下にある通常のファイルの、最後の名前の拡張子にだけ当てる（.gitignoreと同じ）。
 // 変更するときは、.gitignoreの例外・docs/public-data.md・試験の見本を同じPRで直す。
 export const SYNTHETIC_LOCATIONS: readonly {
   readonly prefix: string;
@@ -42,11 +43,19 @@ export const SYNTHETIC_LOCATIONS: readonly {
 
 export type EntryKind = 'file' | 'directory';
 
+// 場所のパス（'tests/fixtures/'）の名前の並びが、パスの先頭の名前の並びと一致するか（大文字小文字を区別する）。
+function underLocation(segments: readonly string[], prefix: string): boolean {
+  const location = prefix.split('/').filter((s) => s !== '');
+  return segments.length > location.length && location.every((name, i) => segments[i] === name);
+}
+
 // .gitignoreと同じ置き場所の規則を、パスの区切り（/）ごとの名前に当てる。
 // - 実データ用のディレクトリは、リポジトリ直下の名前だけ（/data/ 等）。ディレクトリの項目
 //   （submoduleのgitlink等）は、その項目自身も対象にする。
 // - .envや拡張子の規則は、.gitignoreのスラッシュを含まないパターンと同じく、
 //   どの階層の名前にも（ファイルにもディレクトリにも）当てる。
+// - 合成データの場所の例外は、その場所の下の通常のファイルの最後の名前にだけ当てる。
+//   途中のディレクトリやディレクトリの項目は、拡張子のような名前でも例外にしない。
 export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
   const findings = new Set<string>();
   const segments = path.split('/').filter((s) => s !== '');
@@ -62,10 +71,10 @@ export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
     }
     const ext = BLOCKED_EXTENSIONS.find((e) => e.pattern.test(name));
     if (ext !== undefined) {
-      const upToHere = segments.slice(0, i + 1).join('/');
-      const allowed = SYNTHETIC_LOCATIONS.some(
-        (loc) => upToHere.startsWith(loc.prefix) && loc.extensions.includes(ext.key),
-      );
+      const isFinalFile = kind === 'file' && i === segments.length - 1;
+      const allowed =
+        isFinalFile &&
+        SYNTHETIC_LOCATIONS.some((loc) => underLocation(segments, loc.prefix) && loc.extensions.includes(ext.key));
       if (!allowed) findings.add(`公開しない種類のファイル（${ext.key}）`);
     }
   });

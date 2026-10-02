@@ -104,13 +104,15 @@ test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、ディ
   git('update-index', '--add', '--cacheinfo', `160000,${commit},data`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},backups`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},docs/statements.pdf`);
+  // 合成データの場所の中でも、拡張子のような名前のgitlinkは例外にしない。
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},tests/fixtures/evidence.pdf`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},vendor/allowed`);
   const r = check(['--staged']);
   assert.equal(r.status, 1, r.stdout);
-  for (const path of ['private/vendor', 'exports/archive', 'data', 'backups', 'docs/statements.pdf']) {
+  for (const path of ['private/vendor', 'exports/archive', 'data', 'backups', 'docs/statements.pdf', 'tests/fixtures/evidence.pdf']) {
     assert.ok(r.stderr.includes(`公開しない: ${path}:`), `${path}\n${r.stderr}`);
   }
   assert.ok(!r.stderr.includes('vendor/allowed'), r.stderr);
-  assert.match(r.stderr, /7件のうち5件/); // README.mdと許可の場所のgitlinkは当たらない
+  assert.match(r.stderr, /8件のうち6件/); // README.mdと許可の場所のgitlinkは当たらない
   assert.equal(check().status, 1);
 });
