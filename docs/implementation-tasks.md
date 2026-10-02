@@ -83,7 +83,7 @@
 - 成果物: 3部品とカタログ、Figma nodeとコードの対応。コードで使うtokenはGit管理、Figma変更はレビュー済みPRで反映する一方向の手順。
 - 受入: 金額不明を入力できる。数値0と空欄を区別。フォーカス・エラー関連付け・タブ順が正しく、表示用の値を計算に使わない。
 - 検証: キーボード、アクセシビリティ、代表的なvisual差分と目視。自動スクリーンショットだけでデザイン承認としない。
-- ReactとViteをここで導入する（ADR-0004）。開発時は、ViteをmiddlewareモードでT26のサーバーに組み込み、ブラウザから見えるoriginを1つにする（ADR-0003の10）。開発UIからのトークン交換と状態を変える要求が成功し、Viteの単独の開発サーバーや別のポートからの直接の要求が拒否されること、HMRのWebSocketも同じ検査を通ることを試験する。CORSや認証を開発時だけ無効にしない。UIのE2Eは、T05のブラウザ試験の基盤（ChromiumをMac/Windows/Linux、WebKitをMac）に追加する。Firefoxはbest effortとし、必須のE2E対象に含めない（2026-10-02の所有者決定）。
+- ReactとViteをここで導入する（ADR-0004）。開発時は、ViteをmiddlewareモードでT26のサーバーに組み込み、ブラウザから見えるoriginを1つにする（ADR-0003の10）。開発UIからのトークン交換と状態を変える要求が成功し、Viteの単独の開発サーバーや別のポートからの直接の要求が拒否されること、HMRのWebSocketも同じ検査を通ることを試験する。CORSや認証を開発時だけ無効にしない。開発時のCSPは、応答ごとのnonceをViteの`html.cspNonce`と一致させて、inlineのstyle・scriptを許可する（ADR-0003の7）。実際のCSSとReactの変更がHMRで反映されること、nonceのない・値の合わないinlineのscript・styleが拒否されること、本番のCSPにnonceが含まれないことを試験する。UIのE2Eは、T05のブラウザ試験の基盤（ChromiumをMac/Windows/Linux、WebKitをMac）に追加する。Firefoxはbest effortとし、必須のE2E対象に含めない（2026-10-02の所有者決定）。
 
 ## T09 — 入力・訂正のユースケース
 

@@ -34,6 +34,8 @@ ADR-0002では、Node.jsのプロセスがloopbackでHTTPを提供し、利用�
    - バックアップからの復元はHTTPでは受け付けない（ADR-0006のとおりアプリを停止してコマンドで行う）。
 6. **CORS:** CORSヘッダを一切返さない（`Access-Control-Allow-Origin: *`が、Viteの開発サーバーの脆弱性CVE-2025-24010の原因の1つだった）。JSONPや`text/plain`でのデータ返却もしない。APIの応答には`Content-Type: application/json`、`X-Content-Type-Options: nosniff`、`Cache-Control: no-store`を付け、金額等をブラウザのディスクキャッシュに残さない。
 7. **画面の制限:** CSPはHTTPヘッダで返す（`frame-ancestors`は`<meta>`では効かない）。初期値は`default-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`。インラインscriptや`eval`を許可しない。外部のスクリプト・フォント・画像・解析タグを読み込まず、依存はビルド時に同梱する。
+   - 開発時（10）だけは、ViteのCSSの差し替えやReact Refreshがinlineのstyle・scriptを使うので、nonceで許可する。Viteの`html.cspNonce`にプレースホルダーを設定し、サーバーはHTMLを返すたびに、予測できない新しい値（暗号論的乱数）でプレースホルダーを置き換える。同じ値を、その応答のCSPの`script-src`と`style-src`に`'nonce-<値>'`として加える。Viteは`<meta property="csp-nonce">`の値を、HMRで挿入するstyleやscriptにも使う。HMRのWebSocketのため、開発時の`connect-src`には同じoriginの`ws://127.0.0.1:<port>`を加える。
+   - 固定のnonce、`'unsafe-inline'`、`'unsafe-eval'`は、開発時にも使わない。nonceを加えるのは開発時の応答だけで、本番のCSPには含めない。
 8. **HTTPS:** loopbackでは使わない。`127.0.0.0/8`はブラウザで「潜在的に信頼できる」origin（secure context）として扱われるため、自己署名証明書の導入手順を利用者に課さない。
 9. **外部通信:** サーバーは利用者の操作なしに外部へ通信しない（テレメトリ、更新確認、CDNなし）。制度データ等の取得を将来加える場合は別のADRで決める。
 10. **開発時の構成:** 開発時も、ブラウザから見えるoriginは本番と同じ`http://127.0.0.1:<port>`の1つにする。
@@ -85,6 +87,7 @@ HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバー
 - `0.0.0.0`やIPv6で待ち受けていないこと、ポート使用中・二重起動の扱い。
 - CSPで外部資源の読み込みが禁止されていること。
 - 開発時の入口（T26のサーバーとViteのmiddleware）から開いたUIで、トークン交換と、状態を変える要求が成功すること。Viteの単独の開発サーバーや別のポートから直接送った要求は拒否されること。HMRのWebSocketのupgradeも、Host・Origin・cookieの検査を通ること（T08）。
+- 開発時に、実際のCSSの変更とReactのコンポーネントの変更がHMRで反映されること。nonceのない、または値の合わないinlineのscript・styleは拒否されること。nonceが応答ごとに変わり、本番の応答のCSPにnonceが含まれないこと（T08）。
 - 静的配信で、`..`、エンコードされた区切り文字（`%2F`・`%5C`・二重エンコード）、バックスラッシュ、配信ルート外を指すsymlink・junctionによる範囲外のファイルの取得が拒否されること。
 
 ## 出典
@@ -100,6 +103,7 @@ HTTPサーバーの骨格と境界検査は、T26（ローカルHTTPサーバー
 - cookieがポートで分離されないこと: https://www.rfc-editor.org/rfc/rfc6265#section-8.5
 - `SameSite`の判定と、移動を始めた文書（`file://`は不透明なorigin）: https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis 、https://html.spec.whatwg.org/multipage/browsing-the-web.html 、https://html.spec.whatwg.org/multipage/browsers.html#same-site 。リダイレクトの扱いは仕様の読解による推論なので、各ブラウザでの挙動は実装時に試験する
 - CSP: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP
+- ViteのCSPへの対応と`html.cspNonce`: https://vite.dev/guide/features#content-security-policy-csp 、https://vite.dev/config/shared-options#html-cspnonce
 - secure context: https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts
 - ChromeのLocal Network Access: https://developer.chrome.com/blog/local-network-access
 - FirefoxのLocalNetworkAccessポリシー: https://firefox-admin-docs.mozilla.org/reference/policies/localnetworkaccess/
