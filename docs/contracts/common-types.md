@@ -46,6 +46,7 @@
 - **採用の候補を決めるキー:** 年間資料の`documentType`が`other`の資料は、項目の意味が決まらないので、年間の値の採用の候補にしない（同5）。
 - **同一性を決めるキー:** 同じ記録・同じ相手かどうかは、IDと、契約で決めた識別の次元で決め、自由な値では決めない（雇用先・発行者は登録したマスタのIDで参照する）。識別の次元に列挙の項目があり、両方が`other`なら4×4の表では一致になるが、ほかの次元（支払者・日付・発行者・年度）と合わせて使い、`other`だけで同じとはしない。
 
+- **参照の有無を表す`Fact`:** 参照を持つ`Fact`の項目（`Fact<Ref>`・`Fact<Id>`）のうち、参照があるかないかだけを表す項目（`supersedes`、`duplicateOf`、`importKey`、`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`previousRunId`）は、`known`か`not-applicable`だけを使い、`unknown`・`not-stated`は使わない（12の表）。参照先が分からないこと自体が意味を持つ項目（正式通知の`issuerId`、入金の`payerHint`、予測の`employerId`・`accountId`、年間資料の他の支払者の`payerEmployerId`）だけが`unknown`を使え、その場合の扱いはそれぞれの規則（確定しない、範囲が確定しない等）による。
 - **契約が決めるキー:** 集計のキーは`AggregateKey`（11）。不足の`field`（集計値の`missing`、計算runの`MissingInput`）は`FieldKey`（11）で、記録の項目は記録の型の表にある項目名、規則で導く不足は派生キーの表の値、計算器の入力は計算器の版ごとの一覧の値だけを使う。比較の`field`（`comparisons`・`explainedComparisons`）は、年間資料の金額の項目名（`AggregateKey`の`annual-value`の`item`と同じ列挙）だけを使う。計算runの`ResultItem`・`Assumption`の`key`は、計算器の版ごとに決めた一覧の値だけを使う（一覧はT15以降で計算器と一緒に定める）。表・一覧にない名前は保存しない。表示の並びの重複を避けるための比較（`unconfirmedItems`の同じ文）はキーではないので、この規則の対象外。
 
 上位の量の内訳として、意味が同じ金額に含まれる`other`（給与明細の`otherEarnings`の分類`other`の行も、総支給額の一部）は、上位の量の中で数える（その分類だけの集計は作らない）。表示と照合の候補の提示には、`other`も自由な値も使ってよい。新しく種類を分けて集計する必要が出たら、列挙に値を足す（READMEの「契約の変更」。`other`を細かく分けるキーを自由な値で作らない）。
@@ -512,6 +513,9 @@
 | 同 | `selection`が`entered-payslips`・`no-annual-document` | `adoptedRef`は`not-applicable`、`coverage`は`known`の`entered-records-only` |
 | 同 | `selection`が`adoption-needed` | どちらも`not-applicable` |
 | `Assumption`の`ref` | `source`が`forecast` | `known`（予測の行。版を固定） |
+| 同 | `source`が`user`・`rule-default` | `known`か`not-applicable`（参照する記録があるかないかのどちらか。`unknown`・`not-stated`は使わない） |
+| 計算runの`MissingInput`の`ref` | `field`の`kind`が`record-item`・`derived` | `known`（不足の元の記録。11の「不足の項目」） |
+| 同 | `field`の`kind`が`calculator-input` | `known`か`not-applicable`（`unknown`・`not-stated`は使わない） |
 
 **`not-applicable`を許す項目:** この表にない`Fact`の項目は`not-applicable`を使わない。
 
