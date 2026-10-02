@@ -17,10 +17,11 @@
 ### ランタイム
 
 - 言語はTypeScript。ADR-0001の方向性を確定する。
-- ランタイムはNode.jsの**LTS版のうち1つのメジャーに固定**する。固定するのは**Node.js 26**とする。
+- ランタイムはNode.jsの**LTS版のうち1つのメジャーに固定**する。目標とする版は、最も長くサポートされる**Node.js 26**とする。
   - 2026-10-02時点で、Node 26はCurrent。LTS入りは2026-10-28の予定で、サポート終了は2029-04-30。Node 24は2026-10-20に保守期間（Maintenance LTS）へ移り、2028-04-30に終了する。Node 22は2027-04-30に終了する。
-  - Node 26は、2026年3月に発表されたリリース周期変更（27以降は年1回のメジャーで、全版がLTSになる）より前の方式による最後の系列。27以降への移行はT25の更新手順で扱う。
-  - 本番の利用はActive LTSかMaintenance LTSに限る、というNode.jsの方針に従う。**T02の着手時にNode 26がまだLTSでなければ、Node 24（24.15.0以上）で始める。** その場合のNode 26への移行は、LTS入り後に所有者が別タスクとして割り当てる。版の指定、lockfile、CI設定という共有資源を変えるため。
+  - Node 26は、2026年3月に発表されたリリース周期変更（27以降は年1回のメジャーで、全版がLTSになる）より前の方式による最後の系列。27以降への移行はT28（Node.jsのメジャー更新）で行う。
+  - 本番の利用はActive LTSかMaintenance LTSに限る、というNode.jsの方針に従う。**T02の着手時に、利用可能なLTSのうち下の必要機能を満たす版を確認して固定する。** 2026-10-28以降ならNode 26、それより前ならNode 24（24.15.0以上）になる見込み。将来のLTSを待つことはT02の開始条件にしない（2026-10-02の所有者決定）。
+  - メジャー更新は、版の指定・lockfile・CI設定という共有資源を変えるので、T28（Node.jsのメジャー更新）として別に行う。
   - 必要な機能は、型除去（TypeScriptの直接実行）がStable（24.12.0以上・26）であることと、`node:sqlite`がRelease candidate（24.15.0以上・26）であること。
 - 版は`package.json`の`devEngines.runtime`（npmが`install`・`ci`・`run`の前に検査する）と`engines`で宣言する。`.nvmrc`はnvm利用者向けの補助として置く（nvmはWindowsに対応していない）。依存は`package-lock.json`で固定し、`npm ci`で導入する。Corepackと`packageManager`欄は使わない（Corepackは25.0.0からNode.jsに同梱されていない）。
 - 実データのあるPCで依存のインストールスクリプトが動かないように、repoの`.npmrc`で`ignore-scripts=true`にする。スクリプトが必要な依存は、理由を確認してから個別に扱う。
@@ -53,7 +54,7 @@
 | 候補 | 判断 |
 | --- | --- |
 | Node 26（2026-10-28にLTS予定、2029-04-30まで） | **採用**。初回利用（T13）時点で最も長く使える |
-| Node 24（Active LTS、2026-10-20から保守、2028-04-30まで） | T02の着手時にNode 26がまだLTSでない場合の一時的な代替 |
+| Node 24（Active LTS、2026-10-20から保守、2028-04-30まで） | T02の着手時にNode 26がまだLTSでない場合に使う。Node 26への更新はT28で行う |
 | Node 22（Maintenance LTS、2027-04-30まで） | 見送り。`node:sqlite`がStability 1.1で、終了が近い |
 | Bun、Deno | 見送り。追加のランタイムを入れる理由が今はない（ADR-0001） |
 
@@ -109,15 +110,16 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 - 利用者はGitとNode.jsを入れる必要がある。初期の利用者は所有者本人なので許容し、一般向けの配布は範囲外とする。
 - 実行ファイルを配らないので、コード署名、macOSの公証、WindowsのSmartScreenへの対応が初期は不要。
 - UIのビルドに開発用の依存（Vite等）が必要なので、実利用のcloneでも`npm ci`で開発用の依存を入れる。インストールスクリプトの無効化で、その危険を下げる。
-- Node.jsのメジャー更新はT25の更新手順で扱う。
+- Node.jsのメジャー更新はT28で行い、更新後の手順の通し確認はT25で行う。
 
 ## 別タスクで行う検証
 
-- T02: `devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。Node 26で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
+- T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
 - T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。
-- 未割当（所有者に確認）: `npm start`で動くHTTPサーバーの骨格（ADR-0003）。
+- T26: `npm start`で動くHTTPサーバーの骨格と、ADR-0003の境界。
+- T28: Node.jsのメジャー更新（必要時）。
 - T13: 新規のMac/Windows環境で、この手順の起動・終了・バックアップ・復元を実施して記録する。
-- T25: 更新とrollback、Node.jsのメジャー更新、別OSへの移行のリハーサル。
+- T25: 更新とrollback、Node.jsのメジャー更新後の通し確認、別OSへの移行のリハーサル。
 
 ## 出典
 

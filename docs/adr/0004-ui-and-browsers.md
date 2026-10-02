@@ -18,9 +18,9 @@ UIはフォームが中心（ソース別の手入力、訂正、照合）で、
 
 | 区分 | ブラウザ | 扱い |
 | --- | --- | --- |
-| 対応 | Chrome・Edgeの最新安定版（Mac・Windows） | 不具合として修正する。E2EはPlaywrightのChromiumをMac・Windowsで実行する |
+| 対応 | Chrome・Edgeの最新安定版（Mac・Windows） | 不具合として修正する。E2EはPlaywrightのChromiumをMac・Windows（CIではLinuxも）で実行する |
 | 対応 | Safariの最新メジャー版（Mac。2026-10-02時点で27） | 不具合として修正する。E2EはPlaywrightのWebKitをMacでだけ実行し、リリース前に実機のSafariで手動確認する。PlaywrightのWebKitはSafariより先の開発版で、WindowsのWebKitはSafariの代わりにならない |
-| 可能な範囲 | Firefoxの最新安定版 | 動作は目指すが、定常のE2E対象にしない |
+| 可能な範囲（best effort） | Firefoxの最新安定版 | 動作は目指すが、必須のE2E対象に含めない（2026-10-02の所有者決定） |
 | 非対応 | Internet Explorer、各ブラウザの旧版、スマートフォン | [実装計画](../implementation-plan.md)のとおりスマホ専用アプリは初期範囲外 |
 
 - **ビルドターゲット:** Viteの既定値（`baseline-widely-available`。Vite 8ではChrome・Edge 111、Firefox 114、Safari 16.4に相当）を使う。それより古いブラウザ向けのpolyfillは入れない。

@@ -1,8 +1,8 @@
 # Architecture decision 001: Small application, explicit boundaries
 
-Status: proposed direction, to be confirmed in T00; UI framework, DB implementation and hosting remain undecided.
+Status: accepted direction, confirmed by T00 (effective once the T00 ADRs are on main). T00 recorded the runtime, local HTTP boundary, UI, SQLite driver and data storage decisions in [docs/adr/](adr/README.md) (ADR-0002 to ADR-0006).
 
-TypeScript is the proposed initial language for records, input validation and application workflows. Keep one application with modules; introduce additional runtimes only after a concrete evaluation.
+TypeScript is the language for records, input validation and application workflows, running on Node.js LTS (ADR-0002). Keep one application with modules; introduce additional runtimes only after a concrete evaluation.
 
 ## Boundaries
 
@@ -38,6 +38,6 @@ Eligibility predictions and insurer-confirmed dates are different states. A fore
 
 CSV is a versioned interchange format, with IDs, dates, amount states and relationship references. It is not a complete backup.
 
-Backups include DB, evidence, rules and version manifests; engine versions must remain obtainable. Acceptance requires restore into a clean environment. Choose encryption, destination and retention when the storage/deployment model is selected.
+Backups include DB, evidence, rules and version manifests; engine versions must remain obtainable. Acceptance requires restore into a clean environment. Encryption, destination and retention are defined in ADR-0006.
 
-Actual user data, exports and backups belong outside this public checkout. The `.gitignore` and planned publication guard are additional protections, not the primary storage boundary.
+Actual user data, exports and backups belong outside this public checkout, in the data root defined by ADR-0006. The `.gitignore` and planned publication guard are additional protections, not the primary storage boundary.

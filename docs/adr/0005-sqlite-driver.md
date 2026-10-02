@@ -6,7 +6,7 @@
 
 ## 背景
 
-記録・改訂・参照を1つのtransactionで保存し（T07）、使用中のDBから一貫したバックアップを取り、空の環境へ復元する（T12）必要がある。利用者はMacとWindowsで使い、WindowsでC++のビルドツールを入れずに導入できることが望ましい。ADR-0002でNode.js 26（代替としてNode 24の24.15.0以上）に固定する。
+記録・改訂・参照を1つのtransactionで保存し（T07）、使用中のDBから一貫したバックアップを取り、空の環境へ復元する（T12）必要がある。利用者はMacとWindowsで使い、WindowsでC++のビルドツールを入れずに導入できることが望ましい。ADR-0002で、Node.jsはLTSの1メジャーに固定する（目標はNode 26。T02の着手時にLTSでなければNode 24の24.15.0以上）。
 
 ## 決定
 
@@ -39,13 +39,13 @@
 
 ## 影響
 
-- Node.jsの更新でSQLiteの版も変わる。Node.jsのメジャー更新時は、migrationとバックアップ・復元の試験をやり直す（T25）。
+- Node.jsの更新でSQLiteの版も変わる。Node.jsのメジャー更新時は、migrationとバックアップ・復元の試験をやり直す（T28）。
 - `node:sqlite`はまだStable（Stability 2）ではない。Node 26の更新でAPIが変わった場合は、infrastructureの中だけで吸収する。
 - 同期APIなので、重い処理はHTTP要求の処理を止める。単一利用者のローカルアプリでは許容し、問題があればT07で計測する。
 
 ## 別タスクで行う検証
 
-- T02: Node 26で`node:sqlite`を読み込んでも警告が出ないこと。Mac/Windows/Linuxでの動作確認。
+- T02: 固定した版で`node:sqlite`を読み込んでも警告が出ないこと。Mac/Windows/Linuxでの動作確認。
 - T07: migration前の退避（ADR-0006）、transaction、途中失敗時の巻き戻し、`timeout`、`defensive`、`foreign_keys`、`application_id`・`user_version`、スキーマ版が新しすぎるDBを開かないこと。
 - T12: `backup()`と`VACUUM INTO`による退避、`integrity_check`、別環境への復元。
 
