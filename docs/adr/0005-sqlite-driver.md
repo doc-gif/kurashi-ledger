@@ -28,7 +28,7 @@
 
 | 候補 | 状態（2026-10-02） | 判断 |
 | --- | --- | --- |
-| `node:sqlite` | Node 24.15.0以上・26でStability 1.2（Release candidate）。フラグは不要。実験的機能の警告はRelease candidateへの変更時に削除された（Node 26.10.0のソースで確認。実行時の確認はT02）。同梱のSQLiteは3.53.4（v24.21.0・v26.10.0）。`backup()`、`timeout`、`defensive`、BigIntでの読込を備える。transactionの補助関数はない | **採用**。依存ゼロ。ネイティブアドオンのABIや導入の問題がない |
+| `node:sqlite` | Node 24.15.0以上・26でStability 1.2（Release candidate）。フラグは不要。実験的機能の警告はRelease candidateへの変更時に削除された（Node 26.10.0のソースで確認。実行時の確認はT02）。同梱のSQLiteは3.53.4（v24.21.0・v26.10.0）。ライセンスは、Node.js本体がMIT、同梱のSQLiteがパブリックドメイン。`backup()`、`timeout`、`defensive`、BigIntでの読込を備える。transactionの補助関数はない | **採用**。依存ゼロ。ネイティブアドオンのABIや導入の問題がない |
 | better-sqlite3 13.x | MITライセンス。v13からN-APIで、Mac（x64・arm64）とWindows（x64・arm64）の構築済みバイナリをnpmパッケージに同梱。13.0.0・13.0.1にはWindowsでビルドが走る不具合があり、13.0.2で修正。`db.transaction()`あり。npmの保守者は1名 | 代替として保持 |
 | sqlite3（node-sqlite3） | リポジトリがアーカイブ済みで、READMEに「保守されていない」と明記 | 見送り |
 | @libsql/client | ネイティブパッケージの構築済みバイナリにWindows arm64がない。新機能は別製品（Turso）へ移行中 | 見送り |
@@ -56,6 +56,7 @@
 - `node:sqlite`（v22・v24・v26）: https://nodejs.org/docs/latest-v22.x/api/sqlite.html 、https://nodejs.org/docs/latest-v24.x/api/sqlite.html 、https://nodejs.org/docs/latest-v26.x/api/sqlite.html
 - Release candidateへの変更と警告の削除: https://github.com/nodejs/node/pull/61262
 - 同梱のSQLiteの版: https://github.com/nodejs/node/blob/v26.10.0/deps/sqlite/sqlite3.h 、https://sqlite.org/chronology.html
+- ライセンス（Node.js本体、SQLite）: https://github.com/nodejs/node/blob/main/LICENSE 、https://sqlite.org/copyright.html
 - better-sqlite3: https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.0.0 、https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.0.2 、https://github.com/WiseLibs/better-sqlite3/blob/v13.0.3/docs/api.md 、https://unpkg.com/browse/better-sqlite3@13.0.3/prebuilds/
 - sqlite3（node-sqlite3）: https://github.com/TryGhost/node-sqlite3
 - libSQL: https://registry.npmjs.org/libsql 、https://github.com/tursodatabase/libsql

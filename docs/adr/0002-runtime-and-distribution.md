@@ -37,6 +37,10 @@
   - `npm run build`は、最初に既存のmanifestを削除し、`dist/`へ出力し、すべてのファイルを書き終えてから最後にmanifest（ビルドしたcommitのSHA、`package-lock.json`のハッシュ、Node.jsの版、各ファイルのハッシュ）を書く。ビルドが失敗したり途中で止まったりした場合は、manifestがない状態になる。manifestは`dist/`の固定のパスに置き、自分自身はハッシュの一覧と「余分なファイル」の判定から除く。
   - `npm run start:real`は、DBを開く前にmanifestを確かめる。manifestがある、commitとlockfileのハッシュがいまのHEADと`package-lock.json`に一致する、manifestにあるファイルがすべてあってハッシュが合い、manifestにないファイルがない。どれかが満たされなければ、ビルドし直すよう案内して起動しない。
   - 確かめた内容をメモリに読み込んで配信する。起動後にディスク上の`dist/`が変わっても、配信する内容は変わらない。
+- **依存の導入とリリースの対応:** `dist/`とlockfileを照合しても、実際に読み込む`node_modules`が古いまま（タグの切り替え後に`npm ci`を省略・中断した等）であることは見抜けない。そこで、依存の導入が、いまの`package-lock.json`と実行環境（Node.jsの版、OS、CPU）に対して成功したことを記録し、それと結び付ける。
+  - 実データを開く起動（`npm run start:real`）と保守コマンド（`:real`の付いたもの）は、DBを開く前に、この記録がいまのlockfileと実行環境に一致することを確かめる。未導入・中断・古い依存の状態では止める。
+  - `npm run build`も、ビルドの前に同じ記録を確かめる。
+  - 記録の具体的な方式（導入に成功したときにだけ書く記録ファイル、起動時の照合、`npm ls`等の併用）はT02で決め、T08・T09・T12で使う。
 - リリースタグは、mainにあり必要なCIとレビューを通ったcommitに、所有者の承認を得て付ける注釈付きタグ（`vX.Y.Z`、試験用は`vX.Y.Z-rc.N`）とし、originへpushする。実利用モードは、originのタグと一致し`origin/main`から到達できるリリースでだけ動く（ADR-0006）。最初のタグはT13で付け、手順はT25で正式化する。
 - 単一実行ファイル化（Node.jsのSingle Executable Applications）やデスクトップシェル（Electron、Tauri）は、T13（記録版の統合）後に必要性を確認してから別ADRで再評価する。
 - 公証済みの公式Node.js（macOS版はNode.js Foundationの署名付き）の上でソースを実行するので、アプリ側で署名が必要な実行ファイルを作らない。
@@ -71,7 +75,7 @@ Node 26では、Intel Mac（x64）がTier 2（2028年初めまで）、Windows a
 | 依存 | ライセンス | 版（2026-10-02） | サポート |
 | --- | --- | --- | --- |
 | Node.js | MIT | 26.10.0（Current。2026-10-28にLTS予定） | LTSは2029-04-30まで（上記） |
-| TypeScript | Apache-2.0 | 7.0.2 | 型検査だけに使い、実行時の依存にしない |
+| TypeScript | Apache-2.0 | 7.0.2 | 公式のLTSや保守期間の定めは確認できない。約3か月ごとに新しい版が出て、安定版のあとはpatchで修正され、公式は最新版への追従を勧めている。型検査だけに使い、実行時の依存にしない。更新の判断: T02で固定した版を、必要な修正や機能が出たとき、または四半期ごとの依存の見直しで更新する（頻度はT25で正式化） |
 
 React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の実装はADR-0006に記載する。
 
@@ -141,6 +145,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 - 公式配布物と対応Tier: https://nodejs.org/dist/v24.21.0/ 、https://raw.githubusercontent.com/nodejs/node/v26.x/BUILDING.md
 - Node.jsのライセンス: https://github.com/nodejs/node/blob/main/LICENSE
 - TypeScriptの版・ライセンス、`erasableSyntaxOnly`、7.0: https://registry.npmjs.org/typescript/latest 、https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-8.html 、https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/
+- TypeScriptのリリースの進め方（約3か月ごと、安定版のあとのpatch、最新版への追従）: https://github.com/microsoft/TypeScript/wiki/TypeScript's-Release-Process
 - Windowsの実行ポリシーと`npm.ps1`: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-5.1 、https://github.com/npm/cli/blob/latest/bin/npm.ps1
 - `npm ci`、`engines`、`devEngines`: https://docs.npmjs.com/cli/v11/commands/npm-ci 、https://docs.npmjs.com/cli/v11/using-npm/config 、https://raw.githubusercontent.com/npm/cli/latest/docs/lib/content/configuring-npm/package-json.md
 - Corepackの同梱終了: https://nodejs.org/docs/latest-v24.x/api/corepack.html 、https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V25.md

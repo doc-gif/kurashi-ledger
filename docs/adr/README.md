@@ -36,7 +36,7 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | ランタイム | Node.jsのLTS。目標はNode 26（2026-10-28にLTS入りの予定）。T02の着手時に利用可能なLTSのうち必要機能を満たす版を固定し、将来のLTSを待たない（それより前ならNode 24の24.15.0以上）。メジャー更新はT28 | 0002 |
 | 言語・実行 | TypeScript。サーバー側は型除去でビルドせずに実行し（erasable syntaxのみ）、型検査は`tsc --noEmit`。UIはViteでビルドする | 0002、0004 |
 | 起動手順 | 実利用専用のcloneで`npm ci`→`npm run build`→`npm run start:real`（originと一致し`origin/main`から到達できる注釈付きリリースタグをそのままcheckoutした場合だけ起動する）。起動ごとのトークン付きURLをブラウザで開き、Ctrl+Cで終了する。インストールスクリプトは無効にする。ほかの起動は合成データモードで、合成データのデータルートの指定が必須 | 0002、0003、0006 |
-| 配布・更新 | Gitのタグ付きリリースをソースのまま実行する。インストーラ・署名付き実行ファイル・自動更新は作らない。UIのビルド成果物は、最後に書くmanifestでcommitとlockfileに結び付け、`start:real`がDBを開く前に照合して、メモリから配信する。更新はタグのcheckoutと`npm ci`・`npm run build`。migration前に自動で退避する | 0002 |
+| 配布・更新 | Gitのタグ付きリリースをソースのまま実行する。インストーラ・署名付き実行ファイル・自動更新は作らない。UIのビルド成果物は、最後に書くmanifestでcommitとlockfileに結び付け、`start:real`がDBを開く前に照合して、メモリから配信する。依存の導入も、lockfileと実行環境に対して成功した記録と照合し、未導入・中断・古い依存では止める。更新はタグのcheckoutと`npm ci`・`npm run build`。migration前に自動で退避する | 0002 |
 | ローカルHTTP | `127.0.0.1`へのbind、Hostの完全一致、1回だけ使える起動ごとのトークン（本人だけが読める一時ファイルからURLのフラグメントで渡し、交換後に履歴から除く）とcookie、`Referrer-Policy: no-referrer`、状態を変える要求での`Sec-Fetch-Site`/`Origin`/`Content-Type`の検査、CORSなし、`Cache-Control: no-store`、CSPはヘッダで返す、静的配信は固定した配信ルートの実体パス配下だけ、外部通信なし。開発時もNode.jsのプロセスを唯一の入口にし、Viteはmiddlewareモードで組み込む。開発時のCSPだけ、応答ごとのnonceでViteのinlineのstyle・scriptを許可する（`unsafe-inline`は使わない）。実装はT26（開発時の構成はT08） | 0003 |
 | UI | React＋Vite、素のCSSとデザイントークン。部品の基盤（react-aria-components等）はT08で判断する | 0004 |
 | 対応ブラウザ | Chrome・Edgeの最新安定版（Mac・Windows）、Safariの最新メジャー版（Mac）。Firefoxはbest effortで、必須のE2E対象に含めない | 0004 |
@@ -80,7 +80,7 @@ T00では実装・検証コードを作っていない。必要な検証は次�
 
 | タスク | 検証 |
 | --- | --- |
-| T02 | 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないこと、`.gitignore`の修正、試作コードの棚卸し |
+| T02 | 依存の導入の記録の方式（lockfileと実行環境に結び付ける）、着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないこと、`.gitignore`の修正、試作コードの棚卸し |
 | T05 | Mac/Windows/LinuxのCIで固定版のNode.jsを使うこと。後続タスク（T26等）が試験を追加すれば全OSで実行される構成にすること。ブラウザ試験の基盤（Playwrightの導入、ChromiumをMac/Windows/Linux、WebKitをMac） |
 | T07 | データルートの検査（実体パスで判定。Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）と新規作成の手順（親ディレクトリが既にあることの確認、作業ディレクトリで組み立ててから名前変更で置く、作成後の再検査、復元途中なら初期化しない）、単一起動のlock（データルートの外の`<データルート>.lock`にOSのファイルロックで取る。強制終了で自動的に解放され、生きているlockは奪わない。保守コマンドは入れ替えの前後を通して保持する）、欠けたデータルートやDBを作り直さないこと、migration前の退避と`db/`ディレクトリの入れ替えによるrollback（hot journalの対を崩さず、各段階の異常終了から再開・巻戻しできる）、保守作業の状態ファイル（残っている間はアプリと新しい保守作業を起動せず、対応する復旧操作だけを同じlockの下で許す）、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
 | T08 | ReactとViteの導入（初回UI依存）、`npm run build`の配信物のmanifest（最後に書く。ADR-0002）、ViteをmiddlewareモードでT26のサーバーに組み込む開発時の構成（ADR-0003の10。開発UIからの交換・API操作の成功と、別ポートからの直接要求の拒否を試験）、開発時のCSPのnonce（ADR-0003の7。HMRの反映と、nonceのないinlineの拒否を試験）、フォーム部品の基盤の選定、T05の基盤へのUIのE2Eの追加、対応ブラウザでのキーボード操作・アクセシビリティ。Firefoxは必須のE2E対象に含めない |
