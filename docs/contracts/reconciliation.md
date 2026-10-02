@@ -90,7 +90,7 @@
 | 種類 | `targets` | `value` | 意味 |
 | --- | --- | --- | --- |
 | `duplicate-review` | 同じ種類の2件の記録 | `distinct`・`same` | 同額別件か、二重登録か（7） |
-| `annual-adoption` | 採用する年間資料（1件）、または空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、既定（5）と違う形で明示する |
+| `annual-adoption` | `value`が`annual-document`なら採用する年間資料（1件）、`entered-payslips`なら空 | `annual-document`・`entered-payslips` | 年間の値の採用元を、`scope`の年と支払者について明示する（5の手順1。既定の手順2〜3より優先する） |
 | `mismatch-explanation` | 年間資料（1件） | `explained` | 年間資料と明細の不一致の理由を残す（5）。値は書き換えない |
 | `tax-year-assertion` | 給与明細（1件） | `CalendarYear` | 利用者が根拠を持って指定する所得の年（8） |
 
