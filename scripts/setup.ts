@@ -2,7 +2,7 @@
 // 既存の記録を削除し、npm ciが成功したときだけ記録を書く。
 import { spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
-import { currentRuntime, runSetup } from './lib/install-record.ts';
+import { currentRuntime, npmCiArguments, runSetup } from './lib/install-record.ts';
 
 function isTruthy(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== 'false' && value !== '0';
@@ -20,13 +20,14 @@ if (isTruthy(process.env['npm_config_force'])) {
 }
 
 const root = process.cwd();
+const runtime = currentRuntime();
 process.exitCode = runSetup({
   root,
-  runtime: currentRuntime(),
+  runtime,
   runNpmCi: () => {
-    // インストールスクリプトは.npmrcでも無効にしているが、利用者の設定や環境変数で
-    // 上書きされないよう、コマンドラインでも明示する。
-    const result = spawnSync(process.execPath, [npmCli, 'ci', '--ignore-scripts'], {
+    // インストールスクリプトの無効化（.npmrcでも指定）と、導入する木を変えうる設定を、
+    // 利用者の設定や環境変数で上書きされないよう、コマンドラインで明示する。
+    const result = spawnSync(process.execPath, [npmCli, ...npmCiArguments(runtime)], {
       cwd: root,
       stdio: 'inherit',
     });

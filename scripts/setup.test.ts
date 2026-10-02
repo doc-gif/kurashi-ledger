@@ -45,10 +45,11 @@ const npmCli = findNpmCli();
 
 // 外側のnpm（npm test）から受け継いだ設定を消し、試験用の設定だけを渡す。
 // npm_config_local_prefix等が残ると、内側のnpmがこのrepoを対象にしてしまう。
+// NODE_ENV・NODE_OPTIONS等も外し、試験の結果が実行する人の環境に左右されないようにする。
 function npmEnv(cacheName: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (/^npm_/i.test(key) || key === 'NODE_OPTIONS') continue;
+    if (/^npm_/i.test(key) || /^NODE_/i.test(key)) continue;
     env[key] = value;
   }
   env['npm_config_cache'] = join(work, cacheName);
@@ -72,10 +73,10 @@ function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 // 合成のregistryがこのプロセスで動いているので、同期の実行（spawnSync）は使わない。
-function startNpm(cwd: string, args: readonly string[], cacheName: string) {
+function startNpm(cwd: string, args: readonly string[], cacheName: string, extraEnv: NodeJS.ProcessEnv = {}) {
   const child = spawn(process.execPath, [npmCli, ...args], {
     cwd,
-    env: npmEnv(cacheName),
+    env: { ...npmEnv(cacheName), ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32', // POSIXでは新しいプロセスグループにする
   });
@@ -94,8 +95,13 @@ function startNpm(cwd: string, args: readonly string[], cacheName: string) {
   return { child, exited, done };
 }
 
-function npm(cwd: string, args: readonly string[], cacheName = `cache-${counter}`): Promise<Run> {
-  return startNpm(cwd, args, cacheName).done;
+function npm(
+  cwd: string,
+  args: readonly string[],
+  cacheName = `cache-${counter}`,
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<Run> {
+  return startNpm(cwd, args, cacheName, extraEnv).done;
 }
 
 function describe(r: Run): string {
@@ -275,6 +281,39 @@ test('npm ciがnode_modulesを消す前に失敗しても（package.jsonとlockf
     'npm ciは古いnode_modulesを残したまま止まった',
   );
   assert.equal(existsSync(join(root, RECORD)), false, 'setupが最初に記録を消している');
+});
+
+test('package.jsonの依存の宣言を変えたあと、npm ciを直接実行して失敗しても、古い記録では通らない', async () => {
+  mode = 'ok';
+  const root = makeProject();
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  const pkgPath = join(root, 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  pkg.devDependencies[DEP_NAME] = '2.0.0';
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+
+  // npm ciはnode_modulesを消す前に失敗するので、前の記録とhidden lockfileは残る。
+  const plainCi = await npm(root, ['ci']);
+  assert.notEqual(plainCi.status, 0, describe(plainCi));
+  assert.ok(existsSync(join(root, RECORD)), '前の記録は残っている');
+  const stopped = await npm(root, ['run', 'build']);
+  assert.notEqual(stopped.status, 0, describe(stopped));
+  assert.match(stopped.stderr, /package\.json が記録と違う/);
+  assert.notEqual((await npm(root, ['run', 'check:install'])).status, 0);
+});
+
+test('NODE_ENV=productionやomitの設定があっても、setupはdevの依存を入れて記録する', async () => {
+  mode = 'ok';
+  const root = makeProject();
+  const hostile = { NODE_ENV: 'production', npm_config_omit: 'dev', npm_config_install_strategy: 'nested' };
+  const plain = await npm(root, ['ci'], `cache-${counter}`, hostile);
+  assert.equal(plain.status, 0, describe(plain));
+  assert.equal(existsSync(join(root, 'node_modules', DEP_NAME)), false, '設定のままのnpm ciはdevの依存を省く');
+
+  const setup = await npm(root, ['run', 'setup'], `cache-${counter}`, hostile);
+  assert.equal(setup.status, 0, describe(setup));
+  assert.ok(existsSync(join(root, 'node_modules', DEP_NAME, 'index.js')));
+  assert.equal((await npm(root, ['run', 'check:install'])).status, 0);
 });
 
 test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない', async () => {

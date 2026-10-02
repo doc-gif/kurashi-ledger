@@ -93,7 +93,7 @@ test('--stagedはcommit済みで変更のないファイルを対象にしない
   assert.match(r.stdout, /commitしようとしている1件/);
 });
 
-test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、置き場所の規則で止める', () => {
+test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、ディレクトリとして置き場所の規則で止める（リポジトリ直下の禁止の名前そのものを含む）', () => {
   const { write, git, check } = makeRepo();
   write('README.md', 'synthetic\n');
   git('add', 'README.md');
@@ -101,11 +101,16 @@ test('git add -fで禁止の場所に加えたsubmodule（gitlink）も、置き
   const commit = '0123456789abcdef0123456789abcdef01234567';
   git('update-index', '--add', '--cacheinfo', `160000,${commit},private/vendor`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},exports/archive`);
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},data`);
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},backups`);
+  git('update-index', '--add', '--cacheinfo', `160000,${commit},docs/statements.pdf`);
   git('update-index', '--add', '--cacheinfo', `160000,${commit},vendor/allowed`);
   const r = check(['--staged']);
   assert.equal(r.status, 1, r.stdout);
-  assert.ok(r.stderr.includes('private/vendor'), r.stderr);
-  assert.ok(r.stderr.includes('exports/archive'), r.stderr);
+  for (const path of ['private/vendor', 'exports/archive', 'data', 'backups', 'docs/statements.pdf']) {
+    assert.ok(r.stderr.includes(`公開しない: ${path}:`), `${path}\n${r.stderr}`);
+  }
   assert.ok(!r.stderr.includes('vendor/allowed'), r.stderr);
+  assert.match(r.stderr, /7件のうち5件/); // README.mdと許可の場所のgitlinkは当たらない
   assert.equal(check().status, 1);
 });

@@ -36,14 +36,14 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 | コマンド | 内容 |
 | --- | --- |
-| `npm run setup` | 依存を導入する。既存の記録を削除し、`npm ci --ignore-scripts`が成功したときだけ記録を書く（ADR-0008） |
-| `npm run check:install` | 記録が、いまの`package-lock.json`とNode.jsの版・OS・CPUに一致するかを確かめる |
+| `npm run setup` | 依存を導入する。既存の記録を削除し、導入する木を変えうるnpmの設定をコマンドラインで固定して`npm ci`を実行し、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
+| `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`・`node_modules`とNode.jsの版・OS・CPUに一致するかを確かめる |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
 | `npm run typecheck` | `tsc --noEmit`による型検査だけを行う。JavaScriptは出力しない |
 | `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`の試験を実行する |
 | `npm run check:public` | 公開検査。`-- --staged`でcommitしようとしている変更だけを見る（[公開範囲と公開前の点検](public-data.md)） |
 
-`npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。branchやタグを切り替えてlockfileが変わったとき、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
+`npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
 
 ## npmの設定（`.npmrc`）
 

@@ -9,7 +9,9 @@ import {
   type NpmCiResult,
   type Runtime,
   RECORD_FILE_NAME,
+  checkInstalledTree,
   compareRecord,
+  npmCiArguments,
   observeInstall,
   recordPath,
   runSetup,
@@ -24,19 +26,56 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-// 合成のプロジェクト。lockfileの中身は記録の照合に使うだけで、npmは読まない。
+// 合成のlockfile。必須の依存、このOS・CPUに当たる任意の依存、当たらない任意の依存を持つ。
+const LOCKED: Record<string, Record<string, unknown>> = {
+  'node_modules/required-dep': { version: '1.0.0', integrity: 'sha512-AAAA', dev: true },
+  'node_modules/opt-this-platform': {
+    version: '1.0.0',
+    integrity: 'sha512-BBBB',
+    optional: true,
+    os: ['darwin'],
+    cpu: ['arm64'],
+  },
+  'node_modules/opt-other-os': { version: '1.0.0', integrity: 'sha512-CCCC', optional: true, os: ['!darwin'] },
+  'node_modules/opt-other-cpu': { version: '1.0.0', integrity: 'sha512-DDDD', optional: true, cpu: ['x64'] },
+  'node_modules/opt-libc': {
+    version: '1.0.0',
+    integrity: 'sha512-EEEE',
+    optional: true,
+    os: ['darwin'],
+    cpu: ['arm64'],
+    libc: ['glibc'],
+  },
+};
+const INSTALLED_PATHS = ['node_modules/required-dep', 'node_modules/opt-this-platform'];
+
+function lockfileText(packages: Record<string, unknown>): string {
+  const lock = { name: 'synthetic', lockfileVersion: 3, requires: true, packages: { '': { name: 'synthetic' }, ...packages } };
+  return `${JSON.stringify(lock, null, 2)}\n`;
+}
+
+function pick(paths: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(paths.map((p) => [p, LOCKED[p]]));
+}
+
+// 合成のプロジェクト。lockfileとpackage.jsonの中身は記録の照合に使うだけで、npmは読まない。
 function makeProject(): string {
   const root = mkdtempSync(join(tmpdir(), 'kl-install-record-'));
   roots.push(root);
-  writeFileSync(join(root, 'package-lock.json'), '{"name":"synthetic","lockfileVersion":3,"packages":{}}\n');
+  writeFileSync(join(root, 'package.json'), '{"name":"synthetic","private":true}\n');
+  writeFileSync(join(root, '.npmrc'), 'ignore-scripts=true\n');
+  writeFileSync(join(root, 'package-lock.json'), lockfileText(LOCKED));
   return root;
 }
 
-// npm ciが成功したときの様子をまねる（node_modulesを作り直し、hidden lockfileを書く）。
-function fakeSuccessfulCi(root: string): NpmCiResult {
+// npm ciが成功したときの様子をまねる（node_modulesを作り直し、導入したものをhidden lockfileに書く）。
+function fakeSuccessfulCi(root: string, installed: Record<string, unknown> = pick(INSTALLED_PATHS)): NpmCiResult {
   rmSync(join(root, 'node_modules'), { recursive: true, force: true });
   mkdirSync(join(root, 'node_modules'));
-  writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{"synthetic":true}\n');
+  writeFileSync(
+    join(root, 'node_modules', '.package-lock.json'),
+    JSON.stringify({ name: 'synthetic', lockfileVersion: 3, requires: true, packages: installed }),
+  );
   return { status: 0, signal: null };
 }
 
@@ -54,8 +93,8 @@ function setup(root: string, runNpmCi: () => NpmCiResult, rt: Runtime = runtime)
 
 test('npm ciが成功したときだけ記録を書き、記録はいまの状態に一致する', () => {
   const root = makeProject();
-  const { code } = setup(root, () => fakeSuccessfulCi(root));
-  assert.equal(code, 0);
+  const { code, output } = setup(root, () => fakeSuccessfulCi(root));
+  assert.equal(code, 0, output);
   const record = JSON.parse(readFileSync(recordPath(root), 'utf8'));
   assert.deepEqual(Object.keys(record).sort(), [
     'arch',
@@ -63,12 +102,15 @@ test('npm ciが成功したときだけ記録を書き、記録はいまの状�
     'installedTreeSha256',
     'lockfileSha256',
     'node',
+    'npmrcSha256',
+    'packageJsonSha256',
     'platform',
   ]);
   assert.equal(record.format, 1);
   assert.equal(record.node, runtime.node);
-  assert.match(record.lockfileSha256, /^[0-9a-f]{64}$/);
-  assert.match(record.installedTreeSha256, /^[0-9a-f]{64}$/);
+  for (const key of ['lockfileSha256', 'packageJsonSha256', 'npmrcSha256', 'installedTreeSha256']) {
+    assert.match(record[key], /^[0-9a-f]{64}$/, key);
+  }
   assert.deepEqual(verifyInstallRecord(root, runtime), { ok: true, record });
 });
 
@@ -95,15 +137,57 @@ for (const [name, result] of [
   });
 }
 
-test('npm ciの途中でlockfileが変わった場合は記録を書かない', () => {
-  const root = makeProject();
-  const { code } = setup(root, () => {
-    fakeSuccessfulCi(root);
-    writeFileSync(join(root, 'package-lock.json'), '{"changed":true}\n');
-    return { status: 0, signal: null };
+for (const file of ['package-lock.json', 'package.json', '.npmrc']) {
+  test(`npm ciの途中で${file}が変わった場合は記録を書かない`, () => {
+    const root = makeProject();
+    const { code, output } = setup(root, () => {
+      fakeSuccessfulCi(root);
+      writeFileSync(join(root, file), `${readFileSync(join(root, file), 'utf8')}\n`);
+      return { status: 0, signal: null };
+    });
+    assert.equal(code, 1, output);
+    assert.match(output, /途中で/);
+    assert.equal(existsSync(recordPath(root)), false);
   });
-  assert.equal(code, 1);
-  assert.equal(existsSync(recordPath(root)), false);
+}
+
+test('npm ciが成功を返しても、導入した木がlockfileと合わなければ記録を書かない', () => {
+  const cases: [string, Record<string, unknown>, RegExp][] = [
+    ['必須の依存がない', pick(['node_modules/opt-this-platform']), /required-dep が導入されていない/],
+    ['このOS・CPUに当たる任意の依存がない', pick(['node_modules/required-dep']), /opt-this-platform が導入されていない/],
+    [
+      '版が違う',
+      {
+        ...pick(INSTALLED_PATHS),
+        'node_modules/required-dep': { ...LOCKED['node_modules/required-dep'], version: '1.0.1' },
+      },
+      /required-dep の version/,
+    ],
+    [
+      'lockfileにないものが入っている',
+      { ...pick(INSTALLED_PATHS), 'node_modules/extra-dep': { version: '9.9.9' } },
+      /extra-dep はpackage-lock.jsonにない/,
+    ],
+  ];
+  for (const [name, installed, message] of cases) {
+    const root = makeProject();
+    const { code, output } = setup(root, () => fakeSuccessfulCi(root, installed));
+    assert.equal(code, 1, name);
+    assert.match(output, message, name);
+    assert.equal(existsSync(recordPath(root)), false, name);
+  }
+});
+
+test('別のOS・CPU向けの任意の依存と、libcを指定した任意の依存は、なくてもよい', () => {
+  const root = makeProject();
+  fakeSuccessfulCi(root);
+  assert.deepEqual(checkInstalledTree(root, runtime), []);
+  // 同じ導入の結果でも、Linux（x64）なら当たる任意の依存が変わり、欠けていると判定する。
+  const linux: Runtime = { ...runtime, platform: 'linux', arch: 'x64' };
+  assert.deepEqual(checkInstalledTree(root, linux).sort(), [
+    'node_modules/opt-other-cpu が導入されていない。',
+    'node_modules/opt-other-os が導入されていない。',
+  ]);
 });
 
 test('記録がない・壊れている・形式が違う場合は一致しないと判定し、理由を返す', () => {
@@ -122,44 +206,75 @@ test('記録がない・壊れている・形式が違う場合は一致しな�
   const wrongFormat = verifyInstallRecord(root, runtime);
   assert.equal(wrongFormat.ok, false);
   if (!wrongFormat.ok) assert.match(wrongFormat.problems.join(), /形式/);
+
+  // package.jsonの欄がない記録（入力を一部しか結び付けていない記録）は認めない。
+  const { packageJsonSha256: _omitted, ...withoutPackageJson } = observeInstall(root, runtime);
+  writeFileSync(recordPath(root), JSON.stringify(withoutPackageJson));
+  const partial = verifyInstallRecord(root, runtime);
+  assert.equal(partial.ok, false);
+  if (!partial.ok) assert.match(partial.problems.join(), /形式/);
 });
 
-test('lockfile・node_modules・Node.jsの版・OS・CPUのどれが変わっても一致しない', () => {
-  const root = makeProject();
-  assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
-
-  const otherPatch: Runtime = { ...runtime, node: 'v24.21.1' };
-  const r1 = verifyInstallRecord(root, otherPatch);
-  assert.equal(r1.ok, false);
-  if (!r1.ok) assert.match(r1.problems.join(), /Node\.jsの版/);
-
-  const otherCpu: Runtime = { ...runtime, arch: 'x64' };
-  const r2 = verifyInstallRecord(root, otherCpu);
-  assert.equal(r2.ok, false);
-  if (!r2.ok) assert.match(r2.problems.join(), /OS・CPU/);
-
-  const otherOs: Runtime = { ...runtime, platform: 'win32' };
-  const r3 = verifyInstallRecord(root, otherOs);
-  assert.equal(r3.ok, false);
-
-  writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{"synthetic":"reinstalled"}\n');
-  const r4 = verifyInstallRecord(root, runtime);
-  assert.equal(r4.ok, false);
-  if (!r4.ok) assert.match(r4.problems.join(), /node_modules/);
-
-  writeFileSync(join(root, 'package-lock.json'), '{"name":"synthetic","lockfileVersion":3,"packages":{"x":{}}}\n');
-  const r5 = verifyInstallRecord(root, runtime);
-  assert.equal(r5.ok, false);
-  if (!r5.ok) assert.match(r5.problems.join(), /package-lock\.json/);
+test('入力（lockfile・package.json・.npmrc）・node_modules・Node.jsの版・OS・CPUのどれが変わっても一致しない', () => {
+  const expectMismatch = (mutate: (root: string) => Runtime, message: RegExp) => {
+    const root = makeProject();
+    assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0);
+    const r = verifyInstallRecord(root, mutate(root));
+    assert.equal(r.ok, false, String(message));
+    if (!r.ok) assert.match(r.problems.join(), message);
+  };
+  expectMismatch(() => ({ ...runtime, node: 'v24.21.1' }), /Node\.jsの版/);
+  expectMismatch(() => ({ ...runtime, arch: 'x64' }), /OS・CPU/);
+  expectMismatch(() => ({ ...runtime, platform: 'win32' }), /OS・CPU/);
+  expectMismatch((root) => {
+    writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{"packages":{}}');
+    return runtime;
+  }, /node_modules/);
+  expectMismatch((root) => {
+    writeFileSync(join(root, 'package-lock.json'), lockfileText({}));
+    return runtime;
+  }, /package-lock\.json が記録と違う/);
+  // npm ciがnode_modulesを消す前に失敗する、package.jsonとlockfileの不一致もここで止まる。
+  expectMismatch((root) => {
+    const pkg = '{"name":"synthetic","private":true,"devDependencies":{"required-dep":"2.0.0"}}\n';
+    writeFileSync(join(root, 'package.json'), pkg);
+    return runtime;
+  }, /package\.json が記録と違う/);
+  expectMismatch((root) => {
+    writeFileSync(join(root, '.npmrc'), 'ignore-scripts=false\n');
+    return runtime;
+  }, /\.npmrc が記録と違う/);
+  expectMismatch((root) => {
+    rmSync(join(root, '.npmrc'));
+    return runtime;
+  }, /\.npmrc が記録と違う/);
+  expectMismatch((root) => {
+    rmSync(join(root, 'package.json'));
+    return runtime;
+  }, /package\.json がない/);
 });
 
 test('lockfileの改行だけの違いも別の内容として扱う（そのままのバイト列で比べる）', () => {
   const root = makeProject();
   const lf = observeInstall(root, runtime);
-  writeFileSync(join(root, 'package-lock.json'), '{"name":"synthetic","lockfileVersion":3,"packages":{}}\r\n');
+  writeFileSync(join(root, 'package-lock.json'), lockfileText(LOCKED).replace(/\n/g, '\r\n'));
   const crlf = observeInstall(root, runtime);
   assert.notEqual(lf.lockfileSha256, crlf.lockfileSha256);
   assert.equal(compareRecord(lf, crlf).length, 1);
+});
+
+test('npm ciには、導入する木を変えうる設定をコマンドラインで固定して渡す', () => {
+  assert.deepEqual(npmCiArguments(runtime), [
+    'ci',
+    '--ignore-scripts',
+    '--dry-run=false',
+    '--include=dev',
+    '--include=optional',
+    '--include=peer',
+    '--install-strategy=hoisted',
+    '--os=darwin',
+    '--cpu=arm64',
+  ]);
 });
 
 test('記録は一時ファイルから名前変更で置き、一時ファイルを残さない', () => {

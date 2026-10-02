@@ -13,7 +13,7 @@ import {
   rmSync,
   writeSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 export const RECORD_FORMAT = 1;
 export const RECORD_FILE_NAME = '.kurashi-ledger-install.json';
@@ -26,9 +26,12 @@ export type Runtime = {
   readonly arch: string;
 };
 
+// 導入した木を決める入力（lockfile・package.json・.npmrc・実行環境）と、導入した木（hidden lockfile）。
 export type InstallRecord = {
   readonly format: number;
   readonly lockfileSha256: string;
+  readonly packageJsonSha256: string;
+  readonly npmrcSha256: string | null;
   readonly installedTreeSha256: string | null;
   readonly node: string;
   readonly platform: string;
@@ -71,6 +74,14 @@ export function lockfilePath(root: string): string {
   return join(root, 'package-lock.json');
 }
 
+export function packageJsonPath(root: string): string {
+  return join(root, 'package.json');
+}
+
+export function npmrcPath(root: string): string {
+  return join(root, '.npmrc');
+}
+
 // npmが導入の最後に書く node_modules/.package-lock.json（hidden lockfile）。
 export function installedTreePath(root: string): string {
   return join(nodeModulesPath(root), '.package-lock.json');
@@ -93,11 +104,13 @@ function sha256OfFileIfPresent(path: string): string | null {
   }
 }
 
-// いまのlockfile・node_modules・実行環境に対する記録の内容を求める。
+// いまの入力（lockfile・package.json・.npmrc・実行環境）とnode_modulesに対する記録の内容を求める。
 export function observeInstall(root: string, runtime: Runtime): InstallRecord {
   return {
     format: RECORD_FORMAT,
     lockfileSha256: sha256OfFile(lockfilePath(root)),
+    packageJsonSha256: sha256OfFile(packageJsonPath(root)),
+    npmrcSha256: sha256OfFileIfPresent(npmrcPath(root)),
     installedTreeSha256: sha256OfFileIfPresent(installedTreePath(root)),
     node: runtime.node,
     platform: runtime.platform,
@@ -112,6 +125,8 @@ function isRecord(value: unknown): value is InstallRecord {
   return (
     v['format'] === RECORD_FORMAT &&
     isHex(v['lockfileSha256']) &&
+    isHex(v['packageJsonSha256']) &&
+    (v['npmrcSha256'] === null || isHex(v['npmrcSha256'])) &&
     (v['installedTreeSha256'] === null || isHex(v['installedTreeSha256'])) &&
     typeof v['node'] === 'string' &&
     typeof v['platform'] === 'string' &&
@@ -126,6 +141,14 @@ export function compareRecord(recorded: InstallRecord, actual: InstallRecord): s
     problems.push(
       'package-lock.json が記録と違う（branchやタグを切り替えたあと、依存を導入し直していない等）。',
     );
+  }
+  if (recorded.packageJsonSha256 !== actual.packageJsonSha256) {
+    problems.push(
+      'package.json が記録と違う（依存の宣言やscriptsを変えた、branchやタグを切り替えた等）。',
+    );
+  }
+  if (recorded.npmrcSha256 !== actual.npmrcSha256) {
+    problems.push('.npmrc が記録と違う（npmの設定を変えた、branchやタグを切り替えた等）。');
   }
   if (recorded.installedTreeSha256 !== actual.installedTreeSha256) {
     problems.push('node_modules の中身が記録のあとで変わった（`npm install` 等を実行した）。');
@@ -170,7 +193,7 @@ export function verifyInstallRecord(root: string, runtime: Runtime = currentRunt
     actual = observeInstall(root, runtime);
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ENOENT') {
-      return { ok: false, problems: ['package-lock.json がない。'] };
+      return { ok: false, problems: [`${basename(error.path ?? '')} がない。`] };
     }
     throw error;
   }
@@ -246,6 +269,81 @@ export function syncDirectoryEntries(dir: string): void {
   }
 }
 
+// npm ciに渡す引数。導入する木を変えうる設定（利用者・全体の設定や環境変数で変えられるもの）を、
+// コマンドラインで既定の値に固定する。NODE_ENV=productionによるdevの省略、install-strategy、
+// 別のOS・CPU向けの導入、dry-runを含む（ADR-0008）。
+export function npmCiArguments(runtime: Runtime): string[] {
+  return [
+    'ci',
+    '--ignore-scripts',
+    '--dry-run=false',
+    '--include=dev',
+    '--include=optional',
+    '--include=peer',
+    '--install-strategy=hoisted',
+    `--os=${runtime.platform}`,
+    `--cpu=${runtime.arch}`,
+  ];
+}
+
+type LockEntry = Record<string, unknown>;
+
+function readPackages(path: string): Map<string, LockEntry> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') return null;
+    throw error;
+  }
+  const packages = (parsed as { packages?: unknown } | null)?.packages;
+  if (typeof packages !== 'object' || packages === null) throw new Error(`${basename(path)} にpackagesがない`);
+  return new Map(
+    Object.entries(packages as Record<string, unknown>).filter(
+      (e): e is [string, LockEntry] => e[0] !== '' && typeof e[1] === 'object' && e[1] !== null,
+    ),
+  );
+}
+
+// package.jsonのos・cpu欄と同じ書き方（"!win32"のような否定を含む）の一覧に、値が当たるか。
+function matchesPlatformList(list: unknown, value: string): boolean {
+  if (!Array.isArray(list) || list.length === 0) return true;
+  const names = list.filter((x): x is string => typeof x === 'string');
+  if (names.some((n) => n === `!${value}`)) return false;
+  const positive = names.filter((n) => !n.startsWith('!'));
+  return positive.length === 0 || positive.includes(value);
+}
+
+// npm ciのあとで、導入した木（hidden lockfile）がpackage-lock.jsonと合うかを確かめる。
+// 必須の依存と、このOS・CPUに当たる任意の依存（optional）がすべて同じ版で入り、
+// lockfileにないものが入っていないこと。設定の上書きや任意の依存の取得失敗で、
+// npm ciが成功を返しても木が欠けている場合に、記録を書かないため。
+export function checkInstalledTree(root: string, runtime: Runtime): string[] {
+  const locked = readPackages(lockfilePath(root));
+  if (locked === null) return ['package-lock.json がない。'];
+  const installed = readPackages(installedTreePath(root)) ?? new Map<string, LockEntry>();
+  const problems: string[] = [];
+  for (const [path, entry] of locked) {
+    const got = installed.get(path);
+    if (got === undefined) {
+      const optional = entry['optional'] === true || entry['devOptional'] === true;
+      const applies =
+        matchesPlatformList(entry['os'], runtime.platform) &&
+        matchesPlatformList(entry['cpu'], runtime.arch) &&
+        entry['libc'] === undefined;
+      if (!optional || applies) problems.push(`${path} が導入されていない。`);
+      continue;
+    }
+    for (const key of ['version', 'integrity', 'resolved', 'link']) {
+      if (key in entry && entry[key] !== got[key]) problems.push(`${path} の ${key} がpackage-lock.jsonと違う。`);
+    }
+  }
+  for (const path of installed.keys()) {
+    if (!locked.has(path)) problems.push(`${path} はpackage-lock.jsonにない。`);
+  }
+  return problems;
+}
+
 function describeNpmCiFailure(result: NpmCiResult): string {
   if (result.error) return `npm ci を起動できなかった（${result.error.message}）`;
   if (result.signal) return `npm ci が中断された（シグナル ${result.signal}）`;
@@ -261,11 +359,11 @@ export function runSetup(deps: SetupDependencies): number {
     error(`既存の記録を削除できないので、導入を始めない: ${e instanceof Error ? e.message : String(e)}`);
     return 1;
   }
-  let lockBefore: string;
+  let before: InstallRecord;
   try {
-    lockBefore = sha256OfFile(lockfilePath(root));
+    before = observeInstall(root, runtime);
   } catch (e) {
-    error(`package-lock.json を読めない: ${e instanceof Error ? e.message : String(e)}`);
+    error(`package-lock.json・package.json・.npmrc を読めない: ${e instanceof Error ? e.message : String(e)}`);
     return 1;
   }
   log('既存の依存の導入の記録を削除した。npm ci を実行する（インストールスクリプトは実行しない）。');
@@ -281,8 +379,24 @@ export function runSetup(deps: SetupDependencies): number {
     error(`導入後の状態を読めない: ${e instanceof Error ? e.message : String(e)}。記録は書いていない。`);
     return 1;
   }
-  if (record.lockfileSha256 !== lockBefore) {
-    error('npm ci の途中で package-lock.json が変わった。記録は書いていない。`npm run setup` をやり直す。');
+  if (
+    record.lockfileSha256 !== before.lockfileSha256 ||
+    record.packageJsonSha256 !== before.packageJsonSha256 ||
+    record.npmrcSha256 !== before.npmrcSha256
+  ) {
+    error('npm ci の途中で package-lock.json・package.json・.npmrc のどれかが変わった。記録は書いていない。`npm run setup` をやり直す。');
+    return 1;
+  }
+  let treeProblems: string[];
+  try {
+    treeProblems = checkInstalledTree(root, runtime);
+  } catch (e) {
+    treeProblems = [`導入した依存の一覧を読めない: ${e instanceof Error ? e.message : String(e)}`];
+  }
+  if (treeProblems.length > 0) {
+    const shown = treeProblems.slice(0, 10).map((p) => `- ${p}`);
+    if (treeProblems.length > 10) shown.push(`- ほか${treeProblems.length - 10}件`);
+    error(`npm ci は成功を返したが、導入した依存が package-lock.json と合わない。記録は書いていない。\n${shown.join('\n')}`);
     return 1;
   }
   try {

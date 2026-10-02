@@ -8,12 +8,32 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 
-// NODE_OPTIONS（--no-warnings等）で警告が隠れないよう、既定の状態で起動する。
-function runModule(source: string) {
-  const env = { ...process.env };
-  delete env['NODE_OPTIONS'];
+// 警告を隠したり別の場所へ送ったりする設定（NODE_OPTIONSの--no-warnings、NODE_NO_WARNINGS、
+// NODE_REDIRECT_WARNINGS等）を受け継がないよう、NODE_で始まる環境変数をすべて外して起動する。
+function runModule(source: string, baseEnv: NodeJS.ProcessEnv = process.env) {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (!/^NODE_/i.test(key)) env[key] = value;
+  }
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], { env, encoding: 'utf8' });
 }
+
+test('警告を隠す環境変数を受け継いでも、この試験は警告を見逃さない', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kl-runtime-'));
+  try {
+    const hostile: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_NO_WARNINGS: '1',
+      NODE_OPTIONS: '--no-warnings',
+      NODE_REDIRECT_WARNINGS: join(dir, 'warnings.txt'),
+    };
+    const r = runModule("process.emitWarning('synthetic warning');", hostile);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /synthetic warning/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('TypeScriptのファイルを型除去で読み込んでも警告が出ない', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kl-runtime-'));

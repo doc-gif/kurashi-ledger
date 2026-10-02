@@ -22,8 +22,9 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 | `design/` | `.png`、`.jpg`、`.jpeg` | デザインの書き出し・スクリーンショット（T04） |
 
 - `/data/`、`/private/`、`/local-data/`、`/evidence/`、`/exports/`、`/backups/`は、リポジトリ直下だけを除外する。`src/domain/evidence/`のようなソースの置き場所は除外しない。
+- 拡張子と`.env`の規則は、`.gitignore`と同じく、パスのどの階層の名前にも当てる（`statements.pdf/readme.md`や`.env/config`も除外する）。
 - 例外の場所でも、鍵（`.pem`、`.key`）、`.env`、DB（`.sqlite`、`.db`）、`*.age`、Excel、zip、ログは除外したまま。
-- 公開検査（`npm run check:public`）は、同じ規則を`git add -f`で加えたファイルにも適用する。`.gitignore`と公開検査の規則が食い違わないことは、`scripts/public-policy.test.ts`の見本で確かめる。
+- 公開検査（`npm run check:public`）は、同じ規則を`git add -f`で加えたファイルにも適用する。submodule（gitlink）はディレクトリとして扱い、リポジトリ直下の`data`等の名前そのものも止める。`.gitignore`と公開検査の規則が食い違わないことは、`scripts/public-policy.test.ts`の見本で確かめる。
 
 ### 例外を変える手順
 

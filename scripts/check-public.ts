@@ -69,14 +69,14 @@ if (stagedOnly) {
   entries = entries.filter((e) => changed.has(e.path));
 }
 
-// submodule（gitlink、mode 160000）は、このrepoに中身がないので読まないが、置き場所の規則は当てる。
+// submodule（gitlink、mode 160000）は、このrepoに中身がないので読まないが、ディレクトリとして置き場所の規則を当てる。
 const isGitlink = (e: IndexEntry): boolean => e.mode === '160000';
 const findings: { readonly index: number; readonly path: string; readonly reasons: readonly string[] }[] = [];
 const blobs = readBlobs([...new Set(entries.filter((e) => !isGitlink(e)).map((e) => e.oid))]);
 entries.forEach((entry, i) => {
   let reasons: string[];
   if (isGitlink(entry)) {
-    reasons = pathFindings(entry.path);
+    reasons = pathFindings(entry.path, 'directory');
   } else {
     const content = blobs.get(entry.oid);
     if (content === undefined) throw new Error('gitのオブジェクトを読めない');

@@ -12,6 +12,7 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const text = (s: string) => new TextEncoder().encode(s);
 
 // .gitignoreと公開検査の両方で「公開しない」になる見本と、両方で許す見本。
+// 末尾が / の見本はディレクトリ（submoduleのgitlink等）として扱う。
 // 置き場所の規則を変えたら、ここに見本を足す（docs/public-data.md）。
 const BLOCKED_PATHS = [
   'data/ledger.json',
@@ -47,6 +48,18 @@ const BLOCKED_PATHS = [
   'design/table.csv',
   'src/tests/fixtures/records.csv',
   'docs/design/button.png',
+  'data/',
+  'private/',
+  'local-data/',
+  'evidence/',
+  'exports/',
+  'backups/',
+  'private/vendor/',
+  'statements.pdf/readme.md',
+  'docs/archive.zip/readme.md',
+  '.env/config',
+  'config/.env.local/',
+  'ledger.sqlite-dir/',
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',
@@ -64,11 +77,26 @@ const ALLOWED_PATHS = [
   '.env.example',
   'package-lock.json',
   'scripts/check-public.ts',
+  'data',
+  'src/data/',
+  'vendor/',
+  'tests/fixtures/evidence/',
+  'design/',
 ];
 
+function kindOf(sample: string): ['file' | 'directory', string] {
+  return sample.endsWith('/') ? ['directory', sample.slice(0, -1)] : ['file', sample];
+}
+
 test('実データ・出力・鍵・バックアップになりうる場所と種類を拒み、ソースと合成データの置き場所は許す', () => {
-  for (const path of BLOCKED_PATHS) assert.notDeepEqual(pathFindings(path), [], path);
-  for (const path of ALLOWED_PATHS) assert.deepEqual(pathFindings(path), [], path);
+  for (const sample of BLOCKED_PATHS) {
+    const [kind, path] = kindOf(sample);
+    assert.notDeepEqual(pathFindings(path, kind), [], sample);
+  }
+  for (const sample of ALLOWED_PATHS) {
+    const [kind, path] = kindOf(sample);
+    assert.deepEqual(pathFindings(path, kind), [], sample);
+  }
 });
 
 test('.gitignoreと公開検査の置き場所の規則が一致する', () => {

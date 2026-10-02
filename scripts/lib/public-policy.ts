@@ -40,25 +40,36 @@ export const SYNTHETIC_LOCATIONS: readonly {
   { prefix: 'design/', extensions: ['png', 'jpg', 'jpeg'] },
 ];
 
-export function pathFindings(path: string): string[] {
-  const findings: string[] = [];
-  const lower = path.toLowerCase();
-  const first = lower.split('/')[0] ?? '';
-  if (lower.includes('/') && ROOT_PRIVATE_DIRS.includes(first)) {
-    findings.push('実データ・出力・バックアップ用のディレクトリ');
+export type EntryKind = 'file' | 'directory';
+
+// .gitignoreと同じ置き場所の規則を、パスの区切り（/）ごとの名前に当てる。
+// - 実データ用のディレクトリは、リポジトリ直下の名前だけ（/data/ 等）。ディレクトリの項目
+//   （submoduleのgitlink等）は、その項目自身も対象にする。
+// - .envや拡張子の規則は、.gitignoreのスラッシュを含まないパターンと同じく、
+//   どの階層の名前にも（ファイルにもディレクトリにも）当てる。
+export function pathFindings(path: string, kind: EntryKind = 'file'): string[] {
+  const findings = new Set<string>();
+  const segments = path.split('/').filter((s) => s !== '');
+  const lower = segments.map((s) => s.toLowerCase());
+  const directoryCount = kind === 'directory' ? segments.length : segments.length - 1;
+  const first = lower[0];
+  if (directoryCount > 0 && first !== undefined && ROOT_PRIVATE_DIRS.includes(first)) {
+    findings.add('実データ・出力・バックアップ用のディレクトリ');
   }
-  const base = lower.slice(lower.lastIndexOf('/') + 1);
-  if ((base === '.env' || base.startsWith('.env.')) && base !== '.env.example') {
-    findings.push('環境変数ファイル');
-  }
-  const ext = BLOCKED_EXTENSIONS.find((e) => e.pattern.test(base));
-  if (ext !== undefined) {
-    const allowed = SYNTHETIC_LOCATIONS.some(
-      (loc) => path.startsWith(loc.prefix) && loc.extensions.includes(ext.key),
-    );
-    if (!allowed) findings.push(`公開しない種類のファイル（${ext.key}）`);
-  }
-  return findings;
+  lower.forEach((name, i) => {
+    if ((name === '.env' || name.startsWith('.env.')) && name !== '.env.example') {
+      findings.add('環境変数ファイル');
+    }
+    const ext = BLOCKED_EXTENSIONS.find((e) => e.pattern.test(name));
+    if (ext !== undefined) {
+      const upToHere = segments.slice(0, i + 1).join('/');
+      const allowed = SYNTHETIC_LOCATIONS.some(
+        (loc) => upToHere.startsWith(loc.prefix) && loc.extensions.includes(ext.key),
+      );
+      if (!allowed) findings.add(`公開しない種類のファイル（${ext.key}）`);
+    }
+  });
+  return [...findings];
 }
 
 const SECRET_PATTERNS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
