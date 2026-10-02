@@ -39,7 +39,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | コマンド | 内容 |
 | --- | --- |
 | `npm run setup` | 依存を導入する。既存の記録を削除し、repoの`.npmrc`と決めた引数だけで`npm ci`を実行し（利用者のnpmrcや`npm_config_`の環境変数は使わない）、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
-| `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`とNode.jsの版・OS・CPUに一致し、導入した依存と実行ファイルのリンクがそろっているかを確かめる（ファイルの中身の改ざんまでは確かめない。ADR-0008） |
+| `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`とNode.jsの版・OS・CPUに一致し、導入した依存と実行ファイルの本体・リンクが`node_modules`の中の通常のファイルとしてそろっているかを確かめる（ファイルの中身の改ざんまでは確かめない。ADR-0008） |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
 | `npm run typecheck` | `tsc --noEmit`による型検査だけを行う。JavaScriptは出力しない |
 | `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`の試験を実行する |

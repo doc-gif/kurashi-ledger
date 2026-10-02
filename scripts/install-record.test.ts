@@ -70,6 +70,22 @@ function lockfileText(packages: Record<string, unknown>): string {
   return `${JSON.stringify(lock, null, 2)}\n`;
 }
 
+// npmと同じ形の実行ファイルのリンク。POSIXでは本体への相対のsymlink、Windowsでは.cmdのshim（通常のファイル）。
+function linkTool(root: string): void {
+  const bin = join(root, 'node_modules', '.bin');
+  if (process.platform === 'win32') {
+    writeFileSync(join(bin, 'required-tool.cmd'), '@node "%~dp0\\..\\required-dep\\cli.js" %*\r\n');
+  } else {
+    symlinkSync('../required-dep/cli.js', join(bin, 'required-tool'));
+  }
+}
+
+function removeTool(root: string): void {
+  for (const name of ['required-tool', 'required-tool.cmd']) {
+    rmSync(join(root, 'node_modules', '.bin', name), { recursive: true, force: true });
+  }
+}
+
 function pick(paths: readonly string[]): Record<string, unknown> {
   return Object.fromEntries(paths.map((p) => [p, LOCKED[p]]));
 }
@@ -97,7 +113,11 @@ function fakeSuccessfulCi(
     mkdirSync(join(root, ...path.split('/')), { recursive: true });
     writeFileSync(join(root, ...path.split('/'), 'package.json'), '{}');
   }
-  if (binLinks) writeFileSync(join(root, 'node_modules', '.bin', 'required-tool'), '');
+  if ('node_modules/required-dep' in installed) {
+    // 実行ファイルの本体（lockfileのbin欄の cli.js）
+    writeFileSync(join(root, 'node_modules', 'required-dep', 'cli.js'), '#!/usr/bin/env node\n');
+  }
+  if (binLinks) linkTool(root);
   writeFileSync(
     join(root, 'node_modules', '.package-lock.json'),
     JSON.stringify({ name: 'synthetic', lockfileVersion: 3, requires: true, packages: installed }),
@@ -229,7 +249,7 @@ test('照合のたびに、記録のあとで消えた依存や実行ファイ�
       assert.match(r.problems.join(), message);
     }
   };
-  expectMissing((root) => rmSync(join(root, 'node_modules', '.bin', 'required-tool')), /required-tool のリンク/);
+  expectMissing((root) => removeTool(root), /required-tool のリンク/);
   expectMissing(
     (root) => rmSync(join(root, 'node_modules', 'required-dep'), { recursive: true }),
     /required-dep が node_modules にない/,
@@ -474,4 +494,60 @@ test('記録の名前がリンクなら、setupと照合は止まり、リンク
   assert.equal(ran, false);
   assert.match(output, /記録がリンク/);
   assert.deepEqual(outside.snapshot(), before);
+});
+
+test('実行ファイルのリンクと本体、package.jsonは、node_modulesの中の通常のファイルに届かなければ不一致', (t) => {
+  const expectBroken = (name: string, breakIt: (root: string) => void, message: RegExp) => {
+    const root = makeProject();
+    assert.equal(setup(root, () => fakeSuccessfulCi(root)).code, 0, name);
+    assert.equal(verifyInstallRecord(root, runtime).ok, true, name);
+    breakIt(root);
+    const r = verifyInstallRecord(root, runtime);
+    assert.equal(r.ok, false, name);
+    if (!r.ok) assert.match(r.problems.join(), message, name);
+  };
+  // リンク先（本体）が消えた（POSIXではリンクが宙に浮く）。Windowsの.cmdのshimでも本体の確認で見つかる。
+  expectBroken(
+    'dangling',
+    (root) => rmSync(join(root, 'node_modules', 'required-dep', 'cli.js')),
+    /required-tool/,
+  );
+  // .binの実行ファイルの名前がディレクトリ。
+  expectBroken(
+    'directory',
+    (root) => {
+      removeTool(root);
+      mkdirSync(join(root, 'node_modules', '.bin', 'required-tool'));
+      mkdirSync(join(root, 'node_modules', '.bin', 'required-tool.cmd'));
+    },
+    /required-tool のリンク/,
+  );
+  // package.jsonがディレクトリ。
+  expectBroken(
+    'package.json directory',
+    (root) => {
+      rmSync(join(root, 'node_modules', 'required-dep', 'package.json'));
+      mkdirSync(join(root, 'node_modules', 'required-dep', 'package.json'));
+    },
+    /required-dep の package\.json/,
+  );
+  // リンクがnode_modulesの外の通常のファイルを指す。Windowsでファイルのsymlinkを作るには権限が要るので、
+  // 作れない場合は、リンクがない場合として確かめ、その旨を試験の出力に残す。
+  const outsideFile = join(makeOutside().dir, 'shared-dep', 'package.json');
+  expectBroken(
+    'outside',
+    (root) => {
+      removeTool(root);
+      try {
+        symlinkSync(outsideFile, join(root, 'node_modules', '.bin', 'required-tool'));
+      } catch (error) {
+        if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') {
+          t.diagnostic('Windowsでファイルのsymlinkを作る権限がないため、外を指すリンクの場合は、リンクがない場合として確かめた');
+          return;
+        }
+        throw error;
+      }
+    },
+    /required-tool のリンク/,
+  );
 });

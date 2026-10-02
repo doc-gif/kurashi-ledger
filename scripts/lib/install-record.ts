@@ -11,10 +11,11 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, sep } from 'node:path';
 
 export const RECORD_FORMAT = 1;
 export const RECORD_FILE_NAME = '.kurashi-ledger-install.json';
@@ -136,15 +137,27 @@ function inspectRecordPath(root: string): 'absent' | 'file' {
   return 'file';
 }
 
-// リンク自身があるか（リンク先はたどらない）。
-function existsQuietly(path: string): boolean {
+// pathをたどって（リンクを解決して）、通常のファイルに届き、その実体パスがbaseの中にあるか。
+// リンク先がない（宙に浮いたリンク）、ディレクトリ、baseの外を指すものは、届かないとする。
+function reachesRegularFile(path: string, base: string): 'absent' | 'ok' | 'invalid' {
+  let lstat;
   try {
-    lstatSync(path);
-    return true;
+    lstat = lstatSync(path);
   } catch (error) {
-    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return false;
+    if (isErrnoException(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return 'absent';
     throw error;
   }
+  if (lstat.isDirectory()) return 'invalid';
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch (error) {
+    if (isErrnoException(error) && ['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code ?? '')) return 'invalid';
+    throw error;
+  }
+  if (!stat.isFile()) return 'invalid';
+  const real = realpathSync(path);
+  return real.startsWith(base + sep) ? 'ok' : 'invalid';
 }
 
 function sha256OfFile(path: string): string {
@@ -412,14 +425,17 @@ function binDirectory(packagePath: string): string {
 // 導入した木がpackage-lock.jsonと合うかを確かめる。setupでは記録を書く前に、照合では毎回行う。
 // - 必須の依存と、このOS・CPUに当たる任意の依存（optional）がすべて同じ版で入り、
 //   lockfileにないものが入っていないこと（hidden lockfileで確かめる）。
-// - 入った依存のpackage.jsonと、実行ファイル（lockfileのbin欄）のリンクがディスクにあること
-//   （Windowsでは.cmdのshimでもよい）。ファイルの中身は確かめない。
+// - 入った依存のpackage.json、実行ファイルの本体（lockfileのbin欄のパス）、.binのリンク
+//   （Windowsでは.cmdのshimでもよい）が、リンクをたどって、node_modulesの中の通常のファイルに
+//   届くこと（lockfileでlinkの依存は、リポジトリの中）。ファイルの中身は確かめない。
 // 任意の依存の取得失敗等で、npm ciが成功を返しても木が欠けている場合に、記録を書かないため。
 export function checkInstalledTree(root: string, runtime: Runtime): string[] {
   const locked = readPackages(lockfilePath(root));
   if (locked === null) return ['package-lock.json がない。'];
   const installed = readPackages(installedTreePath(root)) ?? new Map<string, LockEntry>();
   const problems: string[] = [];
+  const repoBase = realpathSync(root);
+  const nodeModulesBase = join(repoBase, 'node_modules');
   for (const [path, entry] of locked) {
     const got = installed.get(path);
     if (got === undefined) {
@@ -434,16 +450,23 @@ export function checkInstalledTree(root: string, runtime: Runtime): string[] {
     for (const key of ['version', 'integrity', 'resolved', 'link']) {
       if (key in entry && entry[key] !== got[key]) problems.push(`${path} の ${key} がpackage-lock.jsonと違う。`);
     }
-    if (!existsQuietly(join(root, ...path.split('/'), 'package.json'))) {
-      problems.push(`${path} が node_modules にない（package.json がない）。`);
-    }
+    const base = entry['link'] === true ? repoBase : nodeModulesBase;
+    const packageDir = join(root, ...path.split('/'));
+    const manifest = reachesRegularFile(join(packageDir, 'package.json'), base);
+    if (manifest === 'absent') problems.push(`${path} が node_modules にない（package.json がない）。`);
+    if (manifest === 'invalid') problems.push(`${path} の package.json が、通常のファイルでないか、外を指している。`);
     const bin = entry['bin'];
     if (typeof bin === 'object' && bin !== null) {
-      for (const name of Object.keys(bin)) {
+      for (const [name, target] of Object.entries(bin as Record<string, unknown>)) {
+        if (typeof target === 'string' && reachesRegularFile(join(packageDir, ...target.split('/')), base) !== 'ok') {
+          problems.push(`${path} の実行ファイル ${name} の本体（${target}）が、通常のファイルとして入っていない。`);
+        }
         const link = join(root, ...binDirectory(path).split('/'), name);
         const candidates = runtime.platform === 'win32' ? [link, `${link}.cmd`] : [link];
-        if (!candidates.some((c) => existsQuietly(c))) {
-          problems.push(`${path} の実行ファイル ${name} のリンクが node_modules/.bin 等にない。`);
+        if (!candidates.some((c) => reachesRegularFile(c, base) === 'ok')) {
+          problems.push(
+            `${path} の実行ファイル ${name} のリンクが、node_modules/.bin 等にないか、通常のファイルに届かない（リンク先がない、ディレクトリ、または外を指す）。`,
+          );
         }
       }
     }

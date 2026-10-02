@@ -351,7 +351,7 @@ test('利用者のnpmrcや環境変数のnpmの設定（bin-links=false、omit=d
   assert.equal((await npm(root, ['run', 'check:install'])).status, 0);
 });
 
-test('記録のあとで実行ファイルのリンクや依存が消えたら、buildが止まる', async () => {
+test('記録のあとで実行ファイルのリンク・本体や依存が消えたり壊れたりしたら、buildとcheck:installが止まる', async () => {
   mode = 'ok';
   const root = makeProject();
   assert.equal((await npm(root, ['run', 'setup'])).status, 0);
@@ -361,6 +361,24 @@ test('記録のあとで実行ファイルのリンクや依存が消えたら�
   const noBin = await npm(root, ['run', 'build']);
   assert.notEqual(noBin.status, 0, describe(noBin));
   assert.match(noBin.stderr, /実行ファイル kl-synthetic-bin のリンク/);
+
+  // 実行ファイルの本体が消えた（POSIXではリンクが宙に浮く）。
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  rmSync(join(root, 'node_modules', DEP_NAME, 'bin.js'));
+  const dangling = await npm(root, ['run', 'build']);
+  assert.notEqual(dangling.status, 0, describe(dangling));
+  assert.match(dangling.stderr, /実行ファイル kl-synthetic-bin/);
+
+  // .binの名前がディレクトリ。
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  for (const name of [BIN_NAME, `${BIN_NAME}.cmd`, `${BIN_NAME}.ps1`]) {
+    rmSync(join(root, 'node_modules', '.bin', name), { force: true });
+  }
+  mkdirSync(join(root, 'node_modules', '.bin', BIN_NAME));
+  mkdirSync(join(root, 'node_modules', '.bin', `${BIN_NAME}.cmd`));
+  const directory = await npm(root, ['run', 'check:install']);
+  assert.notEqual(directory.status, 0, describe(directory));
+  assert.match(directory.stderr, /実行ファイル kl-synthetic-bin のリンク/);
 
   assert.equal((await npm(root, ['run', 'setup'])).status, 0);
   rmSync(join(root, 'node_modules', DEP_NAME), { recursive: true });
