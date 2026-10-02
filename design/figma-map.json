@@ -5,7 +5,12 @@
     "source": "所有者のFigmaファイル（URLは公開しない）",
     "note": "node IDは、このファイルを開ける人がFigmaで node-id として指定して使う"
   },
-  "verifiedAt": "2026-10-03",
+  "verified": {
+    "date": "2026-10-03",
+    "timeZone": "Asia/Tokyo (UTC+09:00)",
+    "utcDate": "2026-10-02",
+    "note": "Figmaから読み出したID・名前と照合した日。日本時間で記録する（UTCでは前日）"
+  },
   "pages": [
     {
       "id": "0:1",
