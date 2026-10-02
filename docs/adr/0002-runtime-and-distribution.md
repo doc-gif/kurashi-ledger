@@ -33,9 +33,10 @@
 
 - 初期はGitのタグ付きリリースから**ソースのまま実行**する。インストーラ、署名付きの実行ファイル、自動更新は作らない。
 - **配信物とリリースの対応:** UIのビルド成果物（`dist/`）はGitの対象外なので、ソースだけを確認しても、古いタグのビルドが残ったまま配信されうる。そこで次のようにする。
-  - `npm run build`は一時ディレクトリへビルドし、成功したら`dist/`と原子的に入れ替える。ビルドに失敗したら、`dist/`を変えない。
-  - ビルドと同時に、manifest（ビルドしたcommitのSHA、`package-lock.json`のハッシュ、Node.jsの版、各ファイルのハッシュ）を`dist/`に書く。
-  - `npm run start:real`は、manifestのcommitとlockfileのハッシュが、いまのHEADと`package-lock.json`に一致し、各ファイルのハッシュも合うことを確かめてから配信する。合わなければ、ビルドし直すよう案内して起動しない。
+  - `npm run build`は、アプリを停止した状態で実行する（更新の手順のとおり）。ディレクトリの名前変更による入れ替えはしない（中身のあるディレクトリは、1回の名前変更では原子的に置き換えられない。Windowsでは置き換え先があると失敗する）。
+  - `npm run build`は、最初に既存のmanifestを削除し、`dist/`へ出力し、すべてのファイルを書き終えてから最後にmanifest（ビルドしたcommitのSHA、`package-lock.json`のハッシュ、Node.jsの版、各ファイルのハッシュ）を書く。ビルドが失敗したり途中で止まったりした場合は、manifestがない状態になる。
+  - `npm run start:real`は、DBを開く前にmanifestを確かめる。manifestがある、commitとlockfileのハッシュがいまのHEADと`package-lock.json`に一致する、manifestにあるファイルがすべてあってハッシュが合い、manifestにないファイルがない。どれかが満たされなければ、ビルドし直すよう案内して起動しない。
+  - 確かめた内容をメモリに読み込んで配信する。起動後にディスク上の`dist/`が変わっても、配信する内容は変わらない。
 - リリースタグは、mainにあり必要なCIとレビューを通ったcommitに、所有者の承認を得て付ける注釈付きタグ（`vX.Y.Z`、試験用は`vX.Y.Z-rc.N`）とし、originへpushする。実利用モードは、originのタグと一致し`origin/main`から到達できるリリースでだけ動く（ADR-0006）。最初のタグはT13で付け、手順はT25で正式化する。
 - 単一実行ファイル化（Node.jsのSingle Executable Applications）やデスクトップシェル（Electron、Tauri）は、T13（記録版の統合）後に必要性を確認してから別ADRで再評価する。
 - 公証済みの公式Node.js（macOS版はNode.js Foundationの署名付き）の上でソースを実行するので、アプリ側で署名が必要な実行ファイルを作らない。
