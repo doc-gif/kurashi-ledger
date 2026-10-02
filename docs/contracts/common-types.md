@@ -35,6 +35,7 @@
 | 集計値の`measure`（`AggregateKey`） | `kind`（11の「集計のキー」） |
 | 集計値の`missing`と`MissingInput`の`field`（`FieldKey`） | `kind`（11の「不足の項目」） |
 | 計算runの`inputs.requests`（`InputRequest`） | `kind`（[計算結果](calculation-results.md)の1） |
+| 計算runの`inputs.decisions`の`itemPremisesAtRun`の`item`（`DecisionItem`） | `kind`（同1） |
 | `subjectYear`・`Target.year`の年・年度 | `kind`（`calendar`・`fiscal`） |
 
 新しく2つ以上の型を持つ項目を足すときは、識別子を決めてこの表に加える。

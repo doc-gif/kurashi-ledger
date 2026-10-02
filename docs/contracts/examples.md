@@ -8,7 +8,13 @@
 
 - **すべて架空のデータ。** 勤務先・口座・摘要・金額は、実在の人・会社・給与と関係がない。税額・保険料の値は、制度による計算の結果ではなく、例のために置いた数。
 - 各例は独立している。記録のID（`pay_101`等）はその例の中だけで使う。下の「共通の設定」の雇用先・雇用条件・口座・発行者だけを共有する。例が参照するマスタ（雇用先・口座・発行者）は、共通の設定か、その例の中で登録したものだけ。
-- 表に挙げない記録の項目は、その例の期待する結果に影響しない（実際の記録では、入力がなければ`unknown`になる）。ただし、資料から写す並び（給与明細の`otherEarnings`・`otherDeductions`、正式通知の`amounts`・`installments`・`statusDates`）は、表に挙げなければ「確かめて行がない」（`known`の空の並び）とする（[共通の型](common-types.md)の12の「並びの空の意味」）。
+- 表に挙げない記録の項目は、その例の期待する結果に影響しない。その値は、次の既定とし、どれも[共通の型](common-types.md)の12の状態の制約（`known`が必要な項目、`not-applicable`を許す項目）を満たす。上から順に当てはめる。
+  1. 「〜の場合だけ」と書いた項目: その場合に当たらなければ`not-applicable`。当たれば、12の表の状態（`known`が必要なら、例の結果を変えない`known`の値。確定済みの照合配分の`confirmedAgainst`は、確定したときの両方の現在の版）。
+  2. `known`か`not-applicable`だけを許す項目（給与明細・年間資料・正式通知の`supersedes`）: `not-applicable`（作り直しでない）。
+  3. 資料から写す並び（給与明細の`otherEarnings`・`otherDeductions`、正式通知の`amounts`・`installments`・`statusDates`）: 「確かめて行がない」（`known`の空の並び。12の「並びの空の意味」）。年間資料の`includedOtherPayers`は`unknown`（確かめていない。範囲が確定しない。範囲を使う例では表に書く）。
+  4. 改訂の共通の形: 版1、理由`create`、`status` `active`（取消を書いた例を除く）、`duplicateOf`・`importKey`は`not-applicable`（`entryChannel` `manual`）、`writeRequestId`は例ごとに一意の値、把握日は`unknown`（書いた例を除く）。
+  5. ほかの`Fact`の項目: `unknown`（入力がない）。
+  6. `Fact`でない項目（表示名、表題、`Text`等）: 例の結果に影響しない値（省略しない。[共通の型](common-types.md)の1の「項目の省略」）。
 - 金額の状態は「値あり 230,000」「不明」「記載なし」「対象外」と書く（[共通の型](common-types.md)の5）。金額は円。
 - 集計は「集計の種類（範囲、軸）」で書く。集計の種類は、[共通の型](common-types.md)の11の`AggregateKey`に対応する（入金額＝`deposit-amount`、支給額＝`payslip-item`の`grossPay`、見込み＝`forecast-remaining`、正式通知の決定額＝`notice-determination`、年間の支払金額＝`annual-value`の`paymentAmount`等）。軸は、入金日・支払予定日・予定月・所得の年のどれか（[照合の規則](reconciliation.md)の2）。期間は短く「入金日 2026-09」のように書く。これは`scope`の`from` 2026-09-01・`to` 2026-09-30（両端を含む。[共通の型](common-types.md)の11の`AxisValue`）を表す。
 - 「しないこと」は、この契約のもとで誤りになる解釈。

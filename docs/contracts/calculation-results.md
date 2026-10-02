@@ -22,6 +22,7 @@
 | `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（`allocations`・`decisions`は要素の`ref`の`id`。1つのrunでは、同じ記録を1つの版でだけ参照する。下の「入力の閉包と推移的な固定」） | 意味はない |
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
 | `inputs.requests` | `kind`と中身の全体（同じ要求を重ねない） | 意味はない |
+| `inputs.decisions`の各要素の`itemPremisesAtRun` | `item`（同じ項目を重ねない） | 意味はない |
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 
@@ -50,7 +51,8 @@
   - **保存のときの検査:** runを作る処理は、保存のときに、次をすべて確かめる。`inputs.requests`が、計算器の版と`target`から決まる要求の一覧と同じであること。要求から決まる根を、runを作ったときの見方でデータベース全体から求め直し、runが持つ参照と合わせた根から閉包を計算し直して、閉包のすべてが`inputs`にあること。どれかを満たさないrun（含まれていない記録・マスタを指す記録があるrunを含む）は保存しない。runは不変なので、保存のあとに増えた関係では確かめ直さない（表示で「入力が変わった」と示す。3）。
   - 例はEX-07(a)の「予測を使うrunの閉包」。
 - runの中の正規のIDの解決、差し替えの系列、二重登録の鎖は、`inputs`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
-- **導いた状態の写し:** 照合配分の使われ方と照合の判断の前提は、確かめ直しの条件（[照合の規則](reconciliation.md)の9）のように、過去の版（`confirmedAgainst`の版）や過去の時点（確定・保存の`recordedSeq`）の解決と比べて決まるので、run時点の1つの版だけからは導けない。そのため、runの中では導き直さず、runを作ったときに導いた結果を写して持つ（`AdoptionSnapshot`と同じく、実行時に導いた結果の写し）。`inputs.allocations`の各要素は`usageAtRun`（照合の規則の9の使われ方の識別子）、`inputs.decisions`の各要素は`premiseAtRun`（`holds`＝前提を満たす、`broken`＝前提が崩れている、同4）を持つ。計算に使ってよいのは、`usageAtRun`が`valid`の配分と、`premiseAtRun`が`holds`の判断だけ。それ以外の配分・判断は、結果が`unknown`・不足になった理由として固定する（例: 予測の残りが`unknown`になった理由の要再確認の配分）。runを作る処理は、その時点の判定と写しが一致することを確かめてから保存する。
+- **導いた状態の写し:** 照合配分の使われ方と照合の判断の前提は、確かめ直しの条件（[照合の規則](reconciliation.md)の9）のように、過去の版（`confirmedAgainst`の版）や過去の時点（確定・保存の`recordedSeq`）の解決と比べて決まるので、run時点の1つの版だけからは導けない。そのため、runの中では導き直さず、runを作ったときに導いた結果を写して持つ（`AdoptionSnapshot`と同じく、実行時に導いた結果の写し）。`inputs.allocations`の各要素は`usageAtRun`（照合の規則の9の使われ方の識別子）、`inputs.decisions`の各要素は`premiseAtRun`（`holds`＝前提を満たす、`broken`＝前提が崩れている、同4）を持つ。計算に使ってよいのは、`usageAtRun`が`valid`の配分と、`premiseAtRun`が`holds`の判断だけ（項目ごとの前提を持つ判断は、さらにその項目の前提が`holds`の項目だけ）。
+- **写しの細かさ（1つの規則）:** 導いた状態の写しは、契約がその状態を決める細かさと同じにする（粗くすると、一部の項目の変化で判断全体を使えなくするか、変わった項目まで使ってしまい、実行時の状態を一意に再現できないため）。照合の判断の前提が下位の項目ごとに決まるもの（`mismatch-explanation`は`explainedComparisons`の`field`ごと、`annual-adoption`は`scope.payers`の支払者ごと。[照合の規則](reconciliation.md)の4・5）は、判断全体の前提（保存の検証）と項目ごとの前提を分けて写す。照合配分の使われ方は配分ごと（上限ごとの段階2の結果も配分ごとに決まる）、比較の状態は`AdoptionSnapshot`の`comparisons`の`field`ごと、採用の選択は`AdoptionSnapshot`の年・支払者ごとに写す。それ以外の配分・判断は、結果が`unknown`・不足になった理由として固定する（例: 予測の残りが`unknown`になった理由の要再確認の配分）。runを作る処理は、その時点の判定と写しが一致することを確かめてから保存する。
 - 1つのrunの中では、同じ記録を1つの版でだけ参照する。run内のすべての参照（根の項目を含む）は、`inputs`に固定した同じ記録の版と同じ整数でなければ保存しない（版が食い違うrunは、どの版で計算したかを再現できないため）。
 - そのため、過去のrunを表示・再現するときは、配分・判断・差し替え・二重登録・マスタから辿った記録も、runを作ったときの版と解決になる。runのあとで記録やマスタが改訂・取消・取消の取り消しをされても、runの結果と読み方は変わらない（表示で「入力が変わった」と示す。3）。例: runに固定した`tax-year-assertion`の対象の明細を後で改訂しても、そのrunからは改訂前の版が見える。マスタの例はEX-04(a)の「マスタが変わった場合」。
 
@@ -86,7 +88,7 @@
 | --- | --- | --- |
 | `records` | `List<Ref>` | 入力に使った記録と、その閉包（1の「入力の閉包と推移的な固定」。差し替えの系列・二重登録の鎖・参照するマスタを含む）。`revision`は必ず整数（固定）。`current`を使わない |
 | `allocations` | `List<{ ref: Ref, usageAtRun: not-used・unresolved・duplicate-voided・voided・superseded・stale・needs-recheck・valid }>` | 使った照合配分と、結果に影響した使えない配分（版を固定）。`usageAtRun`は、runを作ったときに導いた使われ方の写し（1の「導いた状態の写し」） |
-| `decisions` | `List<{ ref: Ref, premiseAtRun: holds・broken }>` | 使った照合の判断と、結果に影響した前提の崩れた判断（版を固定）。`premiseAtRun`は、runを作ったときに導いた前提の写し |
+| `decisions` | `List<{ ref: Ref, premiseAtRun: holds・broken, itemPremisesAtRun: List<{ item: DecisionItem, premise: holds・broken }> }>` | 使った照合の判断と、結果に影響した前提の崩れた判断（版を固定）。`premiseAtRun`は判断全体の前提、`itemPremisesAtRun`は項目ごとの前提の写し（1の「写しの細かさ」）。`DecisionItem`は`kind`で判別する: `field`（`mismatch-explanation`の`explainedComparisons`の項目。年間資料の金額の項目名）か`payer`（`annual-adoption`の`scope.payers`の支払者。正規のID）。項目ごとの前提を持たない種類（`duplicate-review`・`tax-year-assertion`）では空。並びの一意のキーは`item` |
 | `adoptions` | `List<AdoptionSnapshot>` | 年間の値の採用の結果（[照合の規則](reconciliation.md)の5）。実行時に導いた結果を写して残す |
 | `assumptions` | `List<Assumption>` | 仮定 |
 | `requests` | `List<InputRequest>` | 入力の要求の写し（1の「入力の閉包と推移的な固定」の根）。`InputRequest`は`kind`で判別する: `aggregate`（`key`: `AggregateKey`、`scope`: 集計値の`scope`と同じ形。[共通の型](common-types.md)の11）か、`records`（`recordType`と、`target`の年・年度と重なる適用期間。端が分からない期間は[共通の型](common-types.md)の6の「端が分からない期間の扱い」で重なりを決める）。一意のキーは`kind`と中身の全体 |
