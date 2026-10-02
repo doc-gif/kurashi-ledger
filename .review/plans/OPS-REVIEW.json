@@ -97,6 +97,11 @@
       "description": "PR4-R022残りとCopilot4168383353/4168383425: PRテンプレートがDraft推奨のままで、計画自身の除外の意図とPR4の検索用教訓が欠ける。",
       "state": "resolved",
       "resolution": "テンプレートも作業中Draft必須へ統一。変更計画1つは自己記入・ルーティングの対象から除外する既存方針を明示する（名前・task/base・衝突・書式は検査し、内容妥当性は独立レビュー）。その他の.review変更は通常のルーティングに残す境界を試験。PR4の再利用可能な原因を正規ID・一般化した教訓・実在する公開レビューURLで検索台帳へ加え、triage再利用とprepare履歴を固有試験で固定する。"
+    },
+    {
+      "description": "Copilot 5395228821: PR4-R018の再発で同じtaskの別分割計画をCLIが読み込める。PR2-R008系統で外部worker/実装計画がレビュー依頼時の停止とaccepted後の条件付き自己PRマージを区別していない。",
+      "state": "resolved",
+      "resolution": "ローカルCLIは変更計画があるとき--planの実パスをrepo rootから解決した変更計画の実パスと一致させる。taskの一致だけに依存せず、別part/別ディレクトリを拒否、相対/絶対/正規化表記と計画変更なしを確認する。CIは既に変更計画自身を読み込む。入口はOpen+readyの後にレビューを待ち、別担当の最新head/baseのacceptedとAGENTSの全条件を確認した後だけ自己PRをマージする時系列へ統一。README正本リンクを保持し、詳細件数を重複しない。"
     }
   ],
   "assessments": [
@@ -124,7 +129,7 @@
         },
         {
           "id": "trust",
-          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。 core/CLIの複数計画拒否、repo設定なしのツール試験を確認。PR説明と最新head/baseの検証記録を照合。 計画名/task_idの一致・不一致をcore/CLI/CIで確認し、テンプレートの両suiteを照合。 README/UI/design/applicationの条件ルーティングを固有suiteで確認し、candidate条件のpath追加差分を独立レビューへ返す。 計画だけのmetadata-completeは意味検証ではないことを確認し、その他.review変更のassessment欠落は拒否する境界試験。",
+          "method": "baseの条件削除／path縮小／シナリオ変更の報告、候補code不実行、分岐baseとrename、決定参照、UTF-8出力、記入不足ごとの回帰試験。workflow保護の限界を文書照合。 core/CLIの複数計画拒否、repo設定なしのツール試験を確認。PR説明と最新head/baseの検証記録を照合。 計画名/task_idの一致・不一致をcore/CLI/CIで確認し、テンプレートの両suiteを照合。 README/UI/design/applicationの条件ルーティングを固有suiteで確認し、candidate条件のpath追加差分を独立レビューへ返す。 計画だけのmetadata-completeは意味検証ではないことを確認し、その他.review変更のassessment欠落は拒否する境界試験。 CLIの--plan実パスと変更計画の同一性、同task別part/別ディレクトリ拒否・相対/絶対/正規化・計画変更なしを合成fixtureで確認。",
           "expected": "候補codeでは検査を置換できず、baseの必要記入を満たさなければ失敗。条件の変更は将来の採否を独立レビューへ返す。保護されないworkflowは迂回可能と明記し、構造合格を承認にしない。"
         }
       ]
@@ -141,7 +146,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。 レビューroleの書式例・旧表記・COMMENT運用の3か所を照合。 全入口の作業中Draft・レビュー依頼Open表記とroot READMEの運用要約を照合。",
+          "method": "AGENTS/CLAUDE/Copilot/PR templateとpr-review-loopのリンク・許可範囲を照合。external-workerの4か所と運用・状態資料の間隔をPR #6とも照合 README・実装計画・巡回手順も別担当への役割交代と照合する。 レビューroleの書式例・旧表記・COMMENT運用の3か所を照合。 全入口の作業中Draft・レビュー依頼Open表記とroot READMEの運用要約を照合。 Open+ready後の待機と、別担当accepted後の条件付き自己PRマージの実行順序を外部loop・実装計画・README・AGENTS・再発防止文書で照合。",
           "expected": "全入口が別担当の最新head/baseのaccepted、Copilot未対応なし、base不変・競合なし、--match-head-commit付き自己PRマージとpost-merge確認、auto-merge不使用、デプロイ別指示待ちを守る。計画・ツール・固定IDの規約を維持し、レビュー依頼はOpenにする。"
         }
       ]
