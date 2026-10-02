@@ -1,6 +1,6 @@
 # Architecture decision 001: Small application, explicit boundaries
 
-Status: accepted direction, confirmed by T00 (effective once the T00 ADRs are on main). T00 recorded the runtime, local HTTP boundary, UI, SQLite driver and data storage decisions in [docs/adr/](adr/README.md) (ADR-0002 to ADR-0006).
+Status: accepted direction, confirmed by T00 (effective once the T00 ADRs are on main). T00 recorded the runtime, local HTTP boundary, UI, SQLite driver, data storage and shared safety-check decisions in [docs/adr/](adr/README.md) (ADR-0002 to ADR-0007).
 
 TypeScript is the language for records, input validation and application workflows, running on Node.js LTS (ADR-0002). Keep one application with modules; introduce additional runtimes only after a concrete evaluation.
 

@@ -2,7 +2,7 @@
 
 - 状態: Proposed（このPRがmainに統合された時点でAcceptedとみなす）
 - 日付: 2026-10-02
-- 関連: T00（Issue #1）、ADR-0001（[architecture.md](../architecture.md)）、ADR-0003〜0006。
+- 関連: T00（Issue #1）、ADR-0001（[architecture.md](../architecture.md)）、ADR-0003〜0007（ADR-0007は共通の安全確認と操作ごとの適用表。この本文はG6の定義の場所）。
 
 ## 背景
 
@@ -127,7 +127,7 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 - T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
 - T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。
 - T26: HTTPサーバーの骨格と、ADR-0003の境界。
-- T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。
+- T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。開発時の起動も同じ検査に通すこと（ADR-0007のG1〜G5）。
 - T28: Node.jsのメジャー更新（必要時）。
 - T13: 新規のMac/Windows環境で、この手順の起動・終了・バックアップ・復元を実施して記録する。
 - T25: 更新とrollback、Node.jsのメジャー更新後の通し確認、別OSへの移行のリハーサル。
