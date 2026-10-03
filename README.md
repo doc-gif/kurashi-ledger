@@ -28,6 +28,7 @@
 - [デザインの基礎・トークン・部品の仕様（Figmaとの対応）](design/README.md)
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
+- [AIのGitHub App（CodexとClaudeの身元、トークンの発行）](docs/github-apps.md)
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
 - [Claude Code等へ渡す定期確認の指示](docs/external-worker.md)
 - [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)

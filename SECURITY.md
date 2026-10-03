@@ -19,6 +19,10 @@ Official references:
 - https://docs.github.com/en/actions/concepts/billing-and-usage
 - https://docs.github.com/en/actions/reference/security/secure-use
 
+## GitHub App keys for the AI agents
+
+Codex and Claude each have their own GitHub App (an identity, not a role; the details in Japanese are in docs/github-apps.md). The App IDs, installation IDs and private keys are never stored in this repository. Each private key is kept only in the owner's macOS login keychain; no backup is needed, because a lost key is replaced by generating a new one in the App settings. If a key leaks, delete it in the App settings at once and, if needed, suspend the installation (installation tokens live for up to one hour). `scripts/github-app-token.ts` mints a short-lived installation token, down-scoped to this repository and to the permissions of one purpose, and prints only the token. Neither App has the Administration permission. Both agents run as the same macOS user, so this separation prevents mistakes; it does not isolate one agent from the other.
+
 ## Backups
 
 Git preserves source history. It does not back up private application data. The application's backup/restore implementation is pending. Never use this public repository to store backups.

@@ -26,6 +26,10 @@
 
 10分間隔でセッション外でも継続したい場合は、Claude Code Desktopのscheduled taskを検討する（設定できる最短間隔はその環境で確認する）。Cloud Routinesは公式資料上の最短間隔が1時間のため、同じ10分設定にはできない。利用プラン・接続repo・branch権限・ネットワーク・費用上限はその環境で確認する。[スケジュール比較](https://code.claude.com/docs/en/scheduled-tasks)
 
+## GitHubの身元
+
+移行のあとは、Claude側のpush・PR・コメント・マージを、ClaudeのGitHub Appのトークン（`--agent claude --purpose implement`）で行い、レビューは`--purpose review`のトークンで行う。手順・限界・移行の計画は[AIのGitHub App](github-apps.md)。ほかのAIの鍵を読まない。移行が済むまでは、いまの方法のまま。
+
 ## 現在の状態
 
 外部AIの定期実行は、ユーザーがClaude Code等の実行環境で、担当ごとに1本登録する方針。Codex側では外部ジョブを登録・起動していない。開始するAIツール側で本指示を登録し、担当Issueと実行IDを、担当のIssue・PRの引継ぎで共有する。Codex側のPR確認とは独立したジョブである。
