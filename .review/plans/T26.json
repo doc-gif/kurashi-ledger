@@ -35,6 +35,7 @@
     "tests/fixtures/http/static/app.js",
     "tests/fixtures/http/static/index.html",
     "tests/fixtures/http/static/style.css",
+    "tests/fixtures/http/static/tricky.html",
     "tests/support/http.ts"
   ],
   "conflicts": [
@@ -56,7 +57,7 @@
     {
       "description": "ADR-0006の1「権限」は、Windowsの本人だけに許可するACLの判定の詳細をT07で決め、ADR-0003の一時ファイルと同じ基準にするとする。T26はT07より先に、一時ファイルと渡されたディレクトリのACLを判定する必要がある。",
       "state": "resolved",
-      "resolution": "T26で、一時ファイル（ADR-0003）についての判定の基準を決めてADR-0009に書く: 所有者が実行中のユーザーのSID、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）は実行中のユーザーのSIDだけ、Allow・Deny以外の種類のエントリは拒否。判定はロケールに依存しないSIDで行う（Windows PowerShell 5.1の.NETのAPIを、パスを環境変数で渡して呼び、セキュリティ記述子の2進の形から所有者とDACLのエントリのSIDを取り出す。SDDLの文字列は組込みのAdministrator等を別名（LA等）で書くので使わない。CIのWindowsのrunnerは組込みのAdministratorで動き、b56367dの試験で所有者が別名LAになって判定できなかった）。本人だけにするときは、所有者も実行中のユーザーにする（管理者の権限で作ったものの所有者がAdministratorsになることがあるため）。T07は同じ基準を使い、変える場合はADR-0009と両方の試験を同じPRで直す。"
+      "resolution": "T26で、一時ファイル（ADR-0003）についての判定の基準を決めてADR-0009に書く: 所有者が実行中のユーザーのSID、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）は実行中のユーザーのSIDだけ、Allow・Deny以外の種類のエントリは拒否。判定はロケールに依存しないSIDで行う（Windows PowerShell 5.1の.NETのAPIを、パスを環境変数で渡して呼び、セキュリティ記述子の2進の形から所有者とDACLのエントリのSIDを取り出す。SDDLの文字列は組込みのAdministrator等を別名（LA等）で書くので使わない。CIのWindowsのrunnerは組込みのAdministratorで動き、b56367dの試験で所有者が別名LAになって判定できなかった）。本人だけにするときは、所有者も実行中のユーザーにする（管理者の権限で作ったものの所有者がAdministratorsになることがあるため）。T07は同じ基準を使い、変える場合はADR-0009と両方の試験を同じPRで直す。 PR25-R002（Codex 5399743915）を受けて、POSIXでも拡張ACLを見る: macOSは`ls -led`でACLのエントリを読み、実行中のユーザー以外へのallowのエントリがあれば本人だけでないとして拒否する（渡されたディレクトリのACLは変えない）。作るファイルは`chmod -N`でACLを消してから0600にし、ACLがないことを確かめてからトークンを書く。LinuxのPOSIX ACLは、拡張ACLがあるとモードのグループのbitがACLのmaskになり、名前付きのユーザー・グループのエントリはmaskで制限されるので、モードの0o077が0なら本人以外は使えない（setfaclで別のユーザーに許可するとmaskが広がり、モードの検査で拒否されることを試験で確かめる）。ADR-0009の「見ないもの」（拡張ACLを限界として受け入れる記述）は削除する。"
     },
     {
       "description": "台帳のT26は、ADR-0002の起動と終了（Ctrl+C）を求める。Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（process.killは強制終了になる）ので、Windowsでは実際のCtrl+Cでの終了を試験できない（T02・T05と同じ制約）。",
@@ -72,13 +73,33 @@
       "description": "AGENTS.md・README・docs/testing.md・docs/project-status.md・docs/development.md・.github/copilot-instructions.mdは、製品の試験・アプリの起動がまだないと書いている。T26は最初の製品の試験（HTTPの境界）とnpm startを加える。",
       "state": "resolved",
       "resolution": "PR10-R004の教訓に従い、同じ事実を書く入口を最終headでまとめて直す（製品の試験はHTTPの境界から始まった、npm startはHTTPの境界の骨格だけで、画面・記録・DBはない）。マージの条件・レビューの役割・CIの扱いは変えない。過去の計画（.review/plans/の他のタスク）は、その時点の記録として変えない。"
+    },
+    {
+      "description": "PR25-R001（Codex 5399743915、Copilot 4172307547）: closeが、upgrade済みの接続と実行中のAPIの処理の終了を保証しない（closeAllConnectionsはupgrade済みのソケットを閉じず、route.handleのPromiseは残る）。T09がcloseのあとでDB・lockを閉じる境界にならない。",
+      "state": "resolved",
+      "resolution": "closeの契約を「新しい接続と要求を受け付けない（待受を止め、終了中に届いた要求は503）、実行中の処理（APIの処理と開発時のmiddleware）にAbortSignalで中止を知らせ、すべての完了を待つ、受理したupgradeのソケットを追跡してすべて閉じる、HTTPの接続を閉じる、待受の終了を待つ、一時ファイルを消す」にする。upgradeを維持した試験と、試験が任意の時点で解放する未完了のAPIの試験で、closeが処理の完了を待ち、終了後に接続・処理が残らないことを確かめる。"
+    },
+    {
+      "description": "PR25-R003（Codex 5399743915、Copilot 4172307588）: 起動の識別子の注入が、生の文字列で<head>と同名の文字列を探すので、コメントの中の<head>や、<title>の中の同じ文字列を要素と誤認する。",
+      "state": "resolved",
+      "resolution": "HTMLを小さな字句解析で読み、コメント・宣言・script等の生のテキストの要素の中身を要素と区別する。注入の契約: doctype・コメント・空白・<html>の開始タグのあとに、最初の要素として<head>の開始タグがあること（なければ配信しない）。その直後に入れる。重複の判定は、文書全体の実際のmeta要素のname属性（大文字小文字を区別しない）に限る。コメント・無関係な<title>・実際の重複metaの単体試験と、ブラウザのDOMで識別子のmetaがちょうど1つでAPIを呼べることのe2eを加える（fixtureにコメントと紛らわしいtitleのページを加える）。"
+    },
+    {
+      "description": "PR25-R004（Codex 5399743915。既存のPR12-R101と同じ原因）: 一時ファイルのunlinkが失敗しても、closeは成功し、npm startは「消した」と表示して0で終わる。",
+      "state": "resolved",
+      "resolution": "closeは一時ファイルの後始末の結果（removed・missing・replaced・failed）を返す。待受の停止とトークン・セッションの無効化は結果によらず行う。npm startは結果に合わせて表示し、ファイルが残った（replaced・failed）ときはパスと手で消す手順を示して終了コード1で終わる。交換のときに消せなかった場合も、closeでもう一度消し、その結果を返す。削除の失敗は、削除の処理を差し替えられる引数で注入して全OSで試験し、removed・missing・replacedの回帰試験も加える。ADR-0009の7を同じ内容にする。"
+    },
+    {
+      "description": "PR25-D001（Copilot 4172307621）: docs/development.mdの「弱めて確かめる箇所が1つある」と、列挙した3つの試験のファイルが食い違う。",
+      "state": "resolved",
+      "resolution": "数を3つにし、各箇所とdiagnosticの文言を列挙する。skipの表と件数の文（check:test-skipsが読む）は変えない。"
     }
   ],
   "assessments": [
     {
       "id": "INV-HTTP",
       "disposition": "preserve",
-      "reason": "T26はADR-0003の境界（G7）を実装する。本番の起動の入口（npm start）と、T08が使う開発時の口（Viteのmiddleware・HMRのWebSocket）が、同じ要求の検査（Host、Sec-Fetch-Site・Origin、cookie、起動の識別子）とCSPの組み立てを通るようにし、開発時だけ認証や検査を外す設定を作らない（PR2-R004）。開発時のCSPの変種（応答ごとのnonce、ws://127.0.0.1:<port>）は、口からの応答にだけ使い、本番の応答のCSPに含めない（PR2-R005）。実際のViteの組込み、HMRの反映、nonceの一致の試験はT08。静的配信は、起動時に実体パスを固定した1つの配信ルートだけを使い、URLのパスの検査（..、エンコードされた区切り文字、二重エンコード、バックスラッシュ、NUL、ドライブ指定、Windowsの予約名）と、実体パスが配信ルートの配下にあることの確認を分けて行う。すべての応答の最後に共通のヘッダ（CSP、no-store、Referrer-Policy、nosniff等）を付け直し、Access-Control-*を取り除く1つの出口を通す。",
+      "reason": "T26はADR-0003の境界（G7）を実装する。本番の起動の入口（npm start）と、T08が使う開発時の口（Viteのmiddleware・HMRのWebSocket）が、同じ要求の検査（Host、Sec-Fetch-Site・Origin、cookie、起動の識別子）とCSPの組み立てを通るようにし、開発時だけ認証や検査を外す設定を作らない（PR2-R004）。開発時のCSPの変種（応答ごとのnonce、ws://127.0.0.1:<port>）は、口からの応答にだけ使い、本番の応答のCSPに含めない（PR2-R005）。実際のViteの組込み、HMRの反映、nonceの一致の試験はT08。静的配信は、起動時に実体パスを固定した1つの配信ルートだけを使い、URLのパスの検査（..、エンコードされた区切り文字、二重エンコード、バックスラッシュ、NUL、ドライブ指定、Windowsの予約名）と、実体パスが配信ルートの配下にあることの確認を分けて行う。すべての応答の最後に共通のヘッダ（CSP、no-store、Referrer-Policy、nosniff等）を付け直し、Access-Control-*を取り除く1つの出口を通す。 PR25-R001〜R003を受けて、closeが実行中の処理とupgradeの接続を所有して終わらせること、POSIXの拡張ACL、HTMLの要素の認識を加える（conflictsのとおり）。",
       "checks": [
         {
           "id": "browser-flow",
@@ -141,7 +162,7 @@
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "T26はpackage.jsonのscriptsにstartを加える（T02→T05→T26→T08の順）。依存は加えず、lockfileは変えない。package.jsonは依存の導入の記録の入力なので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは毎回setupから行う。ADR-0007の適用表で、合成データの起動（npm start）はG6（実行物の一致）の対象外なので、npm startは記録やmanifestを確かめない。T26はdist/・manifest・npm run buildを変えず、ビルド済みUIを配信しない（配信ルートを渡さない）。start:realとmanifestの照合、確かめた内容をメモリから配信することはT09で、静的配信の読み出し元を差し替えて行う。",
+      "reason": "T26はpackage.jsonのscriptsにstartを加える（T02→T05→T26→T08の順）。依存は加えず、lockfileは変えない。package.jsonは依存の導入の記録の入力なので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは毎回setupから行う。ADR-0007の適用表で、合成データの起動（npm start）はG6（実行物の一致）の対象外なので、npm startは記録やmanifestを確かめない。T26はdist/・manifest・npm run buildを変えず、ビルド済みUIを配信しない（配信ルートを渡さない）。start:realとmanifestの照合、確かめた内容をメモリから配信することはT09で、静的配信の読み出し元を差し替えて行う。 PR25-R004（PR12-R101と同じ原因）: 一時ファイルの後始末の失敗を握りつぶさず、closeの結果として返し、npm startは残った状態と対処を示して1で終わる。",
       "checks": [
         {
           "id": "update",
