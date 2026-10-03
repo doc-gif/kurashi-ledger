@@ -22,13 +22,17 @@
     "e2e/browser-base.spec.ts",
     "e2e/browsers.ts",
     "e2e/install-browsers.ts",
+    "e2e/reporter-fixtures/cases.fixture.ts",
+    "e2e/reporter-fixtures/fixtures.config.ts",
     "e2e/strict-reporter.ts",
     "e2e/tsconfig.json",
     "package-lock.json",
     "package.json",
     "playwright.config.ts",
+    "scripts/browser-outcomes.test.ts",
     "scripts/check-test-skips.ts",
     "scripts/install-record.test.ts",
+    "scripts/lib/browser-outcomes.ts",
     "scripts/lib/test-skips.ts",
     "scripts/setup-lock.test.ts",
     "scripts/setup.test.ts",
@@ -65,6 +69,11 @@
       "description": "docs/adr/README.mdは、状態欄が「Proposed（このPRがmainに統合された時点でAcceptedとみなす）」のADRは、次にそのADRを変更するPRで状態欄も直すとしている。ADR-0008（T02でmainに統合済み）の手での確認の担当の記載を#19へ直すと、この規則に当たる。",
       "state": "resolved",
       "resolution": "ADR-0008の状態欄を、ADR-0002と同じ書き方でAccepted（T02のPR #12でmainに統合。T05のPR #18で状態欄を直した）にし、ADR一覧の0008の行もAcceptedにする。決定の本文は変えない（手での確認の担当の参照だけを直す）。"
+    },
+    {
+      "description": "PR18-R002（Codexのレビュー5398640257、Copilot 4171373398と同じ原因）: e2e/strict-reporter.tsはoutcome()がexpectedの試験を成功として数えるが、Playwrightではtest.fail()で失敗を期待した試験が実際に失敗したときもexpectedになる。期待した失敗でも、必要なブラウザの実行件数を満たし、Playwright全体もpassedのまま成功に見える。同じ穴（期待した失敗・todo・再実行での合格を成功に数える）が、node --testのskipの照合（Node 24.14以上のexpectFailureは要約のpassに数えられる）と、レビュー運用ツールのunittest（expectedFailure・skipでもOKで0を返す）にもある。",
+      "state": "resolved",
+      "resolution": "ブラウザ試験の結果の分類をscripts/lib/browser-outcomes.tsに分け、成功はexpectedStatusがpassedで、outcomeがexpectedで、最後の結果がpassedの試験だけにする。期待した失敗（expectedStatusがpassed・skipped以外）、skip、flaky、中断（最後の結果がinterrupted、またはskipを期待していないのにskipped）、時間切れ、未実行（結果がない）、失敗はすべて問題として全体を失敗にし、Playwright全体の結果がpassedでないことも問題にする。必要なブラウザごとに成功した試験が1件以上あることを求める。境界は、分類の単体試験と、実際のPlaywrightで合成の試験（ブラウザを使わない）を流す回帰試験（成功・失敗・test.fail()の期待した失敗・skip・flaky・中断）で確かめ、期待した失敗のrunが0以外で終わることをnpm testの中で確かめる。node --testの照合は、要約のpassに数えられる「# EXPECTED FAILURE」の行と「(passed on attempt N)」の行を問題にし、todoは0件に限ったまま、todoの行を「﹣」の数に含めないよう直す。unittestは、CIで出力の要約に0件・skipped・expected failures・unexpected successesがあれば失敗にする。"
     }
   ],
   "assessments": [
@@ -75,8 +84,8 @@
       "checks": [
         {
           "id": "browser-flow",
-          "method": "playwright.config.tsとe2e/の差分を読み、useに安全上の既定を変える設定がないことを確かめる。CIのbrowserのジョブで、ChromiumをLinux・Windows・macOS、WebKitをmacOSで実行し、e2e/strict-reporter.ts（e2e/browsers.tsのブラウザごとに照合）が、OSごとに必要なブラウザの試験が1件以上実行され、skip・flakyがないことを確かめることをrunのログで見る。",
-          "expected": "設定はtestDir・testMatch・projects・reporter・forbidOnly・retries・成果物を残さない設定だけ。後続タスクがe2e/に*.spec.tsを加えると、同じ設定で全OSのCIで実行される。トークンの交換・API・HMR・CSPの試験はT26・T08で加える。"
+          "method": "playwright.config.tsとe2e/の差分を読み、useに安全上の既定を変える設定がないことを確かめる。CIのbrowserのジョブで、ChromiumをLinux・Windows・macOS、WebKitをmacOSで実行し、e2e/strict-reporter.ts（e2e/browsers.tsのブラウザごとに照合）が、OSごとに必要なブラウザの試験が1件以上実行され、skip・flakyがないことを確かめることをrunのログで見る。 PR18-R002の修正後は、成功をexpectedStatusがpassedで実際に合格した試験だけに限ることを、scripts/browser-outcomes.test.ts（分類の単体試験と、実際のPlaywrightで合成の試験を流す回帰試験）で確かめる。",
+          "expected": "設定はtestDir・testMatch・projects・reporter・forbidOnly・retries・成果物を残さない設定だけ。後続タスクがe2e/に*.spec.tsを加えると、同じ設定で全OSのCIで実行される。トークンの交換・API・HMR・CSPの試験はT26・T08で加える。 期待した失敗・skip・flaky・中断・時間切れ・未実行・失敗のどれがあっても、照合は失敗し、Playwrightは0以外で終わる。"
         },
         {
           "id": "static",
@@ -160,7 +169,7 @@
         },
         {
           "id": "trust",
-          "method": "ci.ymlを読み、イベント・permissions・persist-credentials・SHA固定・secretsの不使用・計画の検査がbaseのcheckoutから実行されることを確かめる。Quality gateが、どれかのジョブの失敗・中断・想定外のskipでも失敗することを、gateの判定の処理を合成の入力（成功・失敗・中断・skip・親の不一致・push）で確かめる。実際のrunでは、最初のrun（37087512129）でWindowsのchecksが失敗し、gateが失敗したことで確かめた（意図的に失敗させるcommitは、同じことを確かめる実際の失敗があったので加えない）。gateがpull_requestのmerge commitの親をhead・baseのSHAと照合して記録することをrunで見る。",
+          "method": "ci.ymlを読み、イベント・permissions・persist-credentials・SHA固定・secretsの不使用・計画の検査がbaseのcheckoutから実行されることを確かめる。Quality gateが、どれかのジョブの失敗・中断・想定外のskipでも失敗することを、gateの判定の処理を合成の入力（成功・失敗・中断・skip・親の不一致・push）で確かめる。実際のrunでは、最初のrun（37087512129）でWindowsのchecksが失敗し、gateが失敗したことで確かめた（意図的に失敗させるcommitは、同じことを確かめる実際の失敗があったので加えない）。gateがpull_requestのmerge commitの親をhead・baseのSHAと照合して記録することをrunで見る。 期待した失敗・todo・再実行での合格を成功に数える穴を、ブラウザ試験の照合（PR18-R002）、node --testの照合（expectFailure・passed on attempt）、unittest（skipped・expected failures・unexpected successes・0件）のそれぞれで塞いだことを、試験とCIのログで確かめる。",
           "expected": "失敗・中断・欠けたジョブ（skipped）はgateの失敗になる（push時の計画の検査だけは対象外として扱いを分ける）。gateのsummaryに、試験したmerge commitとhead・baseのSHAが出る。CIの合格は独立レビュー・所有者の承認の代わりにならないと文書に書かれている。"
         }
       ]
@@ -207,7 +216,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。Windowsの実機での手の確認はこの担当では行えないので、Issue #17を閉じずに残し、手順と記録の様式を文書に置く。 2026-10-03の所有者決定でWindowsの実機の3つの確認をIssue #19へ分けた。#19は依存のない独立したIssueで、T26・T28をブロックしない。PR #18は#17を閉じる。",
+      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。完了の条件: Windowsの実機の3つの確認は、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達。所有者本人の確認はPR18-O001で依頼中）でT05の受入から外し、Issue #19（依存のない独立したIssueで、T26・T28をブロックしない）で行う。T05の受入はCIでの照合までで、PR #18は#17を閉じる（Closes #17）。",
       "checks": [
         {
           "id": "dependencies",
