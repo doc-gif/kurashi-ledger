@@ -75,7 +75,7 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
    - ファイル名に、勤務先・氏名・実際の年月と金額などを入れないこと。
 6. PRでは、テンプレートの「公開差分に実データ・秘密情報が含まれないことの確認」に、行った点検を書く。
 
-Gitのhookは自動では入れない。hookの設定（`core.hooksPath`）はworktreeの間で共有され、ほかの担当の作業に影響するため。各自が手順の4を実行する。CIでの実行はT05で加える。
+Gitのhookは自動では入れない。hookの設定（`core.hooksPath`）はworktreeの間で共有され、ほかの担当の作業に影響するため。各自が手順の4を実行する。CI（T05）も`npm run check:public`を実行する（CIでは`CI=true`なので、結果にファイル名を出さない）。CIでの検査は、commitの前の手順の代わりにならない（push済みの内容を見るため）。
 
 ### 公開検査が見るもの・見ないもの
 

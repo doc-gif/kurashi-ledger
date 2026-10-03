@@ -58,12 +58,13 @@
 ## T05 — 軽量CIとレビューを支えるゲート
 
 - 依存: T02。担当: 開発運用。範囲: `.github/workflows/`、`scripts/`、ブラウザ試験の基盤。共有資源: CI設定、lockfile（Playwrightの追加）。
+- 成果物の所在（Issue #17）: `.github/workflows/ci.yml`、`playwright.config.ts`と`e2e/`、`scripts/check-test-skips.ts`・`scripts/lib/test-skips.ts`、[開発環境](development.md)の「CI」「ブラウザ試験（Playwright）」「環境によって飛ばす試験」。
 - 成果物: 型検査・テスト・公開検査、Mac/Windows/Linuxの必要チェック、最終Quality gate。依存固定、時間上限、最小権限。
 - ブラウザ試験の基盤: Playwrightを導入し、CIでChromium（Mac/Windows/Linux）とWebKit（Mac）を実行できるようにする（ADR-0004）。最初に使うのはT26のcookie交換の試験。
 - 受入: 失敗・中断・想定外skipが成功に見えない。必要な検証と最新PR SHA・統合対象baseの対応が確認できる。ルール・workflowの変更をレビューなしで自動承認しない。
 - 受入（2026-10-02の所有者決定でT02から移した確認）: 固定した版のNode.js（`devEngines`の範囲）を使うmacOS・Windows・LinuxのCIで、`npm run setup`・`npm run typecheck`・`npm test`（`node:sqlite`で警告が出ないことの試験を含む）・`npm run build`がすべて成功する。
-- 受入（2026-10-03の所有者決定でT02から移した確認）: Windowsの実機のコンソールで`npm run setup`の`npm ci`の最中にCtrl+Cを押すと、`npm ci`の終了を待ってから、依存の導入の記録も作業中の印`.kurashi-ledger-setup.lock`も残さずに130で終わり、続けて`npm run setup`が進む（ADR-0008の「中断」）。試験のプロセスからは実際のCtrl+Cを送れないので、`scripts/setup-lock.test.ts`・`scripts/setup.test.ts`のPOSIXだけの試験の代わりに、手順と結果をPRに記録する。
-- 受入（T02の試験のskipの代わりの確認。2026-10-03の調整係の依頼）: [開発環境](development.md)の「環境によって飛ばす試験」の表の、代わりの確認をすべて行い、手順と結果をPRに記録する。上のCtrl+Cに加えて、WindowsでのCtrl+Break（149で終わり、記録も印も残らない）と、Windowsで印を消せないとき（別のPowerShellで印を削除できない共有の指定で開いたままCtrl+Cを押すと、130で終わり、印が残ったことと消し方が表示される）。CIの試験は一般のユーザーで実行し、OSごとのskipの件数と理由を記録して、表に書いた件数と一致することを確かめる。Windowsでファイルのsymlinkを作れずに弱めて確かめた箇所（試験の出力のdiagnostic）があれば、それも記録する。
+- 受入（T02の試験のskipの照合。2026-10-03の調整係の依頼）: CIの試験は一般のユーザーで実行し、OSごとにskipした試験と理由を記録して、[開発環境](development.md)の「環境によって飛ばす試験」の表で飛ばしてよいとした試験と一致する（件数だけでなく試験の集合）ことを確かめる。Windowsでファイルのsymlinkを作れずに弱めて確かめた箇所（試験の出力のdiagnostic）があれば、それも記録する。
+- 受入から外した確認（2026-10-03の所有者決定。所有者本人の確認: PR #18のCodexの記録5965890988）: Windowsの実機のコンソールでの`npm run setup`のCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの確認は、T02から移してT05の受入に置いていたが、[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)へ分けた（手順と記録の様式は#19）。#19はどのタスクにも依存せず、T05の完了やT26・T28をブロックしない。
 - 検証: 意図的失敗、古いSHAの成功、欠落ジョブ、fork PRで秘密なし、workflow変更時の扱い。UI追加時にE2Eを追加できる。後続タスク（T26等）が試験を追加すれば、Mac/Windows/Linuxで実行される。
 - 非対象: 初期から大規模sharding、セルフホストrunner、長時間polling。
 
@@ -202,6 +203,7 @@
 - 成果物: Issue/PR/CI、最新head/base、workerの明示的引継ぎ、レビュー記録から着手候補・修正待ち・判断待ちを判定。文書版のCodex定期確認は先行設定済みで、本タスクは製品CIとの統合と検証を追加する。PR #4のレビュー運用の台帳（`.review/invariants.json`）がmainにあれば、ADR-0007の部品（G1〜G7）ごとの不変条件を登録し、部品のファイルを変えたときに関係する確認の観点が引き出されるようにする。
 - 受入: 無更新の時間だけで完了とせず、最新SHAのready-for-reviewを確認する。API不調は未確認とし、同じheadへの同じコメントを重複投稿しない。PR由来コードを高権限環境で実行しない。
 - 検証: ページネーション、rate limit、古いready、レビュー中のpush/base更新、CI失敗、同時巡回、同一アカウントのCOMMENTレビュー、Copilot利用不可。
+- T05から残した内容: workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護（rulesetのレビュー必須等。repoの設定は所有者が判断する）と、その迂回試験（[修正前の整合確認](review-prevention.md)）。必須のstatus check（`Quality gate`）と最新のbaseを求める設定は、T05のマージのあとに実装側が設定する（T23の範囲ではない）。
 - 非対象: 実装AIの起動、実装修正、自動マージ、デプロイ。
 
 ## T24 — 外部AIの定期確認とレビュー指摘対応

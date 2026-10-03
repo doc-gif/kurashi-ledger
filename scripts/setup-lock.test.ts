@@ -147,11 +147,11 @@ test('強制終了（SIGKILL・Windowsはプロセスツリーの強制終了）
 });
 
 // ---- 実際のシグナル（POSIXだけ）。Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を
-// 送る手段がないので、理由を出してskipし、T05の受入条件（台帳のT05）で確かめる。片付けの処理そのものは、
+// 送る手段がないので、理由を出してskipし、Windowsの実機で手で確かめる（Issue #19）。片付けの処理そのものは、
 // scripts/install-record.test.tsの単体試験で全OSで確かめている。
 const posixOnly =
   process.platform === 'win32'
-    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。T05の受入条件で確かめる'
+    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。Windowsの実機で手で確かめる（Issue #19）'
     : false;
 
 async function interruptAndCheck(signal: NodeJS.Signals, whole: boolean, expectedCode: number) {
