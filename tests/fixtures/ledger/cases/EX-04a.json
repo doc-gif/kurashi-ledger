@@ -1252,6 +1252,145 @@
           ]
         }
       ]
+    },
+    {
+      "scenarioId": "EX-04a-a6",
+      "title": "期間と項目の違う複数の要求を持つrun（不足は要求ごとの範囲と項目だけで判断する）",
+      "covers": [{"doc": "calculation-results.md", "section": "1"}, {"doc": "calculation-results.md", "section": "2"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-11-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_421",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-09-25"},
+              "incomeTax": {"state": "known", "value": 4000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-11-01T00:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_422",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000}
+            }
+          }
+        },
+        {
+          "op": "saveRun",
+          "opId": "o3",
+          "at": "2026-11-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "run": {
+            "id": "run_421",
+            "createdAt": "2026-11-02T00:00:00.000Z",
+            "calculator": {"id": "calc-fixture-tax", "version": "1"},
+            "calculatorAllowsPayers": true,
+            "target": {
+              "year": {"kind": "calendar", "year": 2026},
+              "jurisdiction": {"state": "known", "value": {"kind": "national", "code": "fixture-national"}},
+              "procedure": "tax-return",
+              "referencePoint": {"state": "known", "value": {"kind": "date", "date": "2027-03-15"}},
+              "scope": {"state": "known", "value": {"kind": "payers", "payers": ["emp_1"]}},
+              "scopeNote": {"state": "not-applicable"}
+            },
+            "status": "computed",
+            "inputStage": "fixed",
+            "previousRunId": {"state": "not-applicable"},
+            "inputsRecords": [{"id": "pay_421", "revision": 1}, {"id": "pay_422", "revision": 1}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-09-01", "to": "2026-09-30"}
+              },
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "grossPay"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+              }
+            ]
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "runChain", "run": "run_421"},
+          "expect": {"chain": ["run_421"]},
+          "reason": "9月の所得税と10月の総支給額を別々に要求するcomputedのrun。必要な入力（pay_421の所得税、pay_422の総支給額）はどちらも分かっているので、要求していない9月の総支給額・10月の所得税が分からなくても保存できる。不足は、入力の要求と閉包から決まる必要な集合で判断し、要求の項目や期間を混ぜない。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "2", "quote": "必要な入力が足りない（MissingStateのどれかに当たる入力がある"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "計算器の版・target・入力の要求（inputs.requests）と閉包から一意に決まる必要な集合"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "incomeTax"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-09-01", "to": "2026-09-30"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 4000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "1つ目の要求（9月の所得税）の集計は、pay_421の4,000で不足がない。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "源泉徴収税額・住民税・各保険料（明細）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 230000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "2つ目の要求（10月の総支給額）の集計は、pay_422の230,000で不足がない。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "給与明細grossPay"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "incomeTax"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_422", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "incomeTax"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "要求していない10月の所得税は分からない（incomplete）。runはこの集計を要求していないので、その状態に影響されない。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "不足として数える。0として足さない"}]
+        }
+      ]
     }
   ]
 }

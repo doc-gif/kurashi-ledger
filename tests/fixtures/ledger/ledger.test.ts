@@ -555,26 +555,81 @@ function replayOps(
 
 const FACT_JURISDICTION = SPECS.fact({ t: "object", fields: { kind: SPECS.enm("national", "prefecture", "municipality", "insurer"), code: SPECS.text } }, ["known", "unknown"]);
 
-// 計算結果の2: 必要な入力が足りなければincomplete。computed・provisionalのrunの射影が、固定した給与明細のうち
-// 要求（payslip-item・payslip-by-income-yearのitem）の項目が分からない（unknown・not-stated）ものを入力に持てば問題にする（PR11-R006）。
+// マスタのIDを、その時点の最新の改訂で二重登録の取消（duplicateOf）をたどった正規のIDにする（共通の型の9）。
+function canonicalMasterId(state: State, id: string): string {
+  const seen = new Set<string>();
+  let cur = id;
+  for (;;) {
+    const rec = latest(state, cur);
+    const dup = rec !== undefined && rec["status"] === "voided" && isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known" ? rec["duplicateOf"]["value"] : undefined;
+    if (!isObj(dup) || typeof dup["id"] !== "string" || seen.has(cur)) return cur;
+    seen.add(cur);
+    cur = dup["id"];
+  }
+}
+
+function inScope(list: unknown, id: string): boolean {
+  return !Array.isArray(list) || list.length === 0 || list.includes(id);
+}
+
+// 計算結果の2: 必要な入力が足りなければincomplete。computed・provisionalのrunの射影について、要求ごとに、
+// その要求の範囲・日付の軸・支払者（口座）に当たる固定した記録の、その要求の項目だけで不足を判断する
+// （要求の項目や対象の記録を混ぜない。必要な集合は要求から独立に導く。原因台帳のPR11-R011・PR23-R004）。
+// 対象を固定した記録だけで決められる要求（payslip-item・deposit-amount）だけを判断する。帰属・採用・実績化・正式通知の類を
+// 導く要求（payslip-by-income-year・annual-value・forecast-remaining・notice-determination）は、この検査では判断しない。
 function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Problems): void {
   if (run["status"] !== "computed" && run["status"] !== "provisional") return;
   const requests = Array.isArray(run["requests"]) ? run["requests"] : [];
-  const items = new Set<string>();
-  for (const r of requests) {
-    const key = isObj(r) && isObj(r["key"]) ? r["key"] : undefined;
-    if (key !== undefined && (key["kind"] === "payslip-item" || key["kind"] === "payslip-by-income-year") && typeof key["item"] === "string") items.add(key["item"]);
+  const inputs = (Array.isArray(run["inputsRecords"]) ? run["inputsRecords"] : [])
+    .filter((r): r is Obj => isObj(r) && typeof r["id"] === "string" && typeof r["revision"] === "number")
+    .map((r) => ({ id: String(r["id"]), revision: Number(r["revision"]), rec: state.records.get(String(r["id"]))?.[Number(r["revision"]) - 1] }));
+  // 固定した記録のうち、ほかの固定した有効な記録に差し替えられた記録（現在の記録でないもの）は集計の対象にならない（記録の型の10）。
+  const superseded = new Set<string>();
+  for (const input of inputs) {
+    const sup = input.rec !== undefined && input.rec["status"] === "active" && isObj(input.rec["body"]) ? input.rec["body"]["supersedes"] : undefined;
+    if (isObj(sup) && sup["state"] === "known" && isObj(sup["value"]) && typeof sup["value"]["id"] === "string") superseded.add(sup["value"]["id"]);
   }
-  const inputs = Array.isArray(run["inputsRecords"]) ? run["inputsRecords"] : [];
-  for (const ref of inputs) {
-    if (!isObj(ref) || typeof ref["id"] !== "string" || typeof ref["revision"] !== "number") continue;
-    const rev = state.records.get(ref["id"])?.[ref["revision"] - 1];
-    if (rev === undefined || rev["recordType"] !== "payslip" || !isObj(rev["body"])) continue;
-    for (const item of items) {
-      const st = factStateOf(rev["body"][item]);
-      if (st === "unknown" || st === "not-stated") problems.add(w, `${String(run["status"])}のrunが、分からない入力（${ref["id"]}版${ref["revision"]}の${item}が${st}）を要求している`);
+  requests.forEach((req, ri) => {
+    const key = isObj(req) && isObj(req["key"]) ? req["key"] : undefined;
+    const scope = isObj(req) && isObj(req["scope"]) ? req["scope"] : undefined;
+    if (key === undefined || scope === undefined) return;
+    const from = String(scope["from"]);
+    const to = String(scope["to"]);
+    let targetType: string;
+    let item: string;
+    let dateField: string;
+    let dimension: (body: Obj) => boolean;
+    if (key["kind"] === "payslip-item" && typeof key["item"] === "string") {
+      targetType = "payslip";
+      item = key["item"];
+      dateField = "scheduledPayDate";
+      dimension = (body) => typeof body["employerId"] === "string" && inScope(scope["employerIds"], canonicalMasterId(state, body["employerId"]));
+    } else if (key["kind"] === "deposit-amount") {
+      targetType = "bank-deposit";
+      item = "amount";
+      dateField = "depositDate";
+      dimension = (body) => typeof body["accountId"] === "string" && inScope(scope["accountIds"], canonicalMasterId(state, body["accountId"]));
+    } else return;
+    for (const input of inputs) {
+      const rec = input.rec;
+      if (rec === undefined || rec["recordType"] !== targetType || rec["status"] !== "active" || superseded.has(input.id) || !isObj(rec["body"])) continue;
+      const body = rec["body"];
+      if (!dimension(body)) continue;
+      const date = body[dateField];
+      const ds = factStateOf(date);
+      // 日付の軸の日付が分からない記録は、その要求の範囲から外せない（照合の規則の2の「日付不明」）。
+      if (ds !== "known") {
+        problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]（${String(key["kind"])}・${item}）の範囲に、${dateField}が${String(ds)}の${input.id}版${input.revision}がある（分からない入力）`);
+        continue;
+      }
+      const d = isObj(date) ? String(date["value"]) : "";
+      if (d < from || d > to) continue;
+      const st = factStateOf(body[item]);
+      if (st === "unknown" || st === "not-stated") {
+        problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]（${String(key["kind"])}・${item}）が、分からない入力（${input.id}版${input.revision}の${item}が${st}）を要求している`);
+      }
     }
-  }
+  });
 }
 
 function checkRunProjection(run: unknown, state: State, w: string, problems: Problems): void {
@@ -1724,6 +1779,64 @@ test("検査の自己確認: computedのrunの射影が分からない入力を�
     delete body["incomeTax"];
   });
   assert.ok(p.some((x) => x.includes("EX-04a-a4") && x.includes("分からない入力") && x.includes("pay_405")), p.join("\n"));
+});
+
+test("検査の自己確認: runの不足は要求ごとの範囲・日付の軸・支払者・項目だけで判断する（PR23-R004）", () => {
+  const a6 = (copy: LedgerFiles): Obj => scenario(firstCase(copy, "EX-04a"), "EX-04a-a6");
+  const body = (copy: LedgerFiles, opId: string): Obj => (op(a6(copy), opId)["record"] as Obj)["body"] as Obj;
+  const runOf = (copy: LedgerFiles): Obj => op(a6(copy), "o3")["run"] as Obj;
+  const onlyA6 = (p: string[]): string[] => p.filter((x) => x.includes("EX-04a-a6"));
+  // 正常例: 9月の所得税と10月の総支給額を別々に要求し、要求していない9月の総支給額・10月の所得税は分からない。
+  assert.deepEqual(onlyA6(mutated(() => undefined)), []);
+  // 対: 要求していない項目がさらに分からなくても（記載なしでも）通る。
+  assert.deepEqual(
+    onlyA6(
+      mutated((copy) => {
+        body(copy, "o1")["residentTax"] = { state: "not-stated" };
+        body(copy, "o2")["healthInsurance"] = { state: "unknown" };
+      }),
+    ),
+    [],
+  );
+  // 負例: 実際に要求した項目（9月の所得税）が分からない。
+  const requested = onlyA6(
+    mutated((copy) => {
+      body(copy, "o1")["incomeTax"] = { state: "unknown" };
+    }),
+  );
+  assert.ok(requested.some((x) => x.includes("requests[0]") && x.includes("pay_421") && x.includes("incomeTax")), requested.join("\n"));
+  assert.ok(!requested.some((x) => x.includes("requests[1]")), requested.join("\n"));
+  // 負例: 2つ目の要求（10月の総支給額）だけが分からない。
+  const second = onlyA6(
+    mutated((copy) => {
+      body(copy, "o2")["grossPay"] = { state: "not-stated" };
+    }),
+  );
+  assert.ok(second.some((x) => x.includes("requests[1]") && x.includes("pay_422") && x.includes("grossPay")), second.join("\n"));
+  // 負例: 要求の支払者の明細で、支払予定日が分からないものは範囲から外せない。
+  const undated = onlyA6(
+    mutated((copy) => {
+      body(copy, "o2")["scheduledPayDate"] = { state: "unknown" };
+    }),
+  );
+  assert.ok(undated.some((x) => x.includes("scheduledPayDate") && x.includes("pay_422")), undated.join("\n"));
+  // 対: 要求の支払者でない明細は、分からない項目があっても判断に入れない。
+  assert.deepEqual(
+    onlyA6(
+      mutated((copy) => {
+        const ops = a6(copy)["operations"] as Obj[];
+        ops.splice(2, 0, {
+          op: "save",
+          opId: "o2b",
+          at: "2026-11-01T00:02:00.000Z",
+          expect: { outcome: "accepted" },
+          record: { id: "pay_423", recordType: "payslip", body: { employerId: "emp_2", scheduledPayDate: { state: "known", value: "2026-09-25" } } },
+        });
+        (runOf(copy)["inputsRecords"] as Obj[]).push({ id: "pay_423", revision: 1 });
+      }),
+    ),
+    [],
+  );
 });
 
 test("台帳のIDの接頭辞は契約の表と同じ", () => {

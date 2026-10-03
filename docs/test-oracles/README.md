@@ -166,7 +166,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ### runの射影
 
-計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。状態は入力と矛盾させない: `computed`・`provisional`のrunが要求する明細の項目（`requests`の`payslip-item`等の`item`）は、固定した明細でどれも分かっている（`unknown`・`not-stated`ならincomplete。計算結果の2）。台帳の検査がこれを確かめる。
+計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。状態は入力と矛盾させない（計算結果の2。必要な入力が足りなければ`incomplete`）。台帳の検査は、`computed`・`provisional`のrunについて、要求（`requests`の要素）ごとに、その要求の範囲・日付の軸・支払者（口座）に当たる固定した記録（`inputsRecords`のうち有効で、ほかの固定した記録に差し替えられていないもの）の、その要求の項目だけが分かっていることを確かめる。要求どうしの項目や対象の記録は混ぜない（9月の所得税と10月の総支給額を別々に要求するrunは、9月の総支給額・10月の所得税が分からなくても`computed`になれる。EX-04a-a6）。日付の軸の日付が分からない記録は、その要求の範囲から外せないので不足とみなす。判断するのは、対象を固定した記録だけで決められる要求（`payslip-item`・`deposit-amount`）だけで、帰属・採用・実績化・正式通知の類を導く要求（`payslip-by-income-year`・`annual-value`・`forecast-remaining`・`notice-determination`）の不足は、この検査では判断しない（必要な集合を導く実装、T11・T15で判断する）。
 
 ## 制度のケース
 
