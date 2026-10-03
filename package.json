@@ -16,11 +16,15 @@
     "setup": "node scripts/setup.ts",
     "check:install": "node scripts/check-install.ts",
     "build": "node scripts/build.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test \"scripts/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
+    "test": "node --test \"scripts/**/*.test.ts\" \"src/**/*.test.ts\" \"tests/**/*.test.ts\"",
+    "test:browser": "playwright test",
+    "test:browser:install": "node e2e/install-browsers.ts",
+    "check:test-skips": "node scripts/check-test-skips.ts",
     "check:public": "node scripts/check-public.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.19.1",
     "typescript": "7.0.2"
   }

@@ -1,8 +1,8 @@
 # 開発環境と作業の規約
 
-T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
+T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。CIとブラウザ試験の基盤は、T05（[Issue #17](https://github.com/doc-gif/kurashi-ledger/issues/17)）で加えた。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
 
-いまあるのは開発用の設定とスクリプトだけで、アプリの起動（T26）、UIのビルド（T08）、CI（T05）はまだない。
+いまあるのは開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIだけで、アプリの起動（T26）、UIのビルド（T08）はまだない。
 
 ## Node.jsの版
 
@@ -22,7 +22,7 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 
 版が合わないと、npmは`npm ci`・`npm run`の前に`EBADDEVENGINES`で止まる。`--force`で検査を外さない（`npm run setup`は`--force`を拒む）。
 
-既知の制約: T02の作業環境のMac（Node.js 24.14.0）では、この版の検査でnpmのスクリプト（`npm run setup`等）が止まる。Node.jsを24.15.0以上に更新するまで続く。所有者は当面更新しないと決め、固定した版での確認はT05のCIで行う（下の「所有者の決定」の1）。
+既知の制約: T02の作業環境のMac（Node.js 24.14.0）では、この版の検査でnpmのスクリプト（`npm run setup`等）が止まる。Node.jsを24.15.0以上に更新するまで続く。所有者は当面更新しないと決め、固定した版での確認はT05のCIで行う（下の「所有者の決定」の1と「CI」）。
 
 ## 初めて使うとき
 
@@ -30,7 +30,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 1. Gitと、上の版のNode.jsを入れる（公式インストーラ、またはnvm等のバージョン管理ツール）。
 2. 作業用のworktree（下の「branchとworktree」）で`npm run setup`を実行する。中で`npm ci`を実行し、成功したときだけ依存の導入の記録を書く。
-3. `npm run typecheck`、`npm test`、`npm run check:public`が通ることを確かめる。
+3. `npm run typecheck`、`npm test`、`npm run check:public`が通ることを確かめる。ブラウザ試験を手元で動かすときは、下の「ブラウザ試験」。
 
 新しいcloneでも同じ手順で動く。記録は`node_modules`の中にあるので、worktreeやcloneごとに`npm run setup`を実行する。`node_modules`をほかの場所へのリンク（symlink・junction）にして共有することはできない（`npm run setup`等が何も変えずに止まる。ADR-0008）。
 
@@ -41,8 +41,11 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | `npm run setup` | 依存を導入する。既存の記録を削除し、repoの`.npmrc`と決めた引数だけで`npm ci`を実行し（利用者のnpmrcや`npm_config_`の環境変数は使わない）、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
 | `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`とNode.jsの版・OS・CPUに一致し、導入した依存と実行ファイルの本体・リンクが`node_modules`の中の通常のファイルとしてそろっているかを確かめる（ファイルの中身の改ざんまでは確かめない。ADR-0008） |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
-| `npm run typecheck` | `tsc --noEmit`による型検査だけを行う。JavaScriptは出力しない |
-| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`の試験を実行する |
+| `npm run typecheck` | `tsc --noEmit`による型検査だけを行う（ルートの`tsconfig.json`と、ブラウザ試験の`e2e/tsconfig.json`の2つ。下の「TypeScript」）。JavaScriptは出力しない |
+| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`・`src/`・`tests/`の`*.test.ts`を実行する |
+| `npm run test:browser:install` | このOSのブラウザ試験に要るブラウザを入れる（下の「ブラウザ試験」） |
+| `npm run test:browser` | Playwrightのブラウザ試験（`e2e/`の`*.spec.ts`）を実行する |
+| `npm run check:test-skips -- <ファイル>` | CIで使う。保存した`npm test`の出力のskipを、下の「環境によって飛ばす試験」の表とこのOSで照合し、結果を表示する（下の「CI」） |
 | `npm run check:public` | 公開検査。`-- --staged`でcommitしようとしている変更だけを見る（[公開範囲と公開前の点検](public-data.md)） |
 
 `npm run setup`は、worktreeの直下に作業中の印`.kurashi-ledger-setup.lock`を作ってから導入し、終わったら消す。同じworktreeで2つ目を起動すると、依存を変えずに止まる。
@@ -59,7 +62,9 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 
 ### 環境によって飛ばす試験
 
-`npm test`は、試験の中で再現できない環境では、次の試験を理由を出して飛ばす（`node --test`の出力に`# SKIP`と理由が出る）。飛ばした分は、T05の受入条件の手での確認（[タスク台帳](implementation-tasks.md)のT05）で確かめる。飛ばす試験を増やすときは、この表とT05の手での確認を同じPRで直す。想定と違う件数のskipは、成功として扱わない。
+`npm test`は、試験の中で再現できない環境では、次の試験を理由を出して飛ばす（`node --test`の出力に`# SKIP`と理由が出る）。飛ばした分は、T05の受入条件の手での確認（[タスク台帳](implementation-tasks.md)のT05、下の「Windowsの実機での確認」）で確かめる。飛ばす試験を増やすときは、この表とT05の手での確認を同じPRで直す。想定と違う件数のskipは、成功として扱わない。
+
+CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験をファイルに結び付けて件数をこの表と照合し、理由とdiagnosticと一緒にrunのSummaryに記録する（`npm run check:test-skips`。違えば失敗）。照合は別の一覧を持たず、この表の各行の「`ファイル`の…N件」と、表の下の件数の文を読む（表と文の合計が食い違っても失敗）。表の書き方を変えるときは、`scripts/lib/test-skips.ts`とその試験を同じPRで直す。
 
 | 環境 | 飛ばす試験（件数） | 理由 | 代わりの確認（T05） |
 | --- | --- | --- | --- |
@@ -69,7 +74,37 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 
 件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。件数と一覧の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（件数を書き写さない）。
 
-飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。T05のWindowsのCIでは、出力にこの旨が出たかを記録する。
+飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
+
+### Windowsの実機での確認
+
+上の表の「代わりの確認」のうちWindowsの分（T05の受入条件）は、試験のプロセスやCIから実際のコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れないので、Windowsの実機のコンソール（PowerShell）で手で行う。結果はT05のIssue（[#17](https://github.com/doc-gif/kurashi-ledger/issues/17)）かPRのコメントに、下の様式で記録する。CIで確かめたとは書かない。
+
+準備:
+
+- 合成データだけの作業用のworktreeで行い、一度`npm.cmd run setup`が通ることを確かめる。
+- `npm ci`はすぐ終わることがあるので、setupが「npm ci を実行する」と表示したらすぐに押す。間に合わなければやり直す（npmのキャッシュを空にすると、依存を取り直すぶん時間がかかる: `npm.cmd cache clean --force`）。
+- 終了コードは、終わった直後に`$LASTEXITCODE`で見る。`npm.cmd`はバッチファイルなので、Ctrl+C・Ctrl+Breakのあとに「バッチ ジョブを終了しますか (Y/N)?」と聞かれることがある。setup自身の終了コードを確かめるには、バッチファイルを通さずに`node "$(Split-Path (Get-Command npm.cmd).Source)\node_modules\npm\bin\npm-cli.js" run setup`で起動する（公式のインストーラで入れた場合の場所。ほかの方法で入れた場合は、`npm-cli.js`の場所を合わせる）。利用者がふだん使う`npm.cmd run setup`での表示と終了コード（`Y`・`N`のどちらで答えたか）も記録する。
+- 印と記録の有無は`Test-Path .kurashi-ledger-setup.lock`と`Test-Path node_modules\.kurashi-ledger-install.json`で見る。
+
+| # | 手順 | 期待する結果（ADR-0008の「中断」） |
+| --- | --- | --- |
+| 1 | `npm ci`の最中にCtrl+Cを押す。続けて`npm.cmd run setup`と`npm.cmd run check:install`を実行する | 「SIGINT を受けた」と表示し、`npm ci`の終了を待ってから130で終わる。印も記録も残らない。続けたsetupは0で終わり、check:installが通る |
+| 2 | `npm ci`の最中にCtrl+Breakを押す。続けて1と同じく実行する | 「SIGBREAK を受けた」と表示し、149で終わる。印も記録も残らない。続けたsetupが通る |
+| 3 | setupを始め、`npm ci`の最中に、別のPowerShell（同じディレクトリ）で`$f = [System.IO.File]::Open("$PWD\.kurashi-ledger-setup.lock", 'Open', 'Read', 'Read')`を実行してから、元のコンソールでCtrl+Cを押す。そのあと`$f.Close()`、`Remove-Item .kurashi-ledger-setup.lock`、`npm.cmd run setup`の順に実行する | 130で終わり、印が残ったことと消し方が表示される。印は残り、記録は残らない。印を消したあとのsetupは0で終わる |
+
+記録の様式（個人の名前を含むパスやアカウント名は書かない）:
+
+```text
+- 実施日:
+- Windowsの版（例: Windows 11 24H2）・CPU（x64/arm64）・コンソール（PowerShell 7 / Windows PowerShell 5.1、ターミナルの種類）:
+- Node.jsとnpmの版（node --version、npm.cmd --version）・対象のcommit（git rev-parse HEAD）:
+- 起動の方法（npm-cli.jsを直接 / npm.cmd）:
+- 1 Ctrl+C: 表示 / 終了コード / 印の有無 / 記録の有無 / 続けたsetupとcheck:installの結果:
+- 2 Ctrl+Break: 同上:
+- 3 印を消せないとき: 表示 / 終了コード / 印・記録の有無 / 印を消したあとのsetupの結果:
+- npm.cmdで起動したときの表示と終了コード（Y・Nの答え）:
+```
 
 ## npmの設定（`.npmrc`）
 
@@ -82,7 +117,7 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 - 型検査だけに使う（`typescript` 7.0.2、Apache-2.0）。サーバー側の`.ts`はNode.jsの型除去でそのまま実行する。
 - `tsconfig.json`の主な設定: `noEmit`、`erasableSyntaxOnly`（enum、実行時コードを持つnamespace、parameter properties等を使わない）、`allowImportingTsExtensions`と`module: nodenext`（importには`.ts`の拡張子を書く）、`verbatimModuleSyntax`（型だけのimportには`type`を付ける）、`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`。`paths`は使わない（Node.jsは`tsconfig.json`を読まない）。
 - Node.jsのAPIの型は`@types/node`（24系、MIT）。Node.jsのメジャーと合わせる。
-- 型検査の対象は`scripts/`・`src/`・`tests/`の`.ts`。UIの`.tsx`はT08で加える。
+- 型検査の対象は`scripts/`・`src/`・`tests/`の`.ts`。ブラウザ試験（`e2e/`と`playwright.config.ts`）は、Playwrightの型がDOMの型を要るので、`e2e/tsconfig.json`（ルートの設定を継ぎ、`lib`に`dom`を加える）で別に検査する。サーバー側の型検査にDOMの型を入れないため。`npm run typecheck`は両方を行う。UIの`.tsx`はT08で加える。
 
 ## 依存の追加
 
@@ -91,6 +126,39 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 1. `npm install --save-dev <名前>@<版>`等で`package.json`とlockfileを更新する（これは記録を書かない）。
 2. `npm run setup`で導入し直す。
 3. 依存のライセンス・サポート・インストールスクリプトの有無を確かめ、PRに書く。lockfileの`resolved`が`https://registry.npmjs.org/`以外を指していないことも確かめる。
+
+T05で`@playwright/test` 1.63.0を加えた（下の「ブラウザ試験」）。次に`package.json`とlockfileを変えるのはT26。
+
+## ブラウザ試験（Playwright）
+
+T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004）。`@playwright/test` 1.63.0（Apache-2.0）と、その依存の`playwright`・`playwright-core`（同じ版、Apache-2.0）。どれもインストールスクリプトはなく、`resolved`は`https://registry.npmjs.org/`。
+
+- 試験は`e2e/`の`*.spec.ts`に置く。`node --test`の試験（`*.test.ts`）とは別で、`npm test`では実行しない。
+- ブラウザは`e2e/browsers.ts`の1か所で決める。ChromiumをmacOS・Windows・Linux、WebKitをmacOSで実行する（PlaywrightのWindows・LinuxのWebKitはSafariの代わりにならない）。Firefoxは必須の対象に含めない（ADR-0004）。
+- 手元で動かすとき: `npm run setup`のあと、`npm run test:browser:install`でこのOSに要るブラウザを入れてから、`npm run test:browser`を実行する。ブラウザはPlaywrightの配布元から取得し、Playwrightの既定の場所（利用者のキャッシュ。macOSは`~/Library/Caches/ms-playwright`、Windowsは`%LOCALAPPDATA%\ms-playwright`、Linuxは`~/.cache/ms-playwright`）に入る。`node_modules`の外なので、依存の導入の記録には影響しない。Linuxで足りないOSのライブラリも入れるときは`npm run test:browser:install -- --with-deps`（管理者の権限を使う）。
+- 照合（`e2e/strict-reporter.ts`）: このOSで必要なブラウザのどれかで実行した試験が0件、skipした試験、再試行で通った試験があれば、試験が通っていても失敗にする。いまブラウザ試験で飛ばしてよい試験はない。飛ばす試験を加えるときは、照合とこの資料を同じPRで直す。`retries`は0で、CIでは`test.only`を拒む（`forbidOnly`）。試験を集めるだけ（`--list`）のときは、CIの外でだけ照合しない。
+- 設定（`playwright.config.ts`）では、ブラウザの安全上の既定の動き（CSP、HTTPSの検査、要求のヘッダ、権限、プロキシ）を変える設定（`bypassCSP`、`ignoreHTTPSErrors`、`extraHTTPHeaders`等）を使わない。T26のcookieの交換・Origin・`Sec-Fetch-Site`・CSPの試験を、実際のブラウザの動きのまま確かめるため。trace・screenshot・videoは作らない。出力先の`test-results/`は`.gitignore`の対象。
+- いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験はT26、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
+
+## CI
+
+T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない）と、mainへのpushで動く。
+
+| ジョブ | OS | 内容 |
+| --- | --- | --- |
+| `checks` | Linux・Windows・macOS | `package.json`の`devEngines.runtime`の範囲で最新のNode.jsを入れ（`actions/setup-node`の`node-version-file`。npm自身もdevEnginesで版を検査する）、`npm run setup`→`check:install`→`typecheck`→`npm test`→skipの照合（`check:test-skips`）→`build`と、`check:public`を実行する |
+| `browser` | Linux・Windows・macOS | `npm run setup`→`test:browser:install`→`test:browser`（ChromiumをすべてのOS、WebKitをmacOS） |
+| `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`） |
+| `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの） |
+| `Quality gate` | Linux | 上のすべてのジョブの結果をまとめる。どれかが失敗・中断・skip（欠けた）なら失敗にする（pushのときは、`review plan`がskipであることを求める）。PRでは、試験したmerge commitの親が、PRのbaseとheadのSHAであることを確かめる |
+
+- 結果の読み方: 各runのSummaryに、`npm test`の件数とskipした試験・理由・diagnostic・表との照合（OSごと、Node.jsの版つき）、ブラウザごとの結果、Quality gateの判定と、試験したcommit・PRのhead・baseのSHAが出る。レビューでは、最新のheadとbaseに対応するrunかを、このSHAで確かめる。runのあとでbaseが進んだ場合、その結果は古いbaseに対するものなので、baseを取り込んでやり直す。
+- 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件と、表と違うskipは、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
+- 安全: 標準のhosted runner（`ubuntu-latest`・`windows-latest`・`macos-latest`）だけを使う。権限は`contents: read`だけで、secretsを使わず、checkoutの資格情報を残さない（`persist-credentials: false`）。actionはcommitのSHAで固定する。artifactをuploadしない。`pull_request_target`を使わないので、forkからのPRにも、secretsも書込みの権限も渡らない。
+- 時間の上限: `checks`・`browser`は20分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
+- 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。必須のcheckやrulesetは所有者が決めるrepoの設定で、いまは設定していない。
+- CIで確かめないもの: Intel Mac・Windows（arm64）、公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）で入れたNode.js（CIは`actions/setup-node`の配布物を使う。ADR-0008の「見抜けないこと」のnpmの組込みの設定は、インストーラでは未確認のまま）、実機のSafari、Windowsのコンソールの制御イベント（上の「Windowsの実機での確認」）。
+- 後続タスクの試験: `scripts/`・`src/`・`tests/`に`*.test.ts`を加えれば`npm test`で、`e2e/`に`*.spec.ts`を加えれば`npm run test:browser`で、3つのOSのCIで実行される。
 
 ## branchとworktree
 

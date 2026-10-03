@@ -81,7 +81,7 @@ python3 tools/review_guard/guard.py triage --candidates candidates.json
 
 ## CIの配置前提
 
-`adapters/github-actions.yml`は未稼働のテンプレート。認証にworkflow scopeがないため`.github/workflows/`へ配置していない。
+`adapters/github-actions.yml`はテンプレート。このrepoでは、T05で同じ内容を`.github/workflows/ci.yml`の`review plan`・`review tools`のジョブとして配置した（actionの版と`setup-python`を合わせ、3つのOSで試験する）。ほかのrepoへ移すときは、このテンプレートから配置する。
 
 **このテンプレート単独では、PRによる検査の迂回を防げない。** `pull_request`のworkflow自体をPRで変更できるため、base側の検査器を呼ぶstepを削除されれば保証はない。権限を持つ担当がT05/T23で、workflow・検査器・条件・原因台帳の変更の必須レビュー／ruleset等を別途設計・設定し、迂回試験まで確認してから必須ゲートとして扱う。CODEOWNERSファイルだけでは強制にならず、同一アカウントのCOMMENTもGitHub上の独立承認に数えない。今回は権限付きイベントへの切替えや保護設定をしない。
 

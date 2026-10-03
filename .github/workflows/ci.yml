@@ -1,0 +1,262 @@
+# CI（T05、Issue #17）。内容と結果の読み方は docs/development.md の「CI」。
+# - 標準のGitHub-hosted runnerだけを使う。権限はcontents: readだけで、secretsを使わず、artifactをuploadしない。
+# - actionはcommitのSHAで固定する（行末のコメントは版）。
+# - pull_request（pull_request_targetではない）で、PRのコードを書込みの権限なしで動かす。
+#   workflow自体もPRで変えられるので、CIの合格は独立レビューの代わりにならず、迂回を防ぐ強制ゲートでもない
+#   （docs/review-prevention.md）。workflowの変更は、別の担当が内容をレビューする。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: checks (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
+          - name: macos
+            os: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js (devEngines.runtime in package.json)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          check-latest: true
+          package-manager-cache: false
+      - name: Show the runtime
+        run: |
+          node --version
+          npm --version
+          node -p "process.platform + '/' + process.arch + (process.getuid ? ' uid=' + process.getuid() : '')"
+      - name: npm run setup
+        id: setup
+        run: npm run setup
+      - name: npm run check:install
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npm run check:install
+      - name: npm run typecheck
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npm run typecheck
+      - name: npm test
+        id: test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npm test | tee "$RUNNER_TEMP/npm-test.txt"
+      - name: Compare the skipped tests with docs/development.md
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: npm run check:test-skips -- "$RUNNER_TEMP/npm-test.txt"
+      - name: npm run build
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npm run build
+      - name: npm run check:public
+        if: ${{ !cancelled() }}
+        run: npm run check:public
+
+  browser:
+    name: browser (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            install-args: --with-deps
+          - name: windows
+            os: windows-latest
+            install-args: ''
+          - name: macos
+            os: macos-latest
+            install-args: ''
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js (devEngines.runtime in package.json)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          check-latest: true
+          package-manager-cache: false
+      - name: npm run setup
+        run: npm run setup
+      - name: Install the browsers for this OS (e2e/browsers.ts)
+        env:
+          INSTALL_ARGS: ${{ matrix.install-args }}
+        # INSTALL_ARGSは空か--with-depsだけ（上のmatrix）。空のときに引数を渡さないよう、引用符で囲まない。
+        run: npm run test:browser:install -- $INSTALL_ARGS
+      - name: npm run test:browser
+        run: npm run test:browser
+
+  review-tools:
+    name: review tools (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
+          - name: macos
+            os: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.11 (the oldest version the tool supports)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Validate the catalog and the ledger
+        run: python -E -s tools/review_guard/guard.py validate
+      - name: Test the generic tool
+        run: python -E -s -m unittest discover -s tools/review_guard/tests -v
+      - name: Test the repository routing
+        run: python -E -s -m unittest discover -s .review/tests -v
+
+  # tools/review_guard/adapters/github-actions.yml の計画の検査を配置したもの。baseのcheckoutの検査器だけを
+  # 実行し、PRのコード（candidate）は実行しない。PRのときだけ動く。
+  review-plan:
+    name: review plan
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: List actual paths without executing candidate code
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ ! -f baseline/tools/review_guard/changed_paths.py ]; then
+            echo 'bootstrap: base adapter missing; plan enforcement NOT verified.'
+            exit 1
+          fi
+          python -E -s baseline/tools/review_guard/changed_paths.py --repository candidate --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --output changed.json
+      - name: Check plan using base policy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ ! -f baseline/tools/review_guard/ci.py ]; then
+            echo 'bootstrap: base has no review guard; plan enforcement is NOT verified. Independent review is required.'
+            exit 1
+          fi
+          python -E -s baseline/tools/review_guard/ci.py --candidate candidate --paths-file changed.json --base-sha "$BASE_SHA"
+
+  # 最終の判定。どれかのジョブが失敗・中断・skip（欠けた）なら失敗にする。pushのときは計画の検査がないので、
+  # その結果がskippedであることを求める。試験したcommitと、PRのhead・baseのSHAをstep summaryに残す。
+  quality-gate:
+    name: Quality gate
+    if: ${{ always() }}
+    needs: [checks, browser, review-tools, review-plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the commit under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require every job and record the commits
+        env:
+          EVENT: ${{ github.event_name }}
+          TESTED_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CHECKS: ${{ needs.checks.result }}
+          BROWSER: ${{ needs.browser.result }}
+          REVIEW_TOOLS: ${{ needs.review-tools.result }}
+          REVIEW_PLAN: ${{ needs.review-plan.result }}
+        run: |
+          problems=()
+          expect() {
+            if [ "$2" != "$3" ]; then problems+=("$1 の結果が $2（必要なのは $3）"); fi
+          }
+          expect checks "$CHECKS" success
+          expect browser "$BROWSER" success
+          expect review-tools "$REVIEW_TOOLS" success
+          if [ "$EVENT" = pull_request ]; then
+            expect review-plan "$REVIEW_PLAN" success
+          else
+            expect review-plan "$REVIEW_PLAN" skipped
+          fi
+          actual=$(git rev-parse HEAD)
+          if [ "$actual" != "$TESTED_SHA" ]; then problems+=("checkoutしたcommit $actual が github.sha $TESTED_SHA と違う"); fi
+          parents=$(git cat-file -p HEAD | sed -n 's/^parent //p' | paste -sd ' ' -)
+          if [ "$EVENT" = pull_request ] && [ "$parents" != "$BASE_SHA $HEAD_SHA" ]; then
+            problems+=("試験したmerge commitの親（$parents）が、PRのbase $BASE_SHA とhead $HEAD_SHA でない")
+          fi
+          {
+            echo '### Quality gate'
+            echo
+            echo '| 項目 | 値 |'
+            echo '| --- | --- |'
+            echo "| イベント | $EVENT |"
+            echo "| 試験したcommit | $TESTED_SHA |"
+            echo "| その親 | $parents |"
+            if [ "$EVENT" = pull_request ]; then
+              echo "| PRのhead | $HEAD_SHA |"
+              echo "| PRのbase | $BASE_SHA |"
+            fi
+            echo "| checks（3 OS） | $CHECKS |"
+            echo "| browser（3 OS） | $BROWSER |"
+            echo "| review tools（3 OS） | $REVIEW_TOOLS |"
+            echo "| review plan | $REVIEW_PLAN |"
+            echo
+            if [ ${#problems[@]} -eq 0 ]; then
+              echo '判定: 成功。CIの合格は、独立した内容レビューと所有者の判断の代わりにならない。'
+            else
+              echo '判定: 失敗。'
+              printf -- '- %s\n' "${problems[@]}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ${#problems[@]} -gt 0 ]; then
+            printf '::error::%s\n' "${problems[@]}"
+            exit 1
+          fi
+          echo 'すべてのジョブが成功した。'

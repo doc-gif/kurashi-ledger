@@ -57,6 +57,7 @@
 ## T05 — 軽量CIとレビューを支えるゲート
 
 - 依存: T02。担当: 開発運用。範囲: `.github/workflows/`、`scripts/`、ブラウザ試験の基盤。共有資源: CI設定、lockfile（Playwrightの追加）。
+- 成果物の所在（Issue #17）: `.github/workflows/ci.yml`、`playwright.config.ts`と`e2e/`、`scripts/check-test-skips.ts`・`scripts/lib/test-skips.ts`、[開発環境](development.md)の「CI」「ブラウザ試験（Playwright）」「Windowsの実機での確認」。
 - 成果物: 型検査・テスト・公開検査、Mac/Windows/Linuxの必要チェック、最終Quality gate。依存固定、時間上限、最小権限。
 - ブラウザ試験の基盤: Playwrightを導入し、CIでChromium（Mac/Windows/Linux）とWebKit（Mac）を実行できるようにする（ADR-0004）。最初に使うのはT26のcookie交換の試験。
 - 受入: 失敗・中断・想定外skipが成功に見えない。必要な検証と最新PR SHA・統合対象baseの対応が確認できる。ルール・workflowの変更をレビューなしで自動承認しない。

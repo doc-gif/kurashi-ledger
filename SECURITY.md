@@ -11,7 +11,7 @@ If an actual credential is published, revoke/rotate it immediately. Removing the
 
 ## GitHub Actions
 
-No workflows are configured yet. Future PR CI should use standard GitHub-hosted runners with `contents: read`, short job timeouts, no repository secrets, no untrusted code in privileged workflows, and SHA-pinned actions. Trusted automation control requires separate, minimal credentials as specified in docs/github-agent-operations.md; these must never be exposed to PR code.
+The CI workflow (`.github/workflows/ci.yml`, added in T05) uses standard GitHub-hosted runners with `contents: read`, job timeouts, no repository secrets, `persist-credentials: false` and actions pinned to full commit SHAs. It runs on `pull_request` (not `pull_request_target`), so pull requests from forks receive no secrets or write token, and untrusted code never runs in a privileged workflow. Because a pull request can change the workflow itself, a green run is not a tamper-proof gate and does not replace an independent review (docs/review-prevention.md). Trusted automation control requires separate, minimal credentials as specified in docs/github-agent-operations.md; these must never be exposed to PR code.
 
 Standard hosted runner usage for public repositories is free under current GitHub terms; paid runner types and other billed services have separate conditions. No deployment, paid runner or artifact upload is configured here.
 
