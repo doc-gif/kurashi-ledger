@@ -4,7 +4,7 @@
 // 照合配分の確定の条件・識別の次元・配分の符号、照合の判断の保存の検証（T11）と、計算runの保存（T15）は、ここでは行わない。
 
 import { knownValue, stateOf } from "./fact.ts";
-import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, isRecordType, RECORD_PREFIX, RUN_PREFIX, recordTypeOfId, type IdGenerator, type RecordType } from "./ids.ts";
+import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, RECORD_PREFIX, RUN_PREFIX, recordTypeOfId, type IdGenerator, type RecordType } from "./ids.ts";
 import {
   idInUse,
   importKeyIndex,
@@ -117,20 +117,8 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
       return reject(ledger, one("write-request-conflict", "$.writeRequestId", `同じwriteRequestIdで内容の違う要求: ${wr}`));
     }
   }
-  // 2. 再取込（同じimportKey）。同じ記録の種類で、sourceとkeyの組が同じ記録があれば、新しい記録を作らずに返す。
+  // 2. 記録1件で決まる検査。冪等キーで既存の記録を返す前に、要求そのものを確かめる（検査を迂回させない）。
   const recordType = proposal["recordType"];
-  const ik = knownValue(proposal["importKey"]);
-  if (proposal["reason"] === "create" && isRecordType(recordType) && isObj(ik)) {
-    const source = ik["source"];
-    const key = ik["key"];
-    if (typeof source === "string" && typeof key === "string") {
-      const existing = ledger.importKeys.get(importKeyIndex(recordType, { source, key }));
-      if (existing !== undefined) {
-        return { kind: "existing-returned", ledger, recordId: existing, voided: latestRevision(ledger, existing)?.status === "voided" };
-      }
-    }
-  }
-  // 3. 記録1件で決まる検査。
   const isCreate = proposal["reason"] === "create";
   const staticViolations = checkRevisionStatic(proposal, { stored: false });
   if (isCreate && "id" in proposal) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "新規の保存のIDはID生成器が割り当てる（書かない）" });
@@ -142,10 +130,22 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
   const type = recordType as RecordType;
   const reason = proposal["reason"] as RevisionReason;
   const now = nowOf(deps.clock);
-  // 4. 新規と改訂の、記録とその前の版で決まる検査。
+  // 3. 新規と改訂の、記録とその前の版で決まる検査。
   let id: string;
   let previous: Revision | undefined;
   if (isCreate) {
+    const local = [...knownOnInFuture(proposal, undefined, now), ...missingReferences(ledger, type, proposal["duplicateOf"], proposal["body"] as Obj)];
+    if (local.length > 0) return reject(ledger, local);
+    // 再取込（同じimportKey）。正しい要求だけについて、同じ記録の種類でsourceとkeyの組が同じ記録（取消・差し替え済みを含む）が
+    // あれば、新しい記録を作らずにその記録を返す（共通の型の10。内容が違っても返す）。既存の記録との重なりで決まる検査
+    // （期間の重なり・系列等）は、同じ取引の再取込そのものが当たるので、この判定の前には行わない。
+    const ik = knownValue(proposal["importKey"]);
+    if (isObj(ik) && typeof ik["source"] === "string" && typeof ik["key"] === "string") {
+      const existing = ledger.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
+      if (existing !== undefined) {
+        return { kind: "existing-returned", ledger, recordId: existing, voided: latestRevision(ledger, existing)?.status === "voided" };
+      }
+    }
     id = deps.ids.next(RECORD_PREFIX[type]);
     if (!isIdWithPrefix(id, RECORD_PREFIX[type])) return reject(ledger, one("value-invalid", "$.id", `ID生成器の値が${type}のIDではない: ${id}`));
     if (idInUse(ledger, id)) return reject(ledger, one("id-already-used", "$.id", `すでに使われたID: ${id}`));
@@ -155,11 +155,8 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
     if (previous === undefined) return reject(ledger, one("record-not-found", "$.id", `改訂する記録がない: ${id}`));
     const scenario = checkAgainstPrevious(ledger, proposal, baseRevision as number, previous, reason);
     if (scenario.length > 0) return reject(ledger, scenario);
-  }
-  if (isCreate || reason === "new-information" || (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous?.knownOn))) {
-    const k = knownValue(proposal["knownOn"]);
-    const today = tokyoDateOf(now);
-    if (typeof k === "string" && k > today) return reject(ledger, one("known-on-in-future", "$.knownOn", `把握日${k}が保存のときの日付${today}（Asia/Tokyo）より後`));
+    const future = knownOnInFuture(proposal, previous, now);
+    if (future.length > 0) return reject(ledger, future);
   }
   const revision: Revision = {
     id,
@@ -184,6 +181,17 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
   return { kind: "accepted", ledger: after, revision };
 }
 
+// 利用者が新しく入力する把握日（新規・新しい情報、把握日の写し誤りを直す入力誤りの訂正）は、保存のときの時計の日付
+// （Asia/Tokyo）より後にできない。前の改訂から引き継いだ把握日は検査しない（共通の型の7）。
+function knownOnInFuture(proposal: Obj, previous: Revision | undefined, now: string): Violation[] {
+  const reason = proposal["reason"];
+  const entered = reason === "create" || reason === "new-information" || (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous?.knownOn));
+  if (!entered) return [];
+  const k = knownValue(proposal["knownOn"]);
+  const today = tokyoDateOf(now);
+  return typeof k === "string" && k > today ? one("known-on-in-future", "$.knownOn", `把握日${k}が保存のときの日付${today}（Asia/Tokyo）より後`) : [];
+}
+
 function checkAgainstPrevious(ledger: Ledger, proposal: Obj, baseRevision: number, previous: Revision, reason: RevisionReason): Violation[] {
   if (proposal["recordType"] !== previous.recordType) return one("immutable-field-changed", "$.recordType", "recordTypeは改訂で変えられない");
   // 古い版での上書きを拒否する（共通の型の9）。
@@ -198,6 +206,11 @@ function checkAgainstPrevious(ledger: Ledger, proposal: Obj, baseRevision: numbe
     if (!sameJson(proposal["body"], previous.body)) return one("body-change-on-void-or-unvoid", "$.body", "取消・取消の取り消しではbodyを変えない");
     // 把握日は直前の改訂の把握日を引き継ぐ（共通の型の7の「把握日の決め方」）。
     if (!sameJson(proposal["knownOn"], previous.knownOn)) return one("known-on-not-inherited", "$.knownOn", "取消・取消の取り消しは直前の把握日を引き継ぐ");
+  }
+  // 入力誤りの訂正は把握日を引き継ぐ。変えてよいのは把握日そのものの写し誤りを直す場合だけで、その場合はchangeNoteに書く
+  // （共通の型の7の「把握日の決め方」）。changeNoteがknownでなければ、根拠のない把握日の移動として拒否する。
+  if (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous.knownOn) && stateOf(proposal["changeNote"]) !== "known") {
+    return one("known-on-not-inherited", "$.changeNote", "入力誤りの訂正で把握日を変えるときは、changeNoteに理由を書く");
   }
   return checkLineIdReservation(ledger, proposal, previous);
 }
@@ -232,20 +245,19 @@ function checkLineIdReservation(ledger: Ledger, proposal: Obj, previous: Revisio
 }
 
 // 記録の中の参照（Ref）のうち、記録どうしの関係のもの。
-function recordRefsOf(revision: Revision): { path: string; id: string; line: string; expectLines?: string }[] {
-  const out: { path: string; id: string; line: string; expectLines?: string }[] = [];
+function recordRefsOf(recordType: RecordType, duplicateOf: unknown, b: Obj): { path: string; id: string; line: string }[] {
+  const out: { path: string; id: string; line: string }[] = [];
   const push = (path: string, v: unknown): void => {
     if (isObj(v) && typeof v["id"] === "string" && typeof v["line"] === "string") out.push({ path, id: v["id"], line: v["line"] });
   };
-  const b = revision.body;
-  push("$.duplicateOf", knownValue(revision.duplicateOf));
+  push("$.duplicateOf", knownValue(duplicateOf));
   push("$.body.supersedes", knownValue(b["supersedes"]));
-  if (revision.recordType === "allocation") {
+  if (recordType === "allocation") {
     push("$.body.from", b["from"]);
     push("$.body.to", b["to"]);
   }
-  if (revision.recordType === "decision" && Array.isArray(b["targets"])) b["targets"].forEach((t, i) => push(`$.body.targets[${i}]`, t));
-  if (revision.recordType === "evidence-link") push("$.body.target", b["target"]);
+  if (recordType === "decision" && Array.isArray(b["targets"])) b["targets"].forEach((t, i) => push(`$.body.targets[${i}]`, t));
+  if (recordType === "evidence-link") push("$.body.target", b["target"]);
   return out;
 }
 
@@ -259,23 +271,28 @@ function lineExists(ledger: Ledger, id: string, line: string): boolean {
   return lineObjects(target.body[list]).some((l) => l["lineId"] === line);
 }
 
-function checkRelations(before: Ledger, after: Ledger, revision: Revision, previous: Revision | undefined): Violation[] {
+// 参照先の実在（共通の型の2。参照先が存在しない参照は保存できない）と、行が参照先の現在の版にあること。
+function missingReferences(ledger: Ledger, recordType: RecordType, duplicateOf: unknown, body: Obj): Violation[] {
   const out: Violation[] = [];
-  const view: ResolvedView = CURRENT;
-  // 参照先の実在（共通の型の2。参照先が存在しない参照は保存できない）と、行が参照先の現在の版にあること。
-  for (const ref of recordRefsOf(revision)) {
-    if (revisionsOf(after, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: ref.path, message: `参照先がない: ${ref.id}` });
-    else if (ref.line !== "whole" && !lineExists(after, ref.id, ref.line)) {
+  for (const ref of recordRefsOf(recordType, duplicateOf, body)) {
+    if (revisionsOf(ledger, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: ref.path, message: `参照先がない: ${ref.id}` });
+    else if (ref.line !== "whole" && !lineExists(ledger, ref.id, ref.line)) {
       out.push({ reason: "ref-target-invalid", path: ref.path, message: `行${ref.line}が参照先${ref.id}の現在の版にない` });
     }
   }
-  for (const ref of masterRefsOf(revision.recordType, revision.body)) {
-    if (revisionsOf(after, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: `$.body.${ref.path}`, message: `参照するマスタがない: ${ref.id}` });
+  for (const ref of masterRefsOf(recordType, body)) {
+    if (revisionsOf(ledger, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: `$.body.${ref.path}`, message: `参照するマスタがない: ${ref.id}` });
   }
-  const evf = revision.body["evidenceFileId"];
-  if (revision.recordType === "evidence-link" && typeof evf === "string" && !after.evidenceFiles.has(evf)) {
+  const evf = body["evidenceFileId"];
+  if (recordType === "evidence-link" && typeof evf === "string" && !ledger.evidenceFiles.has(evf)) {
     out.push({ reason: "ref-target-missing", path: "$.body.evidenceFileId", message: `証憑ファイルがない: ${evf}` });
   }
+  return out;
+}
+
+function checkRelations(before: Ledger, after: Ledger, revision: Revision, previous: Revision | undefined): Violation[] {
+  const view: ResolvedView = CURRENT;
+  const out = missingReferences(after, revision.recordType, revision.duplicateOf, revision.body);
   if (out.length > 0) return out;
   const series = new SeriesCache(after, view);
   // duplicateOfの先は、自分以外の、保存のときに有効な記録だけ（共通の型の9）。
@@ -378,6 +395,12 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
     if (r["revision"] !== (prev?.revision ?? 0) + 1) throw new Error(`復元する改訂の版が続かない: ${String(r["id"])}`);
     if (r["status"] !== "active" && r["status"] !== "voided") throw new Error("復元する改訂のstatusが不正");
     if (typeof r["writeRequestId"] !== "string" || cur.writeRequests.has(r["writeRequestId"])) throw new Error("復元する改訂のwriteRequestIdがないか重なる");
+    // データベース全体で予約するキー（importKey）が別の記録と重なる改訂は置かない（既存の記録の索引を黙って上書きしない）。
+    const ik = knownValue(r["importKey"]);
+    if (isObj(ik) && typeof ik["source"] === "string" && typeof ik["key"] === "string") {
+      const owner = cur.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
+      if (owner !== undefined && owner !== r["id"]) throw new Error(`復元する改訂のimportKeyが別の記録${owner}と重なる`);
+    }
     const revision = {
       ...(r as unknown as Revision),
       recordedAt: nowOf(deps.clock),

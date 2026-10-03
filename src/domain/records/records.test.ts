@@ -359,3 +359,61 @@ test("行IDは同じ記録の全改訂で予約し、並びをまたいで同じ
   rejected(save(l, { id: "pay_1", recordType: "payslip", revision: 3, reason: "correct-input-error", body: { otherDeductions: { state: "known", value: [ded("l2")] } } }, T0), "line-id-reused");
   ok(save(l, { id: "pay_1", recordType: "payslip", revision: 3, reason: "correct-input-error", body: { otherEarnings: { state: "known", value: [line("l1"), line("l3")] } } }, T0));
 });
+
+test("再取込: importKeyが既存の記録と一致しても、不正な要求は既存の記録を返さずに拒否し、正しい要求だけが既存の記録を返す", () => {
+  let l = setup();
+  const imported = (id: string, extra: Obj = {}, body: Obj = {}): Obj => ({
+    id,
+    recordType: "bank-deposit",
+    entryChannel: "import",
+    importKey: { state: "known", value: { source: "架空の口座CSV", key: "1行目" } },
+    body: { accountId: "acct_1", depositDate: { state: "known", value: "2026-10-10" }, amount: { state: "known", value: 1000 }, ...body },
+    ...extra,
+  });
+  l = ok(save(l, imported("dep_1"), T0));
+  // entryChannelがmanualなのにimportKeyがknown（共通の型の12）。
+  rejected(save(l, imported("dep_2", { entryChannel: "manual" }), T0), "fact-state-not-allowed");
+  // 許さない状態（入金額のnot-applicable）。
+  rejected(save(l, imported("dep_3", {}, { amount: { state: "not-applicable" } }), T0), "fact-state-not-allowed");
+  // bodyの項目の欠落。
+  const missing = expandRecord(imported("dep_4"), { scenarioId: "unit", opId: "m1", previous: undefined });
+  const { id: _m, body, ...rest } = missing;
+  void _m;
+  const { accountId: _a, ...bodyWithoutAccount } = body as Obj;
+  void _a;
+  const out = saveRevision(l, { ...rest, body: bodyWithoutAccount }, { clock: { now: () => T0 }, ids: { next: () => "dep_4" } });
+  rejected(out, "value-invalid");
+  // 参照先がない口座。
+  rejected(save(l, imported("dep_5", {}, { accountId: "acct_9" }), T0), "ref-target-missing");
+  // 正しい要求は、内容が違っても既存の記録を返し、状態を変えない（共通の型の10）。
+  const again = save(l, imported("dep_6", {}, { amount: { state: "known", value: 1001 } }), T0);
+  assert.equal(again.kind, "existing-returned");
+  if (again.kind === "existing-returned") {
+    assert.equal(again.recordId, "dep_1");
+    assert.equal(again.ledger, l);
+  }
+});
+
+test("入力誤りの訂正で把握日を変えるときはchangeNoteが要り、引き継ぐときは要らない", () => {
+  let l = setup();
+  l = ok(save(l, { ...deposit("dep_1", { state: "known", value: 1 }), knownOn: { state: "known", value: "2026-09-20" } }, T0));
+  const fix = (extra: Obj): Obj => ({ id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 2 } }, ...extra });
+  rejected(save(l, fix({ knownOn: { state: "known", value: "2026-09-21" } }), T0), "known-on-not-inherited");
+  rejected(save(l, fix({ knownOn: { state: "known", value: "2026-09-21" }, changeNote: { state: "not-applicable" } }), T0), "known-on-not-inherited");
+  ok(save(l, fix({}), T0));
+  ok(save(l, fix({ knownOn: { state: "known", value: "2026-09-21" }, changeNote: { state: "known", value: "把握日の写し誤り" } }), T0));
+  // 直した把握日も、保存のときの日付より後にはできない。
+  rejected(save(l, fix({ knownOn: { state: "known", value: "2026-10-02" }, changeNote: { state: "known", value: "把握日の写し誤り" } }), T0), "known-on-in-future");
+});
+
+test("復元でも、importKeyが別の記録と重なる改訂は置かない", () => {
+  let l = setup();
+  const rec = (id: string): Obj =>
+    expandRecord(
+      { id, recordType: "bank-deposit", entryChannel: "import", importKey: { state: "known", value: { source: "架空の口座CSV", key: "1行目" } }, body: { accountId: "acct_1", amount: { state: "known", value: 1 } } },
+      { scenarioId: "unit", opId: `r-${id}`, previous: undefined },
+    );
+  l = restoreUnchecked(l, [rec("dep_1")], { clock: { now: () => T0 } });
+  const before = l;
+  assert.throws(() => restoreUnchecked(before, [rec("dep_2")], { clock: { now: () => T0 } }), /importKey/);
+});
