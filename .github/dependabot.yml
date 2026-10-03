@@ -1,0 +1,53 @@
+# 依存の更新の提案（Dependabot）。理由と設計は docs/adr/0010-diagnostics-and-maintainability.md の 4.5、
+# 採用の手順は docs/development.md の「依存の更新（Dependabot）」。
+# - 提案のPRはPRの計画（.review/plans/）を含まないので、CIの review plan と Quality gate が失敗する。意図した状態で、例外は作らない。
+# - 提案のPRをそのままマージしない。auto-merge・@dependabot merge は使わない。担当が自分のbranchへ取り込み、計画を付けて通常のPRにする。
+# - Dependabotのbranchへpushしない。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    # 公開直後の版を待つ（公開直後に乗っ取られた版を避ける）。セキュリティ更新には効かない。
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 3
+    ignore:
+      # Node.jsのメジャーと合わせて更新する（T28）。update-typesで絞り、セキュリティ更新は止めない。
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ['*']
+      actions-security:
+        applies-to: security-updates
+        patterns: ['*']
+    commit-message:
+      prefix: deps
