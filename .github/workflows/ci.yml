@@ -142,22 +142,32 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
           $arguments = '"' + (Join-Path $dir 'run.mjs') + '" "' + $dir + '" ' + $script.Substring('node '.Length)
           $action = New-ScheduledTaskAction -Execute $node -Argument $arguments -WorkingDirectory $env:GITHUB_WORKSPACE
-          $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 25) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+          $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
           # パスワードでログオンするタスク（ログオンしていなくても動く）。権限は制限（RunLevel Limited）。
           Register-ScheduledTask -TaskName $env:KL_STD_TASK -Action $action -Settings $settings -User "$env:COMPUTERNAME\$env:KL_STD_USER" -Password $plain -RunLevel Limited | Out-Null
           Remove-Variable plain
           Start-ScheduledTask -TaskName $env:KL_STD_TASK
           $result = Join-Path $dir 'result.json'
-          $deadline = (Get-Date).AddMinutes(25)
+          $deadline = (Get-Date).AddMinutes(15)
           while (-not (Test-Path $result)) {
-            if ((Get-Date) -gt $deadline) { throw 'the tests as the standard user did not finish in time' }
+            if ((Get-Date) -gt $deadline) {
+              Get-Content (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
+              throw 'the tests as the standard user did not finish in time'
+            }
             Start-Sleep -Seconds 5
             $info = Get-ScheduledTaskInfo -TaskName $env:KL_STD_TASK
             $state = (Get-ScheduledTask -TaskName $env:KL_STD_TASK).State
+            $output = Join-Path $dir 'npm-test.txt'
+            $size = if (Test-Path $output) { (Get-Item $output).Length } else { 0 }
+            $processes = @(Get-Process -IncludeUserName | Where-Object { $_.UserName -like "*\$env:KL_STD_USER" } | ForEach-Object { "$($_.ProcessName)#$($_.Id)" }) -join ' '
+            Write-Host "task: $state (LastTaskResult: $($info.LastTaskResult)), output: $size bytes, processes of the user: $processes"
             # 267009: 実行中、267011: まだ実行していない。それ以外でReadyなら、タスクは終わっている。
             if ($state -eq 'Ready' -and $info.LastTaskResult -ne 267011 -and $info.LastTaskResult -ne 267009 -and -not (Test-Path $result)) {
               Start-Sleep -Seconds 2
-              if (-not (Test-Path $result)) { throw "the task ended without writing the result (LastTaskResult: $($info.LastTaskResult))" }
+              if (-not (Test-Path $result)) {
+                Get-Content (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
+                throw "the task ended without writing the result (LastTaskResult: $($info.LastTaskResult))"
+              }
             }
           }
           Start-Sleep -Seconds 1
