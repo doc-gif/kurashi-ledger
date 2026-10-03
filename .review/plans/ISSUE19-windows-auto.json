@@ -1,0 +1,578 @@
+{
+  "schema_version": 1,
+  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "task_id": "ISSUE19",
+  "planned_paths": [
+    ".github/workflows/ci.yml",
+    "README.md",
+    "docs/adr/0008-install-record.md",
+    "tests/support/prevent-deletion.ts",
+    "docs/adr/README.md",
+    "docs/development.md",
+    "docs/implementation-tasks.md",
+    "docs/project-status.md",
+    "docs/testing.md",
+    "scripts/install-record.test.ts",
+    "scripts/setup-lock.test.ts",
+    "scripts/setup.test.ts",
+    "tests/support/windows-console.test.ts",
+    "tests/support/windows-console.ts",
+    ".github/copilot-instructions.md"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #19の期待する結果1は「npm ciの最中のCtrl+Cで130で終わる」で、手順ではnpm-cli.js経由（npm run）の終了コードを見るとしている。WindowsのnpmはCtrl+Cを受けると、スクリプトのシェル（cmd.exe）を強制終了して自分も終わるので、npm runの終了コードはsetup自身の130にならず、setupの片付けより先に戻る可能性がある（npmの@npmcli/run-scriptのsignal-manager）。",
+      "state": "resolved",
+      "resolution": "setup自身の終了コード（130・149）は、setupを直接起動する試験（scripts/setup-lock.test.ts、合成のnpm）で厳密に確かめる。実際のnpmでnpm run setupを止める試験（scripts/setup.test.ts）では、コンソールのすべてのプロセスが終わるまで待ってから、記録・印が残らないことと次のsetupが進むことを確かめ、npm runの終了コードは0でないことを確かめる。CIで観測した実際の終了コードと、npmがsetupより先に戻るかは、試験のdiagnosticに出し、開発環境の資料とIssue #19に記録する。setupの修正が必要かは、Issue #19の完了の条件どおり、所有者・調整係の判断に回す。"
+    },
+    {
+      "description": "GitHubのWindowsのrunnerは管理者で動くので、管理者でないユーザーでの動き（symlinkを作れないときの弱めた確認、T26の本人だけのACL）は、CIでは確かめられていなかった。",
+      "state": "resolved",
+      "resolution": "Windowsで一時の一般のローカルユーザーを作り、そのユーザーとしてログオンして（Start-Process -Credential。タスク スケジューラはS4Uの登録が拒否され、パスワードのタスクは起動されなかったので使わない）npm testと同じ試験を実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
+    },
+    {
+      "description": "PR33-R001（Codexのレビュー5400986412、head deb35fb）: 実際のnpm（npm-cli.js run setup、cmd.exeを含む）を通す試験は通常のCtrl+Cだけで、#19の条件2（Ctrl+Break）と条件3（印を消せないCtrl+C）はsetupの直接起動と合成のnpmだけで確かめていた。通常のCtrl+Cでsetup自身（130）とnpm経由（1、子が残る）の差が観測されたので、直接起動の結果を残る2条件の代わりにできない。",
+      "state": "resolved",
+      "resolution": "scripts/setup.test.tsで、実際のnpm run setupを止める試験を共通の手順にし、Ctrl+Break（POSIXは同じ位置づけのプロセスグループへのSIGTERM）と、印を消せないときのCtrl+C（POSIXは書込み禁止、Windowsは削除の共有を許さずに開いたまま。rootでは飛ばす）を加える。どれも、コンソール（POSIXはプロセスグループ）のすべてのプロセスが終わるのを待ってから、setupの表示（受けたシグナル、印を消せないときは印が残ったことと消し方）、記録・印の有無、check:install、次のsetup（印を消したあと）とその後のcheck:installを確かめる。npm runの終了コードは、POSIXは128+番号かシグナル、Windowsは0でないことを確かめ、観測した終了コードとnpmが終わった時点で残っていたプロセスの数をdiagnosticに出す（Windowsの終了コード1と残るプロセスの扱いは所有者の判断待ちなので、その値を期待値として固定しない）。setup自身の130・149の厳密な試験（setup-lock.test.ts）は維持する。管理者と一般のユーザーの両方のCIで実行される。setupの動きは変えない。"
+    },
+    {
+      "description": "PR33-R001の残件（Codexのレビュー5401183438、head c4adc4f）: 期待と違う結果（実際のnpm run setupの終了コードと、npmが終わった時点で残っていたプロセス）が、正本のIssue #19に記録されていない。これまでの指摘（PR33-R001、Copilot 4173462487）と、調整係の指示（setupを変えない、終了コードの扱いは所有者の判断待ち）を合わせて読み、食い違いがないことを確かめた。観測の記録は判断を先取りしない。",
+      "state": "resolved",
+      "resolution": "コードと期待値は変えない。Issue #19に、#19の記録の様式に沿って、対象SHA（head c4adc4f、base 1d513e7）、CIのリンク、Windowsの版・Node.js・npmの版、setup自身の結果（130・149、印を消せないときの表示）、実際のnpm run経由の3つの結果（終了コード1／3221225786／1、npmが終わったときに残っていたプロセス3／1／3、全部が終わったあとの印・記録・案内・再実行の結果）を記録する。npm.cmdのY/Nの対話は未確認、終了コードの扱いは所有者の判断待ち（未決）と明記する。期待値の変更・setupの修正・Issueの閉鎖はしない。引継ぎにそのコメントのリンクを書く。"
+    },
+    {
+      "description": "所有者決定（2026-10-03、PR #33の調整係の記録5970070883・Issue #19）: Windowsでnpm run setupをCtrl+C等で止めたときのnpm run経由の終了コードを「npmの仕様として受け入れる」。これまでの計画・試験の注記・文書・引継ぎは、この扱いを「所有者の判断待ち」としていた。",
+      "state": "resolved",
+      "resolution": "setupの動きと試験の判定は変えない（npm run経由はWindowsで0以外を確かめ、観測値はdiagnosticに出す。setup自身の130・149と、全プロセスの終了後に記録と印が残らないことを保証の対象として確かめる）。scripts/setup.test.tsの注記、docs/development.mdの「Windowsのコンソールの中断の試験」、ADR-0008の試験の節の記述を、判断待ちから決定済みに直す。Issue #19の期待1（と、同じ扱いになる2・3）を、setup自身の終了コードとnpm run経由の終了コードを分けた形に直す。引継ぎと返信から「判断待ち」を外す。PR33-R001の残件の記録（Issue #19のコメント5970056559）は観測のまま残す。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-HTTP",
+      "disposition": "not-applicable",
+      "reason": "このPRはHTTPサーバー・静的配信・認証を作らない（T26、PR #25）。Windowsのコンソールの制御イベントを送る試験の補助（tests/support/windows-console.ts）は、T26のnpm startのCtrl+Cの試験にも使えるように作るが、T26の試験そのものはT26の統合後の別のPRで加える。",
+      "checks": [
+        {
+          "id": "browser-flow",
+          "method": "src/・e2e/に差分がないことを確かめる。",
+          "expected": "HTTPの境界・トークン・CSPの処理と試験は変わらない。"
+        },
+        {
+          "id": "static",
+          "method": "配信の処理を加えていないことを差分で確かめる。",
+          "expected": "静的配信の判定はない（T26の範囲）。"
+        }
+      ]
+    },
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "対象はworktreeの直下の作業中の印.kurashi-ledger-setup.lock（ADR-0008）で、データルートのlockではない。setup・印の処理は変えず、試験だけを変える。Windowsで実際のCtrl+C・Ctrl+Breakを新しいコンソールに送り、印と記録が残らず130・149で終わること、印を消せないときは130のまま印が残り消し方を表示し、印を消すと次のsetupが進むことを、CIで確かめる。印を自動で消さない方針（PID再利用の扱い）は変えない。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "scripts/lib/install-record.ts・scripts/setup.tsに差分がないことを確かめる。試験の中で印の名前・中身を作り替えていないことを差分で読む。",
+          "expected": "印の作成（wx）・照合（乱数）・削除（自分の印だけ）は変わらない。"
+        },
+        {
+          "id": "recovery",
+          "method": "CIのWindows（管理者のrunnerと、一時の一般のユーザー）で、setup-lock.test.ts・setup.test.ts・install-record.test.tsの中断の試験が飛ばされずに合格することを、npm testの出力とcheck:test-skipsのSummaryで確かめる。印を消せない状態は、Windowsでは、別のプロセス（Windows PowerShell 5.1）が削除の共有を許さずに（FileShare.Readで）印を開いたままにして作り、試験の終わりに閉じる（Issue #19の手での確認と同じ方法。削除を拒否するACEは、管理者のrunnerでは削除を止められなかったので使わない）。強制終了で印が残る試験（全OS）は変えない。",
+          "expected": "Ctrl+Cは130、Ctrl+Breakは149で終わり、印も記録も残らず、次のsetupが進む。印を消せないときは130で終わり、印が残ったことと消し方を表示し、記録は残らず、印を消すと次のsetupが0で終わる。どれかが違えば試験が失敗する（期待値は実装の出力から作らず、ADR-0008の「中断」とIssue #19の期待する結果から書く）。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "試験は合成のプロジェクトと合成のnpm・127.0.0.1の合成のregistryだけを使う。CIで作る一時のローカルユーザーのパスワードは、ジョブのステップの中で暗号論的な乱数から作り、表示・ファイルへの保存・ログ出力をせず、ユーザーの作成とそのユーザーでの起動に渡すだけにする。ジョブの最後にユーザーを消す（runnerは使い捨てのVM）。secretsを使わず、artifactをuploadしない。step summaryには試験の名前・skip・diagnostic・版・ユーザーの種別（管理者でないこと）だけを書き、ユーザー名・SIDは書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分とCIのログ・Summaryを読み、パスワード・個人のパス・秘密がないことを確かめる。commitの前にnode scripts/check-public.ts --stagedを実行し、CIでnpm run check:publicを実行する。",
+          "expected": "ログ・Summary・公開物に、実データ・秘密・パスワードがない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "setupと導入の記録の処理（成功したときだけ記録を残す、後始末の失敗を握りつぶさない: PR12-R101）は変えない。対象OSで確かめる教訓（PR12-R103）に従い、これまでWindowsで飛ばしていた中断と印の削除の失敗の経路を、固定した版のNode.jsで、Windowsの実際のコンソールの制御イベントで実行する。npm run経由のときにnpmが返す終了コードがsetupのものと違う場合は、試験を弱めずに、実際の動きを記録・文書化する。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "CIのchecks（windows）と一般のユーザーのジョブで、npm run setup→npm testを固定した版で実行し、中断の試験が合格することを確かめる。",
+          "expected": "中断・失敗のどの経路でも、全プロセスの終了後に記録と印は残らない（印を消せないときは、印が残ったことと消し方を表示する）。setup自身の終了コードは、中断なら128+番号（Ctrl+Cは130、Ctrl+Breakは149。setupを直接起動する試験で厳密に確かめる）。npm run経由の終了コードはnpmのもので、POSIXは128+番号かシグナル、Windowsは0以外であればよい（2026-10-03の所有者決定「npmの仕様として受け入れる」。PR #33の調整係の記録5970070883。CIの観測値はCtrl+Cで1、Ctrl+Breakで3221225786＝0xC000013A。diagnosticに出す）。"
+        },
+        {
+          "id": "artifact",
+          "method": "印を消せないときの試験で、記録を書いた後に印を消せない成功の経路も、Windowsで実行することを確かめる（install-record.test.ts）。",
+          "expected": "成功は0で記録を残し、印が残ったことを表示する。印があるあいだ照合が止まり、印を消すと記録が有効になる。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "workflowを変える（一般のユーザーのジョブを加え、Quality gateに含める）。PR自身がworkflowを変えられる限界（PR4-R001）は残るので、CIの合格を独立レビューの代わりにしない。skipの照合（表の名前の集合）は弱めず、Windowsで飛ばさなくなった試験は表から外し、実際に実行されることを照合で確かめる（表から外した試験がskipされれば照合が失敗する）。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Issue #19・PR #18の指摘（PR18-R001等）と同じ原因の照合の穴を作らないことを、表と照合の差分で確かめる。",
+          "expected": "照合の仕組み（scripts/lib/test-skips.ts）は変えず、表の行と件数の文だけを直す。"
+        },
+        {
+          "id": "trust",
+          "method": "Quality gateのneedsと期待する結果に新しいジョブを加え、欠けた・skipしたジョブが失敗になることを差分で読む。レビューは別の担当（Codex側）が行う。",
+          "expected": "新しいジョブが失敗・skip・欠けた場合にQuality gateが失敗する。CIの合格だけでaccepted扱いにしない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "データルート・保存先の判定は扱わない（T07・T09）。試験は一時ディレクトリだけを使う。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分にデータルートの処理がないことを確かめる。",
+          "expected": "データルートを作らない・開かない。"
+        },
+        {
+          "id": "aliases",
+          "method": "差分にリンク・別名の判定の変更がないことを確かめる。",
+          "expected": "node_modulesのリンクを拒む処理と試験は変わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "DB・journal・manifestは扱わない（T07以降）。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分にDB・migrationがないことを確かめる。",
+          "expected": "該当なし。"
+        },
+        {
+          "id": "restore",
+          "method": "差分に復元の処理がないことを確かめる。",
+          "expected": "該当なし。"
+        },
+        {
+          "id": "manifest",
+          "method": "差分にmanifestの処理がないことを確かめる。",
+          "expected": "該当なし。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Issue #19は依存のないIssueで、2026-10-03に所有者が「手での確認は大変なので、Windows環境で自動で確かめる試験を作る」と実装側のチャットで指示し、調整係がこの担当に割り当てた。T26（PR #25）の項目（npm startの実際のCtrl+C、一般のユーザーでの本人だけのACL）は、T26のコードがmainにないので、このPRでは補助と一般のユーザーのジョブまでを作り、T26の統合後に加える。台帳・状態資料・開発環境の資料・ADR-0008の「#19で手で確かめる」の記述を、CIで確かめる形に直す。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "package.json・lockfileを変えない（依存を加えない）ことを差分で確かめる。T26のブランチ（PR #25）にpushしない。T26の表の行（src/start.test.ts）とは、後から統合する側がbaseを取り込んで直す。",
+          "expected": "共有資源（lockfile）を変えない。T26と並行しても、衝突はdocs/development.mdの表の行と文だけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "状態資料・台帳のT05・ADR一覧のT05行・ADR-0008・開発環境の資料・README・docs/testing.md・Copilotの指示（.github/copilot-instructions.md）・Issue #19の記述が、同じ内容（CIで自動で確かめる・残る手での確認とその理由）を指すことを読み合わせる。",
+          "expected": "「CIでは確かめていない」「手で確かめる」の古い記述が残らない。手で残る項目は理由とともに1か所（開発環境の資料）に書き、ほかはそこを参照する。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-HTTP": {
+      "condition": "開発時も本番と両立する認証・Origin・CSP・静的配信境界を保つ。",
+      "scenarios": [
+        {
+          "id": "browser-flow",
+          "question": "起動トークン交換→API→CSS/React HMR→再読込が同じ入口とCSPで成立するか。漏洩と迂回も試験するか。"
+        },
+        {
+          "id": "static",
+          "question": "配信ルート外への要求や未検証の生成物を拒否するか。認証を開発時だけ解除していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R004",
+          "invariant_id": "INV-HTTP",
+          "cause_key": "development-origin",
+          "lesson": "開発サーバーの別Originを禁止するなら、開発UIの認証とAPI利用が成立する入口も設計する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388188283"
+          ]
+        },
+        {
+          "id": "PR2-R005",
+          "invariant_id": "INV-HTTP",
+          "cause_key": "development-csp",
+          "lesson": "開発HMRとReact更新がCSPで停止しないか。許可の変更後に本番の境界も確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388308985"
+          ]
+        }
+      ]
+    },
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        },
+        {
+          "id": "PR12-R001",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "PR12-R101",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "cleanup-failure-path-contract",
+          "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+          ]
+        },
+        {
+          "id": "PR12-R102",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        },
+        {
+          "id": "PR12-R103",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "verification-on-target-runtime",
+          "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR12-R104",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "destructive-op-follows-link",
+          "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    }
+  }
+}

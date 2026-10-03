@@ -76,6 +76,122 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run check:public
 
+  # Windowsの一般のユーザー（管理者でない）での試験（Issue #19）。GitHubのWindowsのrunnerは管理者で動くので、
+  # 一時のローカルユーザー（Usersだけに属する）を作り、そのユーザーとしてログオンして（Start-Process -Credential）
+  # npm testと同じ試験を実行し、skipを照合する。パスワードはこのジョブの中で乱数から作り、表示もファイルへの保存も
+  # しない（ユーザーの作成と起動に渡すだけ）。runnerは使い捨てのVMで、最後にユーザーを消す。
+  # docs/development.md の「CI」と「Windowsのコンソールの中断の試験」。
+  windows-standard-user:
+    name: checks (windows, standard user)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      KL_STD_USER: klstandarduser
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js (devEngines.runtime in package.json)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          check-latest: true
+          package-manager-cache: false
+      - name: npm run setup
+        id: setup
+        run: npm run setup
+      - name: Run the tests of npm test as a temporary standard user
+        id: test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        # Windows PowerShell 5.1（Windowsに同梱。ローカルユーザーの操作のモジュールがそのまま動く）。5.1はスクリプトの
+        # 文字コードを決め打ちできないので、表示する文字列は英語にする。
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user'
+          New-Item -ItemType Directory -Path $dir | Out-Null
+          # npm testと同じ対象（package.jsonのtestのscript）を、npmを通さずにnode --testで実行する。
+          $script = (Get-Content -Raw package.json | ConvertFrom-Json).scripts.test
+          if ($script -notmatch '^node --test ("[^"]+" ?)+$') { throw "cannot read the test script of package.json: $script" }
+          $node = (Get-Command node).Source
+          # 実行するユーザーに書込みを許すのは、出力のディレクトリだけ（一時ファイルは自分のプロファイルに置く）。
+          [System.IO.File]::WriteAllText((Join-Path $dir 'run.mjs'), @'
+          import { spawnSync } from 'node:child_process';
+          import { closeSync, mkdtempSync, openSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+          import { tmpdir } from 'node:os';
+          import { join } from 'node:path';
+          const [dir, ...args] = process.argv.slice(2);
+          const groups = spawnSync('whoami', ['/groups', '/fo', 'csv', '/nh'], { encoding: 'utf8' });
+          // ファイルのsymlinkを作れるか（作れなければ、install-record.test.tsは弱めて確かめ、diagnosticを出す）。
+          const probe = mkdtempSync(join(tmpdir(), 'kl-symlink-'));
+          let symlink = true;
+          try { writeFileSync(join(probe, 'target'), ''); symlinkSync(join(probe, 'target'), join(probe, 'link'), 'file'); } catch { symlink = false; }
+          rmSync(probe, { recursive: true, force: true });
+          const out = openSync(join(dir, 'npm-test.txt'), 'w');
+          const run = spawnSync(process.execPath, args, { stdio: ['ignore', out, out] });
+          closeSync(out);
+          writeFileSync(join(dir, 'result.json'), JSON.stringify({ status: run.status, signal: run.signal, error: run.error?.message ?? null, groups: groups.stdout ?? '', symlink }));
+          '@)
+          # 乱数のパスワード。表示もファイルへの保存もせず、このステップの中でだけ使う（ユーザーの作成と起動に渡す）。
+          $bytes = New-Object byte[] 48
+          $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+          $rng.GetBytes($bytes)
+          $rng.Dispose()
+          $plain = [Convert]::ToBase64String($bytes) + 'aA1!'
+          [Array]::Clear($bytes, 0, $bytes.Length)
+          New-LocalUser -Name $env:KL_STD_USER -Password (ConvertTo-SecureString $plain -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires -Description 'Temporary standard user for CI' | Out-Null
+          Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $env:KL_STD_USER
+          icacls $dir /grant "$($env:KL_STD_USER):(OI)(CI)M" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
+          # 試験を読むためにworkspaceを読めるようにする（継承するACEとして加え、下の階層にも効かせる）。
+          icacls $env:GITHUB_WORKSPACE /grant "$($env:KL_STD_USER):(OI)(CI)RX" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
+          $arguments = '"' + (Join-Path $dir 'run.mjs') + '" "' + $dir + '" ' + $script.Substring('node '.Length)
+          # そのユーザーとしてログオンして起動する（CreateProcessWithLogonW。プロファイルを読み込む）。
+          $credential = New-Object System.Management.Automation.PSCredential("$env:COMPUTERNAME\$env:KL_STD_USER", (ConvertTo-SecureString $plain -AsPlainText -Force))
+          Remove-Variable plain
+          $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $env:GITHUB_WORKSPACE -Credential $credential -LoadUserProfile -WindowStyle Hidden -PassThru
+          Remove-Variable credential
+          $handle = $process.Handle
+          if (-not $process.WaitForExit(15 * 60 * 1000)) {
+            Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'the tests as the standard user did not finish in time'
+          }
+          $result = Join-Path $dir 'result.json'
+          if (-not (Test-Path $result)) {
+            Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
+            throw "the runner ended without writing the result (exit code $($process.ExitCode))"
+          }
+          Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt')
+          $r = Get-Content -Raw $result | ConvertFrom-Json
+          # 管理者でないこと: 整合性レベルがMedium（S-1-16-8192）で、High以上がなく、Administrators（S-1-5-32-544）を含まない。
+          $standard = ($r.groups -match 'S-1-16-8192') -and ($r.groups -notmatch 'S-1-16-12288|S-1-16-16384') -and ($r.groups -notmatch 'S-1-5-32-544')
+          $summary = @(
+            '### Tests as a temporary Windows standard user'
+            ''
+            "- Not an administrator (Medium integrity, no Administrators group): $standard"
+            "- Exit code of node --test: $($r.status) (signal: $($r.signal), start error: $($r.error))"
+            "- The user can create file symlinks: $($r.symlink)"
+            ''
+          ) -join "`n"
+          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, $summary + "`n")
+          if (-not $standard) { throw 'the tests did not run as a standard (non-administrator) user' }
+          if ($r.status -ne 0) { throw "the tests failed as the standard user (exit code $($r.status))" }
+      - name: Compare the skipped tests with docs/development.md
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: npm run check:test-skips -- "$RUNNER_TEMP/kl-standard-user/npm-test.txt"
+      - name: Remove the temporary user
+        if: ${{ always() }}
+        shell: powershell
+        run: |
+          $user = Get-LocalUser -Name $env:KL_STD_USER -ErrorAction SilentlyContinue
+          if ($null -ne $user) {
+            Remove-LocalUser -Name $env:KL_STD_USER
+            Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $user.SID.Value } | Remove-CimInstance -ErrorAction Continue
+          }
+
   browser:
     name: browser (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -212,7 +328,7 @@ jobs:
   quality-gate:
     name: Quality gate
     if: ${{ always() }}
-    needs: [checks, browser, review-tools, review-plan]
+    needs: [checks, windows-standard-user, browser, review-tools, review-plan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -227,6 +343,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CHECKS: ${{ needs.checks.result }}
+          WINDOWS_STANDARD_USER: ${{ needs.windows-standard-user.result }}
           BROWSER: ${{ needs.browser.result }}
           REVIEW_TOOLS: ${{ needs.review-tools.result }}
           REVIEW_PLAN: ${{ needs.review-plan.result }}
@@ -236,6 +353,7 @@ jobs:
             if [ "$2" != "$3" ]; then problems+=("$1 の結果が $2（必要なのは $3）"); fi
           }
           expect checks "$CHECKS" success
+          expect windows-standard-user "$WINDOWS_STANDARD_USER" success
           expect browser "$BROWSER" success
           expect review-tools "$REVIEW_TOOLS" success
           if [ "$EVENT" = pull_request ]; then
@@ -262,6 +380,7 @@ jobs:
               echo "| PRのbase | $BASE_SHA |"
             fi
             echo "| checks（3 OS） | $CHECKS |"
+            echo "| checks（Windowsの一般のユーザー） | $WINDOWS_STANDARD_USER |"
             echo "| browser（3 OS） | $BROWSER |"
             echo "| review tools（3 OS） | $REVIEW_TOOLS |"
             echo "| review plan | $REVIEW_PLAN |"

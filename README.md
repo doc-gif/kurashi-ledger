@@ -16,7 +16,7 @@
 - 手元の版は[mise](https://mise.jdx.dev)でそろえられます。ルートの`mise.toml`がNode.js 24.21.0とPython 3.11.17を固定し、どのworktreeでも`mise install`で同じ版になります（macOSの導入、Windowsでの扱い、版の正本の役割は[開発環境](docs/development.md)の「miseで版をそろえる」）。
 - `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験と、合成データの台帳の検査）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
-- CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
+- CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。Windowsでは、`npm run setup`のCtrl+C・Ctrl+Breakの試験を実際のコンソールの制御イベントで行い、一時の一般のユーザー（管理者でない）でも試験を実行します。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
 - レビュー運用ツール（Python 3.11以上）は、`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査します（[手順](tools/review_guard/README.md)）。
 
 詳しくは[開発環境と作業の規約](docs/development.md)を見てください。
