@@ -91,7 +91,7 @@
         {
           "id": "update",
           "method": "CIのchecks（windows）と一般のユーザーのジョブで、npm run setup→npm testを固定した版で実行し、中断の試験が合格することを確かめる。",
-          "expected": "中断・失敗のどの経路でも、記録は残らず、終了コードは中断なら128+番号。"
+          "expected": "中断・失敗のどの経路でも、記録は残らない。setup自身の終了コードは、中断なら128+番号（Ctrl+Cは130、Ctrl+Breakは149。setupを直接起動する試験で厳密に確かめる）。npm run経由の終了コードはnpmのもので、POSIXは128+番号かシグナル、Windowsは0でないことだけを確かめる（CIではCtrl+Cで1、Ctrl+Breakで3221225786（0xC000013A）を観測。この値と、npmが先に終わることの扱いは所有者の判断待ちなので、期待値に固定せずdiagnosticに出す）。"
         },
         {
           "id": "artifact",
