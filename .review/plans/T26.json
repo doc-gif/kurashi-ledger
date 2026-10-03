@@ -199,6 +199,11 @@
       "description": "PR25-R011（Codex 5400911117、Copilot 4173259381）: Expectのヘッダの要求の入口が終了の状態を見ず、終了中も417を返すので、終了中は503 closingという契約から外れる。",
       "state": "resolved",
       "resolution": "Expectの入口（checkContinue・checkExpectation）でも、終了の状態を先に見て、終了中は必須のヘッダ付きの503（closing）を返して接続を閉じる。通常の稼働中は417のまま。試験: closeを実行中のAPIで止めている間に、既存の接続で届いたExpectの要求（100-continueとほかの値）に503 closingが返ること。"
+    },
+    {
+      "description": "PR25-R009の継続（Codex 5401173702のneeds-owner、Copilot 4173479208）とPR25-R012（Codex 5401173702、Copilot 4173479186）をまとめて見た全体の方針。R009: 出口はwriteHeadだけを包むので、informational応答（1xx）の入口（Node.js v24.21.0の_http_server.jsのServerResponse.prototype.writeInformationと、それを呼ぶwriteContinue・writeProcessing・writeEarlyHints）が、必須のヘッダとCORSの除去を迂回して生の1xxを書ける。2026-10-03の所有者の決定（5970070532、AIによる転記）:「中間の応答を禁止する」。R012: 例外のcode・nameを任意の文字列のままログに出すので、秘密の形の値の漏えいや、改行によるログの行の偽装が起きる。",
+      "state": "resolved",
+      "resolution": "全体の方針: 応答とログの「出口」を、それぞれ1か所の許可リストにする。(A) 応答: すべての応答に付けるヘッダの定義（requiredResponseHeaders）を通らない応答は書かない。node:httpの公開のAPIで応答を書く入口を、Node.js v24.21.0のソースから列挙し直した: writeHead（とその別名writeHeader。出口で包む）、writeInformation・writeContinue・writeProcessing・writeEarlyHints（1xx。所有者の決定で禁止）、サーバーの既定の自動の応答（自動の100 Continue・417はcheckContinue・checkExpectationの処理で、400・431等はclientErrorの処理で、503のdropRequestはmaxRequestsPerSocketを設定しないことで、すべて出口を通す。R009・R011）、upgradeの拒否（R008）、受け付けたupgradeの101（T08の開発時の口の分担。変えない）。1xxの4つは、すべての応答（通常・開発時の口・Expect）で、応答のインスタンスのメソッドを、呼ぶと例外（ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN）を投げて何も書かないものに置き換える。内部のメソッド（_writeRaw等）やソケットへの直接の書込みは公開のAPIではなく、同じプロセスの組込みのコード（T08のVite）の責任とし、ADR-0009に明記する。(B) ログ: 例外のnameは出さない。codeは、入口ごとに決めた、既知の必要な符号の許可リスト（ファイル操作の誤り、HTTPの解析器の誤り等）にあるときだけ出し、それ以外は固定のotherにする（文字種や長さの制限だけでは英数字の秘密を防げないため）。入口: APIの処理・開発時のmiddleware（同期の例外・reject）の失敗、upgradeの処理の例外、一時ファイルの削除の失敗、clientError。試験: (A) 開発時のmiddlewareが4つの1xxの入口を呼ぶと、例外になり、生の応答に1xxの行が現れず、最後の応答に必須のヘッダが付く（捕まえて応答を続ける場合と、捕まえずに500になる場合）。(B) 各入口に、codeとnameに秘密の形の値・改行・長い値を持つ例外を与え、ログに出ず、通常の500または接続の終了になること。分類の関数の単体試験。既存の試験のうち、合成の符号（ELATE・ESYNTHETIC）をそのまま記録すると期待していたものは、新しい契約（other）に合わせて直す（後退ではなく、契約の変更）。"
     }
   ],
   "assessments": [
