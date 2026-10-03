@@ -1,6 +1,6 @@
 # ADR-0002: 実行方式・ランタイム・配布と起動・更新の手順
 
-- 状態: Proposed（このPRがmainに統合された時点でAcceptedとみなす）
+- 状態: Accepted（T00のPR #2でmainに統合。docs/adr/README.mdの規則により、次にこのADRを変更したT02のPR #12で状態欄を直した）
 - 日付: 2026-10-02
 - 関連: T00（Issue #1）、ADR-0001（[architecture.md](../architecture.md)）、ADR-0003〜0007（ADR-0007は共通の安全確認と操作ごとの適用表。この本文はG6の定義の場所）。
 
@@ -126,8 +126,8 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 
 ## 別タスクで行う検証
 
-- T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないこと。元checkoutの未公開試作の棚卸し。
-- T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。
+- T02: 着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・`.nvmrc`・lockfile・`.npmrc`（`ignore-scripts`）。依存がインストールスクリプトなしで動くこと。固定した版で`node:sqlite`を読み込んでも警告が出ないことを確かめる試験と、`npm run setup`等のスクリプトを作ること。元checkoutの未公開試作の棚卸し。
+- T05: CIでMac/Windows/Linuxの固定版Node.jsを使い、型検査と試験を実行する。固定版とMac/Windows/Linuxでの`npm run setup`・型検査・試験（`node:sqlite`の警告なしを含む）・`npm run build`の成功を確かめる（2026-10-02の所有者決定でT02から移した。T02では固定版とWindowsで実行していない）。
 - T26: HTTPサーバーの骨格と、ADR-0003の境界。
 - T09: 起動モード（`npm run start:real`による実利用モードと、それ以外の合成データモード）の判別と、データルートの検査の組込み。開発時の起動も同じ検査に通すこと（ADR-0007のG1〜G5）。`npm run start:real`での依存の導入の記録と配信物のmanifest（commit、lockfile、Node.jsの版、ファイルのハッシュ、余分なファイル）の照合。Node.jsの版を変えて依存の導入だけをやり直し、ビルドし直していない場合に止まること。
 - T28: Node.jsのメジャー更新（必要時）。
@@ -157,4 +157,4 @@ React・Vite・PlaywrightはADR-0004、`node:sqlite`はADR-0005、age形式の�
 - macOSの公証と「このまま開く」: https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution 、https://support.apple.com/en-us/102445
 - Windows SmartScreenとSmart App Control: https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/ 、https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003
 
-未確認の事項: Windows向け公式配布物のコード署名の有無。`node:sqlite`の実験的機能の警告は、Node 26.10.0のソースでは出さないことを確認した（ADR-0005）。実行時の確認はT02で行う。
+未確認の事項: Windows向け公式配布物のコード署名の有無。`node:sqlite`の実験的機能の警告は、Node 26.10.0のソースでは出さないことを確認した（ADR-0005）。実行時の確認は、T02で試験を作り、固定版での実行はT05のCIで行う（2026-10-02の所有者決定）。

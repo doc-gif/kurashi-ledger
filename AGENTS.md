@@ -38,7 +38,7 @@
 
 ## 検証・公開・レビュー
 
-- 製品の実行可能なテストは未導入。レビュー運用ツールだけは`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査する。専用CIはテンプレートを用意済みで、まだ有効化していない。文書変更はリンク、仕様整合、タスク依存、公開差分を確認する。運用ツールの成功を製品の検証済みと報告しない。
+- 製品の実行可能なテストは未導入。開発用のコマンド（`npm run setup`、`npm run typecheck`、`npm test`、`npm run check:public`）は[開発環境](docs/development.md)を参照する。`npm test`はT02の開発用スクリプト（依存の導入の記録、公開検査）の試験で、製品の試験ではない。レビュー運用ツールは`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査する。専用CIはテンプレートを用意済みで、まだ有効化していない（製品CIはT05）。commitの前に`npm run check:public -- --staged`を実行する。これは追加の防御で、保証ではない（[公開範囲と公開前の点検](docs/public-data.md)）。文書変更はリンク、仕様整合、タスク依存、公開差分を確認する。運用ツールや開発用の試験の成功を製品の検証済みと報告しない。存在しない・実行していないテストを実行済みと報告しない。
 - 実装開始後はT05で決めた検証を実行する。テスト失敗を隠す、判定を弱める、skipで見かけ上成功させる変更は禁止。
 - stageするファイルを明示し、公開対象の差分を読む。元のローカル環境に未追跡の試作コードがあっても、`git add .`等で一緒に公開しない。
 - 利用者向けの使い方、セットアップ、コマンド、構成、公開済みの機能、運用ルールが変わるPRでは、ルートのREADMEまたは該当ディレクトリのREADMEを同じPRで更新する。詳しい仕様はREADMEへ転載せず、概要と正本へのリンクにとどめる。予定の機能と実際に使える機能を分けて書く。引継ぎには、更新したREADMEとその内容か、「README更新不要」とその理由を1行書く。READMEがほかの担当の変更範囲と重なるときは、その担当と調整し、更新先・担当・完了条件を引継ぎに残す（2026-10-02の所有者決定）。

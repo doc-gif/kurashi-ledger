@@ -8,11 +8,22 @@
 
 最初に [AGENTS.md](AGENTS.md) と [現在の状態](docs/project-status.md) を読んでください。最新mainと関連Issue・PRを確認し、実装の許可・担当・依存関係が揃ってからタスク専用worktreeで着手します。古い会話やcloneの状態だけで進めません。
 
+## 開発環境
+
+いま使えるのは、開発用の設定・スクリプトとその試験だけです。アプリの起動、UIのビルド、製品の試験・CIはまだありません。
+
+- Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
+- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
+- レビュー運用ツール（Python 3.11以上）は、`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査します（[手順](tools/review_guard/README.md)）。
+
+詳しくは[開発環境と作業の規約](docs/development.md)を見てください。
+
 ## 設計資料
 
 - [実装順序・並行作業](docs/implementation-plan.md)
 - [タスク台帳 — T00–T28と任意評価E01](docs/implementation-tasks.md)
 - [技術構成の決定（ADR）](docs/adr/README.md)
+- [デザインの基礎・トークン・部品の仕様（Figmaとの対応）](design/README.md)
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
@@ -21,6 +32,8 @@
 - [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
 - [テスト方針](docs/testing.md)
+- [開発環境と作業の規約（Node.jsの版、`npm run setup`）](docs/development.md)
+- [公開範囲と公開前の点検](docs/public-data.md)
 - [公開・運用方針](SECURITY.md)
 - [OpenFiscaの検証項目](experiments/openfisca/README.md)
 
@@ -38,4 +51,6 @@ Copilotの自動レビュー用repoルールは設定済みです。Draftはrepo
 
 コードを追加するときも、一般化した仕様と合成データのみを使用します。実際の明細、金額、勤務先、住所、口座情報、通知書、秘密情報は保存しません。実データは将来のアプリでリポジトリ外に保存する設計です。
 
-ライセンスは未選択です。publicであることと、OSSとして再利用を許諾することは別です。
+合成データとデザイン資産を置ける場所、commit前の点検（`npm run check:public -- --staged`）、誤って公開したときの手順は[公開範囲と公開前の点検](docs/public-data.md)にあります。検査は追加の防御で、保証ではありません。
+
+ライセンスは未選択です（所有者が選ぶまで、OSSとは呼びません）。publicであることと、OSSとして再利用を許諾することは別です。

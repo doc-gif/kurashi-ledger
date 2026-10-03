@@ -20,14 +20,15 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | ADR | 決定 | 状態 |
 | --- | --- | --- |
 | 0001 | [小さなアプリと明示的な境界](../architecture.md)（既存の`docs/architecture.md`） | 方向性として確定（T00で状態欄を更新）。言語（TypeScript）と単一アプリの方針はADR-0002で確定する |
-| [0002](0002-runtime-and-distribution.md) | 実行方式・ランタイム・配布・起動と更新の手順 | Proposed |
+| [0002](0002-runtime-and-distribution.md) | 実行方式・ランタイム・配布・起動と更新の手順 | Accepted |
 | [0003](0003-local-http-boundary.md) | ローカルHTTPの安全境界 | Proposed |
 | [0004](0004-ui-and-browsers.md) | UI構成と対応ブラウザ | Proposed |
-| [0005](0005-sqlite-driver.md) | SQLiteドライバ | Proposed |
+| [0005](0005-sqlite-driver.md) | SQLiteドライバ | Accepted |
 | [0006](0006-data-location-backup-encryption.md) | データ保管先・バックアップ・暗号化・同期の扱い | Proposed |
 | [0007](0007-shared-safety-checks.md) | 共通の安全確認（G1〜G7）と、操作ごとの適用表（修正の影響範囲の一覧） | Proposed |
+| [0008](0008-install-record.md) | 依存の導入の記録の形式と照合の方法（T02。ADR-0002で後に決めるとした部分） | Proposed |
 
-`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0008以降の番号を使う。
+`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0009以降の番号を使う（0008はT02で使った）。
 
 ## T00の決定の要約
 
@@ -76,14 +77,16 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | `package.json`、lockfile、Node.jsの版指定、tsconfig、workflow | mainには存在しない | T02でADR-0002・0004に沿って作る |
 | 元checkoutにある未公開の試作コード | T00では読んでいない。コピー・公開もしていない | T02で採否を棚卸しする。確認する観点の例はNode.jsの版、依存、SQLiteドライバ、workflow。ADRと食い違えば、試作をADRに合わせるか、ADRを置き換える提案をする |
 
+T02の結果（2026-10-03、Issue #9）: `.gitignore`の2点を直し、除外する種類を1つの規則で広げ（ほかの画像形式、文書、表計算、明細・メールの書き出し、アーカイブ、鍵の入れ物）、合成データとデザイン資産の置き場所と点検の手順を決めた（[公開範囲と公開前の点検](../public-data.md)）。`package.json`・lockfile・Node.jsの版の指定・tsconfigを作った（[開発環境と作業の規約](../development.md)、[ADR-0008](0008-install-record.md)）。元checkoutの試作の採否は、[開発環境と作業の規約](../development.md)の「元checkoutの未公開の試作の棚卸し」に記録した。ADRを置き換える必要のある食い違いはなかった。
+
 ## 別タスクへ切り出す検証
 
 T00では実装・検証コードを作っていない。必要な検証は次のタスクで行う。
 
 | タスク | 検証 |
 | --- | --- |
-| T02 | 依存の導入の記録の方式（lockfileと実行環境に結び付ける）、着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないこと、`.gitignore`の修正、試作コードの棚卸し |
-| T05 | Mac/Windows/LinuxのCIで固定版のNode.jsを使うこと。後続タスク（T26等）が試験を追加すれば全OSで実行される構成にすること。ブラウザ試験の基盤（Playwrightの導入、ChromiumをMac/Windows/Linux、WebKitをMac） |
+| T02 | 依存の導入の記録の方式（lockfileと実行環境に結び付ける）、着手時に利用可能なLTSと必要機能の確認、`devEngines`・`engines`・lockfile・`.npmrc`（`ignore-scripts`）、`node:sqlite`の読込で警告が出ないことを確かめる試験（固定版とMac/Windows/Linuxでの実行はT05）、`.gitignore`の修正、試作コードの棚卸し |
+| T05 | Mac/Windows/LinuxのCIで固定版のNode.jsを使うこと。T02から移した、固定版とWindowsでの`npm run setup`・型検査・試験（`node:sqlite`の警告なしを含む）・`npm run build`の成功（2026-10-02の所有者決定。T02では試験を作ったが、固定版とWindowsでは実行していない）。Windowsの実機での`npm run setup`のCtrl+Cで、記録も作業中の印も残らないことの確認（2026-10-03の所有者決定。ADR-0008）。T02の試験のうち環境によって飛ばすものの代わりの手での確認と、CIでのskipの件数の記録（[開発環境](../development.md)の「環境によって飛ばす試験」）。後続タスク（T26等）が試験を追加すれば全OSで実行される構成にすること。ブラウザ試験の基盤（Playwrightの導入、ChromiumをMac/Windows/Linux、WebKitをMac） |
 | T07 | データルートの検査（実体パスで判定。Git作業ツリー、クラウド同期、ネットワークドライブ、種別マーカー）と新規作成の手順（親ディレクトリが既にあることの確認、作業ディレクトリで組み立ててから名前変更で置く、作成後の再検査、状態ファイルや復元途中の退避物があれば作らない、残った作業ディレクトリを自動で削除しない）、固定の子を作る共通の初期化（新規作成の側）と構造の版と権限（ADR-0006の1）、lockを取ったあとの状態ファイルの再確認、単一起動のlock（データルートの外の`<データルート>.lock`にOSのファイルロックで取る。lockファイルと状態ファイルはリンクであってはならない。強制終了で自動的に解放され、生きているlockは奪わない。保守コマンドは入れ替えの前後を通して保持する）、欠けたデータルートやDBを作り直さないこと、migration前の退避と`db/`ディレクトリの入れ替えによるrollback（hot journalの対を崩さず、各段階の異常終了から再開・巻戻しできる）、保守作業の状態ファイル（残っている間はアプリと新しい保守作業を起動せず、対応する復旧操作だけを同じlockの下で許す。復旧操作は欠けた子を作り直さない）、`node:sqlite`の設定（timeout、defensive、foreign_keys、application_id、user_version）、transactionと途中失敗 |
 | T08 | ReactとViteの導入（初回UI依存）、`npm run build`の配信物のmanifest（最後に書く。ADR-0002）、ViteをmiddlewareモードでT26のサーバーに組み込む開発時の構成（ADR-0003の10。開発UIからの交換・API操作の成功と、別ポートからの直接要求の拒否を試験）、開発時のCSPのnonce（ADR-0003の7。HMRの反映と、nonceのないinlineの拒否を試験）、Viteが配信するHTMLの`<meta>`に起動の識別子を入れること（ADR-0003の14。開発UIからの交換・API要求の成功と、識別子のない・違う要求の拒否を試験）、フォーム部品の基盤の選定、T05の基盤へのUIのE2Eの追加、対応ブラウザでのキーボード操作・アクセシビリティ。Firefoxは必須のE2E対象に含めない |
 | T09 | 起動モードと承認済みリリースの確認の共通の仕組み（`start:real`に適用し、T07のrollbackの中核の処理を`rollback`・`rollback:real`のコマンドとして公開する。T12の`:real`コマンドも使う）、トークンの一時ファイルの作成先として検査済みのデータルートの`tmp/`を渡すこと、`npm run start:real`での配信物のmanifestの確認（ADR-0002。commit、lockfile、Node.jsの版、ファイルのハッシュ。Node.jsの版を変えて依存の導入だけをやり直した場合に止まること）、起動モードの判別（`npm run start:real`だけが実利用モードで、リリースタグのcheckoutを確認する。ほかは合成データモードで、指定がなければ終了する）。起動処理（T26）に、データルートの検査・種別マーカー・lock（T07）を組み込み、検査に通るまでDBを開かないこと。開発時の起動も同じ検査（ADR-0007のG1〜G5）に通し、実データのデータルートを開かないこと。二重起動の防止 |

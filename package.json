@@ -1,0 +1,27 @@
+{
+  "name": "kurashi-ledger",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=24.15.0 <25",
+      "onFail": "error"
+    }
+  },
+  "scripts": {
+    "setup": "node scripts/setup.ts",
+    "check:install": "node scripts/check-install.ts",
+    "build": "node scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"scripts/**/*.test.ts\"",
+    "check:public": "node scripts/check-public.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "7.0.2"
+  }
+}
