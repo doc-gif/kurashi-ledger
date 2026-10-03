@@ -113,6 +113,17 @@
       "retrievedOn": "2026-10-03"
     },
     {
+      "id": "nta-2025kiso-qa",
+      "title": "令和7年度税制改正（所得税の基礎控除の見直し等関係）Q&A",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/0025005-051.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-05-30",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "資料の表記は令和7年5月30日",
+      "retrievedOn": "2026-10-03"
+    },
+    {
       "id": "nta-2025tsukin-qa",
       "title": "通勤手当の非課税限度額の引上げに関するQ&A",
       "publisher": "国税庁",
@@ -413,6 +424,7 @@
         "nta-ta-1195",
         "nta-ta-1177",
         "nta-ta-1181",
+        "nta-2025kiso-qa",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
         "nta-shinkoku2025-reconstruction",
@@ -601,6 +613,7 @@
         "nta-ta-1195",
         "nta-ta-1177",
         "nta-ta-1181",
+        "nta-2025kiso-qa",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
         "nta-shinkoku2025-reconstruction",

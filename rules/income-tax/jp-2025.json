@@ -490,6 +490,19 @@
           "ref": "nta-ta-1195",
           "location": "同(5)"
         }
+      },
+      {
+        "input": "spouseClaimedAsSpecificRelativeByOther",
+        "subject": "ほかの居住者",
+        "object": "配偶者",
+        "allowed": [
+          false
+        ],
+        "meaning": "配偶者がほかの居住者の特定親族にも該当し、その居住者の特定親族特別控除の対象とされている（所属がほかの人。3-7の②）。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合②"
+        }
       }
     ],
     "excludedIfSpouseDeduction": true
@@ -719,6 +732,32 @@
         "source": {
           "ref": "nta-ta-1177",
           "location": "同(9)"
+        }
+      },
+      {
+        "input": "specificRelativeClaimedAsSpecificRelativeByOther",
+        "subject": "ほかの居住者",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "この親族が2人以上の居住者の特定親族に該当し、ほかの居住者の特定親族とされている（所属がほかの人）。いずれか1人の特定親族にだけ該当するとみなされる（3-7の①）。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合①"
+        }
+      },
+      {
+        "input": "specificRelativeClaimedAsSpouseByOther",
+        "subject": "ほかの居住者（この親族の配偶者）",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "この親族がほかの居住者の配偶者特別控除の対象の配偶者にも該当し、その居住者の配偶者特別控除の対象とされている（所属がほかの人）。いずれか1人の特定親族か配偶者特別控除の対象の配偶者にだけ該当するとみなされる（3-7の②）",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合②"
         }
       }
     ],
