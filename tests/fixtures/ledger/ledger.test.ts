@@ -333,8 +333,12 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
   for (const r of refs) if (r !== id && !exists(state, r)) codes.add("ref-target-missing");
   const dupOf = isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known" ? rec["duplicateOf"]["value"] : undefined;
   if (isObj(dupOf) && typeof dupOf["id"] === "string") {
+    // 有効な記録＝取消しておらず、差し替えの系列の現在の記録（共通の型の9）。系列は共通の補助でたどる。
     const target = latest(state, dupOf["id"]);
-    if (target !== undefined && target["status"] !== "active") codes.add("ref-target-invalid");
+    const lookup = latestLookup(state);
+    if (target !== undefined && (target["status"] !== "active" || supersededAmong(lookup, [...state.records.keys()]).superseded.has(dupOf["id"]))) {
+      codes.add("ref-target-invalid");
+    }
   }
   // 照合配分の行を指す参照は、参照先の現在の版にある、その項目が指せる種類の行だけ（共通の型の2）。
   // 給与明細で指せるのは支給の行（otherEarnings）だけ、予測は見込みの行（lines）だけ。控除の行（otherDeductions）は指せない。
@@ -555,17 +559,73 @@ function replayOps(
 
 const FACT_JURISDICTION = SPECS.fact({ t: "object", fields: { kind: SPECS.enm("national", "prefecture", "municipality", "insurer"), code: SPECS.text } }, ["known", "unknown"]);
 
-// マスタのIDを、その時点の最新の改訂で二重登録の取消（duplicateOf）をたどった正規のIDにする（共通の型の9）。
-function canonicalMasterId(state: State, id: string): string {
+// ---- 鎖のたどり方（検査のコードで共通に使う補助。ほかの場所で現在の記録・正規のIDを別に導かない）
+// 見方: 記録のIDから、その見方で選ばれた改訂を返す（なければundefined＝その見方で解決できない）。
+
+type RecordLookup = (id: string) => Obj | undefined;
+
+function latestLookup(state: State): RecordLookup {
+  return (id) => latest(state, id);
+}
+
+// runに固定した版だけで引く（計算結果の1の「入力の閉包と推移的な固定」）。
+function pinnedLookup(state: State, pins: ReadonlyMap<string, number>): RecordLookup {
+  return (id) => {
+    const r = pins.get(id);
+    return r === undefined ? undefined : state.records.get(id)?.[r - 1];
+  };
+}
+
+function knownRefId(v: unknown): string | undefined {
+  return isObj(v) && v["state"] === "known" && isObj(v["value"]) && typeof v["value"]["id"] === "string" ? v["value"]["id"] : undefined;
+}
+
+// 共通の型の9の正規のID: 二重登録の取消（duplicateOf）をたどり、最初に着いた取消していない記録のID。
+// 鎖の途中をその見方で解決できなければundefined。
+function canonicalIdOf(lookup: RecordLookup, id: string): string | undefined {
   const seen = new Set<string>();
   let cur = id;
   for (;;) {
-    const rec = latest(state, cur);
-    const dup = rec !== undefined && rec["status"] === "voided" && isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known" ? rec["duplicateOf"]["value"] : undefined;
-    if (!isObj(dup) || typeof dup["id"] !== "string" || seen.has(cur)) return cur;
+    const rec = lookup(cur);
+    if (rec === undefined) return undefined;
+    const next = rec["status"] === "voided" ? knownRefId(rec["duplicateOf"]) : undefined;
+    if (next === undefined || seen.has(cur)) return cur;
     seen.add(cur);
-    cur = dup["id"];
+    cur = next;
   }
+}
+
+// 記録の型の10の1: 取消していない記録Xが差し替える記録。Xのsupersedesをたどり、取消した記録は通り過ぎて
+// （その最新の改訂＝その見方の改訂のsupersedesをさらにたどる）、最初に着いた取消していない記録。
+// 何も差し替えなければnull、その見方で解決できない参照に着けば"unresolved"。
+function supersededTarget(lookup: RecordLookup, x: Obj): string | null | "unresolved" {
+  if (x["status"] !== "active" || !isObj(x["body"])) return null;
+  const seen = new Set<string>();
+  let next = knownRefId(x["body"]["supersedes"]);
+  while (next !== undefined) {
+    if (seen.has(next)) return "unresolved";
+    seen.add(next);
+    const rec = lookup(next);
+    if (rec === undefined) return "unresolved";
+    if (rec["status"] === "active") return next;
+    next = isObj(rec["body"]) ? knownRefId(rec["body"]["supersedes"]) : undefined;
+  }
+  return null;
+}
+
+// 記録の型の10の4: 与えた記録の中で、ほかの取消していない記録に差し替えられた記録（現在の記録でないもの）と、
+// 解決できない参照を含む記録。
+function supersededAmong(lookup: RecordLookup, ids: readonly string[]): { superseded: Set<string>; unresolved: Set<string> } {
+  const superseded = new Set<string>();
+  const unresolved = new Set<string>();
+  for (const id of ids) {
+    const rec = lookup(id);
+    if (rec === undefined) continue;
+    const t = supersededTarget(lookup, rec);
+    if (t === "unresolved") unresolved.add(id);
+    else if (t !== null) superseded.add(t);
+  }
+  return { superseded, unresolved };
 }
 
 function inScope(list: unknown, id: string): boolean {
@@ -580,15 +640,16 @@ function inScope(list: unknown, id: string): boolean {
 function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Problems): void {
   if (run["status"] !== "computed" && run["status"] !== "provisional") return;
   const requests = Array.isArray(run["requests"]) ? run["requests"] : [];
-  const inputs = (Array.isArray(run["inputsRecords"]) ? run["inputsRecords"] : [])
-    .filter((r): r is Obj => isObj(r) && typeof r["id"] === "string" && typeof r["revision"] === "number")
-    .map((r) => ({ id: String(r["id"]), revision: Number(r["revision"]), rec: state.records.get(String(r["id"]))?.[Number(r["revision"]) - 1] }));
-  // 固定した記録のうち、ほかの固定した有効な記録に差し替えられた記録（現在の記録でないもの）は集計の対象にならない（記録の型の10）。
-  const superseded = new Set<string>();
-  for (const input of inputs) {
-    const sup = input.rec !== undefined && input.rec["status"] === "active" && isObj(input.rec["body"]) ? input.rec["body"]["supersedes"] : undefined;
-    if (isObj(sup) && sup["state"] === "known" && isObj(sup["value"]) && typeof sup["value"]["id"] === "string") superseded.add(sup["value"]["id"]);
+  const pins = new Map<string, number>();
+  for (const r of Array.isArray(run["inputsRecords"]) ? run["inputsRecords"] : []) {
+    if (isObj(r) && typeof r["id"] === "string" && typeof r["revision"] === "number") pins.set(r["id"], r["revision"]);
   }
+  const lookup = pinnedLookup(state, pins);
+  const inputs = [...pins].map(([id, revision]) => ({ id, revision, rec: lookup(id) }));
+  // 固定した版だけで差し替えの系列をたどり、現在の記録でない記録（差し替え済み）は集計の対象にしない（記録の型の10）。
+  // 取消した中間の記録は通り過ぎる。固定した版でたどれない参照を含む記録は、系列が決まらないので不足とする。
+  const { superseded, unresolved } = supersededAmong(lookup, [...pins.keys()]);
+  const canonical = (id: string): string => canonicalIdOf(lookup, id) ?? id;
   requests.forEach((req, ri) => {
     const key = isObj(req) && isObj(req["key"]) ? req["key"] : undefined;
     const scope = isObj(req) && isObj(req["scope"]) ? req["scope"] : undefined;
@@ -603,18 +664,22 @@ function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Pro
       targetType = "payslip";
       item = key["item"];
       dateField = "scheduledPayDate";
-      dimension = (body) => typeof body["employerId"] === "string" && inScope(scope["employerIds"], canonicalMasterId(state, body["employerId"]));
+      dimension = (body) => typeof body["employerId"] === "string" && inScope(scope["employerIds"], canonical(body["employerId"]));
     } else if (key["kind"] === "deposit-amount") {
       targetType = "bank-deposit";
       item = "amount";
       dateField = "depositDate";
-      dimension = (body) => typeof body["accountId"] === "string" && inScope(scope["accountIds"], canonicalMasterId(state, body["accountId"]));
+      dimension = (body) => typeof body["accountId"] === "string" && inScope(scope["accountIds"], canonical(body["accountId"]));
     } else return;
     for (const input of inputs) {
       const rec = input.rec;
       if (rec === undefined || rec["recordType"] !== targetType || rec["status"] !== "active" || superseded.has(input.id) || !isObj(rec["body"])) continue;
       const body = rec["body"];
       if (!dimension(body)) continue;
+      if (unresolved.has(input.id)) {
+        problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]の対象の${input.id}版${input.revision}の差し替えの系列を、固定した版でたどれない（分からない入力）`);
+        continue;
+      }
       const date = body[dateField];
       const ds = factStateOf(date);
       // 日付の軸の日付が分からない記録は、その要求の範囲から外せない（照合の規則の2の「日付不明」）。
@@ -1837,6 +1902,68 @@ test("検査の自己確認: runの不足は要求ごとの範囲・日付の軸
     ),
     [],
   );
+});
+
+// A ← B ← Cの差し替えの系列を、EX-04a-a6の9月の所得税の要求の範囲に足す（合成の見本）。Aの所得税だけが分からない。
+function addSeriesToA6(copy: LedgerFiles, voids: readonly string[]): void {
+  const sc = scenario(firstCase(copy, "EX-04a"), "EX-04a-a6");
+  const ops = sc["operations"] as Obj[];
+  const pay = (id: string, tax: Obj, sup?: string): Obj => ({
+    id,
+    recordType: "payslip",
+    body: {
+      employerId: "emp_1",
+      paymentKind: { state: "known", value: "salary" },
+      scheduledPayDate: { state: "known", value: "2026-09-25" },
+      incomeTax: tax,
+      ...(sup === undefined ? {} : { supersedes: { state: "known", value: { id: sup, revision: "current", line: "whole" } } }),
+    },
+  });
+  const added: Obj[] = [
+    { op: "save", opId: "s1", at: "2026-11-01T00:10:00.000Z", expect: { outcome: "accepted" }, record: pay("pay_431", { state: "unknown" }) },
+    { op: "save", opId: "s2", at: "2026-11-01T00:11:00.000Z", expect: { outcome: "accepted" }, record: pay("pay_432", { state: "known", value: 4100 }, "pay_431") },
+    { op: "save", opId: "s3", at: "2026-11-01T00:12:00.000Z", expect: { outcome: "accepted" }, record: pay("pay_433", { state: "known", value: 4200 }, "pay_432") },
+  ];
+  const revisions = new Map<string, number>([["pay_431", 1], ["pay_432", 1], ["pay_433", 1]]);
+  voids.forEach((id, i) => {
+    added.push({ op: "save", opId: `v${i + 1}`, at: `2026-11-01T00:2${i}:00.000Z`, expect: { outcome: "accepted" }, record: { id, recordType: "payslip", revision: 2, reason: "void" } });
+    revisions.set(id, 2);
+  });
+  ops.splice(2, 0, ...added);
+  const run = op(sc, "o3")["run"] as Obj;
+  for (const [id, revision] of revisions) (run["inputsRecords"] as Obj[]).push({ id, revision });
+}
+
+test("検査の自己確認: runの不足の判断は、取消した中間の記録を通り過ぎて現在の記録を決める（A ← B ← C）", () => {
+  const onlyA6 = (p: string[]): string[] => p.filter((x) => x.includes("EX-04a-a6"));
+  // 系列が整っていれば、差し替え済みのA（所得税が分からない）は判断に入らない。
+  assert.deepEqual(onlyA6(mutated((copy) => addSeriesToA6(copy, []))), []);
+  // Bだけを取消すと、CはBを通り過ぎてAを差し替える（現在の記録はC）。Aは判断に入らない。
+  assert.deepEqual(onlyA6(mutated((copy) => addSeriesToA6(copy, ["pay_432"]))), []);
+  // BとCを取消すと、取消していない記録はAだけで、Aが現在の記録に戻る。Aの所得税が分からないので不足。
+  const both = onlyA6(mutated((copy) => addSeriesToA6(copy, ["pay_432", "pay_433"])));
+  assert.ok(both.some((x) => x.includes("requests[0]") && x.includes("pay_431") && x.includes("incomeTax")), both.join("\n"));
+  // 系列の橋の記録（取消したB）を固定していないrunは、固定した版でたどれないので不足とする。
+  const bridge = onlyA6(
+    mutated((copy) => {
+      addSeriesToA6(copy, ["pay_432"]);
+      const run = op(scenario(firstCase(copy, "EX-04a"), "EX-04a-a6"), "o3")["run"] as Obj;
+      run["inputsRecords"] = (run["inputsRecords"] as Obj[]).filter((r) => r["id"] !== "pay_432");
+    }),
+  );
+  assert.ok(bridge.some((x) => x.includes("pay_433") && x.includes("たどれない")), bridge.join("\n"));
+});
+
+test("検査の自己確認: 二重登録の取消の残す方は、差し替えの系列の現在の記録だけ", () => {
+  const p = mutated((copy) => {
+    addSeriesToA6(copy, []);
+    const ops = scenario(firstCase(copy, "EX-04a"), "EX-04a-a6")["operations"] as Obj[];
+    ops.splice(5, 0,
+      { op: "save", opId: "d1", at: "2026-11-01T00:30:00.000Z", expect: { outcome: "accepted" }, record: { id: "pay_434", recordType: "payslip", body: { employerId: "emp_1", scheduledPayDate: { state: "known", value: "2026-09-26" } } } },
+      { op: "save", opId: "d2", at: "2026-11-01T00:31:00.000Z", expect: { outcome: "accepted" }, record: { id: "pay_434", recordType: "payslip", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "pay_431", revision: "current", line: "whole" } } } },
+    );
+  });
+  assert.ok(p.some((x) => x.includes("EX-04a-a6 d2") && x.includes("ref-target-invalid")), p.join("\n"));
 });
 
 test("台帳のIDの接頭辞は契約の表と同じ", () => {
