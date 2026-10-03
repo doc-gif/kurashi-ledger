@@ -11,6 +11,7 @@
     "docs/adr/0009-local-http-implementation.md",
     "docs/adr/README.md",
     "docs/development.md",
+    "docs/github-agent-operations.md",
     "docs/implementation-tasks.md",
     "docs/project-status.md",
     "docs/testing.md",
@@ -103,6 +104,31 @@
       "description": "Copilot 5399809549のPreviously missed（server.ts:388）: APIの完全一致の振り分けに、ログ用に文字を置き換え200文字で切ったsafePathを使っているので、非ASCII・200文字を超えるパスに届かず、先頭200文字が同じ別のパスが誤って一致しうる。",
       "state": "resolved",
       "resolution": "振り分けには、クエリだけを除いた生のパスを使い、safePathはログにだけ使う。登録できるAPIのパスを、登録時に明示的に検証する（/api/で始まる、ASCIIの印字できる文字だけ、%・?・#・バックスラッシュ・空白を含まない、長さの上限1024）。非ASCII（登録で拒否）、200文字を超えるパス、先頭が同じ別のパスの回帰試験を加える。"
+    },
+    {
+      "description": "PR25-R001の再指摘（Codex 5399937854）: 開発時のmiddlewareの完了を、応答のcloseでも数えていた。closeはクライアントの途中切断でも起きるので、実際の処理が残っていても追跡から外れ、closeが返りうる。前の方針（finish・closeで完了）は誤り。",
+      "state": "resolved",
+      "resolution": "応答・接続の終了と、実際の処理の完了を分ける。middlewareの処理の完了は、next()の呼出し、res.end()の呼出し（途中切断のあとでも呼べば完了とする）、またはmiddlewareが返したPromiseの決着のどれか（Promiseを返したときはそれを待つ）。応答のclose（途中切断）では完了としない。APIの処理（route.handleのPromise）と本文の読込み（途中切断でも決着する）も同じ考え方で追跡する。試験: 遅いmiddlewareで、応答の前にクライアントが切断しても、closeは処理を解放して終えるまで返らない。"
+    },
+    {
+      "description": "PR25-R005（Codex 5399937854、Copilot 4172441607。既存のPR12-R104と同じ原因）: 一時ディレクトリは末端だけを確かめ、実体パスの文字列だけを持つので、確認のあとで親や深い祖先を書き換えられる別のユーザーが経路を差し替えると、作成・権限変更・削除が確認した場所の外をたどる。Node.jsにはディレクトリのハンドルに相対の操作（openat）がない。",
+      "state": "resolved",
+      "resolution": "経路を、ほかの一般のユーザーが差し替えられないことを確かめる方式にする（管理者・同じユーザーは境界の外のまま）。実体パスのすべての祖先と末端について、POSIXは所有者がrootか実行中のユーザーで、グループ・ほかのユーザーの書込みのbitがない（stickyのbitがあれば、その中の子の所有者がrootか実行中のユーザーであれば許す）、macOSはさらに、ほかのユーザーへの変更の権限（delete・delete_child・add_file・add_subdirectory・write・append・writesecurity・chown）を許すallowの拡張ACLがないこと。Windowsは、各祖先と末端の所有者と、継承専用でないAllowのエントリで、実行中のユーザー・SYSTEM・Administrators・TrustedInstaller以外のSIDに、子の削除（FILE_DELETE_CHILD）・自身の削除（DELETE）・WRITE_DAC・WRITE_OWNER・GENERIC_ALLを許していないこと。確かめられなければ何も作らずに拒否する。加えて、確かめたときの経路の各要素のdev・inoを記録し、作成・権限変更・削除の直前に、どの要素もリンクでなく同じものであることを確かめ直し、違えば何もしない（同じユーザーの差し替えへの追加の防御）。試験: 祖先に別のユーザーも書けるディレクトリ（stickyなし）があると拒否すること、stickyのある共有ディレクトリの中の自分のディレクトリは許すこと、確認のあとで末端や深い祖先を差し替えると作成・権限変更・削除が何もせずに止まり、差し替え先に何も書かれず消されないこと。ADR-0009の3・4と準備の手順を同じ内容にする。"
+    },
+    {
+      "description": "PR25-R006（Codex 5399937854、Copilot 4172441639）: upgradeの処理（開発時の口）が同期で例外を投げると、EventEmitterのハンドラの外へ抜けてプロセスが終わる。",
+      "state": "resolved",
+      "resolution": "upgradeの処理を呼ぶところで例外を捕まえ、秘密を含まない理由の符号（upgrade-handler-error と例外の符号）をログに出し、そのソケットを壊して追跡から外す。試験: 例外を投げる合成のupgradeのあとも通常の要求を処理でき、closeで接続が残らない。"
+    },
+    {
+      "description": "PR25-R007（Codex 5399937854、Copilot 4172441663。既存のPR2-R003と同じ原因）: ADR-0009はT09がmanifestで確かめた内容の読み出し元をこの口に渡すとしたが、公開のオプションはstaticRootだけで、ディスクの読み出し元を必ず作る。",
+      "state": "resolved",
+      "resolution": "LocalServerOptionsにstaticSource（StaticSourceの型）を加え、staticRoot・devとの同時指定を起動前に拒否する。パスの検査・HTMLの識別子・CSPとno-store・404は、読み出し元によらず同じ処理を通る。ディスクに依存しない合成の読み出し元で試験する。manifestの確認はT09のまま。"
+    },
+    {
+      "description": "PR25-D002（Codex 5399937854、Copilot 4172441695。既存のPR10-R004と同じ原因）: docs/github-agent-operations.mdが、製品の試験はまだないと書いたまま。",
+      "state": "resolved",
+      "resolution": "同じ資料の記述を「製品の試験はHTTPの境界（T26）から始まった」とする追記の形で直す（T06のPR #28と競合したときに解きやすいよう、T26の分を付け足す書き方にする）。ほかの入口もrepo全体で検索して照合する。"
     }
   ],
   "assessments": [
@@ -206,7 +232,7 @@
     {
       "id": "INV-ROOT",
       "disposition": "not-applicable",
-      "reason": "T26はデータルートの検査・作成・初期化（G1・G2、T07・T09）を扱わず、データルートに触れない。HTTPの部品が書くのは、外から渡された本人専用のディレクトリの中の一時ファイルだけ。PR12-R104（削除・上書きの前にリンクをたどらない）に照らし、渡されたディレクトリは起動時にlstatでリンクでないことと本人だけの権限を確かめて実体パスを固定し、一時ファイルは既存のファイルやリンクがあれば失敗する排他的な作成で作り、消すときは作ったときと同じファイル（lstatで通常のファイル、devとinoが一致）であることを確かめてからunlinkだけで消す（再帰しない）。npm startは、--token-dirがrepoの中を指す場合を拒む。",
+      "reason": "T26はデータルートの検査・作成・初期化（G1・G2、T07・T09）を扱わず、データルートに触れない。HTTPの部品が書くのは、外から渡された本人専用のディレクトリの中の一時ファイルだけ。PR12-R104（削除・上書きの前にリンクをたどらない）に照らし、渡されたディレクトリは起動時にlstatでリンクでないことと本人だけの権限を確かめて実体パスを固定し、一時ファイルは既存のファイルやリンクがあれば失敗する排他的な作成で作り、消すときは作ったときと同じファイル（lstatで通常のファイル、devとinoが一致）であることを確かめてからunlinkだけで消す（再帰しない）。npm startは、--token-dirがrepoの中を指す場合を拒む。 PR25-R005（PR12-R104と同じ原因）を受けて、末端だけでなく実体パスのすべての祖先を、ほかの一般のユーザーが差し替えられないことを確かめ、作成・権限変更・削除の直前に経路の各要素が同じであることを確かめ直す（conflictsのとおり）。",
       "checks": [
         {
           "id": "first-use",
