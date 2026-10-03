@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-09",
+  "title": "雇用条件の期間（不明な境界、継続中と不明の区別）",
+  "consumers": ["T06", "T17"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-09-a",
+      "title": "雇用条件の期間の重なり（不明な境界は限りなく開いた期間として判定する）",
+      "covers": [{"doc": "examples.md", "section": "EX-09"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-10-01T01:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "employment-term-overlap"},
+          "record": {
+            "id": "term_901",
+            "recordType": "employment-term",
+            "body": {"employerId": "emp_1", "applicablePeriod": {"start": {"state": "known", "value": "2027-04-01"}, "end": {"state": "not-applicable"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "term_1",
+            "recordType": "employment-term",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-10-02"},
+            "changeNote": {"state": "known", "value": "契約の更新で条件が変わると分かった"},
+            "body": {"applicablePeriod": {"start": {"state": "known", "value": "2026-04-01"}, "end": {"state": "known", "value": "2027-03-31"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-10-02T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "term_901",
+            "recordType": "employment-term",
+            "body": {"employerId": "emp_1", "applicablePeriod": {"start": {"state": "known", "value": "2027-04-01"}, "end": {"state": "not-applicable"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-10-02T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "term_902",
+            "recordType": "employment-term",
+            "body": {"employerId": "emp_3", "applicablePeriod": {"start": {"state": "unknown"}, "end": {"state": "known", "value": "2024-03-31"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-10-02T01:03:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "employment-term-overlap"},
+          "record": {"id": "term_903", "recordType": "employment-term", "body": {"employerId": "emp_3", "applicablePeriod": {"start": {"state": "unknown"}, "end": {"state": "unknown"}}}}
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2026-10-02T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "term_904",
+            "recordType": "employment-term",
+            "body": {"employerId": "emp_2", "applicablePeriod": {"start": {"state": "known", "value": "2025-01-01"}, "end": {"state": "known", "value": "2025-12-31"}}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "selectedRevision", "record": "term_1"},
+          "expect": {"revision": 2},
+          "reason": "term_1は継続中（endが対象外）で後ろへ無限に広がるので、term_901（2027-04-01〜）を保存しようとすると重ならないことを確かめられず拒否。term_1のendを2027-03-31に改訂してからは、2026-04-01〜2027-03-31と2027-04-01〜は重ならないので保存できる。",
+          "cites": [{"doc": "records.md", "section": "2", "quote": "重ならないことを確かめられない保存は拒否する"}, {"doc": "examples.md", "section": "EX-09", "quote": "term_1は継続中で、後ろへ無限に広がるので、重ならないことを確かめられない"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "selectedRevision", "record": "term_902"},
+          "expect": {"revision": 1},
+          "reason": "term_902（startは不明、end 2024-03-31）は前へ無限に広げて解釈するが、endがterm_3のstart（2025-04-01）より前なので重ならず保存できる。startもendも不明のterm_903は前後に無限に広がるので拒否。勤務先Bの過去の期間（2025年）の雇用条件term_904は、term_2（2026-09-01〜）と重ならないので保存できる。",
+          "cites": [
+            {"doc": "common-types.md", "section": "6", "quote": "startがknownでなければ過去へ、endがknownでなければ（not-applicableの継続中を含む）未来へ、限りなく開いた期間として扱う"},
+            {"doc": "examples.md", "section": "EX-09", "quote": "前後どちらにも無限に広がるので、term_3・term_902と重ならないことを確かめられない"}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1213 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-06",
+  "title": "年間資料と月次資料（採用・比較・不一致・範囲の一部の集計）",
+  "consumers": ["T11", "T14", "T15"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-06-a",
+      "title": "前職の資料と明細が一致する（例示の対応表）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "例示の比較の対応表"}, {"doc": "examples.md", "section": "EX-06", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "a1",
+          "at": "2027-01-20T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_601",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-01-01"}, "end": {"state": "known", "value": "2026-01-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-01-30"},
+              "grossPay": {"state": "known", "value": 200000},
+              "taxablePay": {"state": "known", "value": 200000},
+              "incomeTax": {"state": "known", "value": 4000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a2",
+          "at": "2027-01-20T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_602",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-02-01"}, "end": {"state": "known", "value": "2026-02-28"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-02-27"},
+              "grossPay": {"state": "known", "value": 200000},
+              "taxablePay": {"state": "known", "value": 200000},
+              "incomeTax": {"state": "known", "value": 4000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a3",
+          "at": "2027-01-20T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_603",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-03-01"}, "end": {"state": "known", "value": "2026-03-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-03-31"},
+              "grossPay": {"state": "known", "value": 200000},
+              "taxablePay": {"state": "known", "value": 200000},
+              "incomeTax": {"state": "known", "value": 4000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a4",
+          "at": "2027-01-20T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_601",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_3",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 600000},
+              "withholdingTax": {"state": "known", "value": 12000},
+              "includedOtherPayers": {"state": "known", "value": []},
+              "yearEndAdjustmentStatus": {"state": "known", "value": "not-adjusted"},
+              "employmentEndDate": {"state": "known", "value": "2026-03-31"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a5",
+          "at": "2027-01-20T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_601",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_601", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_601", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a6",
+          "at": "2027-01-20T01:05:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_602",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_601", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_602", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a7",
+          "at": "2027-01-20T01:06:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_603",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_601", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_603", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "a8",
+          "at": "2027-01-20T01:07:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "ann_604", "recordType": "annual-document", "body": {"documentType": "withholding-slip", "documentLabel": "給与所得の源泉徴収票（架空）", "payerEmployerId": "emp_3", "targetYear": 2025}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_601", "field": "paymentAmount"},
+          "expect": {"state": "match"},
+          "reason": "例示の対応表では支払金額と課税支給額の合計を比べる。確定済みのannual-coverageで結んだ3件の課税支給額の合計600,000と年間資料600,000が一致。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "paymentAmount | taxablePay"}, {"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで一致"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_601", "field": "withholdingTax"},
+          "expect": {"state": "match"},
+          "reason": "源泉徴収税額12,000と所得税の合計12,000が一致。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "withholdingTax | incomeTax"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_3"},
+          "expect": {"selection": "annual-document", "document": "ann_601"},
+          "reason": "2026年の勤務先Cの候補はann_601の1件。対象の年が2025のann_604は候補にならない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "年が違う年間資料（前年分等）は候補にならない"}, {"doc": "examples.md", "section": "EX-06", "quote": "ann_604は対象の年が違うので2026年の候補にならず"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 600000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "採用した年間資料ann_601の支払金額を1回だけ使う。明細の合計を足さない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "年間資料と明細を足さない"}, {"doc": "common-types.md", "section": "11", "quote": "選択が年間資料で、その資料の範囲全体が集計のscopeに入る"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "adoption", "year": 2025, "payer": "emp_3"},
+          "expect": {"selection": "adoption-needed"},
+          "reason": "2025年は、勤務先Cが発行したann_604の他の支払者の分を確かめていない（範囲が確定しない）ので要判断。2026年の集計には影響しない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "Pが発行した年間資料（年Y、取消・差し替えされていないもの）に範囲が確定しないものがある: 要判断"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "includedPayersPrompt", "annualDocument": "ann_601"},
+          "expect": {"shown": false},
+          "reason": "2026年の年間資料は勤務先Cの1件だけなので、「前職分を含むかの確認」の条件（同じ年に複数の支払者の年間資料）に当たらない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "同じ年に複数の支払者の年間資料があり"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-a-none",
+      "title": "対応表がない場合（T14の承認前）は比較がrule-pendingで、採用した資料の値は使える",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "例示の比較の対応表"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-06-a",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_601", "field": "paymentAmount"},
+          "expect": {"state": "rule-pending"},
+          "reason": "比較の対応表はT14が一次資料で定める。承認前は比較の状態がrule-pending（表の順1。関係の有無より先に決まる）。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "その項目の比較の対応表がまだない"}, {"doc": "examples.md", "section": "EX-06", "quote": "T14が対応表を承認する前は、比較の状態はrule-pendingになり"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 600000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "年間資料を採用した支払者の値は、対応表がなくても資料の値をそのまま使う。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "年間資料を採用した支払者の値は、対応表がなくても資料の値をそのまま使う"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-b",
+      "title": "前職分を含む年間資料が届く",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "b1",
+          "at": "2027-01-25T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_602",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 2600000},
+              "withholdingTax": {"state": "known", "value": 35000},
+              "includedOtherPayers": {
+                "state": "known",
+                "value": [
+                  {
+                    "payerEmployerId": {"state": "known", "value": "emp_3"},
+                    "payerLabel": {"state": "known", "value": "勤務先C"},
+                    "paymentAmount": {"state": "known", "value": 600000},
+                    "withholdingTax": {"state": "known", "value": 12000}
+                  }
+                ]
+              },
+              "yearEndAdjustmentStatus": {"state": "known", "value": "adjusted"},
+              "employmentStartDate": {"state": "known", "value": "2026-04-01"}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_1"},
+          "expect": {"selection": "annual-document", "document": "ann_602"},
+          "reason": "勤務先Aの候補はann_602（範囲A・C）だけ。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "範囲がほかのすべての候補の範囲を含む候補が1件だけあれば、それを選ぶ"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_3"},
+          "expect": {"selection": "annual-document", "document": "ann_602"},
+          "reason": "勤務先Cの候補はann_601（C）とann_602（A・C）。範囲がほかのすべての候補の範囲を含むann_602を選ぶ（前職分を含む資料が前職の資料より優先される）。整合の検査でも範囲A・Cの支払者の選択はどちらもann_602。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "範囲がほかのすべての候補の範囲を含む候補が1件だけあれば、それを選ぶ"},
+            {"doc": "reconciliation.md", "section": "5", "quote": "選ばれた年間資料Dごとに、Dの範囲に含まれるすべての支払者の選択がDであることを確かめる"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 2600000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "ann_602は勤務先Aと勤務先Cの両方に選ばれるが、資料のIDで重複を除いて1回だけ足す（5,200,000にしない）。2,600,000 ＋ 600,000 ＝ 3,200,000にもしない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "11", "quote": "範囲がA・Cの資料は、AとCの両方に選ばれても1回"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "年間の支払金額を 2,600,000 ＋ 600,000 ＝ 3,200,000 にしない"}
+          ]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "withholdingTax"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 35000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "源泉徴収税額はann_602の記載値35,000（35,000 ＋ 12,000にしない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "源泉徴収税額を 35,000 ＋ 12,000 にしない"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_601", "field": "paymentAmount"},
+          "expect": {"state": "match"},
+          "reason": "採用しなかったann_601は比較にだけ使い、採用したann_602の他の支払者の行（勤務先C）の同じ名前の項目と比べる（600,000と600,000）。対応表とannual-coverageは使わない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "採用しなかった資料は、比較にだけ使う"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "支払金額 600,000 と 600,000、源泉徴収税額 12,000 と 12,000。どちらもmatch"}
+          ]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_601", "field": "withholdingTax"},
+          "expect": {"state": "match"},
+          "reason": "12,000と12,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "支払金額 600,000 と 600,000、源泉徴収税額 12,000 と 12,000。どちらもmatch"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ann_602", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "annual-scope"}, "state": "partial-scope"}]
+              }
+            ]
+          },
+          "reason": "年間資料の値は範囲全体の分けられない合計。勤務先Cだけの集計は範囲A・Cの一部だけを含むので資料の値を足さず、partial-scopeで挙げる。どの支払者の値も足せないので、coverageがnot-applicableの集計値を1つ返す。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "その資料の値を足さず、集計をincompleteにして、missingに資料と状態partial-scopeを挙げる"},
+            {"doc": "common-types.md", "section": "11", "quote": "範囲のすべての支払者が値を足せない場合は、coverage not-applicableの集計値を1つ返す"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-b2",
+      "title": "他の支払者の分を確かめていない場合（範囲が確定しない資料）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "b1",
+          "at": "2027-01-25T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_602",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 2600000},
+              "withholdingTax": {"state": "known", "value": 35000},
+              "yearEndAdjustmentStatus": {"state": "known", "value": "adjusted"},
+              "employmentStartDate": {"state": "known", "value": "2026-04-01"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "b2",
+          "at": "2027-01-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_602",
+            "recordType": "annual-document",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "他の支払者の分の記載を入力し忘れた"},
+            "body": {
+              "includedOtherPayers": {
+                "state": "known",
+                "value": [
+                  {
+                    "payerEmployerId": {"state": "known", "value": "emp_3"},
+                    "payerLabel": {"state": "known", "value": "勤務先C"},
+                    "paymentAmount": {"state": "known", "value": 600000},
+                    "withholdingTax": {"state": "known", "value": 12000}
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "b1",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_1"},
+          "expect": {"selection": "adoption-needed"},
+          "reason": "ann_602は他の支払者の分を確かめていないので範囲が確定せず、どの支払者の候補にもならない。発行者の勤務先Aは要判断。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "範囲が確定しない資料（includedOtherPayersがunknown、または支払者がknownでない行がある）は、どの支払者の候補にもしない"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "b1",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_3"},
+          "expect": {"selection": "annual-document", "document": "ann_601"},
+          "reason": "勤務先Cにはann_601が採用される。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "勤務先Cにはann_601が採用される"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "b1",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 600000,
+                "coverage": {"state": "known", "value": "annual-document"},
+                "missing": [{"ref": {"id": "emp_1", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "annual-adoption"}, "state": "adoption-needed"}]
+              }
+            ]
+          },
+          "reason": "分かるのは勤務先Cの600,000だけ（3,200,000にはならない）。集計値は1つで、coverageはknownSumの元のannual-document。勤務先Aはどのcoverageにも入れず、adoption-neededで挙げる。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "集計値は1つで、coverage annual-document（knownSumの600,000はann_601の値）、knownSum 600,000、missingに勤務先A（emp_1）をadoption-neededで挙げる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 2600000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "同じ資料の入力漏れを埋める改訂（correct-input-error）で他の支払者の分を記録すると、ann_602の採用に戻る。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "利用者がann_602を改訂（correct-input-error。同じ資料の入力漏れを埋める）して他の支払者の分を記録すると、上の表の採用に戻る"}]
+        }
+      ],
+      "acceptance": ["unknown-value", "correction"]
+    },
+    {
+      "scenarioId": "EX-06-b3",
+      "title": "誤って「他の支払者の分なし」と記録した場合",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "b1",
+          "at": "2027-01-25T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_602",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 2600000},
+              "withholdingTax": {"state": "known", "value": 35000},
+              "includedOtherPayers": {"state": "known", "value": []},
+              "yearEndAdjustmentStatus": {"state": "known", "value": "adjusted"},
+              "employmentStartDate": {"state": "known", "value": "2026-04-01"}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 3200000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "他の支払者の分をknownの空で保存すると、範囲は勤務先Aだけで確定し、勤務先Cにはann_601が採用される。範囲が重ならない年間資料2件の値を記録どおりに足す（記録の誤りは契約の規則だけでは見分けられない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "範囲が重ならない年間資料が2件採用され、年間の支払金額は記録どおりに 2,600,000 ＋ 600,000 ＝ 3,200,000 と計算される"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "includedPayersPrompt", "annualDocument": "ann_602"},
+          "expect": {"shown": true},
+          "reason": "同じ年に複数の支払者の年間資料があり、ann_602の就職日が年の途中（2026-04-01）で他の支払者の分がknownの空なので、「前職分を含むかの確認」を表示する。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "どれかの就職日が年の途中で、includedOtherPayersがknownの空のとき、「前職分を含むかの確認」を候補として表示する"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c",
+      "title": "年間資料と明細が一致しない（9月勤務分の明細を紛失）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c1",
+          "at": "2027-01-28T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_604",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c2",
+          "at": "2027-01-28T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_605",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-31"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c3",
+          "at": "2027-01-28T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_603",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_2",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 150000},
+              "withholdingTax": {"state": "known", "value": 4500},
+              "includedOtherPayers": {"state": "known", "value": []}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c4",
+          "at": "2027-01-28T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_604",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_604", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c5",
+          "at": "2027-01-28T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_605",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_605", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "paymentAmount"},
+          "expect": {"state": "mismatch-unresolved", "difference": {"state": "known", "value": 50000}},
+          "reason": "年間資料150,000と結んだ明細の課税支給額の合計100,000が異なり、説明の判断がない。差（年間資料 − 明細の合計）は50,000。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで異なり、上の6に当たらない（判断がない、または前提が崩れている）"},
+            {"doc": "reconciliation.md", "section": "5", "quote": "差（年間資料 − 明細の合計）を、比較の状態とともに表示する"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "withholdingTax"},
+          "expect": {"state": "mismatch-unresolved", "difference": {"state": "known", "value": 1500}},
+          "reason": "4,500と3,000で、差は1,500。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "4,500 | 3,000 | 1,500"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 150000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "不一致でも採用した年間資料の値を使い、状態を併記する。明細の合計で書き換えず、150,000 ＋ 100,000にもしない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "比較の状態がmismatch-unresolvedでも年間資料の値を使い、状態を併記する"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "年間の値を 150,000 ＋ 100,000 にしない"}
+          ]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "月ごとの表示は入力済みの明細だけで行い、明細のない月は記録なし。差を埋める仮の明細や月別の配分を作らない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "月ごとの表示は入力済みの明細だけで行い、明細のない月は「記録なし」と表示する"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-11-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_604の50,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "各complete 50,000"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c2",
+      "title": "紛失した明細が見つかった場合",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c6",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_606",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-09-01"}, "end": {"state": "known", "value": "2026-09-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c7",
+          "at": "2027-02-01T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_606",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_606", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "paymentAmount"},
+          "expect": {"state": "match"},
+          "reason": "pay_606を入力してann_603と結ぶと、明細の合計150,000が年間資料と一致する。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "比較はmatchになり、支払予定日 2026-10の支給額は50,000になる"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "withholdingTax"},
+          "expect": {"state": "match"},
+          "reason": "4,500と4,500。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで一致"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "支払予定日2026-10の支給額はpay_606の50,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "支払予定日 2026-10の支給額は50,000になる"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c3",
+      "title": "不一致の理由を残し、そのあとで値が変わった場合",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c6",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_601",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "mismatch-explanation",
+              "targets": [{"id": "ann_603", "revision": "current", "line": "whole"}],
+              "scope": {"state": "known", "value": {"year": 2026, "payers": ["emp_2"]}},
+              "value": "explained",
+              "reasonNote": "9月勤務分の明細を紛失。年間資料の値を使う",
+              "explainedComparisons": {
+                "state": "known",
+                "value": [
+                  {"field": "paymentAmount", "annualValue": 150000, "payslipSum": 100000, "coveredPayslips": ["pay_604", "pay_605"]},
+                  {"field": "withholdingTax", "annualValue": 4500, "payslipSum": 3000, "coveredPayslips": ["pay_604", "pay_605"]}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c7",
+          "at": "2027-02-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_605", "recordType": "payslip", "revision": 2, "reason": "correct-input-error", "body": {"taxablePay": {"state": "known", "value": 48000}}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "c6",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "paymentAmount"},
+          "expect": {"state": "mismatch-explained", "difference": {"state": "known", "value": 50000}},
+          "reason": "前提が崩れていないmismatch-explanationがあり、記録した値（150,000・100,000）と結んだ明細の集合が現在と同じ。値は変わらない。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "その項目のexplainedComparisonsの値（年間資料の値・明細の合計）と結んだ明細の集合が現在と同じ"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "c6",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "withholdingTax"},
+          "expect": {"state": "mismatch-explained", "difference": {"state": "known", "value": 1500}},
+          "reason": "源泉徴収税額も記録した値（4,500・3,000）と同じ。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "比較は2項目ともmismatch-explainedになる"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "c6",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "理由を残しても値は変わらず、2026-10は記録なしのまま。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "値は変わらず、支払予定日 2026-10の支給額はno-recordsのまま"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "paymentAmount"},
+          "expect": {"state": "mismatch-unresolved", "difference": {"state": "known", "value": 52000}},
+          "reason": "pay_605の課税支給額を48,000に直すと、明細の合計が98,000になり記録した100,000と違うので、その項目には説明を適用しない。差は52,000。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "4", "quote": "項目ごとに、現在の比較の値と結んだ明細の集合が、記録したものと1つでも違えば、その項目には適用しない"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "比較はmismatch-unresolved（差 52,000）に戻り"}
+          ]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "withholdingTax"},
+          "expect": {"state": "mismatch-explained", "difference": {"state": "known", "value": 1500}},
+          "reason": "源泉徴収税額は値も明細の集合も変わらないので、mismatch-explainedのまま。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "withholdingTaxは値も明細の集合も変わらないので、mismatch-explainedのまま"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_601", "item": {"kind": "field", "field": "paymentAmount"}},
+          "expect": {"premise": "broken"},
+          "reason": "項目paymentAmountの前提（記録した明細の合計100,000）が崩れた。",
+          "cites": [{"doc": "calculation-results.md", "section": "1", "quote": "mismatch-explanationはexplainedComparisonsのfieldごと"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_601", "item": {"kind": "field", "field": "withholdingTax"}},
+          "expect": {"premise": "holds"},
+          "reason": "項目withholdingTaxの前提は保たれている。",
+          "cites": [{"doc": "calculation-results.md", "section": "1", "quote": "判断全体の前提（保存の検証）と項目ごとの前提を分けて写す"}]
+        }
+      ],
+      "acceptance": ["correction"]
+    },
+    {
+      "scenarioId": "EX-06-c3b",
+      "title": "理由を残したあとで、紛失した明細が見つかって結んだ場合",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c6",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_601",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "mismatch-explanation",
+              "targets": [{"id": "ann_603", "revision": "current", "line": "whole"}],
+              "scope": {"state": "known", "value": {"year": 2026, "payers": ["emp_2"]}},
+              "value": "explained",
+              "reasonNote": "9月勤務分の明細を紛失。年間資料の値を使う",
+              "explainedComparisons": {
+                "state": "known",
+                "value": [
+                  {"field": "paymentAmount", "annualValue": 150000, "payslipSum": 100000, "coveredPayslips": ["pay_604", "pay_605"]},
+                  {"field": "withholdingTax", "annualValue": 4500, "payslipSum": 3000, "coveredPayslips": ["pay_604", "pay_605"]}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c7",
+          "at": "2027-02-03T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_606",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-09-01"}, "end": {"state": "known", "value": "2026-09-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c8",
+          "at": "2027-02-03T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_606",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_606", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "paymentAmount"},
+          "expect": {"state": "match"},
+          "reason": "明細の集合が変わるので説明は適用されず、比較は値どおりに判定する（150,000と150,000で一致）。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "明細の集合が変わるので、説明は適用されず、比較は値どおりに判定する"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "withholdingTax"},
+          "expect": {"state": "match"},
+          "reason": "4,500と4,500で一致。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで一致"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c4",
+      "title": "年間資料の値を使わない場合（判断で入力済みの明細を選ぶ。例示の対応表）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c6",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_602",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "annual-adoption",
+              "targets": [],
+              "scope": {"state": "known", "value": {"year": 2026, "payers": ["emp_2"]}},
+              "value": "entered-payslips",
+              "reasonNote": "勤務先が年間資料を訂正して再発行する予定"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "adoption", "year": 2026, "payer": "emp_2"},
+          "expect": {"selection": "entered-payslips"},
+          "reason": "有効なannual-adoptionの判断があれば、それに従う（既定の選び方より優先する）。",
+          "cites": [{"doc": "reconciliation.md", "section": "5", "quote": "有効なannual-adoptionの判断があれば、それに従う"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 100000, "coverage": {"state": "known", "value": "entered-records-only"}, "missing": []}]},
+          "reason": "年間の値は、2026年に帰属する明細（pay_604・pay_605はann_603との結び付けで2026年に帰属）の、対応表で対応する課税支給額の合計100,000で、coverageはentered-records-only。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "2026年に帰属する明細の合計（pay_604・pay_605はann_603との結び付けで2026年に帰属）の100,000で、coverageはentered-records-only"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c4-none",
+      "title": "入力済みの明細を選んだが、比較の対応表がない場合（T14の承認前）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-06-c4",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "paymentAmount"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "emp_2", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "annual-mapping"}, "state": "rule-pending"}]
+              }
+            ]
+          },
+          "reason": "対応表がない項目は、明細の項目ごとの合計を示すだけで年間資料の項目の値としては扱わない。値を足さず、支払者をannual-mapping・rule-pendingで挙げてincomplete（no-recordsにも0にもせず、要求も拒否しない）。どの支払者の値も足せないので、coverageはnot-applicable。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "missingに派生キーannual-mapping（refは支払者）を状態rule-pendingで挙げ、incompleteにする"},
+            {"doc": "common-types.md", "section": "13", "quote": "要求を拒否せず、記録なし（no-records）や0にもしない"}
+          ]
+        }
+      ],
+      "acceptance": ["unknown-value"]
+    },
+    {
+      "scenarioId": "EX-06-abc",
+      "title": "(a)〜(c)を合わせた2026年の年間の支払金額",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(a)〜(c)を合わせた2026年の年間の支払金額"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-b",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "c1",
+          "at": "2027-01-28T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_604",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c2",
+          "at": "2027-01-28T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_605",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-31"},
+              "grossPay": {"state": "known", "value": 50000},
+              "taxablePay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c3",
+          "at": "2027-01-28T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_603",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_2",
+              "targetYear": 2026,
+              "paymentAmount": {"state": "known", "value": 150000},
+              "withholdingTax": {"state": "known", "value": 4500},
+              "includedOtherPayers": {"state": "known", "value": []}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c4",
+          "at": "2027-01-28T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_604",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_604", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "c5",
+          "at": "2027-01-28T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_605",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_603", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_605", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "annual-value", "item": "paymentAmount"}, "axis": "income-year", "scope": {"employerIds": [], "accountIds": [], "from": 2026, "to": 2026}},
+          "expect": {"values": [{"state": "complete", "knownSum": 2750000, "coverage": {"state": "known", "value": "annual-document"}, "missing": []}]},
+          "reason": "勤務先A・Cはann_602（2,600,000）、勤務先Bはann_603（150,000）を採用し、すべてannual-document。2,750,000。銀行入金は含まない。",
+          "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "2,750,000（すべてannual-document）。銀行入金は含まない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-d",
+      "title": "年間の値を使う計算runの写し（必要な写しの集合）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-b",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "requiredAdoptions",
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "annual-value", "item": "paymentAmount"},
+                "axis": "income-year",
+                "scope": {"employerIds": ["emp_1", "emp_3"], "accountIds": [], "from": 2026, "to": 2026}
+              }
+            ]
+          },
+          "expect": {
+            "adoptions": [
+              {
+                "year": 2026,
+                "payers": ["emp_1", "emp_3"],
+                "selection": "annual-document",
+                "adoptedRef": {"id": "ann_602", "revision": 1},
+                "coverage": {"state": "known", "value": "annual-document"},
+                "comparisons": [{"field": "paymentAmount", "state": "no-coverage"}]
+              }
+            ]
+          },
+          "reason": "必要な（年、支払者）の組は（2026、A）と（2026、C）で、選択はどちらもann_602。年間資料の範囲と同じ集合の支払者を持つスナップショット1つで表す。必要な比較の項目はpaymentAmount（ann_602を結んだ明細はないのでno-coverage）。支払者が欠けた、比較の項目が欠けたrunは保存しない。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "年間資料が複数の支払者を範囲に含む場合は、従来どおり、範囲と同じ集合のpayersを持つスナップショット1つで表し"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "必要な（年、支払者）の組は（2026、A）と（2026、C）で、選択はどちらもann_602"},
+            {"doc": "reconciliation.md", "section": "5", "quote": "結んだ明細が0件（上の2に当たらない。確定済みの関係が実際にない）"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "requiredAdoptions", "requests": []},
+          "expect": {"adoptions": []},
+          "reason": "年間の値を要求しないrunでは必要な集合が空。スナップショットを足すと多いので保存しない。",
+          "cites": [{"doc": "calculation-results.md", "section": "1", "quote": "annual-valueの要求がなければ空"}]
+        }
+      ]
+    }
+  ]
+}

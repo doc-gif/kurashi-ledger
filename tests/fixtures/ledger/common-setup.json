@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "title": "共通の設定（examples.mdの「共通の設定」）。すべての場面は、この保存だけをしたデータベースから始める",
+  "cites": [
+    {"doc": "examples.md", "section": "共通の設定", "quote": "表示名「勤務先A」。本業"},
+    {"doc": "examples.md", "section": "読み方", "quote": "各例は、共通の設定の記録だけを保存したデータベースから始める"}
+  ],
+  "operations": [
+    {"op": "save", "opId": "s01", "at": "2026-03-01T00:00:00.000Z", "expect": {"outcome": "accepted", "recordedSeq": "N+1"},
+     "record": {"id": "emp_1", "recordType": "employer", "body": {"displayName": "勤務先A", "note": {"state": "known", "value": "本業"}}}},
+    {"op": "save", "opId": "s02", "at": "2026-03-01T00:01:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "term_1", "recordType": "employment-term", "body": {
+       "employerId": "emp_1",
+       "applicablePeriod": {"start": {"state": "known", "value": "2026-04-01"}, "end": {"state": "not-applicable", "note": "継続中"}},
+       "withholdingColumn": {"state": "known", "value": "kou"},
+       "socialInsurance": {"state": "known", "value": "enrolled"},
+       "employmentInsurance": {"state": "known", "value": "enrolled"},
+       "payScheduleNote": {"state": "known", "value": "20日締め当月25日払い（休日は前営業日）"}}}},
+    {"op": "save", "opId": "s03", "at": "2026-03-01T00:02:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "emp_2", "recordType": "employer", "body": {"displayName": "勤務先B", "note": {"state": "known", "value": "副業"}}}},
+    {"op": "save", "opId": "s04", "at": "2026-03-01T00:03:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "term_2", "recordType": "employment-term", "body": {
+       "employerId": "emp_2",
+       "applicablePeriod": {"start": {"state": "known", "value": "2026-09-01"}, "end": {"state": "not-applicable", "note": "継続中"}},
+       "withholdingColumn": {"state": "known", "value": "otsu"},
+       "socialInsurance": {"state": "known", "value": "not-enrolled"},
+       "employmentInsurance": {"state": "unknown"},
+       "payScheduleNote": {"state": "known", "value": "月末締め翌月末払い"}}}},
+    {"op": "save", "opId": "s05", "at": "2026-03-01T00:04:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "emp_3", "recordType": "employer", "body": {"displayName": "勤務先C", "note": {"state": "known", "value": "前職"}}}},
+    {"op": "save", "opId": "s06", "at": "2026-03-01T00:05:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "term_3", "recordType": "employment-term", "body": {
+       "employerId": "emp_3",
+       "applicablePeriod": {"start": {"state": "known", "value": "2025-04-01"}, "end": {"state": "known", "value": "2026-03-31"}},
+       "withholdingColumn": {"state": "known", "value": "kou"},
+       "payScheduleNote": {"state": "known", "value": "月末締め当月末払い（休日は前営業日）"}}}},
+    {"op": "save", "opId": "s07", "at": "2026-03-01T00:06:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "acct_1", "recordType": "account", "body": {"displayName": "口座1"}}},
+    {"op": "save", "opId": "s08", "at": "2026-03-01T00:07:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "acct_2", "recordType": "account", "body": {"displayName": "口座2"}}},
+    {"op": "save", "opId": "s09", "at": "2026-03-01T00:08:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "iss_1", "recordType": "issuer", "body": {"displayName": "架空市", "issuerKind": "municipality"}}},
+    {"op": "save", "opId": "s10", "at": "2026-03-01T00:09:00.000Z", "expect": {"outcome": "accepted"},
+     "record": {"id": "iss_2", "recordType": "issuer", "body": {"displayName": "架空町", "issuerKind": "municipality"}}}
+  ],
+  "illustrativeRules": {
+    "EX-06-mapping": {
+      "description": "EX-06の例示の比較の対応表。T14が承認した対応表ではない。年間資料の項目と、比べる明細の項目の合計",
+      "pairs": [
+        {"annual": "paymentAmount", "payslip": "taxablePay"},
+        {"annual": "withholdingTax", "payslip": "incomeTax"}
+      ],
+      "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "説明のために次の対応表を仮に使う。実際の対応ではない"}]
+    },
+    "EX-05-scheduled-pay-date-year": {
+      "description": "EX-05の例示の帰属の規則（支払予定日の年を所得の年とする）。T14が承認した規則ではない",
+      "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "この規則は例示であり、実際の規則はT14が一次資料で決める"}]
+    }
+  },
+  "coverageExceptions": []
+}

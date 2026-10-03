@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-03",
+  "title": "追加: 分からない値で絞り込まない（PR11-R006の規則）",
+  "consumers": ["T06", "T11"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-03-a",
+      "title": "分からない値で絞り込まない（日付・明細の種類・行の並び・結んだ入金の日付・期間の端）",
+      "covers": [{"doc": "common-types.md", "section": "5"}, {"doc": "reconciliation.md", "section": "8"}, {"doc": "reconciliation.md", "section": "2"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-11-05T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "dep_U1", "recordType": "bank-deposit", "body": {"accountId": "acct_1", "depositDate": {"state": "unknown"}, "amount": {"state": "known", "value": 50000}}}
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-11-05T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_U2",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-15"}, "amount": {"state": "known", "value": 30000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-11-05T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_U3",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-11-02"}, "amount": {"state": "known", "value": 50000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-11-05T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_U1",
+            "recordType": "payslip",
+            "body": {"employerId": "emp_1", "paymentKind": {"state": "unknown"}, "scheduledPayDate": {"state": "unknown"}, "grossPay": {"state": "known", "value": 100000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-11-05T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_U2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-09-21"}, "end": {"state": "known", "value": "2026-10-20"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-11-05T01:05:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_U3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 33000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-09-01"}, "end": {"state": "known", "value": "2026-09-30"}}},
+              "otherEarnings": {"state": "unknown"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-12-05T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_U4",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 44000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+              "bankTransferAmount": {"state": "known", "value": 40000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-12-05T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "dep_U4", "recordType": "bank-deposit", "body": {"accountId": "acct_2", "depositDate": {"state": "unknown"}, "amount": {"state": "known", "value": 40000}}}
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-12-05T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_U4",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_U4", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_U4", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 40000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_U5",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-25"},
+              "grossPay": {"state": "known", "value": 10000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-21"}, "end": {"state": "unknown"}}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 30000,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "dep_U1", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "depositDate"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "入金日が分からないdep_U1は、どの期間の集計にも入れず「日付不明」として一覧に出し、同じ口座を範囲に含むその軸の集計をincompleteにする（入金日の項目と状態をmissingに挙げる）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "2", "quote": "日付の軸に使う日付がknownでない記録"},
+            {"doc": "common-types.md", "section": "5", "quote": "集合を絞り込む判定では、使う値がunknown・not-statedなら、その値で対象を除外しない"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2027-03-01", "to": "2027-03-31"}},
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "dep_U1", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "depositDate"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "記録のない期間（2027-03）でも、口座1の入金日の軸の集計は日付不明のdep_U1でincomplete（記録なしにしない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "その記録と同じ勤務先・口座を範囲に含む、その軸の集計はincompleteにする"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_2"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "dep_U4", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "depositDate"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "口座2の範囲には口座1のdep_U1を挙げない（範囲に含む口座だけ）。口座2の日付不明のdep_U4を挙げる。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "その記録と同じ勤務先・口座を範囲に含む、その軸の集計はincompleteにする"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "duplicateCandidates", "recordType": "bank-deposit"},
+          "expect": {"pairs": [["dep_U1", "dep_U3"]]},
+          "reason": "入金日が分からない入金は、同じ口座・同じ金額の入金と候補になる（未確定は候補から外さない）。金額の違う組は不一致で候補にしない。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "たとえば入金日が分からない入金は、同じ口座・同じ金額の入金と候補になる"}, {"doc": "common-types.md", "section": "13", "quote": "候補にする（外さない）"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 230000,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_U1", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "scheduledPayDate"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "支払予定日が分からないpay_U1は、勤務先Aの支払予定日の軸の集計で日付不明として挙げる。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "支払予定日が分からない給与明細等"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 33000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "勤務先Bの範囲には勤務先Aのpay_U1を挙げない。pay_U3の33,000。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "その記録と同じ勤務先・口座を範囲に含む"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "duplicateCandidates", "recordType": "payslip"},
+          "expect": {"pairs": [["pay_U1", "pay_U2"]]},
+          "reason": "pay_U1は支払予定日と明細の種類が分からないので、同じ支払者のpay_U2と候補になる（分からない値どうしも、分からない値と値ありも未確定）。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "比べる値がunknown・not-statedの記録は、その値で候補から外さない"}]
+        },
+        {
+          "checkId": "c08",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_U1"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "支払予定日も勤務期間も分からないので、候補はすべての年。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "unknown・not-statedならすべての年"}]
+        },
+        {
+          "checkId": "c09",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_U3"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "行の並び（otherEarnings）を写していない（unknown）ので、候補はすべての年（勤務期間・支払予定日が2026でも狭めない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "行の並び（otherEarnings）がunknown（写していない）ならすべての年"}]
+        },
+        {
+          "checkId": "c10",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_U4"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "結んだ入金dep_U4の入金日が分からないので、入金日の次元からすべての年が候補に入る。入金日が分からない入金も確定はできる。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "その日付がunknown・not-statedならすべての年"}, {"doc": "records.md", "section": "5", "quote": "入金日が分からない入金は確定できるが、所得の年の候補ではすべての年になる"}]
+        },
+        {
+          "checkId": "c11",
+          "afterOp": "end",
+          "query": {"kind": "unreconciled", "record": "dep_U4"},
+          "expect": {"amount": {"state": "known", "value": 0}},
+          "reason": "照合配分の確定に入金日は要らない（日付は一致を求めない）。40,000 − 40,000 ＝ 0。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "一致を求めない（遅れ・年またぎがある。EX-05）"}]
+        },
+        {
+          "checkId": "c12",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_U5"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": null}]},
+          "reason": "勤務期間のendが分からないので未来へ限りなく開いた期間として扱い、2026年以降のすべての年が候補（支払予定日の2027も含む）。",
+          "cites": [{"doc": "common-types.md", "section": "6", "quote": "endがknownでなければ（not-applicableの継続中を含む）未来へ、限りなく開いた期間として扱う"}]
+        },
+        {
+          "checkId": "c13",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2025, "to": 2025}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "missing": []}]},
+          "reason": "pay_U5の候補は2026年以降なので、2025年の一覧に入らない（startが分かっている側は狭めてよい）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "勤務期間 | workPeriodが重なるすべての年"}]
+        },
+        {
+          "checkId": "c14",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2035, "to": 2035}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [{"ref": {"id": "pay_U5", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+              }
+            ]
+          },
+          "reason": "端が分からない側は限りなく開くので、2035年の集計にも不足として挙がる。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "端が分からない側は限りなく開き"}]
+        },
+        {
+          "checkId": "c15",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 1999, "to": 1999}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [
+                  {"ref": {"id": "pay_U3", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
+                  {"ref": {"id": "pay_U4", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
+                ]
+              }
+            ]
+          },
+          "reason": "候補がすべての年の明細は、どの年の集計からも外さない。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "集合を絞り込む判定では、使う値がunknown・not-statedなら、その値で対象を除外しない"}]
+        }
+      ]
+    }
+  ]
+}

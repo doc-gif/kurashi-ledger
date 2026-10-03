@@ -1,0 +1,1222 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-06",
+  "title": "追加: 丸めの計算と丸めの記録の検査（架空の計算器。制度の丸め方ではない）",
+  "consumers": ["T15", "T16"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-06-a",
+      "title": "丸めの計算（4つの丸め方と負の数）と、保存しない丸めの記録の形（calculation-results.mdの4、架空の計算器）",
+      "covers": [{"doc": "calculation-results.md", "section": "1"}, {"doc": "calculation-results.md", "section": "4"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "r01",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "12345.6", "unit": "1", "method": "floor"},
+          "expect": {"after": "12345"},
+          "reason": "floor: before以下で最大のunitの倍数。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "floor: before以下で最大のunitの倍数（負の数は0から遠い方へ）"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r02",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-12345.6", "unit": "1", "method": "floor"},
+          "expect": {"after": "-12346"},
+          "reason": "floor: 負の数は0から遠い方へ（before以下で最大）。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "floor: before以下で最大のunitの倍数（負の数は0から遠い方へ）"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r03",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "12345.1", "unit": "1", "method": "ceil"},
+          "expect": {"after": "12346"},
+          "reason": "ceil: before以上で最小のunitの倍数。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "ceil: before以上で最小のunitの倍数"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r04",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-12345.6", "unit": "1", "method": "ceil"},
+          "expect": {"after": "-12345"},
+          "reason": "ceil: before以上で最小（負の数は0に近い方）。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "ceil: before以上で最小のunitの倍数"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r05",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "2856.5", "unit": "1", "method": "half-up"},
+          "expect": {"after": "2857"},
+          "reason": "half-up: ちょうど中間なら0から遠い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-up: 最も近いunitの倍数。ちょうど中間なら0から遠い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r06",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-2856.5", "unit": "1", "method": "half-up"},
+          "expect": {"after": "-2857"},
+          "reason": "half-up: 負のちょうど中間も0から遠い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-up: 最も近いunitの倍数。ちょうど中間なら0から遠い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r07",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "2856.5", "unit": "1", "method": "half-down"},
+          "expect": {"after": "2856"},
+          "reason": "half-down: ちょうど中間なら0に近い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-down: 最も近いunitの倍数。ちょうど中間なら0に近い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r08",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-2856.5", "unit": "1", "method": "half-down"},
+          "expect": {"after": "-2856"},
+          "reason": "half-down: 負のちょうど中間も0に近い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-down: 最も近いunitの倍数。ちょうど中間なら0に近い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r09",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "2856.6", "unit": "1", "method": "half-down"},
+          "expect": {"after": "2857"},
+          "reason": "half-down: 中間でなければ最も近い倍数。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-down: 最も近いunitの倍数。ちょうど中間なら0に近い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r10",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "12345", "unit": "100", "method": "floor"},
+          "expect": {"after": "12300"},
+          "reason": "単位100の切り捨て。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "floor: before以下で最大のunitの倍数（負の数は0から遠い方へ）"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r11",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "4049", "unit": "1000", "method": "floor"},
+          "expect": {"after": "4000"},
+          "reason": "単位1000の切り捨て。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "floor: before以下で最大のunitの倍数（負の数は0から遠い方へ）"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r12",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "4001", "unit": "1000", "method": "ceil"},
+          "expect": {"after": "5000"},
+          "reason": "単位1000の切り上げ。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "ceil: before以上で最小のunitの倍数"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r13",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "2850", "unit": "100", "method": "half-up"},
+          "expect": {"after": "2900"},
+          "reason": "単位100でちょうど中間、0から遠い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-up: 最も近いunitの倍数。ちょうど中間なら0から遠い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r14",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "2850", "unit": "100", "method": "half-down"},
+          "expect": {"after": "2800"},
+          "reason": "単位100でちょうど中間、0に近い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-down: 最も近いunitの倍数。ちょうど中間なら0に近い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r15",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-150", "unit": "100", "method": "floor"},
+          "expect": {"after": "-200"},
+          "reason": "負の数の単位100の切り捨て（0から遠い方）。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "floor: before以下で最大のunitの倍数（負の数は0から遠い方へ）"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "r16",
+          "afterOp": "end",
+          "query": {"kind": "roundingStep", "before": "-150", "unit": "100", "method": "half-down"},
+          "expect": {"after": "-100"},
+          "reason": "負の数の単位100でちょうど中間、0に近い方。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "half-down: 最も近いunitの倍数。ちょうど中間なら0に近い方"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "各手順のafterは、beforeをunitの倍数へmethodで丸めた値と等しい"}
+          ]
+        },
+        {
+          "checkId": "v00",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": true},
+          "reason": "run_901の形（結果の項目item-a・item-b、丸めの手順order 1〜3）は、計算器の版が決めた必要な集合と一致し、保存できる。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "item-aの丸めの手順はorder 1・2（この順）、item-bはorder 3と一通りに決まる"}]
+        },
+        {
+          "checkId": "v01",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}},
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "result-key-duplicate"},
+          "reason": "keyがrun内で一意でない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "keyがrun内で一意でない。手順の対象が決まらない"}]
+        },
+        {
+          "checkId": "v02",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 4,
+                  "itemKey": "item-c",
+                  "before": "1",
+                  "after": "1",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "item-key-missing"},
+          "reason": "itemKeyが実在するkeyを指さない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "itemKeyが実在するkeyを指さない"}]
+        },
+        {
+          "checkId": "v03",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 4,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "order-not-sequential"},
+          "reason": "orderが1から始まる連番でない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "orderが1から始まる連番でない"}]
+        },
+        {
+          "checkId": "v04",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12345}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "value-mismatch"},
+          "reason": "item-aのvalue（12,345）が、その項目の最後の手順のafter（12300）と一致しない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "値と丸めの記録が一致しない"}]
+        },
+        {
+          "checkId": "v05",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4999}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4999",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "after-mismatch"},
+          "reason": "order 3のafter（4999）が、before（4049）を単位1000で切り捨てた値（4000）と違う。計算し直すと合わない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "計算し直すと合わない"}]
+        },
+        {
+          "checkId": "v06",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12000}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12000",
+                  "after": "12000",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "steps-not-chained"},
+          "reason": "同じ項目の手順がつながっていない（order 2のbefore 12000が、order 1のafter 12345と違う）。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "同じ項目の手順がつながっていない"}]
+        },
+        {
+          "checkId": "v07",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "0",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "unit-or-method-invalid"},
+          "reason": "unitが正でない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "unitが正でない、または定めていない丸め方"}]
+        },
+        {
+          "checkId": "v08",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [{"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}}],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "results-incomplete"},
+          "reason": "必要な結果の項目（item-b）が欠けている。入力の不足がなくてもcomputedとして保存しない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "必要な結果の項目が欠けている（1の「必要な写しの集合」）"}]
+        },
+        {
+          "checkId": "v09",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}},
+                {"key": "item-c", "label": "項目C", "valueType": "yen", "value": {"state": "known", "value": 1}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 4,
+                  "itemKey": "item-c",
+                  "before": "1",
+                  "after": "1",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "results-extra"},
+          "reason": "計算器の版が決めていない結果の項目（余分）。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "計算器の版が決めていない結果の項目（余分）"}]
+        },
+        {
+          "checkId": "v10",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12345}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "steps-missing"},
+          "reason": "必要な丸めの手順（100円未満の切り捨て）が欠けている。最後のafterとvalueは一致するので、形の検査だけでは見つからない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "必要な丸めの手順（100円未満の切り捨て）が欠けている"}]
+        },
+        {
+          "checkId": "v11",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049.4",
+                  "after": "4049",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 4,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "steps-extra"},
+          "reason": "計算器の版が決めていない手順（1円未満の切り捨て）がある（余分）。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "計算器の版が決めていない手順（1円未満の切り捨て）がある（余分）"}]
+        },
+        {
+          "checkId": "v12",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "unknown"}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "steps-on-unknown"},
+          "reason": "valueがknownでない項目には手順を持たない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "valueがknownでない項目には手順を持たない"}]
+        },
+        {
+          "checkId": "v13",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "unknown"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "rule-ref-required"},
+          "reason": "制度の規則による丸めは原典の箇所の参照が必要。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "制度の規則による丸めは、原典の箇所の参照が必要"}]
+        },
+        {
+          "checkId": "v14",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第2条"}},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "2", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "rule-ref-version"},
+          "reason": "適用した制度データの版と照合できない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "適用した制度データの版と照合できない"}]
+        },
+        {
+          "checkId": "v15",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {
+                "resultKeys": ["item-a", "item-b"],
+                "requiredSteps": {
+                  "item-a": [{"method": "floor", "unit": "1", "basis": "calculator"}, {"method": "floor", "unit": "100", "basis": "rule"}],
+                  "item-b": [{"method": "floor", "unit": "1000", "basis": "rule"}]
+                }
+              },
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [],
+              "results": [
+                {"key": "item-a", "label": "項目A", "valueType": "yen", "value": {"state": "known", "value": 12300}},
+                {"key": "item-b", "label": "項目B", "valueType": "yen", "value": {"state": "known", "value": 4000}}
+              ],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-a",
+                  "before": "12345.6",
+                  "after": "12345",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 2,
+                  "itemKey": "item-a",
+                  "before": "12345",
+                  "after": "12300",
+                  "method": "floor",
+                  "unit": "100",
+                  "basis": "calculator",
+                  "ruleRef": {"state": "not-applicable"},
+                  "methodInput": {"state": "not-applicable"}
+                },
+                {
+                  "order": 3,
+                  "itemKey": "item-b",
+                  "before": "4049",
+                  "after": "4000",
+                  "method": "floor",
+                  "unit": "1000",
+                  "basis": "rule",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の第3条"}},
+                  "methodInput": {"state": "not-applicable"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "basis-changed"},
+          "reason": "原典の参照を省くためにcalculatorへ書き換えられない。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "原典の参照を省くためにcalculatorへ書き換えられない"}]
+        },
+        {
+          "checkId": "v16",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {"resultKeys": ["item-c"], "requiredSteps": {"item-c": [{"unit": "1", "basis": "input"}]}},
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [{"key": "rounding-agreement", "valueType": "rounding-method", "value": "floor", "source": "user", "ref": {"state": "not-applicable"}}],
+              "results": [{"key": "item-c", "label": "項目C", "valueType": "yen", "value": {"state": "known", "value": 2856}}],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-c",
+                  "before": "2856.5",
+                  "after": "2856",
+                  "method": "floor",
+                  "unit": "1",
+                  "basis": "input",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の取り決めの条"}},
+                  "methodInput": {"state": "known", "value": "rounding-agreement"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": true},
+          "reason": "制度の規則が取り決めで丸め方を選べるとし、利用者の取り決め（floor）を仮定として入れた手順。basisはinput、methodInputは仮定のkey、methodは仮定の値。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "その手順はbasis input・methodInput rounding-agreement・method floorで、afterは\"2856\""}]
+        },
+        {
+          "checkId": "v17",
+          "afterOp": "end",
+          "query": {
+            "kind": "roundingValidation",
+            "input": {
+              "calculator": {"resultKeys": ["item-c"], "requiredSteps": {"item-c": [{"unit": "1", "basis": "input"}]}},
+              "ruleSet": {"state": "known", "value": {"id": "rs-x", "version": "1"}},
+              "assumptions": [{"key": "rounding-agreement", "valueType": "rounding-method", "value": "floor", "source": "user", "ref": {"state": "not-applicable"}}],
+              "results": [{"key": "item-c", "label": "項目C", "valueType": "yen", "value": {"state": "known", "value": 2856}}],
+              "roundingSteps": [
+                {
+                  "order": 1,
+                  "itemKey": "item-c",
+                  "before": "2856.5",
+                  "after": "2856",
+                  "method": "half-down",
+                  "unit": "1",
+                  "basis": "input",
+                  "ruleRef": {"state": "known", "value": {"ruleSetId": "rs-x", "ruleSetVersion": "1", "location": "架空の取り決めの条"}},
+                  "methodInput": {"state": "known", "value": "rounding-agreement"}
+                }
+              ]
+            }
+          },
+          "expect": {"valid": false, "reason": "method-input-mismatch"},
+          "reason": "入力から受け取った丸め方（floor）と違うhalf-downの手順。",
+          "cites": [{"doc": "calculation-results.md", "section": "4", "quote": "入力から受け取った丸め方と違う"}]
+        }
+      ]
+    }
+  ]
+}
