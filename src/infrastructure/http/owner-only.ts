@@ -324,3 +324,53 @@ export function checkPathNotReplaceable(paths: readonly string[]): OwnerOnlyChec
   }
   return { ok: true };
 }
+
+// 安全な経路の解決でたどった要素（ADR-0009の3「経路」）。parentは、その名前を引いたディレクトリ（ルートはなし）。
+export type WalkEntry = {
+  readonly path: string;
+  readonly kind: 'dir' | 'link';
+  readonly parent: string | undefined;
+  readonly dev: bigint;
+  readonly ino: bigint;
+  readonly uid: number;
+  readonly mode: number;
+};
+
+// POSIXのたどった要素の判定。各要素（ディレクトリと、たどったリンク）の所有者がrootか本人で、名前を引いた各
+// ディレクトリが、グループ・ほかのユーザーに書込みを許すなら、stickyのbitがあり、引いた名前（要素）の所有者が
+// rootか本人であること。純粋な関数として試験できるように分けている。
+export function evaluatePosixWalk(entries: readonly WalkEntry[], uid: number): OwnerOnlyCheck {
+  const byPath = new Map(entries.filter((e) => e.kind === 'dir').map((e) => [e.path, e]));
+  for (const entry of entries) {
+    const trusted = (owner: number): boolean => owner === 0 || owner === uid;
+    if (!trusted(entry.uid)) return { ok: false, reason: `経路の ${entry.path} の所有者（uid ${entry.uid}）がrootでも実行中のユーザーでもない。` };
+    if (entry.parent === undefined) continue;
+    const parent = byPath.get(entry.parent);
+    if (parent === undefined) return { ok: false, reason: `経路の ${entry.path} の親 ${entry.parent} を確かめていない。` };
+    if ((parent.mode & 0o022) === 0) continue;
+    if ((parent.mode & 0o1000) === 0) {
+      return { ok: false, reason: `経路の ${parent.path} は、ほかのユーザーも書き込める（stickyなし）ので、その中の ${entry.path} を差し替えられる。` };
+    }
+  }
+  return { ok: true };
+}
+
+// たどった要素を、ほかの一般のユーザーが差し替えられないかで判定する。Windowsは、リンクを含まない経路だけを受け付ける
+// （呼び出し側がリンクを拒否する）ので、末端からルートまでのACLで判定する。
+export function checkWalkNotReplaceable(entries: readonly WalkEntry[], leaf: string): OwnerOnlyCheck {
+  if (process.platform === 'win32') {
+    const chain = entries.filter((e) => e.kind === 'dir').map((e) => e.path).reverse();
+    if (chain[0] !== leaf) return { ok: false, reason: '経路の末端を確かめられない。' };
+    return checkPathNotReplaceable(chain);
+  }
+  const posix = evaluatePosixWalk(entries, process.getuid?.() ?? -1);
+  if (!posix.ok || process.platform !== 'darwin') return posix;
+  const parents = [...new Set(entries.map((e) => e.parent).filter((p): p is string => p !== undefined))];
+  for (const path of parents) {
+    const result = spawnSync('/bin/ls', ['-led', '--', path], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, timeout: 30_000 });
+    if (result.error !== undefined || result.status !== 0) return { ok: false, reason: `経路の ${path} のACLを読めなかった。` };
+    const check = evaluateMacAncestorAcl(result.stdout, userInfo().username);
+    if (!check.ok) return { ok: false, reason: `経路の ${path}: ${check.reason}` };
+  }
+  return { ok: true };
+}

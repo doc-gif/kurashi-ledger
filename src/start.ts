@@ -3,14 +3,15 @@
 // - トークンの一時ファイルは、--token-dirで明示した本人専用のディレクトリにだけ置く。なければ起動しない。
 // - 標準出力が端末のときだけ、1回だけ使えるトークン付きURLを表示する。端末でないとき（リダイレクト・パイプ）は、
 //   本人だけが読める一時ファイルのURLだけを表示する（トークンをログに残さない）。
-// - Ctrl+C（SIGINT）・SIGTERM・SIGHUP（WindowsはSIGBREAKも）で、待受を止め、一時ファイルを消して0で終わる。
+// - 終了のシグナルで、待受を止め、一時ファイルを消して0で終わる。POSIXはSIGINT（Ctrl+C）・SIGTERM・SIGHUP、
+//   WindowsはSIGINT（Ctrl+C）・SIGBREAK（Ctrl+Break）・SIGHUP（コンソールを閉じたとき）を受ける。
 //   一時ファイルを消せなかった・置き換わっていたときは、消したと言わずに対処を示して1で終わる。
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { join, relative, isAbsolute, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { TokenDirectoryError } from './infrastructure/http/launch-file.ts';
+import { TokenDirectoryError, verifyTokenDirectory, type VerifiedDirectory } from './infrastructure/http/launch-file.ts';
 import { PortInUseError, startLocalServer, type CloseResult, type LocalServer } from './infrastructure/http/server.ts';
 
 export const DEFAULT_PORT = 48720;
@@ -41,11 +42,6 @@ export type RunningApp = {
 
 export type StartResult = { readonly kind: 'running'; readonly app: RunningApp } | { readonly kind: 'exit'; readonly code: number };
 
-function isInside(child: string, parent: string): boolean {
-  const rel = relative(parent, child);
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
-}
-
 export async function startApp(argv: readonly string[], io: StartIo): Promise<StartResult> {
   let values;
   try {
@@ -69,14 +65,20 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
     io.err(`--port ${portText} は0〜65535の整数でない。\n${USAGE}`);
     return { kind: 'exit', code: 2 };
   }
-  let tokenReal: string;
+  // 一時ディレクトリを確かめ、その結果（最終的に使う実体パス）でrepoの中を拒否し、同じ結果をサーバーに渡す
+  // （2回確かめて別の結果になることがない。ADR-0009の3）。
+  let verified: VerifiedDirectory;
   try {
-    tokenReal = realpathSync.native(resolve(tokenDir));
-  } catch {
-    tokenReal = resolve(tokenDir);
-  }
-  if (isInside(tokenReal, io.repositoryRoot)) {
-    io.err(`--token-dir ${tokenDir} はこのrepoの中にある。トークンを公開領域に書かないよう、repoの外のディレクトリを指定する。`);
+    verified = verifyTokenDirectory(tokenDir, {
+      forbiddenRoots: [
+        {
+          path: io.repositoryRoot,
+          message: `--token-dir ${tokenDir} はこのrepoの中にある。トークンを公開領域に書かないよう、repoの外のディレクトリを指定する。`,
+        },
+      ],
+    });
+  } catch (error) {
+    io.err(error instanceof Error ? error.message : String(error));
     return { kind: 'exit', code: 1 };
   }
 
@@ -84,7 +86,7 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
   try {
     server = await startLocalServer({
       port: Number(portText),
-      tokenDirectory: tokenDir,
+      tokenDirectory: verified,
       log: (line) => io.out(`[http] ${line}`),
       ...(io.removeFile === undefined ? {} : { removeFile: io.removeFile }),
     });

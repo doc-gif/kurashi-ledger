@@ -12,12 +12,12 @@ import {
   fsyncSync,
   lstatSync,
   openSync,
-  realpathSync,
+  readlinkSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { checkOwnerOnly, checkPathNotReplaceable, ownerOnlyDirectoryHint, restrictOpenFileToOwner } from './owner-only.ts';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { checkOwnerOnly, checkWalkNotReplaceable, ownerOnlyDirectoryHint, restrictOpenFileToOwner, type WalkEntry } from './owner-only.ts';
 
 // 確かめたディレクトリ。実体パスと、確かめたときの経路の各要素（末端からルートまで）のdev・ino。
 export type VerifiedDirectory = {
@@ -63,34 +63,113 @@ export function confirmDirectoryUnchanged(directory: VerifiedDirectory): void {
 
 // 渡されたディレクトリを確かめる。ないとき・リンクのとき・ディレクトリでないとき・権限が広いとき・経路のどこかを
 // ほかのユーザーが差し替えられるときは、作らず・変えずに例外にする（既定の場所へ切り替えない）。
-export function verifyTokenDirectory(directory: string): VerifiedDirectory {
+export type VerifyOptions = {
+  // この中（実体パスの包含、または経路の要素がそのディレクトリそのもの）を指すものを拒否する（npm startはrepo）。
+  readonly forbiddenRoots?: ReadonlyArray<{ readonly path: string; readonly message: string }>;
+  // 試験で、検証の途中に経路を差し替えるためだけに使う。
+  readonly onStep?: (step: 'walked' | 'checked') => void;
+};
+
+export function verifyTokenDirectory(directory: string, options: VerifyOptions = {}): VerifiedDirectory {
   const path = resolve(directory);
-  let st;
-  try {
-    st = lstatSync(path);
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} がない（作らない）。`);
-    throw error;
+  // 1. 指定したパスを、realpathを使わずにルートから1要素ずつたどる（途中のリンクを、その親とともに確かめるため）。
+  const first = walkPath(path);
+  // 最終的に使う実体パスと、たどった要素で、拒否する場所の中かを確かめる（表記の別名に頼らない）。
+  for (const forbidden of options.forbiddenRoots ?? []) {
+    const root = lstatSync(forbidden.path, { bigint: true });
+    const inside =
+      first.entries.some((e) => e.kind === 'dir' && e.dev === root.dev && e.ino === root.ino) ||
+      isInsidePath(first.real, forbidden.path);
+    if (inside) throw new TokenDirectoryError(forbidden.message);
   }
-  if (st.isSymbolicLink()) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} がリンク（symlink・junction）になっている。`);
-  if (!st.isDirectory()) throw new TokenDirectoryError(`トークンの一時ファイルを置く場所 ${path} がディレクトリでない。`);
-  const check = checkOwnerOnly(path, 'directory');
-  if (!check.ok) {
-    throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} が本人だけの権限でない: ${check.reason} ${ownerOnlyDirectoryHint(path)}`);
-  }
-  const real = realpathSync.native(path);
-  const chain = chainOf(real);
-  const route = checkPathNotReplaceable(chain);
+  options.onStep?.('walked');
+  // 2. 名前を引いた各ディレクトリと、たどったリンクを、ほかの一般のユーザーが差し替えられないこと。
+  const route = checkWalkNotReplaceable(first.entries, first.real);
   if (!route.ok) {
     throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路を、ほかのユーザーが差し替えられる: ${route.reason} 本人とrootだけが書き込める場所の中のディレクトリを指定する。`);
   }
+  // 3. たどった結果の末端（実体パス）が、本人だけの権限であること。
+  const check = checkOwnerOnly(first.real, 'directory');
+  if (!check.ok) {
+    throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} が本人だけの権限でない: ${check.reason} ${ownerOnlyDirectoryHint(path)}`);
+  }
+  options.onStep?.('checked');
+  // 4. もう一度たどり直し、たどった各要素（種類・dev・ino）が同じであること（検証の途中の差し替えを拒否する）。
+  const second = walkPath(path);
+  if (second.real !== first.real || !sameWalk(first.entries, second.entries)) {
+    throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路が、確かめている間に変わった（何も作らない）。`);
+  }
   return {
-    path: real,
-    chain: chain.map((element) => {
-      const st = lstatSync(element, { bigint: true });
-      return { path: element, dev: st.dev, ino: st.ino };
+    path: first.real,
+    chain: chainOf(first.real).map((element) => {
+      const entry = second.entries.find((e) => e.kind === 'dir' && e.path === element);
+      if (entry === undefined) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリの経路 ${element} を確かめていない。`);
+      return { path: element, dev: entry.dev, ino: entry.ino };
     }),
   };
+}
+
+function isInsidePath(child: string, parent: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
+}
+
+const MAX_LINKS = 40;
+
+// 指定したパスをルートから1要素ずつたどる。POSIXではリンクをたどり（readlinkの結果を、その位置から続ける）、
+// Windowsではリンク（symlink・junction）を拒否する。指定したパスの最後の要素がリンクなら拒否する（従来どおり）。
+function walkPath(path: string): { readonly real: string; readonly entries: WalkEntry[] } {
+  const root = parse(path).root;
+  const entries: WalkEntry[] = [];
+  const statOf = (p: string) => {
+    try {
+      return lstatSync(p, { bigint: true });
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} がない（作らない）。`);
+      throw error;
+    }
+  };
+  const rootStat = statOf(root);
+  entries.push({ path: root, kind: 'dir', parent: undefined, dev: rootStat.dev, ino: rootStat.ino, uid: Number(rootStat.uid), mode: Number(rootStat.mode) });
+  const split = (p: string): string[] => p.split(/[\\/]+/).filter((c) => c !== '');
+  const given = split(path.slice(root.length));
+  let queue: Array<{ readonly name: string; readonly lastGiven: boolean }> = given.map((name, i) => ({ name, lastGiven: i === given.length - 1 }));
+  let current = root;
+  let links = 0;
+  while (queue.length > 0) {
+    const [item, ...rest] = queue;
+    queue = rest;
+    if (item === undefined || item.name === '.') continue;
+    if (item.name === '..') {
+      current = dirname(current);
+      continue;
+    }
+    const next = join(current, item.name);
+    const st = statOf(next);
+    const entry = { path: next, parent: current, dev: st.dev, ino: st.ino, uid: Number(st.uid), mode: Number(st.mode) };
+    if (st.isSymbolicLink()) {
+      if (item.lastGiven) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} がリンク（symlink・junction）になっている。`);
+      if (process.platform === 'win32') throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路にリンク（${next}）がある。Windowsでは、リンクを含まない経路を指定する。`);
+      links += 1;
+      if (links > MAX_LINKS) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路のリンクが多すぎる。`);
+      entries.push({ ...entry, kind: 'link' });
+      const target = readlinkSync(next);
+      if (isAbsolute(target)) current = parse(target).root;
+      queue = [...split(isAbsolute(target) ? target.slice(parse(target).root.length) : target).map((name) => ({ name, lastGiven: false })), ...queue];
+      continue;
+    }
+    if (!st.isDirectory()) throw new TokenDirectoryError(`トークンの一時ファイルを置く場所 ${path} の経路の ${next} がディレクトリでない。`);
+    entries.push({ ...entry, kind: 'dir' });
+    current = next;
+  }
+  return { real: current, entries };
+}
+
+function sameWalk(a: readonly WalkEntry[], b: readonly WalkEntry[]): boolean {
+  return a.length === b.length && a.every((e, i) => {
+    const o = b[i];
+    return o !== undefined && o.path === e.path && o.kind === e.kind && o.dev === e.dev && o.ino === e.ino;
+  });
 }
 
 export function randomLaunchFileName(): string {

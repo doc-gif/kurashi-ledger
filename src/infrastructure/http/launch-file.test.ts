@@ -289,3 +289,89 @@ test('開いたあとでファイル自身が別の通常のファイルに差�
     tmp.cleanup();
   }
 });
+
+test('検証の途中（たどったあと・確かめたあと）で末端をリンクに替えると拒否し、指定外・本人専用でない場所にも何も作らない', () => {
+  const tmp = ownerOnlyTempDirectory('verify-swap');
+  const outside = ownerOnlyTempDirectory('verify-swap-outside');
+  try {
+    const tok = join(tmp.path, 'tok');
+    mkdirSync(tok);
+    restrictToOwner(tok, 'directory');
+    const broad = join(outside.path, 'broad');
+    mkdirSync(broad, { mode: 0o755 });
+    for (const step of ['walked', 'checked'] as const) {
+      for (const target of [outside.path, broad]) {
+        let swapped = false;
+        assert.throws(
+          () =>
+            verifyTokenDirectory(tok, {
+              onStep: (s) => {
+                if (s !== step) return;
+                renameSync(tok, `${tok}-moved`);
+                linkDirectory(target, tok);
+                swapped = true;
+              },
+            }),
+          TokenDirectoryError,
+          `${step} ${target}`,
+        );
+        assert.equal(swapped, true);
+        rmSync(tok);
+        renameSync(`${tok}-moved`, tok);
+      }
+    }
+    assert.deepEqual(readdirSync(broad), []);
+    assert.deepEqual(readdirSync(outside.path).sort(), ['broad']);
+    assert.deepEqual(readdirSync(tok), []);
+  } finally {
+    tmp.cleanup();
+    outside.cleanup();
+  }
+});
+
+test('途中のリンクの親を、ほかのユーザーが書き込めるなら拒否する（realpathで解決して祖先を隠さない）。Windowsは経路のリンクを拒否する', () => {
+  const tmp = ownerOnlyTempDirectory('hidden-ancestor');
+  try {
+    const real = join(tmp.path, 'real');
+    const tok = join(real, 'tok');
+    mkdirSync(tok, { recursive: true });
+    restrictToOwner(tok, 'directory');
+    const shared = join(tmp.path, 'shared');
+    mkdirSync(shared);
+    linkDirectory(real, join(shared, 'l'));
+    const viaLink = join(shared, 'l', 'tok');
+    if (process.platform === 'win32') {
+      assert.throws(() => verifyTokenDirectory(viaLink), /経路にリンク/);
+    } else {
+      // リンクの親が本人だけなら、たどってよい。
+      assert.equal(verifyTokenDirectory(viaLink).path, verifyTokenDirectory(tok).path);
+      // リンクを置いた親を、ほかのユーザーも書き込めるようにすると、実体パスの経路に現れなくても拒否する。
+      chmodSync(shared, 0o777);
+      assert.throws(() => verifyTokenDirectory(viaLink), /差し替えられる/);
+      chmodSync(shared, 0o700);
+    }
+    assert.deepEqual(readdirSync(tok), []);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('拒否する場所（npm startではrepo）は、最終的に使う実体パスと経路の要素の同一性で判定し、リンクを経ても通さない', () => {
+  const tmp = ownerOnlyTempDirectory('forbidden');
+  try {
+    const forbidden = join(tmp.path, 'forbidden');
+    const inner = join(forbidden, 'inner');
+    mkdirSync(inner, { recursive: true });
+    restrictToOwner(forbidden, 'directory');
+    restrictToOwner(inner, 'directory');
+    const options = { forbiddenRoots: [{ path: forbidden, message: 'synthetic forbidden root' }] };
+    assert.throws(() => verifyTokenDirectory(inner, options), /synthetic forbidden root/);
+    if (process.platform !== 'win32') {
+      linkDirectory(forbidden, join(tmp.path, 'alias'));
+      assert.throws(() => verifyTokenDirectory(join(tmp.path, 'alias', 'inner'), options), /synthetic forbidden root/);
+    }
+    assert.deepEqual(readdirSync(inner), []);
+  } finally {
+    tmp.cleanup();
+  }
+});

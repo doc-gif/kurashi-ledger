@@ -21,6 +21,7 @@ import {
   removeLaunchFile,
   verifyTokenDirectory,
   type LaunchFile,
+  type VerifiedDirectory,
 } from './launch-file.ts';
 import {
   EXCHANGE_PATH,
@@ -100,7 +101,9 @@ export type LocalServerOptions = {
   // 0はOSが選ぶ（試験用）。
   readonly port: number;
   // トークンの一時ファイルを置く、本人専用のディレクトリ（T09からはデータルートのtmp/）。
-  readonly tokenDirectory: string;
+  // 文字列なら起動時に確かめる。確かめた結果（VerifiedDirectory）を渡すと、それをそのまま使う（作成の直前に経路を
+  // 確かめ直す）。npm startは、確かめた実体パスでrepoの中を拒否してから、同じ結果を渡す。
+  readonly tokenDirectory: string | VerifiedDirectory;
   // 静的ファイルの配信ルート。なければ / で案内ページを返す。staticSource・devと同時には使えない。
   readonly staticRoot?: string;
   // 静的ファイルの読み出し元（T09が、manifestで確かめた内容をメモリから返すものを渡す）。パスの検査・HTMLの識別子・
@@ -299,7 +302,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   validateRoutes(routes);
   const log = options.log ?? (() => {});
   // 起動の前に、渡されたディレクトリと配信ルートを確かめる（どちらも、作らない・変えない）。
-  const tokenDirectory = verifyTokenDirectory(options.tokenDirectory);
+  const tokenDirectory = typeof options.tokenDirectory === 'string' ? verifyTokenDirectory(options.tokenDirectory) : options.tokenDirectory;
   const staticSource: StaticSource | undefined =
     options.staticSource ?? (options.staticRoot === undefined ? undefined : await createDiskStaticSource(options.staticRoot));
 
