@@ -241,7 +241,7 @@
 
 ## T28 — Node.jsのメジャー更新（必要時）
 
-- 依存: T02、T05。担当: 開発運用。範囲: `package.json`の`devEngines`・`engines`、`.nvmrc`、lockfile、CI設定、`docs/adr/0002-runtime-and-distribution.md`の版の記載（判断が変わる場合は、置き換える新しいADRと`docs/adr/README.md`の一覧）。共有資源: 版の指定、lockfile、CI設定。
+- 依存: T02、T05。担当: 開発運用。範囲: `package.json`の`devEngines`・`engines`、`.nvmrc`、`mise.toml`（手元の正確な版。[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）、lockfile、CI設定、`docs/adr/0002-runtime-and-distribution.md`の版の記載（判断が変わる場合は、置き換える新しいADRと`docs/adr/README.md`の一覧）。共有資源: 版の指定、lockfile、CI設定。
 - 起票の条件: 固定しているNode.jsのメジャーがMaintenance LTSへ移った、または必要な修正・機能が新しいLTSにしかない場合。所有者または調整係が割り当てる。
 - 成果物: 新しいLTSへの版の更新と、ADR-0002の版の記載の更新（判断が変わる場合は新しいADR）。
 - 受入: 新しい版がLTSで、ADR-0002の必要機能（型除去、`node:sqlite`）を満たす。全OSのCIが通る。`node:sqlite`の挙動と、その時点で存在するmigration・バックアップ・復元の試験をやり直す（ADR-0005）。T25が完了済みなら、T25の新規環境での更新・rollbackの通し確認を新しい版でやり直す。T25が未完了なら、T25でこの版を対象にする。どちらの場合も、前のタグへ戻すときにNode.jsも前の版へ戻してから`npm run setup`と保守コマンドを動かす手順を確かめる（ADR-0002の更新の手順6）。
