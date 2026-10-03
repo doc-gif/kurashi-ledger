@@ -1122,3 +1122,60 @@ test('終了が始まったあとに既存の接続で届いたupgradeには、�
     tmp.cleanup();
   }
 });
+
+// 生の応答の先頭（状態行とヘッダ）を読む。
+function rawHead(raw: string): { readonly statusLines: number; readonly fields: Map<string, string> } {
+  const head = raw.split('\r\n\r\n')[0] ?? '';
+  const fields = new Map(head.split('\r\n').slice(1).map((l) => [l.slice(0, l.indexOf(':')).toLowerCase(), l.slice(l.indexOf(':') + 1).trim()]));
+  return { statusLines: (raw.match(/HTTP\/1\.1 \d{3} /g) ?? []).length, fields };
+}
+
+test('HTTPの解析器が拒否した要求とExpectの要求にも、必須のヘッダと理由を付けた応答を1つだけ返して閉じ、要求の中身をログに出さない', async () => {
+  const tmp = ownerOnlyTempDirectory('client-error');
+  try {
+    const logs: string[] = [];
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, log: (l) => logs.push(l) });
+    try {
+      const host = `Host: 127.0.0.1:${server.port}\r\n`;
+      const secret = 'kl_session_9=synthetic-cookie-value-123; token=synthetic-token-value-456';
+      const cases: Array<[string, number, string]> = [
+        [`POST /api/test HTTP/1.1\r\n${host}Cookie: ${secret}\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nsynthetic-body`, 400, 'malformed-request'],
+        [`GET / HTTP/1.1\r\n${host}Cookie: ${secret}\r\nX-Large: ${'a'.repeat(20 * 1024)}\r\n\r\n`, 431, 'header-too-large'],
+        [`GET / HTTP/1.1\r\n${host}Bad Header Name: x\r\n\r\n`, 400, 'malformed-request'],
+        [`POST /api/test HTTP/1.1\r\n${host}Cookie: ${secret}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\n\r\n`, 417, 'expectation-not-supported'],
+        [`POST /api/test HTTP/1.1\r\n${host}Content-Type: application/json\r\nContent-Length: 2\r\nExpect: synthetic\r\n\r\n`, 417, 'expectation-not-supported'],
+      ];
+      for (const [request, status, reason] of cases) {
+        const res = await sendRaw(server.port, request);
+        assert.equal(res.status, status, reason);
+        const { statusLines, fields } = rawHead(res.raw);
+        // 応答は1つだけ（2つ目の応答を書かない）で、接続を閉じる（sendRawは相手が閉じると終わる）。
+        assert.equal(statusLines, 1, reason);
+        assert.equal(fields.get('connection'), 'close', reason);
+        assert.equal(fields.get('x-kurashi-ledger-reason'), reason);
+        assert.equal(fields.get('content-security-policy'), PRODUCTION_CSP, reason);
+        assert.equal(fields.get('cache-control'), 'no-store', reason);
+        assert.equal(fields.get('referrer-policy'), 'no-referrer', reason);
+        assert.equal(fields.get('x-content-type-options'), 'nosniff', reason);
+        assert.equal(fields.get('cross-origin-resource-policy'), 'same-origin', reason);
+        assert.equal(fields.get('x-frame-options'), 'DENY', reason);
+        assert.deepEqual([...fields.keys()].filter((k) => k.startsWith('access-control-')), [], reason);
+        assert.equal(res.raw.includes('synthetic-cookie-value'), false);
+      }
+      for (const line of logs) {
+        for (const leak of ['synthetic-cookie-value', 'synthetic-token-value', 'synthetic-body', 'aaaa']) assert.equal(line.includes(leak), false, line);
+      }
+      assert.ok(logs.some((l) => l.startsWith('CLIENT-ERROR ') && l.endsWith(' 431 header-too-large')), logs.join('\n'));
+      // 前の要求の応答と同じ接続で解析器が拒否しても、2つ目の応答（400）を書かない。
+      const pipelined = await sendRaw(server.port, `GET /launch HTTP/1.1\r\n${host}\r\nGET / HTTP/1.1\r\nBad Header Name: x\r\n\r\n`).catch(() => ({ status: 0, raw: '' }));
+      assert.ok(rawHead(pipelined.raw).statusLines <= 1, pipelined.raw.slice(0, 200));
+      assert.equal(/HTTP\/1\.1 400 /.test(pipelined.raw), false);
+      // 拒否のあとも、通常の要求は処理できる。
+      assert.equal((await send(server.port, { path: '/launch' })).status, 200);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});

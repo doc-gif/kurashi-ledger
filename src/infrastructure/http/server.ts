@@ -294,6 +294,23 @@ export function runDevMiddleware(
   });
 }
 
+// 要求の処理を通らない入口（upgradeの拒否、HTTPの解析器の拒否）で、生のソケットに拒否の応答を書く（ADR-0009の5）。
+// 通常の出口と同じ定義の必須のヘッダ（requiredResponseHeaders）と、データを含まない理由の符号を付け、接続を閉じる。
+// 書き切ってから壊す（相手が書込み側を閉じなくても残さない）。書き切れない相手に備え、少しあとにも壊す。
+function writeRawRefusal(socket: Duplex, rejection: Rejection): void {
+  const headers = [...requiredResponseHeaders(PRODUCTION_CSP), ['X-Kurashi-Ledger-Reason', rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
+  socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`, () => socket.destroy());
+  setTimeout(() => socket.destroy(), REFUSAL_FLUSH_MS).unref();
+}
+
+// HTTPの解析器の誤りの種類から、応答の状態と理由の符号を決める（Node.jsの既定の処理と同じ状態）。
+function parserRejection(code: string): Rejection {
+  if (code === 'HPE_HEADER_OVERFLOW') return { status: 431, code: 'header-too-large' };
+  if (code === 'ERR_HTTP_REQUEST_TIMEOUT') return { status: 408, code: 'request-timeout' };
+  if (code === 'HPE_CHUNK_EXTENSIONS_OVERFLOW') return { status: 413, code: 'chunk-extensions-too-large' };
+  return { status: 400, code: 'malformed-request' };
+}
+
 export async function startLocalServer(options: LocalServerOptions): Promise<LocalServer> {
   if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535) throw new Error(`ポート${options.port}は使えない。`);
   const uiSources = [options.staticRoot, options.staticSource, options.dev].filter((v) => v !== undefined).length;
@@ -498,6 +515,36 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     void work.finally(() => inflight.delete(work));
   });
 
+  // Expectのヘッダ（100-continue等）: Node.jsの既定は、ヘッダなしの100 Continueや417を直接書くので、既存の出口を
+  // 通して417で拒否する（ブラウザは使わない）。本文は読まないので、接続を閉じる。
+  const rejectExpectation = (req: IncomingMessage, res: ServerResponse): void => {
+    const path = safePath(req.url);
+    const api = path === '/api' || path.startsWith('/api/');
+    enforceResponseHeaders(res, PRODUCTION_CSP);
+    res.on('finish', () => log(`${req.method ?? '?'} ${path} 417 expectation-not-supported`));
+    res.setHeader('Connection', 'close');
+    reject(res, { status: 417, code: 'expectation-not-supported' }, api);
+  };
+  server.on('checkContinue', rejectExpectation);
+  server.on('checkExpectation', rejectExpectation);
+
+  // HTTPの解析器が要求の処理の前に拒否したとき（重複したContent-Length、ヘッダの上限、要求の時間切れ等）。Node.jsの
+  // 既定は必須のヘッダのない応答を書くので、ここで同じ定義のヘッダと理由を付けて書く。前の要求の応答が残っている、
+  // または書けない接続には、2つ目の応答を書かずに壊す。ログには誤りの符号だけを出す（rawPacket・要求の中身は出さない）。
+  server.on('clientError', (error: Error & { code?: unknown }, socket: Duplex) => {
+    const code = typeof error.code === 'string' ? error.code.replace(/[^A-Za-z0-9_]/g, '?') : 'unknown';
+    const inFlight = (socket as unknown as { _httpMessage?: { headersSent?: boolean } | null })._httpMessage;
+    // 同じ接続で、前の要求の応答がまだ終わっていない（書き始めた・これから書く）ときも、応答が2つ混ざらないよう書かない。
+    if (code === 'ECONNRESET' || !socket.writable || (inFlight !== undefined && inFlight !== null)) {
+      log(`CLIENT-ERROR ${code} closed-without-response`);
+      socket.destroy();
+      return;
+    }
+    const rejection = parserRejection(code);
+    log(`CLIENT-ERROR ${code} ${rejection.status} ${rejection.code}`);
+    writeRawRefusal(socket, rejection);
+  });
+
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const path = safePath(req.url);
     // 受け付けるか拒否するかを決める前に、すべてのupgradeのソケットを追跡する（closeAllConnectionsはupgradeの
@@ -506,12 +553,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     socket.once('close', () => upgradedSockets.delete(socket));
     const refuse = (rejection: Rejection): void => {
       log(`UPGRADE ${path} ${rejection.status} ${rejection.code}`);
-      // 通常のHTTPの応答と同じ定義の必須のヘッダと、拒否の理由を付ける（生の応答も出口の契約から外さない）。
-      const headers = [...requiredResponseHeaders(PRODUCTION_CSP), ['X-Kurashi-Ledger-Reason', rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
-      // 書き切ったらソケットを壊す（相手が書込み側を閉じなくても残さない）。書き切れない相手に備え、少しあとにも壊す。
       refusing.add(socket);
-      socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`, () => socket.destroy());
-      setTimeout(() => socket.destroy(), REFUSAL_FLUSH_MS).unref();
+      writeRawRefusal(socket, rejection);
     };
     // 終了中に届いたupgradeも、503（closing）を書き切ってから壊す。
     if (shutdown.signal.aborted) return refuse({ status: 503, code: 'closing' });
