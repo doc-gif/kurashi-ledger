@@ -246,7 +246,7 @@
       "id": "PR11-R006",
       "invariant_id": "INV-RECORDS",
       "cause_key": "unknown-narrows-scope",
-      "lesson": "不明な期間・一覧・分類・金額・帰属の根拠を、不存在・空・0・対象外として扱って候補年や集計範囲を狭めない。最も広く解釈し、影響し得る範囲をincompleteにする。",
+      "lesson": "不明な期間・一覧・分類・金額・帰属の根拠は、未知のまま保持して推定で確定しない。不存在・空・0・対象外として扱って候補年や集計範囲を狭めず、影響し得る範囲を除外せずにincompleteにする。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394871157",
