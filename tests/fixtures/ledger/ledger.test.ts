@@ -173,7 +173,8 @@ export function readContractDocs(dir: string = CONTRACTS_DIR): ContractDocs {
     const flush = (): void => {
       if (key !== undefined) map.set(key, normalize(buf.join("\n")));
     };
-    for (const line of text.split("\n")) {
+    // Windowsのcheckoutでは改行がCRLFになりうるので、行は\r?\nで分ける。
+    for (const line of text.split(/\r?\n/)) {
       const h2 = /^## (.+)$/.exec(line);
       if (h2?.[1] !== undefined) {
         flush();
@@ -1856,7 +1857,7 @@ test("台帳のファイルの一覧: .gitignoreで除外したOSのメタデー
   assert.throws(() => ledgerFileNames("cases", [".ds_store"]), /cases\/\.ds_store/);
   assert.throws(() => ledgerFileNames("cases", ["Thumbs.db.json.tmp"]), /Thumbs\.db\.json\.tmp/);
   // 一覧は.gitignoreの行を写したもの。.gitignoreに同じ名前の行がなければ、一覧を直す。
-  const gitignore = readFileSync(join(REPO_ROOT, ".gitignore"), "utf8").split("\n").map((l) => l.trim());
+  const gitignore = readFileSync(join(REPO_ROOT, ".gitignore"), "utf8").split(/\r?\n/).map((l) => l.trim());
   for (const name of OS_METADATA_FILES_FROM_GITIGNORE) assert.ok(gitignore.includes(name), `.gitignoreに${name}の行がない`);
 });
 
