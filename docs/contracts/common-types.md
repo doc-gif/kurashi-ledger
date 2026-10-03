@@ -303,7 +303,7 @@
 | `recordedSeq` | 1以上の整数 | 保存の連番。データベース全体で一意で、commitの順に1ずつ増える（7の「保存の順序」） |
 | `knownOn` | `Fact<LocalDate>` | 把握日（7を参照） |
 | `changeNote` | `Fact<Text>` | 改訂の理由のメモ |
-| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表）。`revision`は`current`、`line`は`whole`だけ（記録どうしの関係。2の「参照先の種類・粒度・次元」）。指せるのは、自分以外の、保存のときに有効な記録（下の「検査の対象は有効な記録だけ」）だけ（取消した記録どうしで指し合い、どちらも残らない状態を作らないため）。保存のあとで残す方が取消された場合は、どちらの記録も集計に戻さず、この取消を「残す方がない二重登録」として要確認に出す |
+| `duplicateOf` | `Fact<Ref<T>>` | `void`の改訂で、二重登録として取り消した場合だけ、残す方の記録（その場合は`known`が必要）。ほかの改訂では`not-applicable`（下の改訂のモデルの表）。`revision`は`current`、`line`は`whole`だけ（記録どうしの関係。2の「参照先の種類・粒度・次元」）。指せるのは、自分以外の、保存のときに有効な記録（下の「検査の対象は有効な記録だけ」）だけ（取消した記録どうしで指し合い、どちらも残らない状態を作らないため）。保存のあとで残す方が取消された場合は、どちらの記録も集計に戻さず、この取消を「残す方がない二重登録」として要確認に出す（正式通知の決定額では、その種類・年度の集計を`incomplete`にし、`conflict`で挙げる。[照合の規則](reconciliation.md)の7） |
 | `entryChannel` | `manual`・`import` | 手入力か取込か |
 | `writeRequestId` | `Text` | 保存の要求の冪等キー（10を参照） |
 | `importKey` | `Fact<{ source: Text, key: Text }>` | 取込の冪等キー。取込の場合だけ（10を参照）。`source`は取込元の識別子、`key`はその取込元の中での取引のキー |
@@ -458,7 +458,7 @@
 | `annual-adoption` | 支払者の年間の値の採用 | 雇用先 | `adoption-needed` | 同5 |
 | `annual-scope` | 年間資料の範囲の一部だけが集計の`scope`に入る | 年間資料 | `partial-scope` | 同5 |
 | `annual-mapping` | 明細から示す年間の値（比較の対応表がまだない項目） | 雇用先（支払者） | `rule-pending` | 同5 |
-| `notice-duplicate` | 同じ種類・同じ年度の正式通知が2件以上ある | 正式通知 | `conflict` | 同2 |
+| `notice-duplicate` | 同じ種類・同じ年度の正式通知の重複が決まらない（足してよいか決まらない類が2つ以上ある、前提が崩れた判断や残す方がない二重登録がある） | 正式通知 | `conflict` | 同2・7 |
 | `supersede-series` | 整っていない差し替えの系列 | 系列の記録 | `conflict` | [記録の型](records.md)の10 |
 | `forecast-remaining` | 予測の行の残り（使えない関係・予測の金額の不明） | 予測（行を指す） | `unknown` | 照合の規則の6・9 |
 | `unreconciled-amount` | 照合の残高（使えない関係） | 銀行入金・給与明細 | `unknown` | 同3・9 |
