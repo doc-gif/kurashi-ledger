@@ -16,13 +16,20 @@ import {
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { checkOwnerOnly, ownerOnlyDirectoryHint, restrictToOwner } from './owner-only.ts';
+import { dirname, join, resolve } from 'node:path';
+import { checkOwnerOnly, checkPathNotReplaceable, ownerOnlyDirectoryHint, restrictToOwner } from './owner-only.ts';
+
+// 確かめたディレクトリ。実体パスと、確かめたときの経路の各要素（末端からルートまで）のdev・ino。
+export type VerifiedDirectory = {
+  readonly path: string;
+  readonly chain: ReadonlyArray<{ readonly path: string; readonly dev: bigint; readonly ino: bigint }>;
+};
 
 export type LaunchFile = {
   readonly path: string;
   readonly dev: bigint;
   readonly ino: bigint;
+  readonly directory: VerifiedDirectory;
 };
 
 export class TokenDirectoryError extends Error {}
@@ -31,9 +38,32 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined;
 }
 
-// 渡されたディレクトリを確かめ、実体パスを返す。ないとき・リンクのとき・ディレクトリでないとき・権限が広いときは、
-// 作らず・変えずに例外にする（既定の場所へ切り替えない）。
-export function verifyTokenDirectory(directory: string): string {
+function chainOf(path: string): string[] {
+  const chain = [path];
+  for (let parent = dirname(path); parent !== chain.at(-1); parent = dirname(parent)) chain.push(parent);
+  return chain;
+}
+
+// 確かめたときと同じ経路か（どの要素もリンクでないディレクトリで、devとinoが同じ）。同じでなければ例外にする。
+// 作成・権限変更・削除の直前に呼ぶ（ほかのユーザーには差し替えられないことを確かめてあるので、これは同じユーザーの
+// 差し替えに対する追加の防御）。
+export function confirmDirectoryUnchanged(directory: VerifiedDirectory): void {
+  for (const element of directory.chain) {
+    let st;
+    try {
+      st = lstatSync(element.path, { bigint: true });
+    } catch {
+      throw new TokenDirectoryError(`一時ファイルを置くディレクトリの経路 ${element.path} が、確かめたあとで変わった（なくなった）。`);
+    }
+    if (st.isSymbolicLink() || !st.isDirectory() || st.dev !== element.dev || st.ino !== element.ino) {
+      throw new TokenDirectoryError(`一時ファイルを置くディレクトリの経路 ${element.path} が、確かめたあとで差し替わった。`);
+    }
+  }
+}
+
+// 渡されたディレクトリを確かめる。ないとき・リンクのとき・ディレクトリでないとき・権限が広いとき・経路のどこかを
+// ほかのユーザーが差し替えられるときは、作らず・変えずに例外にする（既定の場所へ切り替えない）。
+export function verifyTokenDirectory(directory: string): VerifiedDirectory {
   const path = resolve(directory);
   let st;
   try {
@@ -48,17 +78,36 @@ export function verifyTokenDirectory(directory: string): string {
   if (!check.ok) {
     throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} が本人だけの権限でない: ${check.reason} ${ownerOnlyDirectoryHint(path)}`);
   }
-  return realpathSync.native(path);
+  const real = realpathSync.native(path);
+  const chain = chainOf(real);
+  const route = checkPathNotReplaceable(chain);
+  if (!route.ok) {
+    throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路を、ほかのユーザーが差し替えられる: ${route.reason} 本人とrootだけが書き込める場所の中のディレクトリを指定する。`);
+  }
+  return {
+    path: real,
+    chain: chain.map((element) => {
+      const st = lstatSync(element, { bigint: true });
+      return { path: element, dev: st.dev, ino: st.ino };
+    }),
+  };
 }
 
 export function randomLaunchFileName(): string {
   return `launch-${randomBytes(12).toString('hex')}.html`;
 }
 
-// directoryは、verifyTokenDirectoryで確かめた実体パス。nameは区切り文字を含まない名前。
-export function createLaunchFile(directory: string, name: string, content: string): LaunchFile {
+// directoryは、verifyTokenDirectoryで確かめたもの。nameは区切り文字を含まない名前。onStepは、試験で各段階の間に
+// 経路を差し替えるためだけに使う。
+export function createLaunchFile(
+  directory: VerifiedDirectory,
+  name: string,
+  content: string,
+  onStep?: (step: 'opened' | 'restricted') => void,
+): LaunchFile {
   if (name === '' || /[\\/]/.test(name) || name === '.' || name === '..') throw new Error(`一時ファイルの名前 ${name} が不正。`);
-  const path = join(directory, name);
+  confirmDirectoryUnchanged(directory);
+  const path = join(directory.path, name);
   // 既存のファイル・リンク（壊れたリンクを含む）があれば作らない。O_EXCLもリンクをたどらずに失敗するが、
   // Windowsでもリンクをたどってほかのファイルを作らないよう、先にlstatで確かめる。
   let exists = true;
@@ -75,8 +124,13 @@ export function createLaunchFile(directory: string, name: string, content: strin
   let created: LaunchFile | undefined;
   try {
     const opened = fstatSync(fd, { bigint: true });
-    created = { path, dev: opened.dev, ino: opened.ino };
+    created = { path, dev: opened.dev, ino: opened.ino, directory };
+    onStep?.('opened');
+    // 経路を確かめ直してから、パスで権限を変える（差し替わっていれば、差し替え先の権限を変えない）。
+    confirmDirectoryUnchanged(directory);
     restrictToOwner(path, 'file');
+    onStep?.('restricted');
+    confirmDirectoryUnchanged(directory);
     const now = lstatSync(path, { bigint: true });
     if (now.isSymbolicLink() || !now.isFile() || now.dev !== opened.dev || now.ino !== opened.ino) {
       throw new Error(`一時ファイル ${path} が、作ったファイルと違うものに置き換わった。`);
@@ -88,7 +142,13 @@ export function createLaunchFile(directory: string, name: string, content: strin
     fsyncSync(fd);
   } catch (error) {
     closeSync(fd);
-    if (created !== undefined) removeLaunchFile(created);
+    if (created !== undefined) {
+      try {
+        removeLaunchFile(created);
+      } catch {
+        // 後始末に失敗しても、最初の失敗を伝える（作ったファイルは、経路が同じときだけ消す）。
+      }
+    }
     throw error;
   }
   closeSync(fd);
@@ -97,9 +157,16 @@ export function createLaunchFile(directory: string, name: string, content: strin
 
 export type RemoveResult = 'removed' | 'missing' | 'replaced';
 
-// 作ったときと同じ通常のファイルだけを消す。置き換わっていれば消さずに'replaced'を返す。消せなければ例外にする
+// 確かめたときと同じ経路の、作ったときと同じ通常のファイルだけを消す。経路やファイルが置き換わっていれば、
+// 消さずに'replaced'を返す。消せなければ例外にする
 // （握りつぶさない。呼び出し側が、残ったことを利用者に伝える）。unlinkは、試験で削除の失敗を注入するための引数。
 export function removeLaunchFile(file: LaunchFile, unlink: (path: string) => void = unlinkSync): RemoveResult {
+  // 経路が確かめたときと違えば、差し替え先のファイルを消さない。
+  try {
+    confirmDirectoryUnchanged(file.directory);
+  } catch {
+    return 'replaced';
+  }
   let st;
   try {
     st = lstatSync(file.path, { bigint: true });

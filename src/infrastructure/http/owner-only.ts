@@ -25,7 +25,9 @@ export type OwnerOnlyCheck = { readonly ok: true } | { readonly ok: false; reado
 // FullControlで許可するDACLに置き換えてから、読み直す。1行目に実行中のユーザーのSID、2行目にSDDL（所有者とDACL）を出す。
 const POWERSHELL_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
-  '$p = $env:KURASHI_LEDGER_ACL_PATH',
+  // 読むだけ（read）のときは、改行で区切った複数のパスを受け取り、1行に1つずつ出す（経路の祖先の検査）。
+  '$paths = $env:KURASHI_LEDGER_ACL_PATH -split "`n"',
+  '$p = $paths[0]',
   '$mode = $env:KURASHI_LEDGER_ACL_MODE',
   '$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().User',
   '$full = [System.Security.AccessControl.FileSystemRights]::FullControl',
@@ -45,6 +47,8 @@ const POWERSHELL_SCRIPT = [
   '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($user, $full, $inherit, $none, $allow)))',
   '  [System.IO.Directory]::SetAccessControl($p, $sec)',
   '}',
+  '$lines = @($user.Value)',
+  'foreach ($p in $paths) {',
   'if ([System.IO.Directory]::Exists($p)) { $acl = [System.IO.Directory]::GetAccessControl($p) } else { $acl = [System.IO.File]::GetAccessControl($p) }',
   // SDDLの文字列（GetSecurityDescriptorSddlForm）は、よく知られたアカウントを別名（組込みのAdministratorはLA等）で
   // 書くので、実行中のユーザーのSIDと比べられない。2進の形から、SIDだけで同じ形の文字列を組み立てる。
@@ -55,10 +59,13 @@ const POWERSHELL_SCRIPT = [
   '    $kind = $ace.AceType.ToString()',
   "    if ($kind -eq 'AccessAllowed') { $kind = 'A' } elseif ($kind -eq 'AccessDenied') { $kind = 'D' }",
   "    if ($ace -is [System.Security.AccessControl.KnownAce]) { $sid = $ace.SecurityIdentifier.Value } else { $sid = 'unknown' }",
-  "    $text += '(' + $kind + ';;;;;' + $sid + ')'",
+  "    if ($ace -is [System.Security.AccessControl.KnownAce]) { $mask = [string]$ace.AccessMask } else { $mask = '' }",
+  "    $text += '(' + $kind + ';' + [string][int]$ace.AceFlags + ';' + $mask + ';;;' + $sid + ')'",
   '  }',
   '}',
-  '[Console]::Out.Write($user.Value + "`n" + $text)',
+  '$lines += $text',
+  '}',
+  '[Console]::Out.Write(($lines -join "`n"))',
 ].join('\n');
 
 function powershellPath(): string {
@@ -67,12 +74,14 @@ function powershellPath(): string {
   return join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 }
 
-type WindowsSecurity = { readonly userSid: string; readonly sddl: string };
+type WindowsSecurity = { readonly userSid: string; readonly sddl: string; readonly all: readonly string[] };
 
-function runWindowsAcl(path: string, mode: 'read' | 'restrict-file' | 'restrict-directory'): WindowsSecurity {
+function runWindowsAcl(path: string | readonly string[], mode: 'read' | 'restrict-file' | 'restrict-directory'): WindowsSecurity {
+  const paths = typeof path === 'string' ? [path] : path;
+  if (paths.length === 0 || paths.some((p) => p.includes('\n'))) throw new Error('ACLを読むパスが不正。');
   const encoded = Buffer.from(POWERSHELL_SCRIPT, 'utf16le').toString('base64');
   const result = spawnSync(powershellPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
-    env: { ...process.env, KURASHI_LEDGER_ACL_PATH: path, KURASHI_LEDGER_ACL_MODE: mode },
+    env: { ...process.env, KURASHI_LEDGER_ACL_PATH: paths.join('\n'), KURASHI_LEDGER_ACL_MODE: mode },
     encoding: 'utf8',
     windowsHide: true,
     timeout: 60_000,
@@ -82,9 +91,11 @@ function runWindowsAcl(path: string, mode: 'read' | 'restrict-file' | 'restrict-
     const detail = (result.stderr ?? '').trim().split(/\r?\n/)[0] ?? '';
     throw new Error(`Windows PowerShellでACLを${mode === 'read' ? '読め' : '設定でき'}なかった（終了コード ${String(result.status)}: ${detail}）。`);
   }
-  const [userSid = '', sddl = ''] = (result.stdout ?? '').trim().split(/\r?\n/);
-  if (!/^S-1-\d+(?:-\d+)+$/.test(userSid) || sddl === '') throw new Error('Windows PowerShellの出力（SIDとSDDL）を読めない。');
-  return { userSid, sddl };
+  const [userSid = '', ...all] = (result.stdout ?? '').trim().split(/\r?\n/);
+  if (!/^S-1-\d+(?:-\d+)+$/.test(userSid) || all.length !== paths.length || all.some((line) => line === '')) {
+    throw new Error('Windows PowerShellの出力（SIDとSDDL）を読めない。');
+  }
+  return { userSid, sddl: all[0] ?? '', all };
 }
 
 // SDDLの形（所有者とDACLの部分）を、本人だけの基準で判定する。純粋な関数として試験できるように分けている。
@@ -186,4 +197,114 @@ export function ownerOnlyDirectoryHint(path: string): string {
     : process.platform === 'darwin'
       ? `chmod 700 "${path}" と、ほかのユーザーを許可する拡張ACLがあれば chmod -N "${path}" で、本人だけの権限にする（新しく作るなら mkdir -m 700）。`
       : `chmod 700 "${path}" で本人だけの権限にする（新しく作るなら mkdir -m 700）。`;
+}
+
+// ---- 経路の検査（ADR-0009の3・4、PR25-R005）----
+// 渡されたディレクトリの実体パスの、どの要素（末端と、そこからルートまでのすべての祖先）も、ほかの一般のユーザーが
+// 差し替え（名前の変更・削除してリンクを置く等）できないことを確かめる。管理者（root・Administrators・SYSTEM・
+// TrustedInstaller）と、実行中のユーザー自身は、この境界の外（ADR-0003の「この境界で守らないもの」）。
+
+// macOSの拡張ACLで、エントリの名前や内容を変えられる権限。
+const MAC_MODIFYING = ['delete', 'delete_child', 'add_file', 'add_subdirectory', 'write', 'append', 'writesecurity', 'chown'];
+
+// 祖先のディレクトリの`ls -led`の出力を判定する。ほかのユーザーに変更の権限を許すallowのエントリがあれば拒否する
+// （読取りだけの許可は、差し替えにつながらないので許す）。
+export function evaluateMacAncestorAcl(output: string, userName: string): OwnerOnlyCheck {
+  const [first = '', ...rest] = output.replace(/\r/g, '').split('\n').filter((line) => line !== '');
+  const mode = first.split(' ')[0] ?? '';
+  if (!/^[-dlbcps][-rwxsStT]{9}[+@.]?$/.test(mode)) return { ok: false, reason: 'ACLを読めない（lsの出力の形が違う）。' };
+  if (!mode.endsWith('+')) return { ok: true };
+  for (const line of rest) {
+    const entry = /^\s*\d+: (\S+) (?:inherited )?(allow|deny) (\S+)$/.exec(line);
+    if (entry === null) return { ok: false, reason: `読めないACLのエントリがある（${line.trim()}）。` };
+    if (entry[2] !== 'allow' || entry[1] === `user:${userName}`) continue;
+    const perms = (entry[3] ?? '').split(',');
+    if (perms.some((perm) => MAC_MODIFYING.includes(perm))) {
+      return { ok: false, reason: `ほかのユーザー（${entry[1] ?? ''}）に変更を許す拡張ACLのエントリがある。` };
+    }
+  }
+  return { ok: true };
+}
+
+export type PosixEntry = { readonly path: string; readonly uid: number; readonly mode: number };
+
+// POSIXのモードと所有者で判定する。entriesは末端からルートへの順。各要素の所有者がrootか実行中のユーザーで、
+// 末端以外の要素（親）がグループ・ほかのユーザーに書込みを許すなら、stickyのbitがあり、その子の所有者がrootか
+// 実行中のユーザーであること（stickyのディレクトリでは、子の名前を変えられるのは子・親の所有者とrootだけ）。
+export function evaluatePosixChain(entries: readonly PosixEntry[], uid: number): OwnerOnlyCheck {
+  for (const [i, entry] of entries.entries()) {
+    if (entry.uid !== 0 && entry.uid !== uid) return { ok: false, reason: `経路の ${entry.path} の所有者（uid ${entry.uid}）がrootでも実行中のユーザーでもない。` };
+    if (i === 0) continue;
+    if ((entry.mode & 0o022) === 0) continue;
+    const child = entries[i - 1];
+    const sticky = (entry.mode & 0o1000) !== 0;
+    if (!sticky || child === undefined || (child.uid !== 0 && child.uid !== uid)) {
+      return { ok: false, reason: `経路の ${entry.path} は、ほかのユーザーも書き込める（stickyなし、または子の所有者が違う）ので、その中の名前を差し替えられる。` };
+    }
+  }
+  return { ok: true };
+}
+
+const TRUSTED_WINDOWS_SIDS = new Set([
+  'S-1-5-18', // SYSTEM
+  'S-1-5-32-544', // Administrators
+  'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464', // TrustedInstaller
+]);
+const DELETE = 0x00010000;
+const WRITE_DAC = 0x00040000;
+const WRITE_OWNER = 0x00080000;
+const GENERIC_ALL = 0x10000000;
+const FILE_DELETE_CHILD = 0x00000040;
+const INHERIT_ONLY = 0x08;
+
+// Windowsの経路の判定。sddlsは末端からルートへの順で、各要素の「O:<SID>D:(<種類>;<フラグの数>;<権限の数>;;;<SID>)…」。
+// 各要素の所有者が信頼するSID（実行中のユーザー・SYSTEM・Administrators・TrustedInstaller）で、継承専用でない
+// Allowのエントリが、信頼しないSIDに、その要素の削除・DACLや所有者の変更（DELETE・WRITE_DAC・WRITE_OWNER・
+// GENERIC_ALL）を許さず、親（末端以外）では子の削除（FILE_DELETE_CHILD）も許さないこと。
+export function evaluateWindowsChain(sddls: readonly string[], paths: readonly string[], userSid: string): OwnerOnlyCheck {
+  const trusted = (sid: string): boolean => sid === userSid || TRUSTED_WINDOWS_SIDS.has(sid);
+  for (const [i, sddl] of sddls.entries()) {
+    const path = paths[i] ?? '';
+    const owner = /^O:([^:()]+?)(?=[GDS]:)/.exec(sddl)?.[1];
+    if (owner === undefined || !trusted(owner)) return { ok: false, reason: `経路の ${path} の所有者（${owner ?? '不明'}）を信頼できない。` };
+    const dacl = /D:([^()]*)((?:\([^()]*\))*)$/.exec(sddl);
+    if (dacl === null || (dacl[1] ?? '').includes('NO_ACCESS_CONTROL')) return { ok: false, reason: `経路の ${path} のDACLがない、または読めない。` };
+    const forbidden = DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL | (i > 0 ? FILE_DELETE_CHILD : 0);
+    for (const m of (dacl[2] ?? '').matchAll(/\(([^()]*)\)/g)) {
+      const [type = '', flags = '', mask = '', , , sid = ''] = (m[1] ?? '').split(';');
+      if (type === 'D') continue;
+      if (type !== 'A') return { ok: false, reason: `経路の ${path} に、判定で扱わない種類のACLのエントリ（${type}）がある。` };
+      if ((Number(flags) & INHERIT_ONLY) !== 0 || trusted(sid)) continue;
+      const rights = Number(mask) >>> 0;
+      if (!/^-?\d+$/.test(mask) || (rights & forbidden) !== 0) {
+        return { ok: false, reason: `経路の ${path} で、ほかのユーザー（${sid}）に差し替えにつながる権限がある。` };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+// pathsは、末端（渡されたディレクトリの実体パス）からルートまでの順。どれもリンクでないディレクトリであること。
+export function checkPathNotReplaceable(paths: readonly string[]): OwnerOnlyCheck {
+  for (const path of paths) {
+    const st = lstatSync(path);
+    if (st.isSymbolicLink() || !st.isDirectory()) return { ok: false, reason: `経路の ${path} がリンク、またはディレクトリでない。` };
+  }
+  if (process.platform === 'win32') {
+    const { userSid, all } = runWindowsAcl(paths, 'read');
+    return evaluateWindowsChain(all, paths, userSid);
+  }
+  const uid = process.getuid?.() ?? -1;
+  const posix = evaluatePosixChain(paths.map((path) => {
+    const st = lstatSync(path);
+    return { path, uid: st.uid, mode: st.mode };
+  }), uid);
+  if (!posix.ok || process.platform !== 'darwin') return posix;
+  for (const path of paths.slice(1)) {
+    const result = spawnSync('/bin/ls', ['-led', '--', path], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, timeout: 30_000 });
+    if (result.error !== undefined || result.status !== 0) return { ok: false, reason: `経路の ${path} のACLを読めなかった。` };
+    const check = evaluateMacAncestorAcl(result.stdout, userInfo().username);
+    if (!check.ok) return { ok: false, reason: `経路の ${path}: ${check.reason}` };
+  }
+  return { ok: true };
 }

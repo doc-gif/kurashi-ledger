@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import { exchange, ownerOnlyTempDirectory, sameOriginHeaders, send, sendRaw, tokenOf } from '../../../tests/support/http.ts';
 import { PRODUCTION_CSP } from './response-headers.ts';
 import { PortInUseError, devRequestContext, startLocalServer, type ApiRoute, type LocalServer, type LocalServerOptions } from './server.ts';
+import type { StaticSource } from './static-files.ts';
 
 const FIXTURE_ROOT = fileURLToPath(new URL('../../../tests/fixtures/http/static/', import.meta.url));
 
@@ -522,7 +523,9 @@ test('closeは、維持しているupgradeの接続を閉じ、実行中のAPI�
     ];
     const held: Socket[] = [];
     const dev: LocalServerOptions['dev'] = {
-      middleware: (_req, res) => res.end(),
+      middleware: (_req, res) => {
+        res.end();
+      },
       upgrade(_req, socket) {
         held.push(socket as Socket);
         socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
@@ -739,6 +742,123 @@ test('APIはクエリだけを除いた生のパスで完全一致に振り分�
     // 振り分けで比べられない形のパスは、登録のときに拒否する。
     for (const path of ['/api/test/日本', '/api/test/a b', `/api/${'a'.repeat(1100)}`, '/api/test/%41', '/api/test?x', '/api/']) {
       await assert.rejects(startLocalServer({ port: 0, tokenDirectory: tmp.path, api: [{ method: 'GET', path, handle: handle('bad') }] }), /使えない/, path);
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('クライアントが応答の前に切断しても、closeは開発時のmiddlewareの処理が解放されて終わるまで返らない', async () => {
+  const tmp = ownerOnlyTempDirectory('close-disconnect');
+  try {
+    const events: string[] = [];
+    let entered: () => void = () => {};
+    const middlewareEntered = new Promise<void>((resolve) => (entered = resolve));
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const responseClosed: Array<Promise<void>> = [];
+    const dev: LocalServerOptions['dev'] = {
+      middleware(_req, res) {
+        responseClosed.push(new Promise((resolve) => res.once('close', () => resolve())));
+        entered();
+        void (async () => {
+          await released;
+          events.push('middleware-finished');
+          res.end('late');
+        })();
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev });
+    // 応答の前にクライアントが切断する。
+    const client = connect({ host: '127.0.0.1', port: server.port });
+    client.on('error', () => {});
+    client.write(`GET /src/slow.ts HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n\r\n`);
+    await middlewareEntered;
+    client.destroy();
+    await responseClosed[0];
+    let closed = false;
+    const closing = server.close().then((result) => {
+      closed = true;
+      events.push('closed');
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 応答のclose（途中切断）は処理の完了ではないので、closeはまだ返らない。
+    assert.equal(closed, false);
+    release();
+    const result = await closing;
+    assert.deepEqual(events, ['middleware-finished', 'closed']);
+    assert.equal(result.launchFile, 'removed');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('開発時の口のupgradeの処理が同期で例外を投げても、プロセスへ抜けず、ソケットを壊して記録し、そのあとも動いて終われる', async () => {
+  const tmp = ownerOnlyTempDirectory('upgrade-throw');
+  try {
+    const logs: string[] = [];
+    const dev: LocalServerOptions['dev'] = {
+      middleware: (_req, res) => {
+        res.end('ok');
+      },
+      upgrade() {
+        throw Object.assign(new Error('synthetic upgrade failure'), { code: 'ESYNTHETIC' });
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+    const cookie = await exchange(server);
+    const res = await sendRaw(
+      server.port,
+      `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+    ).catch(() => ({ status: 0, raw: '' })); // 壊したソケットは、OSによっては接続のリセットになる。
+    assert.equal(res.status, 0);
+    assert.ok(logs.includes('UPGRADE /hmr upgrade-handler-error ESYNTHETIC'));
+    assert.equal(logs.join('\n').includes('synthetic upgrade failure'), false);
+    assert.equal((await send(server.port, { path: '/src/main.ts' })).text, 'ok');
+    assert.equal((await server.close()).launchFile, 'removed');
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('静的ファイルの読み出し元を差し替えても（T09のmanifestの読み出し元の口）、パスの検査・識別子・CSPとno-store・404は同じに働く', async () => {
+  const tmp = ownerOnlyTempDirectory('source');
+  try {
+    const requested: string[][] = [];
+    const files = new Map<string, { body: Buffer; contentType: string }>([
+      ['index.html', { body: Buffer.from('<!doctype html><html><head><title>t</title></head><body>memory</body></html>'), contentType: 'text/html; charset=utf-8' }],
+      ['assets/app.js', { body: Buffer.from('console.log("memory");'), contentType: 'text/javascript; charset=utf-8' }],
+    ]);
+    const staticSource: StaticSource = {
+      read: async (segments) => {
+        requested.push([...segments]);
+        return files.get(segments.join('/'));
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, staticSource });
+    try {
+      const home = await send(server.port, { path: '/' });
+      assert.equal(home.status, 200);
+      assert.equal(home.text.includes(`<head><meta name="kurashi-ledger-launch-id" content="${server.launchId}">`), true);
+      assert.equal(home.headers['cache-control'], 'no-store');
+      assert.equal(home.headers['content-security-policy'], PRODUCTION_CSP);
+      assert.equal((await send(server.port, { path: '/assets/app.js' })).text, 'console.log("memory");');
+      assert.equal((await send(server.port, { path: '/missing.js' })).status, 404);
+      // パスの検査は読み出し元の前に行うので、不正なパスは読み出し元に届かない。
+      for (const target of ['/../x', '/%2e%2e/x', '/a%2Fb', '/.env', '/assets/']) {
+        const res = await sendRaw(server.port, `GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: close\r\n\r\n`);
+        assert.ok(res.status === 400 || res.status === 404, target);
+      }
+      assert.deepEqual(requested, [['index.html'], ['assets', 'app.js'], ['missing.js']]);
+    } finally {
+      await server.close();
+    }
+    // 配信ルート・読み出し元・開発時の口は、どの2つも同時に使えない。
+    const dev = { middleware: () => {} };
+    for (const options of [{ staticSource, staticRoot: FIXTURE_ROOT }, { staticSource, dev }]) {
+      await assert.rejects(startLocalServer({ port: 0, tokenDirectory: tmp.path, ...options }), /同時に使えない/);
     }
   } finally {
     tmp.cleanup();

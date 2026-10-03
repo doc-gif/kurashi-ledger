@@ -78,7 +78,9 @@ export type ApiRoute = {
 // 載せる。middlewareには、Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけが届き、応答には共通の
 // ヘッダ（開発時のCSP）が付く。upgradeには、Host・Origin・cookieの検査を通った要求だけが届く。
 export type DevIntegration = {
-  readonly middleware: (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => void;
+  // 処理の完了は、next()の呼出し、res.end()の呼出し、またはmiddlewareが返したPromiseの決着（Promiseを返したときは
+  // それを待つ）。クライアントの途中切断（応答のclose）では完了としない。closeはこの完了を待つ。
+  readonly middleware: (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => void | Promise<void>;
   readonly upgrade?: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 };
 
@@ -97,8 +99,11 @@ export type LocalServerOptions = {
   readonly port: number;
   // トークンの一時ファイルを置く、本人専用のディレクトリ（T09からはデータルートのtmp/）。
   readonly tokenDirectory: string;
-  // 静的ファイルの配信ルート。なければ / で案内ページを返す。devと同時には使えない。
+  // 静的ファイルの配信ルート。なければ / で案内ページを返す。staticSource・devと同時には使えない。
   readonly staticRoot?: string;
+  // 静的ファイルの読み出し元（T09が、manifestで確かめた内容をメモリから返すものを渡す）。パスの検査・HTMLの識別子・
+  // 応答ヘッダは、配信ルートと同じ処理を通る。staticRoot・devと同時には使えない。
+  readonly staticSource?: StaticSource;
   readonly api?: readonly ApiRoute[];
   readonly dev?: DevIntegration;
   readonly log?: (line: string) => void;
@@ -196,6 +201,10 @@ function readBody(req: IncomingMessage, maxBytes: number, signal: AbortSignal): 
     });
     req.on('end', () => finish(tooLarge ? { ok: false, rejection: { status: 413, code: 'body-too-large' } } : { ok: true, data: Buffer.concat(chunks) }));
     req.on('error', () => finish({ ok: false, rejection: { status: 400, code: 'body-read-error' } }));
+    // クライアントが本文の途中で切断したら、それ以上は届かないので決着させる。
+    req.on('close', () => {
+      if (!req.complete) finish({ ok: false, rejection: { status: 400, code: 'body-incomplete' } });
+    });
     // 終了が始まったら、本文の残りを待たない（届かない本文でcloseが止まらないように）。
     function onAbort(): void {
       finish({ ok: false, rejection: { status: 503, code: 'closing' } });
@@ -216,14 +225,15 @@ function parseJson(data: Buffer): { ok: true; value: unknown } | { ok: false } {
 
 export async function startLocalServer(options: LocalServerOptions): Promise<LocalServer> {
   if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535) throw new Error(`ポート${options.port}は使えない。`);
-  if (options.staticRoot !== undefined && options.dev !== undefined) throw new Error('配信ルートと開発時の口は同時に使えない。');
+  const uiSources = [options.staticRoot, options.staticSource, options.dev].filter((v) => v !== undefined).length;
+  if (uiSources > 1) throw new Error('配信ルート（staticRoot）・読み出し元（staticSource）・開発時の口（dev）は、同時に使えない。');
   const routes = options.api ?? [];
   validateRoutes(routes);
   const log = options.log ?? (() => {});
   // 起動の前に、渡されたディレクトリと配信ルートを確かめる（どちらも、作らない・変えない）。
   const tokenDirectory = verifyTokenDirectory(options.tokenDirectory);
   const staticSource: StaticSource | undefined =
-    options.staticRoot === undefined ? undefined : await createDiskStaticSource(options.staticRoot);
+    options.staticSource ?? (options.staticRoot === undefined ? undefined : await createDiskStaticSource(options.staticRoot));
 
   // ポートが決まるまで、起動ごとの値は作れない（cookieの名前にポートを含める）。
   let session: LaunchSession | undefined;
@@ -356,15 +366,33 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (path === LAUNCH_SCRIPT_PATH) return sendFile(res, Buffer.from(LAUNCH_SCRIPT, 'utf8'), 'text/javascript; charset=utf-8', current.launchId);
     if (options.dev !== undefined) {
       const dev = options.dev;
-      // 応答が終わる（finish・close）か、next()が呼ばれるまで、この要求の処理として追跡する（closeはこれを待つ）。
-      await new Promise<void>((resolve) => {
-        const done = (): void => resolve();
-        res.once('finish', done);
-        res.once('close', done);
-        dev.middleware(req, res, (error?: unknown) => {
-          if (!res.headersSent) reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
-          done();
-        });
+      // middlewareの処理が完了する（next()、res.end()、返したPromiseの決着）まで、この要求の処理として追跡する。
+      // クライアントの途中切断（応答のclose）は、処理の完了ではないので待ち続ける（closeはこれを待つ）。
+      await new Promise<void>((resolve, rejectWork) => {
+        let returnedPromise = false;
+        let ended = false;
+        const originalEnd = res.end.bind(res) as (...args: unknown[]) => ServerResponse;
+        res.end = ((...args: unknown[]) => {
+          ended = true;
+          const result = originalEnd(...args);
+          if (!returnedPromise) resolve();
+          return result;
+        }) as typeof res.end;
+        const next = (error?: unknown): void => {
+          if (!res.headersSent && !ended) reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
+          if (!returnedPromise) resolve();
+        };
+        let returned: void | Promise<void>;
+        try {
+          returned = dev.middleware(req, res, next);
+        } catch (error) {
+          rejectWork(error);
+          return;
+        }
+        if (returned instanceof Promise) {
+          returnedPromise = true;
+          returned.then(() => resolve(), rejectWork);
+        }
       });
       return;
     }
@@ -440,7 +468,14 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     // closeで閉じるために、渡したソケットを追跡する（closeAllConnectionsはupgrade済みのソケットを閉じない）。
     upgradedSockets.add(socket);
     socket.once('close', () => upgradedSockets.delete(socket));
-    upgrade(req, socket, head);
+    // 開発時の口の処理が同期で例外を投げても、プロセスへ抜けさせない。理由の符号だけを記録し、ソケットを壊す。
+    try {
+      upgrade(req, socket, head);
+    } catch (error) {
+      log(`UPGRADE ${path} upgrade-handler-error ${errorName(error)}`);
+      upgradedSockets.delete(socket);
+      socket.destroy();
+    }
   });
 
   await new Promise<void>((resolve, reject) => {

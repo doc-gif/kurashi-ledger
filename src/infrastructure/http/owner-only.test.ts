@@ -5,7 +5,15 @@ import { chmodSync, lstatSync, mkdirSync, symlinkSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ownerOnlyTempDirectory } from '../../../tests/support/http.ts';
-import { checkOwnerOnly, evaluateMacAcl, evaluateWindowsSddl, restrictToOwner } from './owner-only.ts';
+import {
+  checkOwnerOnly,
+  evaluateMacAcl,
+  evaluateMacAncestorAcl,
+  evaluatePosixChain,
+  evaluateWindowsChain,
+  evaluateWindowsSddl,
+  restrictToOwner,
+} from './owner-only.ts';
 import { readdirSync } from 'node:fs';
 import { verifyTokenDirectory } from './launch-file.ts';
 
@@ -156,5 +164,56 @@ test('モード700でも、ほかのユーザーを許可する拡張ACL（macOS
     }
   } finally {
     tmp.cleanup();
+  }
+});
+
+test('経路の判定（POSIX）: 所有者がroot・本人以外、またはstickyなしでほかのユーザーも書ける祖先があれば拒否する', () => {
+  const uid = 1000;
+  const entry = (path: string, owner: number, mode: number) => ({ path, uid: owner, mode });
+  const ok = [entry('/home/u/tok', uid, 0o40700), entry('/home/u', uid, 0o40755), entry('/home', 0, 0o40755), entry('/', 0, 0o40755)];
+  assert.deepEqual(evaluatePosixChain(ok, uid), { ok: true });
+  // stickyのある共有のディレクトリ（/tmp等）の中の、自分のディレクトリは許す。
+  assert.deepEqual(evaluatePosixChain([entry('/tmp/tok', uid, 0o40700), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)], uid), { ok: true });
+  for (const chain of [
+    [entry('/tmp/tok', uid, 0o40700), entry('/tmp', 0, 0o40777), entry('/', 0, 0o40755)],
+    [entry('/srv/tok', uid, 0o40700), entry('/srv', 0, 0o40775), entry('/', 0, 0o40755)],
+    [entry('/tmp/x/tok', uid, 0o40700), entry('/tmp/x', 2000, 0o41777), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)],
+    [entry('/tmp/x/tok', uid, 0o40700), entry('/tmp/x', 2000, 0o40755), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)],
+    [entry('/home/u/tok', uid, 0o40700), entry('/home/u', 2000, 0o40755), entry('/', 0, 0o40755)],
+  ]) {
+    assert.equal(evaluatePosixChain(chain, uid).ok, false, JSON.stringify(chain));
+  }
+});
+
+test('経路の判定（Windows・macOSのACL）: ほかのユーザーに削除・子の削除・権限の変更を許すエントリを拒否し、読取りと継承専用は許す', () => {
+  const paths = ['C:\\Users\\u\\tok', 'C:\\Users\\u', 'C:\\'];
+  const sys = 'S-1-5-18';
+  const tok = `O:${USER}D:(A;0;2032127;;;${USER})`;
+  const home = `O:${sys}D:(A;3;2032127;;;${USER})(A;3;2032127;;;${sys})(A;3;2032127;;;S-1-5-32-544)`;
+  // C:\ の既定に近い形: Authenticated Usersに継承専用の変更と、フォルダーの作成（AppendData）だけ。
+  const root = `O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:(A;3;2032127;;;${sys})(A;11;-536805376;;;S-1-5-11)(A;0;4;;;S-1-5-11)(A;3;1179817;;;S-1-5-32-545)`;
+  assert.deepEqual(evaluateWindowsChain([tok, home, root], paths, USER), { ok: true });
+  const deleteChild = `${home}(A;0;64;;;${OTHER})`;
+  const deleteSelf = `${home}(A;0;65536;;;${OTHER})`;
+  const writeDac = `${root}(A;0;262144;;;S-1-1-0)`;
+  const genericAll = `${home}(A;0;268435456;;;S-1-5-32-545)`;
+  const otherOwner = `O:${OTHER}D:(A;3;2032127;;;${USER})`;
+  for (const [sddls, label] of [
+    [[tok, deleteChild, root], '親の子の削除'],
+    [[tok, deleteSelf, root], '祖先の削除'],
+    [[tok, home, writeDac], 'DACLの変更'],
+    [[tok, genericAll, root], 'GENERIC_ALL'],
+    [[tok, otherOwner, root], 'ほかの所有者'],
+    [[tok, `O:${sys}D:NO_ACCESS_CONTROL`, root], 'NULLのDACL'],
+  ] as const) {
+    assert.equal(evaluateWindowsChain(sddls, paths, USER).ok, false, label);
+  }
+  // 末端の子の削除（FILE_DELETE_CHILD）は、末端の中の名前なので、末端（本人だけ）の判定に任せる。
+  assert.deepEqual(evaluateWindowsChain([`O:${USER}D:(A;0;64;;;${USER})`, home, root], paths, USER), { ok: true });
+
+  const head = (mode: string) => `${mode}  5 root  admin  160 Oct  3 17:36 /synthetic\n`;
+  assert.deepEqual(evaluateMacAncestorAcl(`${head('drwxr-xr-x+')} 0: group:everyone deny delete\n 1: group:staff allow list,search\n`, 'alice'), { ok: true });
+  for (const perm of ['delete', 'delete_child', 'add_subdirectory', 'add_file', 'writesecurity', 'chown']) {
+    assert.equal(evaluateMacAncestorAcl(`${head('drwxr-xr-x+')} 0: user:nobody allow list,${perm}\n`, 'alice').ok, false, perm);
   }
 });
