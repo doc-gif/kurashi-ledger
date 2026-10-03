@@ -82,7 +82,8 @@ export type DevIntegration = {
   readonly upgrade?: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 };
 
-export type DevRequestContext = { readonly launchId: string; readonly nonce: string };
+// signalは、closeが始まると中止を知らせる。middlewareは早めに応答を終えるかnext()を呼ぶ。closeはそれを待つ。
+export type DevRequestContext = { readonly launchId: string; readonly nonce: string; readonly signal: AbortSignal };
 
 const devContexts = new WeakMap<IncomingMessage, DevRequestContext>();
 
@@ -141,7 +142,9 @@ const EXCHANGE_MAX_BYTES = 1024;
 function validateRoutes(routes: readonly ApiRoute[]): void {
   const seen = new Set<string>();
   for (const route of routes) {
-    if (!route.path.startsWith('/api/') || route.path === EXCHANGE_PATH || /[?#%\\]/.test(route.path)) {
+    // 要求の生のパス（クエリを除いたもの）と完全一致で比べるので、比べられる形だけを登録できる:
+    // /api/ で始まり、ASCIIの印字できる文字だけで、%・?・#・バックスラッシュを含まず、1024文字以下。
+    if (!/^\/api\/[!-~]+$/.test(route.path) || route.path.length > 1024 || /[?#%\\]/.test(route.path) || route.path === EXCHANGE_PATH) {
       throw new Error(`APIのパス ${route.path} は使えない。`);
     }
     const key = `${route.method} ${route.path}`;
@@ -353,13 +356,10 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (path === LAUNCH_SCRIPT_PATH) return sendFile(res, Buffer.from(LAUNCH_SCRIPT, 'utf8'), 'text/javascript; charset=utf-8', current.launchId);
     if (options.dev !== undefined) {
       const dev = options.dev;
+      // 応答が終わる（finish・close）か、next()が呼ばれるまで、この要求の処理として追跡する（closeはこれを待つ）。
       await new Promise<void>((resolve) => {
-        // 終了が始まったら待たない（応答はcloseが接続ごと閉じる）。
-        const done = (): void => {
-          shutdown.signal.removeEventListener('abort', done);
-          resolve();
-        };
-        shutdown.signal.addEventListener('abort', done, { once: true });
+        const done = (): void => resolve();
+        res.once('finish', done);
         res.once('close', done);
         dev.middleware(req, res, (error?: unknown) => {
           if (!res.headersSent) reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
@@ -384,19 +384,22 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   const server: Server = createServer((req, res) => {
     const current = session;
     const rawUrl = req.url ?? '';
-    const path = safePath(rawUrl);
+    // 振り分けには、クエリだけを除いた生のパスを使う。safePath（置き換え・切り詰め）はログにだけ使う。
+    const query = rawUrl.indexOf('?');
+    const path = query < 0 ? rawUrl : rawUrl.slice(0, query);
+    const logPath = safePath(rawUrl);
     const api = path === '/api' || path.startsWith('/api/');
     const isDev = options.dev !== undefined && !api && path !== LAUNCH_PATH && path !== LAUNCH_SCRIPT_PATH;
     let csp = PRODUCTION_CSP;
     if (isDev && current !== undefined) {
       const nonce = randomBytes(16).toString('base64');
       csp = developmentCsp(nonce, port);
-      devContexts.set(req, { launchId: current.launchId, nonce });
+      devContexts.set(req, { launchId: current.launchId, nonce, signal: shutdown.signal });
     }
     enforceResponseHeaders(res, csp);
     res.on('finish', () => {
       const reason = res.getHeader('X-Kurashi-Ledger-Reason');
-      log(`${req.method ?? '?'} ${path} ${res.statusCode}${reason === undefined ? '' : ` ${String(reason)}`}`);
+      log(`${req.method ?? '?'} ${logPath} ${res.statusCode}${reason === undefined ? '' : ` ${String(reason)}`}`);
     });
     if (current === undefined) return reject(res, { status: 503, code: 'starting' }, api);
     // 終了中は、すでにある接続に届いた要求も受け付けない。
@@ -473,7 +476,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
     // 2. upgrade済みの接続を閉じる。
     for (const socket of upgradedSockets) socket.destroy();
-    // 3. 実行中の処理に中止を知らせたうえで、すべての完了を待つ（処理中に新しく加わったものも待つ）。
+    // 3. 実行中の処理（APIの処理、開発時のmiddlewareの応答の終了またはnext()）に中止を知らせたうえで、すべての完了を
+    //    待つ（処理中に新しく加わったものも待つ）。
     server.closeIdleConnections();
     while (inflight.size > 0) await Promise.allSettled([...inflight]);
     // 4. 残ったHTTPの接続を閉じ、待受の終了を待つ。

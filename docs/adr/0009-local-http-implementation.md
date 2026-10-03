@@ -45,6 +45,7 @@ T07のデータルートの権限も、この基準を使う。基準を変え�
 - 待受: `127.0.0.1`だけ（`listen`のhostを明示）。既定のポートは`48720`（`npm start`の`--port`で変えられる。0はOSが選ぶ、試験用）。使用中なら別のポートへ移らず、理由を表示して終了する（終了コード1）。一時ファイルは、待受に成功してから作る。
 - Host: `127.0.0.1:<port>`と完全に一致し、ちょうど1つであること。静的ファイルを含むすべての要求に適用する（403、`host-mismatch`）。要求の対象が`/`で始まらない要求（絶対形式等）は400。
 - 状態を変える要求（GET/HEAD以外）: `Sec-Fetch-Site`があれば`same-origin`、`Origin`があれば`http://127.0.0.1:<port>`と完全一致、どちらもなければ拒否（403）。GETのAPIでも、これらのヘッダがあれば同じ条件を求める（追加の防御）。`Content-Type`は`application/json`（charsetは`utf-8`だけ）。`application/octet-stream`は、本文の上限を決めて宣言したエンドポイントだけで受け付ける（ほかは415）。JSONの本文の上限は既定で64KiB（413）。UTF-8・JSONとして読めない本文は400。
+- 振り分け: APIは、クエリだけを除いた生のパスと、登録したパスの完全一致で振り分ける（ログ用に置き換え・切り詰めたパスは使わない）。登録できるパスは、`/api/`で始まり、ASCIIの印字できる文字だけで、`%`・`?`・`#`・バックスラッシュを含まない1024文字以下のもので、登録時に検証する。
 - 応答の出口: すべての応答で、書き出す直前（`writeHead`）に、`Content-Security-Policy`（ADR-0003の7の初期値）、`Cache-Control: no-store`、`Referrer-Policy: no-referrer`、`X-Content-Type-Options: nosniff`、`Cross-Origin-Resource-Policy: same-origin`、`X-Frame-Options: DENY`を付け直し、`Access-Control-*`を取り除く。APIの処理や開発時のmiddlewareが変えようとしても外れない。APIの応答は`application/json`だけ。拒否の応答には、理由の符号（`X-Kurashi-Ledger-Reason`）を付ける（データを含まない）。
 - 静的配信: 起動時に配信ルートの実体パスを固定する。URLのパスは、生のままでバックスラッシュと`%2F`・`%5C`を拒否し、1回だけデコードしてから、`%`（二重エンコード）・バックスラッシュ・制御文字（NULを含む）・`:`（ドライブ指定・ストリーム）・`.`と`..`のセグメント・末尾の`.`と空白・Windowsの予約名（`CON`等）を拒否する（400）。空のセグメント（ディレクトリの要求）と`.`で始まる名前は返さない（404）。候補の実体パスが配信ルートの実体パスの配下の通常のファイルのときだけ返す。読み出し元は差し替えられ、T09はmanifestで確かめた内容をメモリから返す読み出し元に替える（ADR-0002）。`npm start`（T26の段階）は配信ルートを渡さず、`/`でデータを含まない案内ページだけを返す。
 - ログ: 要求ごとに「方法 クエリを除いたパス 状態 理由の符号」だけを出す（印字できない文字は置き換え、長さを制限する）。トークン・cookieの値・クエリ・本文・Hostの値を出さない。`npm start`は、標準出力が端末のときだけ1回だけ使えるトークン付きURLを表示し、端末でないとき（リダイレクト・パイプ）は一時ファイルのURLだけを表示する（ADR-0003の4の「ターミナルにも同じURLを表示し」を、ログに残さない形で行う）。
@@ -52,13 +53,13 @@ T07のデータルートの権限も、この基準を使う。基準を変え�
 
 ### 6. 開発時の口（ADR-0003の7・10。組込みはT08）
 
-- `dev.middleware`（Viteの`server.middlewares`等、Connectの形）: Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけを渡す。その応答には、応答ごとの新しいnonce（16バイトの乱数のbase64）を`script-src`・`style-src`に加え、`connect-src`に`ws://127.0.0.1:<port>`を加えた開発時のCSPを付ける。nonceと起動の識別子は`devRequestContext(req)`で受け取り、T08がViteのHTMLに入れる。本番の応答（口を使わないとき、交換用のページ、API）のCSPにはnonceを含めない。
+- `dev.middleware`（Viteの`server.middlewares`等、Connectの形）: Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけを渡す。応答が終わるかnext()が呼ばれるまで、その要求の処理としてcloseが待つ。その応答には、応答ごとの新しいnonce（16バイトの乱数のbase64）を`script-src`・`style-src`に加え、`connect-src`に`ws://127.0.0.1:<port>`を加えた開発時のCSPを付ける。nonceと起動の識別子は`devRequestContext(req)`で受け取り、T08がViteのHTMLに入れる。本番の応答（口を使わないとき、交換用のページ、API）のCSPにはnonceを含めない。
 - `dev.upgrade`（HMRのWebSocket）: Host、`Origin`（必須で完全一致）・`Sec-Fetch-Site`（あれば`same-origin`）、cookieの検査を通ったupgradeだけを渡す。口がなければ、すべてのupgradeを拒否する。ViteにはこのサーバーのHTTPの`server`を直接渡さない（Viteが自分でupgradeを受けて検査を迂回するため）。
 - 配信ルートと開発時の口は同時に使えない。開発時だけ検査を外す設定はない。
 
 ### 7. 終了（ADR-0002の「起動と終了」）
 
-- closeの契約（PR25-R001）: 新しい接続を受け付けず（待受を止める。終了中に既存の接続へ届いた要求とupgradeは503）、実行中の処理（APIの処理・本文の読込み・開発時のmiddleware）に`AbortSignal`で中止を知らせ、すべての処理の完了を待つ（本文の読込みと開発時のmiddlewareは中止の合図で待つのをやめる。APIの処理は、合図を見て早めに終えてよいが、closeは完了を待つ）。受理したupgradeのソケットは追跡してすべて閉じる（`closeAllConnections`はupgrade済みのソケットを閉じない）。そのあとHTTPの接続を閉じ、待受の終了を待ち、トークンとセッションを無効にし、一時ファイルを消す。closeが終わったあとに、接続や処理は残らない。T09は、closeのあとでDBを閉じ、lockを解放する。
+- closeの契約（PR25-R001）: 新しい接続を受け付けず（待受を止める。終了中に既存の接続へ届いた要求とupgradeは503）、実行中の処理（APIの処理・本文の読込み・開発時のmiddleware）に`AbortSignal`で中止を知らせ、すべての処理の完了を待つ（本文の読込みは中止の合図で503にする。APIの処理は`ApiRequest.signal`、開発時のmiddlewareは`devRequestContext(req).signal`で合図を受け、早めに終えてよいが、closeは、APIの処理の完了と、middlewareの応答の終了（finish・close）またはnext()を待つ）。受理したupgradeのソケットは追跡してすべて閉じる（`closeAllConnections`はupgrade済みのソケットを閉じない）。そのあとHTTPの接続を閉じ、待受の終了を待ち、トークンとセッションを無効にし、一時ファイルを消す。closeが終わったあとに、接続や処理は残らない。T09は、closeのあとでDBを閉じ、lockを解放する。
 - 一時ファイルの後始末の結果（PR25-R004）: closeは`removed`・`missing`（すでにない）・`replaced`（作ったものと違うものに置き換わっていたので消していない）・`failed`（消せなかった）を返す。待受の停止とトークン・セッションの無効化は、結果によらず行う。交換のときに消せなかった場合も、closeでもう一度消す。
 - `npm start`は、Ctrl+C（SIGINT）・SIGTERM・SIGHUP（WindowsはSIGBREAKも）でcloseを呼ぶ。一時ファイルを消した（`removed`・`missing`）なら、その旨を表示して終了コード0で終わる。ファイルが残った（`replaced`・`failed`）なら、消したとは表示せず、パスと、中身を確かめて手で消す手順を示して終了コード1で終わる（残ったファイルのトークンは無効）。終了の処理の途中でもう一度受けたら、待たずに1で終わる。lockの解放とDBを閉じることはT09で加える。
 

@@ -665,3 +665,82 @@ test('配信ルートと開発時の口を同時に渡す、不正なAPIのパ�
     tmp.cleanup();
   }
 });
+
+test('closeは、応答を返していない遅い開発時のmiddlewareに中止を知らせ、その応答が終わるまで待ってから終わる', async () => {
+  const tmp = ownerOnlyTempDirectory('close-dev');
+  try {
+    const events: string[] = [];
+    let entered: () => void = () => {};
+    const middlewareEntered = new Promise<void>((resolve) => (entered = resolve));
+    const dev: LocalServerOptions['dev'] = {
+      middleware(req, res) {
+        const context = devRequestContext(req);
+        entered();
+        // 非同期の処理（変換等）の途中。中止の合図を受けてから、少し後に応答を終える。
+        void (async () => {
+          await new Promise<void>((resolve) => context?.signal.addEventListener('abort', () => resolve(), { once: true }));
+          events.push('middleware-aborted');
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          events.push('middleware-finished');
+          res.end('late');
+        })();
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev });
+    const pending = send(server.port, { path: '/src/slow.ts' });
+    await middlewareEntered;
+    const result = await server.close().then((r) => {
+      events.push('closed');
+      return r;
+    });
+    assert.deepEqual(events, ['middleware-aborted', 'middleware-finished', 'closed']);
+    assert.equal((await pending).text, 'late');
+    assert.equal(result.launchFile, 'removed');
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('APIはクエリだけを除いた生のパスで完全一致に振り分け、ログ用に切り詰めたパスで誤って一致しない', async () => {
+  const tmp = ownerOnlyTempDirectory('routing');
+  try {
+    const calls: string[] = [];
+    const long = `/api/test/${'a'.repeat(240)}`;
+    const handle = (name: string) => () => (calls.push(name), { status: 200, body: { name } });
+    const logs: string[] = [];
+    const server = await startLocalServer({
+      port: 0,
+      tokenDirectory: tmp.path,
+      api: [
+        { method: 'GET', path: long, handle: handle('long') },
+        { method: 'GET', path: '/api/test/x', handle: handle('x') },
+      ],
+      log: (l) => logs.push(l),
+    });
+    try {
+      const cookie = await exchange(server);
+      const get = (path: string) => send(server.port, { path, headers: sameOriginHeaders(server, { cookie }) });
+      // 200文字を超えるパスにも届く（クエリは除く）。
+      assert.equal((await get(`${long}?q=1`)).status, 200);
+      // 先頭が同じ別のパス・前方だけのパス・エンコードした形は一致しない。
+      assert.equal((await get(`${long}b`)).status, 404);
+      assert.equal((await get(long.slice(0, 200))).status, 404);
+      assert.equal((await get('/api/test/%78')).status, 404);
+      assert.equal((await get('/api/test/x/')).status, 404);
+      // 非ASCIIのパスの要求は、どのAPIにも一致しない。
+      assert.equal((await get('/api/test/%E6%97%A5')).status, 404);
+      assert.deepEqual(calls, ['long']);
+      // ログには切り詰めたパスだけが出る。
+      assert.ok(logs.some((l) => l.startsWith(`GET ${long.slice(0, 200)}… 200`)));
+    } finally {
+      await server.close();
+    }
+    // 振り分けで比べられない形のパスは、登録のときに拒否する。
+    for (const path of ['/api/test/日本', '/api/test/a b', `/api/${'a'.repeat(1100)}`, '/api/test/%41', '/api/test?x', '/api/']) {
+      await assert.rejects(startLocalServer({ port: 0, tokenDirectory: tmp.path, api: [{ method: 'GET', path, handle: handle('bad') }] }), /使えない/, path);
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
