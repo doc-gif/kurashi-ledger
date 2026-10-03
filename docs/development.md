@@ -72,7 +72,7 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 | Windows | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | Windowsの実機での、印を消せないときのCtrl+Cの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
 | macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
 
 飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
 
@@ -119,14 +119,14 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 | `checks` | Linux・Windows・macOS | `package.json`の`devEngines.runtime`の範囲で最新のNode.jsを入れ（`actions/setup-node`の`node-version-file`。npm自身もdevEnginesで版を検査する）、`npm run setup`→`check:install`→`typecheck`→`npm test`→skipの照合（`check:test-skips`）→`build`と、`check:public`を実行する |
 | `browser` | Linux・Windows・macOS | `npm run setup`→`test:browser:install`→`test:browser`（ChromiumをすべてのOS、WebKitをmacOS） |
 | `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`）。unittestは0件・skip・期待した失敗でも0で終わるので、要約の行にそれらがあれば失敗にする |
-| `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの）。計画のないPRや、baseを取り込んでいないPRでは失敗する。Quality gateに含めることは、2026-10-03の所有者決定で承認された |
+| `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの）。計画のないPRや、baseを取り込んでいないPRでは失敗する。Quality gateに含めることは、2026-10-03の所有者決定で承認された（所有者本人の確認: PR #18のCodexの記録5965890988） |
 | `Quality gate` | Linux | 上のすべてのジョブの結果をまとめる。どれかが失敗・中断・skip（欠けた）なら失敗にする（pushのときは、`review plan`がskipであることを求める）。PRでは、試験したmerge commitの親が、PRのbaseとheadのSHAであることを確かめる |
 
 - 結果の読み方: 各runのSummaryに、`npm test`の件数とskipした試験・理由・diagnostic・表との照合（OSごと、Node.jsの版つき）、ブラウザごとの結果、Quality gateの判定と、試験したcommit・PRのhead・baseのSHAが出る。レビューでは、最新のheadとbaseに対応するrunかを、このSHAで確かめる。runのあとでbaseが進んだ場合、その結果は古いbaseに対するものなので、baseを取り込んでやり直す。
 - 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件、失敗を期待した試験（`expectFailure`。要約ではpassに数えられる）、再実行で合格した試験と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
 - 安全: 標準のhosted runner（`ubuntu-latest`・`windows-latest`・`macos-latest`）だけを使う。権限は`contents: read`だけで、secretsを使わず、checkoutの資格情報を残さない（`persist-credentials: false`）。actionはcommitのSHAで固定する。artifactをuploadしない。`pull_request_target`を使わないので、forkからのPRにも、secretsも書込みの権限も渡らない。
 - 時間の上限: `checks`・`browser`は20分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
-- 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定は、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認はPR #18のPR18-O001で待っている）で、T05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。
+- 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定は、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。
 - CIで確かめないもの: Intel Mac・Windows（arm64）、公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）で入れたNode.js（CIは`actions/setup-node`の配布物を使う。ADR-0008の「見抜けないこと」のnpmの組込みの設定は、インストーラでは未確認のまま）、実機のSafari、Windowsのコンソールの制御イベント（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)）。
 - 後続タスクの試験: `scripts/`・`src/`・`tests/`に`*.test.ts`を加えれば`npm test`で、`e2e/`に`*.spec.ts`を加えれば`npm run test:browser`で、3つのOSのCIで実行される。
 

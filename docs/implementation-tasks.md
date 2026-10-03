@@ -64,7 +64,7 @@
 - 受入: 失敗・中断・想定外skipが成功に見えない。必要な検証と最新PR SHA・統合対象baseの対応が確認できる。ルール・workflowの変更をレビューなしで自動承認しない。
 - 受入（2026-10-02の所有者決定でT02から移した確認）: 固定した版のNode.js（`devEngines`の範囲）を使うmacOS・Windows・LinuxのCIで、`npm run setup`・`npm run typecheck`・`npm test`（`node:sqlite`で警告が出ないことの試験を含む）・`npm run build`がすべて成功する。
 - 受入（T02の試験のskipの照合。2026-10-03の調整係の依頼）: CIの試験は一般のユーザーで実行し、OSごとにskipした試験と理由を記録して、[開発環境](development.md)の「環境によって飛ばす試験」の表で飛ばしてよいとした試験と一致する（件数だけでなく試験の集合）ことを確かめる。Windowsでファイルのsymlinkを作れずに弱めて確かめた箇所（試験の出力のdiagnostic）があれば、それも記録する。
-- 受入から外した確認（2026-10-03の所有者決定）: Windowsの実機のコンソールでの`npm run setup`のCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの確認は、T02から移してT05の受入に置いていたが、[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)へ分けた（手順と記録の様式は#19）。#19はどのタスクにも依存せず、T05の完了やT26・T28をブロックしない。
+- 受入から外した確認（2026-10-03の所有者決定。所有者本人の確認: PR #18のCodexの記録5965890988）: Windowsの実機のコンソールでの`npm run setup`のCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの確認は、T02から移してT05の受入に置いていたが、[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)へ分けた（手順と記録の様式は#19）。#19はどのタスクにも依存せず、T05の完了やT26・T28をブロックしない。
 - 検証: 意図的失敗、古いSHAの成功、欠落ジョブ、fork PRで秘密なし、workflow変更時の扱い。UI追加時にE2Eを追加できる。後続タスク（T26等）が試験を追加すれば、Mac/Windows/Linuxで実行される。
 - 非対象: 初期から大規模sharding、セルフホストrunner、長時間polling。
 
