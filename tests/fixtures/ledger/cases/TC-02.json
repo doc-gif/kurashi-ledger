@@ -143,6 +143,23 @@
         },
         {
           "op": "save",
+          "opId": "o05f",
+          "at": "2026-10-24T01:04:58.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_VK5",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 105000},
+              "otherEarnings": {"state": "known", "value": [{"lineId": "whole", "label": "手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 5000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
           "opId": "o06",
           "at": "2026-10-24T01:05:00.000Z",
           "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
@@ -461,6 +478,72 @@
           "cites": [
             {"doc": "common-types.md", "section": "12", "quote": "給与明細のcommutingAllowance・commutingAllowanceTaxTreatment・incomeTax"},
             {"doc": "common-types.md", "section": "12", "quote": "この表にないのでnot-applicableを使わない"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-02-b",
+      "title": "復元で入った行ID wholeの行を持つ明細は、名前を変えずに保存の検査をすり抜けたデータとして扱う",
+      "covers": [{"doc": "common-types.md", "section": "2"}, {"doc": "common-types.md", "section": "9"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2026-10-25T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": ["value-invalid"],
+          "records": [
+            {
+              "id": "pay_W1",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_1",
+                "paymentKind": {"state": "known", "value": "salary"},
+                "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+                "grossPay": {"state": "known", "value": 105000},
+                "otherEarnings": {
+                  "state": "known",
+                  "value": [
+                    {
+                      "lineId": "whole",
+                      "label": "手当",
+                      "category": {"state": "known", "value": "allowance"},
+                      "amount": {"state": "known", "value": 5000}
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_W1", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "save-check"}, "state": "conflict"}]
+              }
+            ]
+          },
+          "reason": "行IDのwholeは予約語で、保存の検査（形式）を満たさない。復元で入ったこの明細は、行IDを書き換えず、保存の検査をすり抜けたデータとして、その記録を使う集計をincompleteにしsave-check・conflictで挙げる（黙って105,000を数えも落としもしない）。missingのrefのline wholeは記録全体を指す。",
+          "cites": [
+            {"doc": "common-types.md", "section": "2", "quote": "ただしwholeは予約語で、行IDに使わない"},
+            {"doc": "common-types.md", "section": "2", "quote": "行IDを書き換えず（名前を変えて別の行にしない）、9の「保存の検査をすり抜けたデータ」として扱う"},
+            {"doc": "common-types.md", "section": "9", "quote": "その記録を使う集計をincompleteにし、missingに状態conflictで挙げる"}
           ]
         }
       ]

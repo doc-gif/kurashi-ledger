@@ -363,6 +363,8 @@ export const SOURCE_LISTS_DEFAULT_EMPTY: readonly string[] = [
 
 const ID_BODY = /^[0-9A-Za-z-]{1,40}$/;
 const LINE_ID = /^[0-9A-Za-z]{1,40}$/;
+// 共通の型の2のLineId（契約版2.0）: wholeは予約語（Ref.lineのwholeは記録全体）なので行IDに使わない。
+const isLineId = (v: string): boolean => LINE_ID.test(v) && v !== "whole";
 const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const YEAR_MONTH = /^(\d{4})-(\d{2})$/;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -454,7 +456,7 @@ function checkValue(spec: Spec, v: unknown, path: string, out: Out): void {
       if (typeof v !== "boolean") out.add("value-invalid", path, "真偽値ではない");
       return;
     case "lineId":
-      if (typeof v !== "string" || !LINE_ID.test(v)) out.add("value-invalid", path, `LineIdではない: ${String(v)}`);
+      if (typeof v !== "string" || !isLineId(v)) out.add("value-invalid", path, `LineIdではない（wholeは予約語）: ${String(v)}`);
       return;
     case "period":
       checkPeriod(v, path, out);
