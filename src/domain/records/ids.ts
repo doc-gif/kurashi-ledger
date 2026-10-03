@@ -63,8 +63,12 @@ export function recordTypeOfId(v: unknown): RecordType | undefined {
   return RECORD_TYPES.find((t) => isIdWithPrefix(v, RECORD_PREFIX[t]));
 }
 
+// 行ID。英数字の1〜40文字のうち、Ref.lineで記録全体を表す「whole」と完全に一致するものは除く（予約語。所有者の判断で
+// 契約版の改訂（PR #36）に入れる。PR28-R009）。比較は大文字と小文字を区別する。
+export const WHOLE_LINE = "whole";
+
 export function isLineId(v: unknown): v is string {
-  return typeof v === "string" && LINE_ID.test(v);
+  return typeof v === "string" && LINE_ID.test(v) && v !== WHOLE_LINE;
 }
 
 // ID生成器。記録の種類の接頭辞（証憑ファイルはevf）を受け取り、新しいIDを返す。

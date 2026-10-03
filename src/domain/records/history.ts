@@ -1,7 +1,7 @@
 // 改訂の履歴の検査（契約版1.0、common-types.mdの2・7・9）。保存のときの版間の条件と、検査をすり抜けた履歴（復元・取込・
 // 移行等）を導く判定のたびに確かめる条件（同9の「保存の検査をすり抜けたデータ」）を、同じ関数で決める。
 
-import { knownValue } from "./fact.ts";
+import { knownValue, stateOf } from "./fact.ts";
 import { revisionsOf, type Ledger, type Revision, type RevisionReason } from "./ledger.ts";
 import type { RejectionReason, Violation } from "./reasons.ts";
 import { LINE_LISTS } from "./schema.ts";
@@ -81,7 +81,54 @@ export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj
   if (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous.knownOn) && (typeof note !== "string" || note.trim() === "")) {
     return one("known-on-not-inherited", "$.changeNote", "入力誤りの訂正で把握日を変えるときは、changeNoteに理由を書く");
   }
+  const typed = checkTypeTransition(previous, proposal, reason);
+  if (typed.length > 0) return typed;
   return checkLineIdReservation(history, proposal, previous);
+}
+
+// 記録の種類ごとの、改訂の理由と前後の値の規則（PR28-R008）。保存のときと、検査をすり抜けた履歴の検査で同じに使う。
+// - 給与明細（記録の型の4）: 明細に記載された値（knownやnot-applicableの項目、Factでない項目）を別の値に直すのは
+//   correct-input-errorだけ。new-informationで変えてよいのは、unknown・not-statedだった項目をknown・not-applicableにする
+//   ことだけで、そのときはchangeNoteに情報源を書く。差し替え（supersedes）は明細に記載された値ではないので対象にしない。
+// - 予測（同7）: 行の取り下げ（同じ行IDの行をopenからwithdrawnにする）は、new-informationの改訂だけで行う。
+function checkTypeTransition(previous: Revision, proposal: Obj, reason: RevisionReason): Violation[] {
+  const before = isObj(previous.body) ? previous.body : {};
+  const after = isObj(proposal["body"]) ? proposal["body"] : {};
+  if (previous.recordType === "payslip" && reason === "new-information") {
+    const out: Violation[] = [];
+    let filled = false;
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const k of keys) {
+      if (k === "supersedes" || sameJson(before[k], after[k])) continue;
+      const was = stateOf(before[k]);
+      const now = stateOf(after[k]);
+      if ((was === "unknown" || was === "not-stated") && (now === "known" || now === "not-applicable")) {
+        filled = true;
+        continue;
+      }
+      out.push({ reason: "transition-not-allowed", path: `$.body.${k}`, message: `明細に記載された値（${String(was)}）をnew-informationで変えない。写し誤りはcorrect-input-errorで直す` });
+    }
+    if (out.length > 0) return out;
+    const note = knownValue(proposal["changeNote"]);
+    if (filled && (typeof note !== "string" || note.trim() === "")) {
+      return one("transition-not-allowed", "$.changeNote", "別の情報源で項目を埋めるnew-informationには、changeNoteに情報源を書く");
+    }
+    return [];
+  }
+  if (previous.recordType === "forecast" && reason !== "new-information") {
+    const statusOf = (lines: unknown): Map<string, unknown> => {
+      const m = new Map<string, unknown>();
+      if (Array.isArray(lines)) for (const l of lines) if (isObj(l) && typeof l["lineId"] === "string") m.set(l["lineId"], l["lineStatus"]);
+      return m;
+    };
+    const was = statusOf(before["lines"]);
+    for (const [lineId, now] of statusOf(after["lines"])) {
+      if (was.get(lineId) === "open" && now === "withdrawn") {
+        return one("transition-not-allowed", "$.body.lines", `行${lineId}の取り下げはnew-informationの改訂で行う（${reason}では取り下げない）`);
+      }
+    }
+  }
+  return [];
 }
 
 // 行IDの予約（共通の型の2の「LineId」）: 同じ親の記録の全改訂で、同じ行には同じ行IDを使い、改訂で消した行の行IDを

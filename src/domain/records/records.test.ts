@@ -7,6 +7,7 @@ import { expandRecord, type Obj } from "../../../tests/fixtures/ledger/load.ts";
 import { aggregateRecords } from "./aggregate.ts";
 import { combineComparisons, compareFacts, type Comparable } from "./fact.ts";
 import { isIdWithPrefix, isLineId, uuidV7, uuidV7IdGenerator } from "./ids.ts";
+import { isHistoryValid } from "./history.ts";
 import { emptyLedger, latestRevision, revisionsOf, type Ledger } from "./ledger.ts";
 import { canonicalMasterId } from "./masters.ts";
 import { restoreUnchecked, saveRevision, type SaveOutcome } from "./save.ts";
@@ -906,4 +907,74 @@ test("PR28-R007: 既存の記録を返した要求も、writeRequestIdごとに�
   assert.equal(revisionsOf(l, "dep_a").length, 3);
   // 改訂を作った要求のwriteRequestIdも、既存の記録を返した要求のwriteRequestIdも、復元で重ねない。
   assert.throws(() => restore(l, [{ ...deposit("dep_h", { state: "known", value: 1 }), writeRequestId: "W2" }]), /writeRequestId/);
+});
+
+test("PR28-R008: 給与明細の記載された値をnew-informationで変えず、別の情報源で埋めるときは情報源のメモを求める", () => {
+  let l = setup();
+  l = ok(save(l, payslip("pay_1", { grossPay: { state: "known", value: 100 }, incomeTax: { state: "unknown" }, employmentInsurance: { state: "not-stated" } }), T0));
+  const seq = l.saves.length;
+  const rev = (reason: string, body: Obj, extra: Obj = {}): Obj => ({ id: "pay_1", recordType: "payslip", revision: 2, reason, body, ...extra });
+  const note = { changeNote: { state: "known", value: "勤務先の回答（架空）" } };
+  // knownの総支給額をnew-informationで変える保存は拒否し、台帳・連番を変えない。
+  const changed = save(l, rev("new-information", { grossPay: { state: "known", value: 200 } }, note), T0);
+  rejected(changed, "transition-not-allowed");
+  assert.equal(changed.ledger, l);
+  assert.equal(changed.ledger.saves.length, seq);
+  // 雇用先（Factでない記載）もnew-informationでは変えない。
+  rejected(save(l, rev("new-information", { employerId: "emp_2" }, note), T0), "transition-not-allowed");
+  // unknown・not-statedの項目を、別の情報源のメモつきのnew-informationで埋めるのは受け付け、メモがなければ拒否する。
+  ok(save(l, rev("new-information", { incomeTax: { state: "known", value: 3000 }, employmentInsurance: { state: "not-applicable" } }, note), T0));
+  rejected(save(l, rev("new-information", { incomeTax: { state: "known", value: 3000 } }), T0), "transition-not-allowed");
+  rejected(save(l, rev("new-information", { incomeTax: { state: "known", value: 3000 } }, { changeNote: { state: "known", value: " " } }), T0), "transition-not-allowed");
+  // 同じ明細の入力誤りの訂正（記載された値の写し誤り）は受け付ける。
+  ok(save(l, rev("correct-input-error", { grossPay: { state: "known", value: 200 } }), T0));
+  // 復元した違反（knownの総支給額をnew-informationで変えた履歴）は、集計でsave-checkのconflictにする。
+  let r = setup();
+  r = restore(r, [payslip("pay_1", { grossPay: { state: "known", value: 100 } }), rev("new-information", { grossPay: { state: "known", value: 200 } }, note)]);
+  const gross = aggregateRecords(r, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].state === "incomplete" && gross.values[0].missing.some((m) => m.ref.id === "pay_1" && m.field.kind === "derived" && m.field.key === "save-check"), JSON.stringify(gross));
+});
+
+test("PR28-R008: 予測の行の取り下げ（openからwithdrawn）はnew-informationだけで行う", () => {
+  let l = setup();
+  const line = (lineStatus: string): Obj => ({ lineId: "l1", expectedMonth: "2026-11", amount: { state: "known", value: 50000 }, lineStatus });
+  l = ok(save(l, { id: "fc_1", recordType: "forecast", body: { subject: "pay", employerId: { state: "known", value: "emp_1" }, measure: "gross-pay", lines: [line("open")] } }, T0));
+  const seq = l.saves.length;
+  const withdraw = (reason: string): Obj => ({ id: "fc_1", recordType: "forecast", revision: 2, reason, body: { lines: [line("withdrawn")] } });
+  const wrong = save(l, withdraw("correct-input-error"), T0);
+  rejected(wrong, "transition-not-allowed");
+  assert.equal(wrong.ledger, l);
+  assert.equal(wrong.ledger.saves.length, seq);
+  ok(save(l, withdraw("new-information"), T0));
+  // 復元した違反は、系列を持たない種類でも、有効な記録の判定で使わない（履歴の検査を満たさない）。
+  let r = setup();
+  r = restore(r, [{ id: "fc_1", recordType: "forecast", body: { subject: "pay", employerId: { state: "known", value: "emp_1" }, measure: "gross-pay", lines: [line("open")] } }, withdraw("correct-input-error")]);
+  const rev2 = latestRevision(r, "fc_1");
+  assert.ok(rev2 !== undefined && !isHistoryValid(r, rev2));
+});
+
+test("PR28-R009: 行IDのwholeは予約語として受け付けず、記録全体のRefと通常の行のRefは受け付ける", () => {
+  let l = setup();
+  const fc = (lineId: string): Obj => ({ id: "fc_1", recordType: "forecast", body: { subject: "pay", employerId: { state: "known", value: "emp_1" }, measure: "gross-pay", lines: [{ lineId, expectedMonth: "2026-11", amount: { state: "known", value: 50000 } }] } });
+  const bad = save(l, fc("whole"), T0);
+  rejected(bad, "value-invalid");
+  assert.equal(bad.ledger, l);
+  assert.equal(isLineId("whole"), false);
+  assert.equal(isLineId("Whole"), true);
+  // 通常の行IDの予測と、その行を指すRef（実績化のto）、記録全体のRef（差し替えのsupersedes）は受け付ける。
+  l = ok(save(l, fc("l1"), T0));
+  l = ok(save(l, payslip("pay_1", { grossPay: { state: "known", value: 48000 } }), T0));
+  ok(save(l, { id: "alc_1", recordType: "allocation", body: { kind: "forecast-realization", allocationStatus: "proposed", from: { id: "pay_1", revision: "current", line: "whole" }, to: { id: "fc_1", revision: "current", line: "l1" }, amount: { state: "known", value: 48000 }, settlesForecastLine: { state: "unknown" }, proposedBy: "user" } }, T0));
+  ok(save(l, payslip("pay_2", { grossPay: { state: "known", value: 48000 }, supersedes: { state: "known", value: { id: "pay_1", revision: "current", line: "whole" } } }), T0));
+  // 行IDがwholeの復元した明細は、集計でsave-checkのconflictにする。
+  let r = setup();
+  r = restore(r, [payslip("pay_9", { grossPay: { state: "known", value: 1 }, otherEarnings: { state: "known", value: [{ lineId: "whole", label: "手当", amount: { state: "known", value: 1 } }] } })]);
+  const before = r;
+  const gross = aggregateRecords(r, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].missing.some((m) => m.ref.id === "pay_9" && m.field.kind === "derived" && m.field.key === "save-check"), JSON.stringify(gross));
+  assert.equal(r, before);
+  // その行を残したままの訂正は拒否し、台帳を変えない。
+  const keep = save(r, { id: "pay_9", recordType: "payslip", revision: 2, reason: "correct-input-error", body: { grossPay: { state: "known", value: 2 } } }, T0);
+  rejected(keep, "value-invalid");
+  assert.equal(keep.ledger, r);
 });
