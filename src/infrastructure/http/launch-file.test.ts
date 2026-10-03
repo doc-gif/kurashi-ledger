@@ -163,7 +163,7 @@ test('経路の祖先を、ほかのユーザーが差し替えられる（stick
   }
 });
 
-test('確かめたあとで末端や深い祖先が差し替わると、作成・権限変更・削除は何もせずに止まり、差し替え先を書かず変えず消さない', () => {
+test('確かめたあとで末端や深い祖先が差し替わると、作成・権限変更・削除は何もせずに止まり、差し替え先を書かず変えず消さない', (t) => {
   const tmp = ownerOnlyTempDirectory('swap');
   const outside = ownerOnlyTempDirectory('swap-outside');
   try {
@@ -193,21 +193,37 @@ test('確かめたあとで末端や深い祖先が差し替わると、作成�
     rmSync(tok);
     renameSync(`${tok}-moved`, tok);
 
-    // 3. 作成と権限変更の間に末端を差し替える（パスで権限を変える前に止まる）。
+    // 3. 作成と権限変更の間に末端を差し替える（パスで権限を変える前に止まる）。Windowsでは、作ったファイルを開いて
+    //    いる間は、その親のディレクトリの名前を変えられない（OSが差し替えを止める）ので、そのことを確かめる。
     verified = verifyTokenDirectory(tok);
-    assert.throws(
-      () =>
-        createLaunchFile(verified, 'launch-x.html', 'token', (step) => {
-          if (step !== 'opened') return;
+    if (process.platform === 'win32') {
+      let renameError: string | undefined;
+      const created = createLaunchFile(verified, 'launch-x.html', 'token', (step) => {
+        if (step !== 'opened') return;
+        try {
           renameSync(tok, `${tok}-moved`);
-          linkDirectory(join(outside.path, 'tok'), tok);
-        }),
-      /差し替わった|変わった/,
-    );
-    rmSync(tok);
-    renameSync(`${tok}-moved`, tok);
-    // 作ったファイルは、経路が変わったので消さずに、元のディレクトリに残っている（ほかの場所は消さない）。
-    assert.deepEqual(readdirSync(tok), ['launch-x.html']);
+        } catch (error) {
+          renameError = (error as { code?: string }).code;
+        }
+      });
+      assert.ok(renameError === 'EPERM' || renameError === 'EBUSY' || renameError === 'EACCES', String(renameError));
+      t.diagnostic(`Windowsでは、作成中のファイルを開いている間に親のディレクトリの名前を変えられない（${String(renameError)}）ことを確かめた`);
+      assert.equal(removeLaunchFile(created), 'removed');
+    } else {
+      assert.throws(
+        () =>
+          createLaunchFile(verified, 'launch-x.html', 'token', (step) => {
+            if (step !== 'opened') return;
+            renameSync(tok, `${tok}-moved`);
+            linkDirectory(join(outside.path, 'tok'), tok);
+          }),
+        /差し替わった|変わった/,
+      );
+      rmSync(tok);
+      renameSync(`${tok}-moved`, tok);
+      // 作ったファイルは、経路が変わったので消さずに、元のディレクトリに残っている（ほかの場所は消さない）。
+      assert.deepEqual(readdirSync(tok), ['launch-x.html']);
+    }
 
     // 4. 作成と削除の間に末端を差し替える（差し替え先の同じ名前のファイルを消さない）。
     verified = verifyTokenDirectory(tok);

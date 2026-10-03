@@ -82,6 +82,8 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 - `src/infrastructure/http/launch-file.test.ts`: 一時ファイルの名前に置くリンクを、ファイルのsymlinkの代わりにjunctionで確かめ、壊れたリンクの確認は行わない（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、一時ファイルの名前のリンクはjunctionで確かめた」）。
 - `src/infrastructure/http/static-files.test.ts`: 配信ルートの外を指すリンクを、junction（ディレクトリ）だけで確かめる（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、配信ルートの外を指すファイルのリンクはjunction（ディレクトリ）だけで確かめた」）。
 
+弱めた確認ではないが、OSによって確かめ方が違う箇所が1つある: `src/infrastructure/http/launch-file.test.ts`の「確かめたあとで末端や深い祖先が差し替わると…」で、一時ファイルの作成と権限の変更の間の差し替えは、macOS・Linuxでは差し替えて作成が止まることを、Windowsでは作成中のファイルを開いている間に親のディレクトリの名前を変えられない（OSが差し替えを止める）ことを確かめ、その旨をdiagnosticに残す。
+
 ## npmの設定（`.npmrc`）
 
 - `ignore-scripts=true`: 依存のインストールスクリプトを動かさない（ADR-0002）。npmの仕様で、`npm run`で指定したスクリプトは動くが、`prebuild`のようなpre/postスクリプトは動かない。`package.json`のscriptsにpre/postを使わず、必要な確認はスクリプトの中で行う。スクリプトが必要な依存を入れる場合は、理由を確かめてから個別に扱う（ADR-0002）。
