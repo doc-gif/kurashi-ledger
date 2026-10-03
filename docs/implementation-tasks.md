@@ -224,7 +224,8 @@
 
 ## T26 — ローカルHTTPサーバーと安全境界
 
-- 依存: T02、T05。担当: 基盤・セキュリティ。範囲: `src/infrastructure/http/`、起動処理（`npm start`）、対応test。共有資源: `package.json`のscripts（T08より先に変更する）。Node.js標準の`node:http`を使い、依存を追加しない（追加が必要なら理由をPRに書き、lockfileを共有資源として扱う）。
+- 依存: T02、T05。担当: 基盤・セキュリティ。範囲: `src/infrastructure/http/`、起動処理（`npm start`）、対応test。
+- 成果物の所在（Issue #24）: `src/infrastructure/http/`、`src/start.ts`と`package.json`の`start`、`src/`の`*.test.ts`・`e2e/http-boundary.spec.ts`・`tests/support/http.ts`・`tests/fixtures/http/`、[ADR-0009](adr/0009-local-http-implementation.md)（起動の識別子のヘッダの名前と形式、注入の方法、本人だけの権限の基準。T07も同じ基準を使う）、[開発環境](development.md)の「ローカルHTTPサーバー」。共有資源: `package.json`のscripts（T08より先に変更する）。Node.js標準の`node:http`を使い、依存を追加しない（追加が必要なら理由をPRに書き、lockfileを共有資源として扱う）。
 - 成果物: ADR-0003の境界。開発時にViteのmiddlewareとHMRのWebSocketを同じ検査の後ろに組み込める口（組み込み自体はT08）。`127.0.0.1`へのbind、Hostの完全一致、起動ごとのトークンとcookieの交換、状態を変える要求の`Sec-Fetch-Site`・`Origin`・`Content-Type`の検査、CORSなし、CSP・`Cache-Control: no-store`等の応答ヘッダ、ログの制限。設定したディレクトリの静的ファイルの配信（試験は固定のfixtureで行い、ビルド済みUIはT08以降に配信する）、ADR-0002の起動と終了。
 - 受入: ADR-0003の「別タスクで行う検証」の項目（開発時の構成と二重起動を除く）を自動試験し、T05のCIでMac/Windows/Linuxで通る。対応ブラウザでの試験（`file://`からのcookie交換等）はT05のブラウザ試験の基盤で行い、T26の完了時点でCIで実行できる。DBは開かない。データルートの検査とlockの組込みはT09、Viteを組み込む開発時の構成はT08で行う。
 - 検証: 不正なHost、別Origin・別ポート、トークンなし・使用済み・別起動のcookie、`file://`から開いたときのcookieの交換（対応ブラウザ）、ポート使用中、トークン交換のエンドポイントだけがcookieなしで有効な1回限りのトークンを受け付け、ほかのAPIはcookieなしで拒否されること、ログ・サーバーへの要求のURL・交換後のURLにトークンが残らないこと、戻る操作でトークン付きのURLに戻らないこと、`Referer`にトークンが含まれないこと。トークンを入れる一時ファイルの権限が本人だけに限られ（macOSは`0600`、Windowsは本人だけのACL）、既存のファイルやsymlinkがあれば作成が失敗すること。T26は、外から渡された本人専用の一時ディレクトリだけを扱い、データルートには触れない。実行時にデータルートの`tmp/`を渡すつなぎ込みは、データルートの検査を組み込むT09で行う（検査の前にデータルートへ書き込まないため）。静的配信で、`..`・エンコードされた区切り文字・バックスラッシュ・配信ルート外を指すリンクによる範囲外のファイルの取得が拒否されること、静的ファイルの応答にも`Cache-Control: no-store`が付くこと（ADR-0003の13）。起動ごとの識別子を作り、配信するHTML（交換用のページを含む）の`<meta>`に入れること。識別子のないAPI要求、識別子が合わない要求（前の起動のものを含む）を拒否すること（ADR-0003の14。ヘッダの名前と形式、注入の方法をここで決める）。

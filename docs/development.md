@@ -1,8 +1,8 @@
 # 開発環境と作業の規約
 
-T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。CIとブラウザ試験の基盤は、T05（[Issue #17](https://github.com/doc-gif/kurashi-ledger/issues/17)）で加えた。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
+T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。CIとブラウザ試験の基盤は、T05（[Issue #17](https://github.com/doc-gif/kurashi-ledger/issues/17)）で、ローカルHTTPサーバーの骨格（`npm start`）は、T26（[Issue #24](https://github.com/doc-gif/kurashi-ledger/issues/24)）で加えた。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
 
-いまあるのは開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIだけで、アプリの起動（T26）、UIのビルド（T08）はまだない。
+いまあるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CI、ローカルHTTPサーバーの骨格とその安全境界の試験（T26。下の「ローカルHTTPサーバー」）。画面（UI）とそのビルド（T08以降）、記録のAPIとDB・データルート（T09以降）はまだない。
 
 ## Node.jsの版
 
@@ -40,9 +40,10 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | --- | --- |
 | `npm run setup` | 依存を導入する。既存の記録を削除し、repoの`.npmrc`と決めた引数だけで`npm ci`を実行し（利用者のnpmrcや`npm_config_`の環境変数は使わない）、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
 | `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`とNode.jsの版・OS・CPUに一致し、導入した依存と実行ファイルの本体・リンクが`node_modules`の中の通常のファイルとしてそろっているかを確かめる（ファイルの中身の改ざんまでは確かめない。ADR-0008） |
+| `npm start -- --token-dir <ディレクトリ>` | ローカルHTTPサーバーの骨格を起動する（T26の段階。画面・記録・DBはない。下の「ローカルHTTPサーバー」） |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
 | `npm run typecheck` | `tsc --noEmit`による型検査だけを行う（ルートの`tsconfig.json`と、ブラウザ試験の`e2e/tsconfig.json`の2つ。下の「TypeScript」）。JavaScriptは出力しない |
-| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`・`src/`・`tests/`の`*.test.ts`を実行する |
+| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`・`src/`・`tests/`の`*.test.ts`を実行する（開発用のスクリプトの試験と、`src/`のHTTPの境界の試験） |
 | `npm run test:browser:install` | このOSのブラウザ試験に要るブラウザを入れる（下の「ブラウザ試験」） |
 | `npm run test:browser` | Playwrightのブラウザ試験（`e2e/`の`*.spec.ts`）を実行する |
 | `npm run check:test-skips -- <ファイル>` | CIで使う。保存した`npm test`の出力のskipを、下の「環境によって飛ばす試験」の表とこのOSで照合し、結果を表示する（下の「CI」） |
@@ -98,7 +99,7 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 2. `npm run setup`で導入し直す。
 3. 依存のライセンス・サポート・インストールスクリプトの有無を確かめ、PRに書く。lockfileの`resolved`が`https://registry.npmjs.org/`以外を指していないことも確かめる。
 
-T05で`@playwright/test` 1.63.0を加えた（下の「ブラウザ試験」）。次に`package.json`とlockfileを変えるのはT26。
+T05で`@playwright/test` 1.63.0を加えた（下の「ブラウザ試験」）。T26は`package.json`のscriptsに`start`を加えただけで、依存とlockfileは変えていない。次に`package.json`とlockfileを変えるのはT08。
 
 ## ブラウザ試験（Playwright）
 
@@ -109,7 +110,22 @@ T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004�
 - 手元で動かすとき: `npm run setup`のあと、`npm run test:browser:install`でこのOSに要るブラウザを入れてから、`npm run test:browser`を実行する。ブラウザはPlaywrightの配布元から取得し、Playwrightの既定の場所（利用者のキャッシュ。macOSは`~/Library/Caches/ms-playwright`、Windowsは`%LOCALAPPDATA%\ms-playwright`、Linuxは`~/.cache/ms-playwright`）に入る。`node_modules`の外なので、依存の導入の記録には影響しない。Linuxで足りないOSのライブラリも入れるときは`npm run test:browser:install -- --with-deps`（管理者の権限を使う）。
 - 照合（`e2e/strict-reporter.ts`、分類は`scripts/lib/browser-outcomes.ts`）: 成功として数えるのは、成功を期待して（`expectedStatus`がpassed）実際に合格した試験だけ。Playwrightは`test.fail()`で期待どおり失敗した試験も「期待どおり」（`outcome()`がexpected）として全体をpassedにするが、照合ではこれを成功にしない。期待した失敗、skip、再試行で通った試験（flaky）、中断、時間切れ、未実行、失敗のどれかがある、このOSで必要なブラウザのどれかで成功した試験が0件、またはPlaywright全体の結果がpassedでなければ、全体を失敗にする。この境界は`scripts/browser-outcomes.test.ts`が、分類の単体試験と、実際のPlaywrightで`e2e/reporter-fixtures/`の合成の試験（ブラウザを使わない。`npm test`で全OSで実行）を流して確かめる。いまブラウザ試験で飛ばしてよい試験も、失敗を期待してよい試験もない。加えるときは、照合とこの資料を同じPRで直す。`retries`は0で、CIでは`test.only`を拒む（`forbidOnly`）。試験を集めるだけ（`--list`）のときは、CIの外でだけ照合しない。
 - 設定（`playwright.config.ts`）では、ブラウザの安全上の既定の動き（CSP、HTTPSの検査、要求のヘッダ、権限、プロキシ）を変える設定（`bypassCSP`、`ignoreHTTPSErrors`、`extraHTTPHeaders`等）を使わない。T26のcookieの交換・Origin・`Sec-Fetch-Site`・CSPの試験を、実際のブラウザの動きのまま確かめるため。trace・screenshot・videoは作らない。出力先の`test-results/`は`.gitignore`の対象。
-- いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験はT26、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
+- いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験は`e2e/http-boundary.spec.ts`（T26。下の「ローカルHTTPサーバー」）、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
+
+## ローカルHTTPサーバー（T26）
+
+[ADR-0003](adr/0003-local-http-boundary.md)の境界（ADR-0007のG7）を、Node.js標準の`node:http`だけで`src/infrastructure/http/`に実装した。実装の詳細（起動の識別子のヘッダ、トークンの交換、一時ファイル、本人だけの権限の基準、拒否の応答）は[ADR-0009](adr/0009-local-http-implementation.md)。
+
+いまの`npm start`は、境界の骨格を動かすだけで、画面（UI）・記録のAPI・DBはなく、データルートも開かない。
+
+1. トークンの一時ファイルを置く、本人だけが使えるディレクトリを、repoの外に用意する。macOS・Linuxは`mkdir -m 700 <ディレクトリ>`。WindowsのPowerShellは、ディレクトリを作ってから`icacls <ディレクトリ> /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F"`（継承を切り、本人だけに許可する）。アプリはこのディレクトリを作らず、権限も変えない。リンク・権限の広いディレクトリ・repoの中は拒否する。
+2. `npm start -- --token-dir <ディレクトリ>`（WindowsのPowerShellは`npm.cmd start -- --token-dir <ディレクトリ>`）。既定のポートは48720で、`--port <番号>`で変えられる。使用中なら別のポートへ移らずに終了する。`--no-open`でブラウザを自動で開かない。
+3. 起動用の一時ファイル（本人だけが読めるHTML）がブラウザで開き、トークンをcookieに交換して`/`へ移る。いまの`/`は、画面がまだないことを示す案内ページ。自動で開かないときは、表示された起動用のファイルのURLを開く（端末のときは、1回だけ使えるURLも表示する。端末でないときは、ログに残さないためにトークンを表示しない）。
+4. 終了するには、ターミナルでCtrl+Cを押す。待受を止め、一時ファイルを消す。
+
+T09で、`npm start`にデータルートの検査（ADR-0007のG1〜G5）を組み込み、`--token-dir`の代わりに検査に通ったデータルートの`tmp/`を使う。T08で、ビルドしたUIの配信と、開発時のViteの組込み（ADR-0009の6の口）を加える。
+
+試験: `src/infrastructure/http/`と`src/start.ts`の`*.test.ts`（`npm test`）と、`e2e/http-boundary.spec.ts`（`npm run test:browser`）。ADR-0003の「別タスクで行う検証」のうちT26の項目（開発時の構成と二重起動を除く）を確かめる。Windowsで実際のCtrl+Cを送れない試験は、上の「環境によって飛ばす試験」に登録した。
 
 ## CI
 
