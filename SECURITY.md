@@ -2,12 +2,12 @@
 
 ## Data boundary
 
-Public: source, generalized requirements, sourced legislation, synthetic fixtures.
-Private: real payroll, bank records, tax notices, identities, income values, credentials, screenshots and backups. Keep these outside the checkout. Do not paste them into public issues or Actions logs.
+Public: source, generalized requirements, sourced legislation, synthetic fixtures (only under `tests/fixtures/`) and design assets (only under `design/`).
+Private: real payroll, bank records, tax notices, identities, income values, credentials, screenshots, exports and backups (including `*.age` archives). Keep these outside the checkout. Do not paste them into public issues or Actions logs.
 
-A publication guard is planned in T02; this documentation-only publication does not include an executable guard or hooks. Even after it is added, it cannot identify every secret or personal fact. Review staged changes explicitly.
+T02 added a publication check, `npm run check:public` (`-- --staged` before a commit). It applies the same location rules as `.gitignore` to force-added files and looks for some secret patterns, personal absolute paths and email addresses. It is an additional defense, not a guarantee: it cannot identify every secret or personal fact, and it does not inspect binary files. No Git hooks are installed automatically. Review staged changes explicitly. The detailed procedure (in Japanese) is in docs/public-data.md.
 
-If an actual credential is published, revoke/rotate it immediately. Removing the latest file is insufficient because Git history and copies can remain. For personal data, stop further exposure and assess history/cached copies. Do not post the leaked data again in an issue.
+If an actual credential is published, revoke/rotate it immediately. Removing the latest file is insufficient because Git history and copies can remain. For personal data, stop further exposure and assess history/cached copies. Do not post the leaked data again in an issue. History rewriting and deletion are decided by the owner (docs/public-data.md).
 
 ## GitHub Actions
 

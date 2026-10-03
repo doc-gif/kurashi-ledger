@@ -33,8 +33,9 @@
 ## T02 — 公開用初期構成と複数AIの作業手順
 
 - 依存: T00。担当: 開発運用。範囲: README、AGENTS、SECURITY、Issue/PR原稿、開発設定。共有資源: repo設定、依存lockfile。
+- 成果物の所在: [開発環境と作業の規約](development.md)、[公開範囲と公開前の点検](public-data.md)、[ADR-0008](adr/0008-install-record.md)（依存の導入の記録）、`package.json`・`scripts/`・`.gitignore`・`.github/ISSUE_TEMPLATE/`。
 - 成果物: 既存基礎コードの採否、公私データ境界、branch/worktree・引継ぎ・レビュー規約。公開ライセンスは所有者の選択を記録し、未選択ならOSSと称しない。
-- 実行環境（ADR-0002）: `devEngines`・`engines`・`.nvmrc`、lockfile、`.npmrc`（`ignore-scripts`）、TypeScript（型検査のみ）を整える。Node.jsは、着手時に利用可能なLTSのうちADR-0002の必要機能を満たす版を確認して固定する。将来のLTSを待つことを開始条件にしない。メジャー更新はT28で行う。`.gitignore`がソースや合成fixtureまで除外している点を直す（ADR README「既存設定の棚卸し」）。依存の導入が、いまのlockfileと実行環境（Node.jsの版、OS、CPU）に対して成功したことを記録する方式を決め、導入のコマンド`npm run setup`（既存の記録を削除し、`npm ci`が成功したときだけ記録を書く）を作る（ADR-0002の「依存の導入とリリースの対応」）。CI（T05）も同じコマンドで導入する。`npm ci`が失敗・中断したときに記録が残らないこと、`npm ci`を直接実行した場合に`npm run build`が止まって`npm run setup`を案内すること、Mac・Windowsで同じように動くことを試験する。
+- 実行環境（ADR-0002）: `devEngines`・`engines`・`.nvmrc`、lockfile、`.npmrc`（`ignore-scripts`）、TypeScript（型検査のみ）を整える。Node.jsは、着手時に利用可能なLTSのうちADR-0002の必要機能を満たす版を確認して固定する。将来のLTSを待つことを開始条件にしない。メジャー更新はT28で行う。`.gitignore`がソースや合成fixtureまで除外している点を直す（ADR README「既存設定の棚卸し」）。依存の導入が、いまのlockfileと実行環境（Node.jsの版、OS、CPU）に対して成功したことを記録する方式を決め、導入のコマンド`npm run setup`（既存の記録を削除し、`npm ci`が成功したときだけ記録を書く）を作る（ADR-0002の「依存の導入とリリースの対応」）。CI（T05）も同じコマンドで導入する。`npm ci`が失敗・中断したときに記録が残らないこと、`npm ci`を直接実行した場合に`npm run build`が止まって`npm run setup`を案内すること、Mac・Windowsで同じように動くことを試験する（固定版とWindowsでの実行は、2026-10-02の所有者決定でT05へ移した）。
 - 受入: 新たに公開するファイルは、公開対象を点検してからcommitする（repoとT00のIssue #1は作成済み）。個人情報のある既存資料を丸ごと移さない。秘密情報検査は保証ではなく追加防御と明記。誤公開時の手順あり。
 - 検証: 無関係な実ファイルを使わず、合成秘密・禁止拡張子・許可ソースで検査する。新しいcloneに同じ手順を適用できる。
 - 非対象: 自動AI起動、無条件自動マージ。
@@ -60,6 +61,9 @@
 - 成果物: 型検査・テスト・公開検査、Mac/Windows/Linuxの必要チェック、最終Quality gate。依存固定、時間上限、最小権限。
 - ブラウザ試験の基盤: Playwrightを導入し、CIでChromium（Mac/Windows/Linux）とWebKit（Mac）を実行できるようにする（ADR-0004）。最初に使うのはT26のcookie交換の試験。
 - 受入: 失敗・中断・想定外skipが成功に見えない。必要な検証と最新PR SHA・統合対象baseの対応が確認できる。ルール・workflowの変更をレビューなしで自動承認しない。
+- 受入（2026-10-02の所有者決定でT02から移した確認）: 固定した版のNode.js（`devEngines`の範囲）を使うmacOS・Windows・LinuxのCIで、`npm run setup`・`npm run typecheck`・`npm test`（`node:sqlite`で警告が出ないことの試験を含む）・`npm run build`がすべて成功する。
+- 受入（2026-10-03の所有者決定でT02から移した確認）: Windowsの実機のコンソールで`npm run setup`の`npm ci`の最中にCtrl+Cを押すと、`npm ci`の終了を待ってから、依存の導入の記録も作業中の印`.kurashi-ledger-setup.lock`も残さずに130で終わり、続けて`npm run setup`が進む（ADR-0008の「中断」）。試験のプロセスからは実際のCtrl+Cを送れないので、`scripts/setup-lock.test.ts`・`scripts/setup.test.ts`のPOSIXだけの試験の代わりに、手順と結果をPRに記録する。
+- 受入（T02の試験のskipの代わりの確認。2026-10-03の調整係の依頼）: [開発環境](development.md)の「環境によって飛ばす試験」の表の、代わりの確認をすべて行い、手順と結果をPRに記録する。上のCtrl+Cに加えて、WindowsでのCtrl+Break（149で終わり、記録も印も残らない）と、Windowsで印を消せないとき（別のPowerShellで印を削除できない共有の指定で開いたままCtrl+Cを押すと、130で終わり、印が残ったことと消し方が表示される）。CIの試験は一般のユーザーで実行し、OSごとのskipの件数と理由を記録して、表に書いた件数と一致することを確かめる。Windowsでファイルのsymlinkを作れずに弱めて確かめた箇所（試験の出力のdiagnostic）があれば、それも記録する。
 - 検証: 意図的失敗、古いSHAの成功、欠落ジョブ、fork PRで秘密なし、workflow変更時の扱い。UI追加時にE2Eを追加できる。後続タスク（T26等）が試験を追加すれば、Mac/Windows/Linuxで実行される。
 - 非対象: 初期から大規模sharding、セルフホストrunner、長時間polling。
 
