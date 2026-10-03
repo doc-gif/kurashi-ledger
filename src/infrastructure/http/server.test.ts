@@ -950,3 +950,58 @@ test('拒否したupgradeで相手が書込み側を閉じなくても、close�
     tmp.cleanup();
   }
 });
+
+test('要求の対象がorigin-formでない要求（absolute-form・authority-form・asterisk-form）は、upgrade・API・開発時のmiddlewareのどれにも渡さない', async () => {
+  const tmp = ownerOnlyTempDirectory('request-target');
+  try {
+    const upgrades: string[] = [];
+    const middlewareCalls: string[] = [];
+    const calls: string[] = [];
+    const dev: LocalServerOptions['dev'] = {
+      middleware(req, res) {
+        middlewareCalls.push(req.url ?? '');
+        res.end('dev');
+      },
+      upgrade(req, socket) {
+        upgrades.push(req.url ?? '');
+        socket.end('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, api: testRoutes(calls) });
+    try {
+      const cookie = await exchange(server);
+      const host = `127.0.0.1:${server.port}`;
+      const good = `Host: ${host}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\n`;
+      const upgrade = (target: string) =>
+        sendRaw(server.port, `GET ${target} HTTP/1.1\r\n${good}Connection: Upgrade\r\nUpgrade: websocket\r\n\r\n`).catch(() => ({ status: 0, raw: '' }));
+      for (const target of ['http://attacker.invalid/hmr', `http://${host}/hmr`, host, '*']) {
+        const res = await upgrade(target);
+        assert.ok(res.status === 400 || res.status === 0, `${target} ${res.status}`);
+      }
+      assert.deepEqual(upgrades, []);
+      // 同じ要求でも、origin-formなら渡す（検査が強すぎないこと）。
+      assert.equal((await upgrade('/hmr')).status, 101);
+      assert.deepEqual(upgrades, ['/hmr']);
+
+      const api = `${good}Kurashi-Ledger-Launch-Id: ${server.launchId}\r\nSec-Fetch-Site: same-origin\r\nConnection: close\r\n`;
+      for (const request of [
+        `GET http://${host}/api/test/state HTTP/1.1\r\n${api}\r\n`,
+        `GET http://attacker.invalid/src/main.ts HTTP/1.1\r\n${api}\r\n`,
+        `OPTIONS * HTTP/1.1\r\n${api}\r\n`,
+        `GET ${host} HTTP/1.1\r\n${api}\r\n`,
+      ]) {
+        const res = await sendRaw(server.port, request).catch(() => ({ status: 0, raw: '' }));
+        assert.ok(res.status === 400 || res.status === 0, `${request.split('\r\n')[0] ?? ''} ${res.status}`);
+      }
+      // CONNECT（authority-form）は、Node.jsが受けるところがないので接続を閉じる。
+      const connectRes = await sendRaw(server.port, `CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\n\r\n`).catch(() => ({ status: 0, raw: '' }));
+      assert.notEqual(connectRes.status, 200);
+      assert.deepEqual(calls, []);
+      assert.deepEqual(middlewareCalls, []);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});

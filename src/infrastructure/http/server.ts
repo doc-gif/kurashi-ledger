@@ -34,6 +34,7 @@ import {
 import {
   checkContentType,
   checkHost,
+  checkRequestTarget,
   checkLaunchId,
   checkSameOrigin,
   cookieValues,
@@ -479,7 +480,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     }
     const host = checkHost(req, expectedHost);
     if (host !== undefined) return reject(res, host, api);
-    if (!rawUrl.startsWith('/')) return reject(res, { status: 400, code: 'bad-request-target' }, api);
+    const target = checkRequestTarget(req.url);
+    if (target !== undefined) return reject(res, target, api);
     const work = (api ? handleApi(req, res, current, path) : handleUi(req, res, current, path)).catch((error: unknown) => {
       log(`internal-error ${errorName(error)}`);
       if (!res.headersSent) reject(res, { status: 500, code: 'internal-error' }, api);
@@ -509,6 +511,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (shutdown.signal.aborted) return refuse({ status: 503, code: 'closing' });
     const host = checkHost(req, expectedHost);
     if (host !== undefined) return refuse(host);
+    const target = checkRequestTarget(req.url);
+    if (target !== undefined) return refuse(target);
     const origin = checkSameOrigin(req, expectedOrigin, true);
     if (origin !== undefined) return refuse(origin);
     if (req.headersDistinct['origin'] === undefined) return refuse({ status: 403, code: 'origin-required' });

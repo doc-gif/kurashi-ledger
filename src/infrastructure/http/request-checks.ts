@@ -27,6 +27,14 @@ export function checkHost(req: IncomingMessage, expectedHost: string): Rejection
   return undefined;
 }
 
+// 要求の対象（request-target）がorigin-form（/で始まる）であること。absolute-form（http://…）・authority-form
+// （host:port）・asterisk-form（*）は、静的配信・API・開発時のmiddleware・upgradeのどれにも渡さない（ADR-0009の5）。
+// 通常のHTTPの要求とupgradeの両方が、処理へ渡す前にこの関数を使う。
+export function checkRequestTarget(rawUrl: string | undefined): Rejection | undefined {
+  if (rawUrl === undefined || !rawUrl.startsWith('/')) return { status: 400, code: 'bad-request-target' };
+  return undefined;
+}
+
 // 同じoriginからの要求か（ADR-0003の5）。
 // - Sec-Fetch-Siteがあれば same-origin であること（same-siteは同じPCの別ポートからの要求でもなるので拒否）。
 // - Originがあれば「http://127.0.0.1:<port>」と完全に一致すること（nullを含め、ほかは拒否）。

@@ -49,7 +49,7 @@ T07のデータルートの権限も、この基準を使う。基準を変え�
 ### 5. 待受・ポート・応答
 
 - 待受: `127.0.0.1`だけ（`listen`のhostを明示）。既定のポートは`48720`（`npm start`の`--port`で変えられる。0はOSが選ぶ、試験用）。使用中なら別のポートへ移らず、理由を表示して終了する（終了コード1）。一時ファイルは、待受に成功してから作る。
-- Host: `127.0.0.1:<port>`と完全に一致し、ちょうど1つであること。静的ファイルを含むすべての要求に適用する（403、`host-mismatch`）。要求の対象が`/`で始まらない要求（絶対形式等）は400。
+- Host: `127.0.0.1:<port>`と完全に一致し、ちょうど1つであること。静的ファイルを含むすべての要求に適用する（403、`host-mismatch`）。要求の対象が`/`で始まらない要求（absolute-form・authority-form・asterisk-form）は400。この検査は1つの関数で、通常のHTTPの要求（静的配信・API・開発時のmiddleware）とWebSocketのupgradeの両方が、処理へ渡す前に使う。
 - 状態を変える要求（GET/HEAD以外）: `Sec-Fetch-Site`があれば`same-origin`、`Origin`があれば`http://127.0.0.1:<port>`と完全一致、どちらもなければ拒否（403）。GETのAPIでも、これらのヘッダがあれば同じ条件を求める（追加の防御）。`Content-Type`は`application/json`（charsetは`utf-8`だけ）。`application/octet-stream`は、本文の上限を決めて宣言したエンドポイントだけで受け付ける（ほかは415）。JSONの本文の上限は既定で64KiB（413）。UTF-8・JSONとして読めない本文は400。
 - 振り分け: APIは、クエリだけを除いた生のパスと、登録したパスの完全一致で振り分ける（ログ用に置き換え・切り詰めたパスは使わない）。登録できるパスは、`/api/`で始まり、ASCIIの印字できる文字だけで、`%`・`?`・`#`・バックスラッシュを含まない1024文字以下のもので、登録時に検証する。
 - 応答の出口: すべての応答で、書き出す直前（`writeHead`）に、`Content-Security-Policy`（ADR-0003の7の初期値）、`Cache-Control: no-store`、`Referrer-Policy: no-referrer`、`X-Content-Type-Options: nosniff`、`Cross-Origin-Resource-Policy: same-origin`、`X-Frame-Options: DENY`を付け直し、`Access-Control-*`を取り除く。APIの処理や開発時のmiddlewareが変えようとしても外れない。APIの応答は`application/json`だけ。拒否の応答には、理由の符号（`X-Kurashi-Ledger-Reason`）を付ける（データを含まない）。
