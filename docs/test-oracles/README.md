@@ -11,7 +11,7 @@ T03「合成データと期待結果の台帳」の成果物。関連Issue: [#22
 | `tests/fixtures/ledger/common-setup.json` | 共通の設定（examples.mdの「共通の設定」の雇用先・雇用条件・口座・発行者）の保存と、例示の規則（`illustrativeRules`） |
 | `tests/fixtures/ledger/cases/EX-*.json` | 契約の合成例を元にしたケース（ファイル名はケースID） |
 | `tests/fixtures/ledger/cases/TC-*.json` | 契約の規則から追加したケース（下の「ケースの一覧」） |
-| `tests/fixtures/ledger/regime/regime-cases.json` | 制度のケースの雛形（すべて未確認。下の「制度のケース」） |
+| `tests/fixtures/ledger/regime/regime-cases.json` | 制度のケース。T14が一次資料で確かめた制度は値を持つ（いまは所得税。`draft`）。ほかは雛形のまま未確認（下の「制度のケース」） |
 | `tests/fixtures/ledger/load.ts` | fixtureを読み、省略した項目を既定で補い、`baseScenario`をたどって操作の並びを作る補助。後続の試験が読んでよい |
 | `tests/fixtures/ledger/contract-shape.ts` | 契約の記録の型（項目・許す状態・符号と範囲・IDの接頭辞・参照の粒度）を、fixtureの検査のために書き写した表 |
 | `tests/fixtures/ledger/ledger.test.ts` | 台帳の検査（下の「台帳の検査」） |
@@ -172,7 +172,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 `regime/regime-cases.json`の各ケースは、次の項目を必須にする（台帳の検査が確かめる）: `caseId`、`regime`、`title`、`status`（`placeholder`・`draft`・`approved`）、`consumers`、`target`（`year`、`yearKind`、`jurisdiction`、`procedure`、`referencePoint`）、`ruleSet`、`sources`、`rounding`、`input`、`expected`、`derivation`。
 
-- いまはすべて`placeholder`で、手続（`procedure`）以外は「未確認」。`placeholder`には数値を入れない（制度の値を入れない）。手続と、住民税・国保・ふるさと納税の賦課の年度（`fiscal`）、所得税の暦年（`calendar`）は計算結果の契約の1による。勤務先の保険料・認定の年の種類は「未確認」。
+- T14（[制度の規則](../rules/README.md)）が一次資料で確かめた制度のケースは`draft`で値を持ち、まだ確かめていない制度は`placeholder`で、手続（`procedure`）以外は「未確認」。`placeholder`には数値を入れない（制度の値を入れない）。手続と、住民税・国保・ふるさと納税の賦課の年度（`fiscal`）、所得税の暦年（`calendar`）は計算結果の契約の1による。勤務先の保険料・認定の年の種類は「未確認」。
 - `levy`の`referencePoint`は`not-applicable`（計算結果の1の「手続と基準の時点」）。
 - `approved`にするには、次の値がすべて要る。「未確認」でないことだけでなく、値の形を確かめ、`null`・空の文字列・形の違う値を通さない。`draft`の値は「未確認」か、同じ形の値。
   - 適用年`year`（`{ kind: calendar・fiscal, year }`。`kind`は`yearKind`と同じ）と地域`jurisdiction`（`{ kind: national・prefecture・municipality・insurer, code }`）。
@@ -181,15 +181,16 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
   - 原典`sources`: 一次資料（`primary: true`）を1件以上含み、各要素に`title`・`publisher`・`url`（https）・資料の更新日`documentUpdatedOn`・取得日`retrievedOn`（更新日以後）・箇所`location`。
   - 丸め`rounding`: 手順の並び（丸めがなければ空）。各手順の`itemKey`は期待値の結果の項目で、`unit`は正、`basis`が`rule`・`input`なら原典の箇所、`input`なら`methodInput`。
   - 入力`input`（空でないobject）と期待値`expected`（`{ results: [{ key, valueType: yen・decimal, value: Fact }] }`、1件以上）。
-  - 導き方`derivation`（`method`と確かめた担当`reviewedBy`が空でなく、`independentOfImplementation: true`）。
+  - 導き方`derivation`（`method`と、2つ目の独立した導き方`crossCheck`と、確かめた担当`reviewedBy`が空でなく、`independentOfImplementation: true`。`reviewedBy`の「未確認」は`draft`だけに許す）。
 - 値を入れるのはT14（一次資料で確かめ、承認したものだけ）。年・地域・原典・丸めのどれかが欠けたケースは`approved`にできない。
+- T14の規則の検査（`tests/rules/rules.test.ts`）が、`placeholder`でないケースについてさらに確かめること: `ruleSet`が`rules/manifest.json`の規則の版に実在し、制度が同じこと（`approved`のケースは`approved`の規則だけ）、`sources`がmanifestの一次資料と同じ値で、その規則の資料であること、`expected.status`（`computed`・`provisional`・`incomplete`・`unsupported`。計算runの結果の状態の期待）、`unsupported`以外は`target`が規則の適用の範囲に当たり、入力が規則の未対応の条件（`unsupportedInputs`）に当たらず、`computed`・`provisional`は分からない入力（家族の適用要件・未対応の条件の値の`unknown`）を持たず、`incomplete`は`unknown`の結果を持つこと、`unsupported`は、当たる規則がないか入力が未対応の条件に当たり、結果がすべて`unknown`であること、家族の入力が制度データの適用要件（`eligibility`）の項目をすべて持つこと、`approved`のケースの`reviewedBy`が規則の承認の証跡と同じこと、丸めの手順の`before`・`after`が計算し直せて（計算結果の1の4つの丸め方）、同じ項目の手順がつながり、最後の`after`が期待値と同じで、制度データの丸め（項目・方法・単位）にあること。期待値の導き方と承認の手順は[制度の規則](../rules/README.md)の「期待値の導き方」「状態と承認」。
 
 ## 後続タスクの使い方
 
 - **T06（記録ドメイン）:** `save`の操作を、ID生成器と時計を注入したdomainの保存の関数に順に渡し、`expect.outcome`（拒否なら理由の対応）を比べる。TC-01・TC-02と、各ケースの拒否の操作が改訂のモデル・保存の検査の試験になる。`aggregate`の検査のうち、入金額・明細の項目・4つの状態・overflowは記録の集計の試験になる。
 - **T11（照合）:** `unreconciled`・`allocationUsage`・`forecastLine`・`attribution`・`comparison`・`adoption`・`duplicateCandidates`・`decisionPremise`・`seriesStatus`と、所得の年・年間の値・見込み・決定額の`aggregate`を、照合の結果と比べる。`orderVariants`で入力の順序を入れ替えても同じ結果になることを確かめる。`rules`に合わせて、比較の対応表と帰属の規則を注入する（`none`なら規則なし）。
 - **T15（計算基盤）:** `saveRun`の射影を、架空の計算器の版の`requests`等で補って保存の検査に使う。`runClosure`・`requiredAdoptions`・`runInputChange`・`roundingStep`・`roundingValidation`は、計算器に依存しない判定の試験になる。
-- **T14（制度調査）:** `regime/regime-cases.json`の雛形を、一次資料で確かめた値で埋め、`approved`の条件を満たしたものだけを後続へ渡す。
+- **T14（制度調査）:** `regime/regime-cases.json`の雛形を、一次資料で確かめた値で埋め、`approved`の条件を満たしたものだけを後続へ渡す（[制度の規則](../rules/README.md)。所得税のケースはT14の最初のPRで`draft`にした）。
 - 読み込みは`load.ts`の`readLedgerFiles`・`resolveOperations`・`expandRecord`を使ってよい。不正な要素（JSONでないファイル、objectでない場面・操作、型の違う`reason`・`revision`・`body`）は黙って除かず、場面IDと位置を含む誤りにする。例外として、`cases/`・`regime/`の中の`.DS_Store`・`Thumbs.db`（OSが自動で作るメタデータで、`.gitignore`でも除外している名前。`load.ts`の`OS_METADATA_FILES_FROM_GITIGNORE`）は、名前が完全に一致するものだけを読み飛ばす。ほかのJSONでないファイルは、場所を示して誤りにする。
 
 ## 台帳の検査
