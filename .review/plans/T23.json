@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "task_id": "T23",
+  "planned_paths": [
+    ".review/invariants.json",
+    ".review/patrol.json",
+    ".review/tests/test_component_routing.py",
+    ".review/tests/test_patrol_config.py",
+    "README.md",
+    "docs/implementation-tasks.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-prevention.md",
+    "tools/review_guard/README.md",
+    "tools/review_guard/github_source.py",
+    "tools/review_guard/patrol.py",
+    "tools/review_guard/tests/test_github_source.py",
+    "tools/review_guard/tests/test_patrol.py"
+  ],
+  "conflicts": [
+    {
+      "description": "状態判定はネットワークでGitHubを読み、任意でコメントを投稿するが、docs/review-prevention.mdは汎用CLIがネットワーク・GitHub投稿を行わないと書いている。",
+      "state": "resolved",
+      "resolution": "既存のguard.py・ci.py・changed_paths.pyの性質は変えない。判定の中核（patrol.py）はネットワーク・投稿・実行をしない純粋な関数にし、GitHubを読む部分（github_source.py）を分ける。読取りは`gh api`のGETだけ、投稿は`--post`を明示したときだけで既定はdry-run。docs/review-prevention.mdとREADMEに、この2つのモジュールの信頼境界を書き分ける。CIからは投稿しない（docs/github-agent-operations.mdの「定期実行」）。"
+    },
+    {
+      "description": "同じGitHubアカウントを全員で共有するので、役割はloginで識別できない。一方、public repoでは誰でもコメントに印を書ける。",
+      "state": "resolved",
+      "resolution": "役割は本文の印とrole欄だけで決め、loginは使わない。それとは別に、信頼の境界として、作者の関係（author_association）が設定で許した値（OWNER・MEMBER・COLLABORATOR）の記録だけを読む。これは役割の識別ではなく、外部の第三者が書いた印を除くため。agent_idは協調用の表示で、本人確認に使わない（自己レビューの検出の補助だけ）。"
+    },
+    {
+      "description": "workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護（ruleset）はT23の範囲だが、repoの設定は所有者が判断し、この担当は変えない。また、全員が同じアカウントを使うので、GitHubの承認（Approve）を必須にすると誰もマージできず、管理者の迂回を許すとAIも迂回できる。",
+      "state": "resolved",
+      "resolution": "設定は変えず、提案（別の権限主体によるCode Ownersの承認、最新のpushへの承認、古い承認の取消し、迂回の一覧を空にする、AIの資格情報から管理者の権限を外す）と迂回試験の手順をdocs/review-prevention.mdに書き、所有者の確認待ちとする。それまでの間は、判定ツールが、PRが変える保護対象のファイルを一覧にして、独立レビューの対象であることを示す（強制ではない）。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "試験のfixtureはすべて合成（架空のPR番号・SHA・agent_id・本文）で、実データや個人のパス・トークンを含めない。ツールはGitHubの認証をghに任せ、トークンを読まず、出力にも書かない。投稿する本文はツールが固定の文とSHAだけで組み立て、PRの自由文を写さない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分とfixtureを読み、公開検査（node scripts/check-public.ts --staged）をcommitごとに実行する。投稿の本文を作る関数の試験で、PRの本文・コメントの文字列が含まれないことを確かめる。",
+          "expected": "公開検査が0で終わり、fixtureに実在のSHA・個人のパス・秘密がない。投稿の本文は印・種別・SHAと固定の説明だけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "判定は最新head/baseとPRのコメント・レビューの印に結び付け、古いready・別headのレビュー・自己レビュー・Copilotの承認を、着手候補やacceptedに数えない。投稿は（PR・種別・head・base）の印で重複を防ぎ、投稿の直前に取り直す。不変条件の台帳には追加だけを行い、既存の条件・paths・シナリオ・原因台帳を変えない（CIのci.pyが報告するbaseとの差分は追加だけになる）。保護の提案は設定を変えず、構造検査・自己申告・AIの判定を独立承認と取り違えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "試験: 同じ（PR・種別・head・base）の印が既にあれば投稿しない、2つの巡回が同じ状態を見ても2回目は投稿しない、headやbaseが変わったら新しい印として1回だけ投稿する、投稿の直前にheadが変わったら投稿しない。",
+          "expected": "同じheadへの同じ通知は1回だけ。新しいheadやbaseでは1回だけ。取得に失敗したときは投稿しない。"
+        },
+        {
+          "id": "trust",
+          "method": "試験: 古いhead/baseのready、workingで取り消したready、実装者と同じagent_idのレビュー、外部の作者（author_association）の印、Copilotの承認、GitHubのAPPROVEDだけ（印なし）を与える。ci.pyで、候補の台帳の差分が追加だけと報告されることを確かめる。",
+          "expected": "どれも着手候補・acceptedにならない。台帳の差分の報告は追加だけ。判定の出力は承認・マージの許可ではないと明記される。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "T23の範囲（状態判定とその試験、G1〜G7の条件、保護の提案）に限り、T24（定期実行の登録と指摘対応）を先取りしない。状態資料のIssueの対応・台帳の成果物の所在・README・pr-review-loop・review-preventionの記述を同じ事実で揃える。作業中のPR（#25・#28・#29・#31・#33）と同じ行を広く書き換えず、追加中心にする。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "T02・T05がmainにあることを確かめる。G1〜G7のpathsを、台帳の各部品の担当タスク（T07・T08・T09・T12・T26）の範囲と、作業中のPR #25（src/infrastructure/http/）の実パスに照合する。追加した条件で、作業中のPRがbaseを取り込んだあとに必要になる評価をPRの説明に書く。",
+          "expected": "依存はmainにあり、各部品の担当の範囲のパスで、その部品の条件が選ばれる。T26等が次にbaseを取り込んだときに追加の評価が要ることが、PRの説明で分かる。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "README・状態資料・台帳・pr-review-loop・review-prevention・tools/review_guard/READMEの記述を読み合わせる。判定の分類と、pr-review-loopの「レビュー開始の条件」「重複防止」が同じ条件を指すか確かめる。",
+          "expected": "入口の間で、判定ツールの位置付け（補助で、承認・マージの許可ではない）と、定期実行の登録はT24であることが一致する。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    }
+  }
+}
