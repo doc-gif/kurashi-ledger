@@ -158,15 +158,19 @@ export function withRunStamp(ledger: Ledger, id: string, recordedAt: string): Le
 // 保存の境界で入力を深く写して凍結する（呼び出し元が後から入力を変えても、保存した履歴・連番・索引が変わらないように）。
 // 写すのはJSONの値（null・真偽値・数・文字列、配列、プロトタイプがObjectかnullのobject）だけ。それ以外（関数、Date等の
 // objectやundefined・bigint・symbol）を含めば、その位置を返して拒否させる。getterは1回だけ読む。
-export function snapshotJson(v: unknown, path = "$"): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly path: string } {
+// 循環するobject（JSONで表せない）は、その位置を返して拒否させる（例外で処理全体を落とさない）。
+export function snapshotJson(v: unknown, path = "$", ancestors: Set<object> = new Set()): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly path: string } {
   if (v === null || typeof v === "string" || typeof v === "boolean" || typeof v === "number") return { ok: true, value: v };
+  if (typeof v === "object" && ancestors.has(v)) return { ok: false, path };
   if (Array.isArray(v)) {
+    ancestors.add(v);
     const out: unknown[] = [];
     for (let i = 0; i < v.length; i += 1) {
-      const e = snapshotJson(v[i], `${path}[${i}]`);
+      const e = snapshotJson(v[i], `${path}[${i}]`, ancestors);
       if (!e.ok) return e;
       out.push(e.value);
     }
+    ancestors.delete(v);
     return { ok: true, value: Object.freeze(out) };
   }
   if (typeof v === "object") {
@@ -175,11 +179,13 @@ export function snapshotJson(v: unknown, path = "$"): { readonly ok: true; reado
     // prototypeを持たないobjectに、すべてのown keyをown data propertyとして定義する。通常の{}への代入では、JSON.parseが
     // 作ったown key「__proto__」がprototypeの差し替えになり、検査と再送の比較から消えるため（PR28-R002）。
     const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    ancestors.add(v);
     for (const k of Object.keys(v)) {
-      const e = snapshotJson((v as Record<string, unknown>)[k], `${path}.${k}`);
+      const e = snapshotJson((v as Record<string, unknown>)[k], `${path}.${k}`, ancestors);
       if (!e.ok) return e;
       Object.defineProperty(out, k, { value: e.value, enumerable: true, writable: false, configurable: false });
     }
+    ancestors.delete(v);
     return { ok: true, value: Object.freeze(out) };
   }
   return { ok: false, path };

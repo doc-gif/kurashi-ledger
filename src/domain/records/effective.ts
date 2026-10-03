@@ -5,6 +5,7 @@
 import { knownValue, stateOf } from "./fact.ts";
 import { isMasterType, recordTypeOfId, type RecordType } from "./ids.ts";
 import { bodyOf, compareStrings, recordIds, type Ledger } from "./ledger.ts";
+import { isHistoryValid } from "./history.ts";
 import { canonicalMasterId, masterRefsOf } from "./masters.ts";
 import { analyzeSeries, isSeriesType, type SeriesAnalysis, type SeriesType } from "./series.ts";
 import { intervalOfPeriod, intervalsOverlap } from "./values.ts";
@@ -29,18 +30,31 @@ export class SeriesCache {
   }
 }
 
-// 有効な記録: 見方で選ばれた改訂がactiveで、差し替えを持つ種類なら系列の現在の記録であるもの。
+// 有効な記録: 見方で選ばれた改訂がactiveで、差し替えを持つ種類なら系列の現在の記録であるもの。その改訂までの履歴が保存の
+// 検査を満たすことも求める（duplicateOfの残す方など、有効であることを根拠にする判定のため。PR28-R001）。
 export function isEffective(ledger: Ledger, id: string, view: ResolvedView, series: SeriesCache): boolean {
   const type = recordTypeOfId(id);
   if (type === undefined) return false;
   const rev = selectRevision(ledger, id, view);
-  if (rev === undefined || rev.status !== "active" || rev.recordType !== type) return false;
+  if (rev === undefined || rev.status !== "active" || rev.recordType !== type || !isHistoryValid(ledger, rev)) return false;
   if (isSeriesType(type)) return series.get(type).status.get(id) === "current";
   return true;
 }
 
 export function effectiveIds(ledger: Ledger, type: RecordType, view: ResolvedView, series: SeriesCache): string[] {
   return recordIds(ledger, type).filter((id) => isEffective(ledger, id, view, series));
+}
+
+// 保存の検査（期間の重なり等）の対象にする記録: 有効な記録と、履歴の検査を満たさない記録（取消・差し替え済みであっても、
+// その取消・差し替えを根拠に除かない。検査を緩めないため。PR28-R001）。
+function isCheckSubject(ledger: Ledger, id: string, view: ResolvedView, series: SeriesCache): boolean {
+  const rev = selectRevision(ledger, id, view);
+  if (rev === undefined) return false;
+  return !isHistoryValid(ledger, rev) || isEffective(ledger, id, view, series);
+}
+
+function checkSubjectIds(ledger: Ledger, type: RecordType, view: ResolvedView, series: SeriesCache): string[] {
+  return recordIds(ledger, type).filter((id) => isCheckSubject(ledger, id, view, series));
 }
 
 export type DependentViolationKind = "master-ref" | "employment-term-overlap" | "included-payers" | "issuer-kind";
@@ -66,7 +80,7 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
   const canon = (id: string): string | undefined => canonicalMasterId(ledger, id, view);
   for (const id of recordIds(ledger)) {
     const type = recordTypeOfId(id);
-    if (type === undefined || !isEffective(ledger, id, view, series)) continue;
+    if (type === undefined || !isCheckSubject(ledger, id, view, series)) continue;
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined) continue;
     for (const ref of masterRefsOf(type, bodyOf(rev))) {
@@ -74,7 +88,7 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
     }
   }
   // 雇用条件の期間の重なり（端が分からなければ、その側へ限りなく開いた期間として判定する。共通の型の6）。
-  const terms = effectiveIds(ledger, "employment-term", view, series).map((id) => {
+  const terms = checkSubjectIds(ledger, "employment-term", view, series).map((id) => {
     const rev = selectRevision(ledger, id, view);
     const employer = (rev === undefined ? {} : bodyOf(rev))["employerId"];
     return { id, employer: typeof employer === "string" ? canon(employer) : undefined, interval: intervalOfPeriod((rev === undefined ? {} : bodyOf(rev))["applicablePeriod"]) };
@@ -87,7 +101,7 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
       if (intervalsOverlap(a.interval, b.interval)) out.push({ kind: "employment-term-overlap", ids: [a.id, b.id], detail: a.employer });
     }
   }
-  for (const id of effectiveIds(ledger, "annual-document", view, series)) {
+  for (const id of checkSubjectIds(ledger, "annual-document", view, series)) {
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined) continue;
     const payer = bodyOf(rev)["payerEmployerId"];
@@ -105,7 +119,7 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
       seen.add(c);
     });
   }
-  for (const id of effectiveIds(ledger, "official-notice", view, series)) {
+  for (const id of checkSubjectIds(ledger, "official-notice", view, series)) {
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined || stateOf(bodyOf(rev)["issuerId"]) !== "known") continue;
     const raw = knownValue(bodyOf(rev)["issuerId"]);

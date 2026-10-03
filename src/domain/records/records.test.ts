@@ -586,10 +586,11 @@ test("PR28-R001: 取消した橋の履歴が壊れている（取消でsupersede
   if (now.ok) {
     assert.equal(now.values[0].state, "incomplete");
     assert.equal(now.values[0].knownSum, 0);
-    assert.deepEqual(now.values[0].missing.map((m) => m.ref.id).sort(), ["pay_a", "pay_c"]);
+    // 不正な取消をしたBも、取消を根拠に除かず不足に挙げる（除く根拠にも履歴の検査を先に当てる規則）。
+    assert.deepEqual(now.values[0].missing.map((m) => m.ref.id).sort(), ["pay_a", "pay_b", "pay_c"]);
   }
   const st = analyzeSeries(l, "payslip", CURRENT).status;
-  assert.deepEqual(["pay_a", "pay_b", "pay_c"].map((id) => st.get(id)), ["unconfirmed-series", "voided", "unconfirmed-series"]);
+  assert.deepEqual(["pay_a", "pay_b", "pay_c"].map((id) => st.get(id)), ["unconfirmed-series", "unconfirmed-series", "unconfirmed-series"]);
   // 不正な取消より前の記録時点の再現は、後の改訂を使わず正常（Bが現在の記録）。
   const past = grossOct(l, { kind: "record-seq", seq: beforeBadVoid });
   assert.ok(past.ok && past.values[0].state === "complete" && past.values[0].knownSum === 150, JSON.stringify(past));
@@ -782,4 +783,68 @@ test("Copilot r4172982694: IDと行IDの末尾の改行は、IDとして受け�
   assert.equal(isLineId("l1\n"), false);
   assert.equal(isLineId("l1"), true);
   assert.equal(isLocalDate("2026-10-10\n"), false);
+});
+
+test("PR28-R001（所有者の判断で確定した規則）: 取消・差し替え・範囲の外で除く前に、選ばれた版までの履歴を検査する", () => {
+  // (a) 版1が100、版2が金額を999に変えた不正な取消の入金は、取消を根拠に除かずconflict・incomplete。
+  let l = setup();
+  const base = l.saves.length;
+  l = restore(l, [deposit("dep_a", { state: "known", value: 100 }), { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "void", body: { amount: { state: "known", value: 999 } } }]);
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_a@2:save-check:conflict"] });
+  // (c) 不正な取消より前の見方は、100でcomplete。
+  assert.deepEqual(depositOct(l, { kind: "record-seq", seq: base + 1 }), { state: "complete", knownSum: 100, missing: [] });
+  // (b) 正しい取消は、これまでどおりno-records。
+  let v = setup();
+  v = restore(v, [deposit("dep_a", { state: "known", value: 100 }), { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "void" }]);
+  assert.deepEqual(depositOct(v), { state: "no-records", knownSum: 0, missing: [] });
+  // (d) すべての版が範囲の外を示す不正な履歴は除く。範囲の外の正しい取消・正しい記録も除く。
+  let o = setup();
+  o = restore(o, [
+    deposit("dep_a", { state: "known", value: 100 }, { state: "known", value: "2026-11-10" }),
+    { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "void", body: { amount: { state: "known", value: 999 } } },
+    deposit("dep_b", { state: "known", value: 5 }, { state: "known", value: "2026-11-11" }),
+  ]);
+  assert.deepEqual(depositOct(o), { state: "no-records", knownSum: 0, missing: [] });
+  // (e) 不正な取消をした明細は、取消したものとせず、集計でconflict、系列の状態はunconfirmed-series。
+  let p = setup();
+  p = restore(p, [payslip("pay_1", { grossPay: { state: "known", value: 100 } }), { id: "pay_1", recordType: "payslip", revision: 2, reason: "void", body: { grossPay: { state: "known", value: 999 } } }]);
+  const gross = aggregateRecords(p, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].state === "incomplete" && gross.values[0].missing.some((m) => m.ref.id === "pay_1" && m.state === "conflict"), JSON.stringify(gross));
+  assert.equal(analyzeSeries(p, "payslip", CURRENT).status.get("pay_1"), "unconfirmed-series");
+  // (f) 不正な取消をした雇用条件と重なる新規の保存は拒否し、正しい取消なら受け付ける。
+  const term = (id: string): Obj => ({ id, recordType: "employment-term", body: { employerId: "emp_2", applicablePeriod: { start: { state: "known", value: "2026-01-01" }, end: { state: "known", value: "2026-12-31" } } } });
+  let t = setup();
+  t = restore(t, [term("term_a"), { id: "term_a", recordType: "employment-term", revision: 2, reason: "void", body: { payScheduleNote: { state: "known", value: "変更" } } }]);
+  rejected(save(t, term("term_b"), T0), "employment-term-overlap");
+  let tv = setup();
+  tv = restore(tv, [term("term_a"), { id: "term_a", recordType: "employment-term", revision: 2, reason: "void" }]);
+  ok(save(tv, term("term_b"), T0));
+  // (g) 履歴の検査を満たさない記録は、二重登録の取消の残す方にできない。
+  let g = setup();
+  g = restore(g, [deposit("dep_x", { state: "known", value: 1 }), { id: "dep_x", recordType: "bank-deposit", revision: 2, reason: "unvoid" }]);
+  g = ok(save(g, deposit("dep_y", { state: "known", value: 1 }), T0));
+  rejected(save(g, { id: "dep_y", recordType: "bank-deposit", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "dep_x", revision: "current", line: "whole" } } }, T0), "ref-target-invalid");
+  // (h) 二重登録の取消でbodyを変えたマスタは、取消の先の正規のIDに解決しない。
+  let m = setup();
+  m = restore(m, [
+    { id: "emp_9", recordType: "employer", body: { displayName: "勤務先Z" } },
+    { id: "emp_9", recordType: "employer", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "emp_1", revision: "current", line: "whole" } }, body: { displayName: "変更" } },
+  ]);
+  assert.equal(canonicalMasterId(m, "emp_9", CURRENT), undefined);
+});
+
+test("Copilot r4173033817: 循環するobjectは、例外ではなくvalue-invalidで拒否する", () => {
+  const l = setup();
+  const record = expandRecord(deposit("dep_1", { state: "known", value: 1 }), { scenarioId: "unit", opId: "cy1", previous: undefined });
+  const { id: _id, ...input } = record;
+  void _id;
+  const cyclic: Record<string, unknown> = { ...input, body: { ...(input["body"] as Obj) } };
+  (cyclic["body"] as Record<string, unknown>)["descriptionText"] = cyclic;
+  const out = saveRevision(l, cyclic, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
+  rejected(out, "value-invalid");
+  assert.equal(out.ledger, l);
+  // 同じobjectを2か所から指すだけ（循環でない）は、JSONの値として写す。
+  const shared = { state: "unknown" };
+  ok(saveRevision(l, { ...input, body: { ...(input["body"] as Obj), descriptionText: shared, purpose: shared } }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } }));
+  assert.throws(() => restoreUnchecked(l, [cyclic], { clock: { now: () => T0 } }), /JSONの値ではない/);
 });

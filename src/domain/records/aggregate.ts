@@ -136,9 +136,7 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
   let notApplicable = 0;
   for (const id of recordIds(ledger, type)) {
     const rev = selectRevision(ledger, id, rv);
-    if (rev === undefined || rev.status !== "active") continue; // 見方にない記録と取消した記録は除く。
-    const seriesStatus = series?.status.get(id);
-    if (seriesStatus === "superseded") continue; // 差し替え済みの記録は除く。
+    if (rev === undefined) continue; // 見方にない記録は除く（選ばれた改訂がないので、値を根拠にしない）。
     // 範囲の次元（勤務先・口座）と日付の軸で、範囲の外と確定できる記録を除く。有効なマスタに解決できない参照と、knownでない
     // 日付では除かない（共通の型の5の「分からない値で絞り込まない」）。
     const placement = (r: Revision): { out: boolean; canon: string | undefined; dateFact: unknown; date: string | undefined } => {
@@ -152,15 +150,20 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
       const outOfRange = date !== undefined && (date < parsed.scope.from || date > parsed.scope.to);
       return { out: outOfScope || outOfRange, canon, dateFact, date };
     };
-    const here = placement(rev);
+    // 除く根拠（取消・差し替え・範囲の外）にも、選ばれた改訂までの履歴の検査を先に当てる（所有者の判断で確定した規則。
+    // PR28-R001）。満たさない記録は、取消・差し替えでは除かない。
     if (!isHistoryValid(ledger, rev)) {
       // 保存の検査をすり抜けた履歴（共通の型の9。PR28-R001）。集計の根拠にせず、黙って数えも落としもしない。どの改訂の値が
       // 正しいか分からないので、選ばれた改訂までのすべての改訂がそろって範囲の外を示すときだけ除く。
       const versions = revisionsOf(ledger, id).filter((r) => r.revision <= rev.revision);
       if (versions.every((r) => placement(r).out)) continue;
-      addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", here.date);
+      addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", placement(rev).date);
       continue;
     }
+    if (rev.status !== "active") continue; // 取消した記録は除く（履歴の検査を満たすときだけ）。
+    const seriesStatus = series?.status.get(id);
+    if (seriesStatus === "superseded") continue; // 差し替え済みの記録は除く（系列の解析で、関わる記録の履歴を検査済み）。
+    const here = placement(rev);
     if (here.out) continue;
     const { canon, dateFact } = here;
     const dateKnown = here.date !== undefined;

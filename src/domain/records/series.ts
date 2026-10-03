@@ -238,6 +238,8 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
   for (const id of ids) {
     const sel = selected.get(id);
     if (sel === undefined) status.set(id, "not-in-view");
+    // 取消を根拠にする前に、選ばれた改訂までの履歴を検査する。満たさない記録は取消したものとせず、整っていない系列にする。
+    else if (!isHistoryValid(ledger, sel)) status.set(id, "unconfirmed-series");
     else if (sel.status === "voided") status.set(id, "voided");
     else if (bad.has(uf.find(id))) status.set(id, "unconfirmed-series");
     else if (successors.has(id)) status.set(id, "superseded");
