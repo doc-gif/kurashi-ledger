@@ -420,7 +420,10 @@ export async function verifyTokenRepositories(
 // - revoked: 204。
 // - already-invalid: 401。トークンがすでに有効でない（失効済み・期限切れ）か、トークンとして一致しない。
 // - failed: それ以外。秘密を含まない理由を持つ。
-export type RevokeResult = { readonly status: 'revoked' | 'already-invalid' } | { readonly status: 'failed'; readonly message: string };
+export type RevokeResult =
+  | { readonly status: 'revoked' }
+  | { readonly status: 'already-invalid' }
+  | { readonly status: 'failed'; readonly message: string };
 
 export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<RevokeResult> {
   try {
