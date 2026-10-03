@@ -55,7 +55,7 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 2. 印を消す（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）。片付けで記録を消せなかったと表示された場合は、原因（権限等）を直してから、記録`node_modules/.kurashi-ledger-install.json`も消す。
 3. `npm run setup`をやり直す。
 
-`npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
+依存の導入は`npm run setup`だけで行い、`npm ci`や`npm install`を直接実行しない（記録は書かれない）。`npm ci`を直接実行すると、`node_modules`と一緒に記録が消えるので、`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まる。`npm install`は記録を消さない。導入が最後まで進めば、npmが書き直すhidden lockfileが変わるので照合で止まるが、途中で止まった場合（hidden lockfileが変わらない）は見抜けないことがある（ADR-0008の「見抜けないこと」）。どちらも、実行したら`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
 
 ### 環境によって飛ばす試験
 

@@ -567,7 +567,13 @@ export function writeInstallRecord(
   try {
     syncDirectory(dir);
   } catch (error) {
-    unlinkIfPresent(recordPath(root));
+    // 置いた記録を消してから、元の失敗を伝える。消せなくても元の失敗を伝え、呼び出し側（runSetup）が
+    // 消し直して、消せなければ作業中の印を残す。
+    try {
+      unlinkIfPresent(recordPath(root));
+    } catch {
+      // 呼び出し側で消し直す
+    }
     throw error;
   }
 }
@@ -825,11 +831,20 @@ async function runSetupLocked(deps: SetupDependencies, interruption: SetupInterr
   try {
     writeInstallRecord(root, record, deps.syncDirectory);
   } catch (e) {
-    error(`記録を書けなかった: ${e instanceof Error ? e.message : String(e)}。記録は残していない。`);
+    // 名前変更のあとに失敗した場合は、置いた記録が残っていることがある。消せたことを確かめてから
+    // 「残していない」と伝える。消せなければ例外のまま外へ送り、runSetupが印を残す（照合を止めておく）。
+    const reason = e instanceof Error ? e.message : String(e);
+    try {
+      removeInstallRecord(root);
+    } catch (r) {
+      throw new Error(`記録を書けず（${reason}）、置いた記録も消せなかった（${r instanceof Error ? r.message : String(r)}）`);
+    }
+    error(`記録を書けなかった: ${reason}。記録は残していない。`);
     return 1;
   }
   const check = verifyInstallRecordImpl(root, runtime, true);
   if (!check.ok) {
+    // 消せなければ例外のまま外へ送り、runSetupが印を残す。
     removeInstallRecord(root);
     error(`書いた記録を確かめられなかったので削除した。\n${formatVerificationFailure(check.problems)}`);
     return 1;

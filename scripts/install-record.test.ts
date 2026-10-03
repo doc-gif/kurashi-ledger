@@ -439,6 +439,32 @@ test('名前変更のあとのディレクトリの反映に失敗したら、�
   assert.match(lines.join('\n'), /記録は残していない/);
 });
 
+test('反映に失敗したうえ、置いた記録も消せなければ、「残していない」と言わず、印を残して照合を止める', async () => {
+  // 名前変更のあと、反映（fsync）の前に、記録の名前をディレクトリに差し替えて、記録の削除を失敗させる
+  // （OSによらず再現できる方法。実際には、権限等で通常のファイルの削除が失敗する場合にあたる）。
+  const root = makeProject();
+  const lines: string[] = [];
+  const code = await runSetup({
+    root,
+    runtime,
+    runNpmCi: () => ({ done: Promise.resolve().then(() => fakeSuccessfulCi(root)) }),
+    log: (l) => lines.push(l),
+    error: (l) => lines.push(l),
+    syncDirectory: () => {
+      rmSync(recordPath(root));
+      mkdirSync(recordPath(root));
+      throw Object.assign(new Error('synthetic fsync failure'), { code: 'EIO' });
+    },
+  });
+  const output = lines.join('\n');
+  assert.equal(code, 1, output);
+  assert.doesNotMatch(output, /記録は残していない/);
+  assert.match(output, /synthetic fsync failure/);
+  assert.match(output, /印（\.kurashi-ledger-setup\.lock）を残した/);
+  assert.equal(existsSync(join(root, LOCK)), true, '印を残して、照合と次のsetupを止める');
+  assert.equal(verifyInstallRecord(root, runtime).ok, false);
+});
+
 // リポジトリの外の共有の場所（合成）。中に、別の担当の記録と依存に見立てたファイルを置く。
 // snapshotは、中のパスとファイルの中身の一覧（変わっていないことの確認に使う）。
 function makeOutside(): { dir: string; snapshot: () => string[] } {
