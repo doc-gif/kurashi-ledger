@@ -1,6 +1,6 @@
 # AIのGitHub App（CodexとClaudeの身元）
 
-2026-10-03の所有者決定（実装側のチャット。記録は[Issue #41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに、それぞれ1つずつGitHub Appを用意し、AIごとの別のGitHubの身元にする。トークンは自作のスクリプト`scripts/github-app-token.ts`で発行する。rulesetの変更は、Appが動くことを確かめたあとで所有者が確認する（下の「rulesetの提案」。**まだ設定していない**）。
+2026-10-03の所有者決定（実装側のチャット。記録は[Issue #41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに、それぞれ1つずつGitHub Appを用意し、AIごとの別のGitHubの身元にした（2つとも、同じ日に所有者が作成・インストール済み）。トークンは自作のスクリプト`scripts/github-app-token.ts`で発行する。rulesetの変更は、Appが動くことを確かめたあとで所有者が確認する（下の「rulesetの提案」。**まだ設定していない**）。
 
 ## 背景
 
@@ -9,13 +9,13 @@
 - ClaudeとCodexのどちらも、実装とレビューの両方を行う（例: PR #4はCodexが実装し、Claudeがレビューした）。そのため、Appは**役割ではなくAIの身元**を表す。分離は身元で行う: **AIは、自分が実装したPRや、自分がpushしたPRを承認しない**（[現在の状態](project-status.md)の「レビュー」、[PRレビューのループ](pr-review-loop.md)）。
 - トークンの発行は、第三者のgh拡張ではなく、依存を加えない自作のスクリプトで行う（所有者の決定）。
 
-## 所有者が用意したもの
+## 所有者が用意したもの（2026-10-03）
 
 IDと鍵はrepoに置かない。下の`<...>`は、実行するときに実際の値に置き換えるプレースホルダ。
 
 | 項目 | Codex | Claude |
 | --- | --- | --- |
-| App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>` |
+| App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>`（作成済み） |
 | インストール先 | このrepoだけ | このrepoだけ |
 | App ID・Installation ID | 環境変数`KL_GITHUB_APP_ID_CODEX`・`KL_GITHUB_APP_INSTALLATION_ID_CODEX` | 環境変数`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE` |
 | 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account `$USER`、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
@@ -36,11 +36,15 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 
 webhookは使わない。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
 
-### 所有者の手順（残っているもの）
+### 所有者が行ったこと
 
-1. **CodexのAppの権限を広げる。** 最初は Pull requests R/W・Contents R・Actions R・Metadata R で作ったので、上の表に合わせる: AppのSettings → Permissions & events で、Contents を Read and write、Issues を Read and write、Workflows を Read and write にして保存する。権限を広げると、インストール先で承認し直すまで新しい権限は効かない: アカウントのSettings → Applications → Installed GitHub Apps → そのApp → Configure で、権限の変更の依頼を確認して承認する（Review request）。
-2. **ClaudeのAppを作る**（まだなら）。上の表と同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールする。秘密鍵を作り、キーチェーンにservice `kurashi-ledger-claude-implementer`で登録する（下の「鍵の保管」）。App IDとInstallation IDを控える。
-3. 下の「実際の鍵での確認」を、それぞれのAppで行う。
+2026-10-03に、所有者が次を済ませた。
+
+1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと上の表の権限に広げ（Settings → Permissions & events で Contents・Issues・Workflows を Read and write）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
+2. ClaudeのAppを、上の表と同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
+3. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
+
+残っているのは、下の「実際の鍵での確認」と「移行の計画」の2以降、rulesetの確認（所有者の確認待ち）。権限を変えるときは、上の1と同じく、インストール先での承認し直しが要る。
 
 ## 鍵の保管・再発行・失効
 
@@ -66,7 +70,7 @@ GH_TOKEN="$(node scripts/github-app-token.ts --agent <codex|claude> --purpose <r
 
   `review`にissues:writeを入れない理由: PRへのコメント（Issueのタイムラインのコメント）とレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。PRへのコメントがこの権限で拒否されることが分かったら、表（`scripts/lib/github-app-token.ts`の`PURPOSES`）を直すPRを出す（下の「確かめていないこと」）。
 - 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ユーザー> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒み、symlinkも拒む。Windowsでは権限のビットがNTFSのACLを表さないので確かめず、注意を出す（ACLを所有者だけにしておく）。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない）。
-- 動き: RS256のJWT（`iat`=いま−60秒、`exp`=いま+9分、`iss`=App ID）を`node:crypto`で作り、`POST https://api.github.com/app/installations/<Installation ID>/access_tokens`で発行する。応答の権限とrepoが要求どおりか確かめ、違えば使わずに失効させる（`DELETE /installation/token`）。
+- 動き: RS256のJWT（`iat`=いま−60秒、`exp`=いま+9分、`iss`=App ID）を`node:crypto`で作り、`POST https://api.github.com/app/installations/<Installation ID>/access_tokens`で発行する。応答の権限とrepoが要求どおりか確かめる。さらに、発行したトークンで`GET /installation/repositories`を呼び、触れるrepoがこのrepoの1件だけかを確かめる。どれかが違う、または確かめられない（応答にrepoの一覧がない、HTTPや通信の失敗等）ときは、トークンを出さずに失効させ（`DELETE /installation/token`）、終了コード1で終える。
 - 出力: 標準出力には、成功したときのトークンと改行だけを出す。エラーは標準エラーに、HTTPの状態とGitHubのメッセージを出す。鍵・JWT・トークンは出さない（既知の値と、数字を含む長い英数字の並びを伏せる）。終了コードは、成功0・発行の失敗1・引数の誤り2。
 - 時間の上限: GitHubへの要求は15秒、キーチェーンは60秒（許可のダイアログに答える時間）。ディスクに書かない。依存は使わない（Node.jsの組込みだけ）。
 - npm scriptにしない: `npm run`は標準出力に見出しを出すので、`$(...)`で受けるとトークンに混ざる。`node scripts/...`で直接実行する。
@@ -170,6 +174,7 @@ mainのbranch rulesetの「Require a pull request before merging」で:
 - T23の巡回（`tools/review_guard/patrol.py`、PR #38）の役割の判定への影響。巡回は`author_association`がOWNER・MEMBER・COLLABORATORの記録だけを読むので、botの記録を読まないおそれがある。
 - `review`の権限（issues:writeなし）で、PRへのコメントを書けるか。
 - Appがpushしたbranchで、CIが動くか（Appのトークンのpushはworkflowを起動するはずだが、未確認）。
+- トークンの発行の応答に、縮小したrepoの一覧（`repositories`）が入るか。入らなければ、スクリプトは安全側に失敗する（トークンを出さない）。そのときは、一覧の代わりに`GET /installation/repositories`だけで確かめる形に直すPRを出す。
 
 ## 移行の計画
 

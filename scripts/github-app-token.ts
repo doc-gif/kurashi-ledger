@@ -1,5 +1,5 @@
 // GitHub Appのinstallation access tokenを発行し、標準出力にトークンだけを出す（docs/github-apps.md）。
-//   GH_TOKEN="$(node scripts/github-app-token.ts --role reviewer)" gh pr view <番号>
+//   GH_TOKEN="$(node scripts/github-app-token.ts --agent <codex|claude> --purpose <review|implement>)" gh pr view <番号>
 // npm scriptにしない: npm runは標準出力に見出しを出すので、$(...)で受けるとトークンに混ざる。
 // 中核と試験は scripts/lib/github-app-token.ts と scripts/github-app-token.test.ts。
 import { execFile } from 'node:child_process';

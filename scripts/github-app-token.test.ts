@@ -67,6 +67,9 @@ function grantedBody(purpose: Purpose, overrides: Record<string, unknown> = {}):
   });
 }
 
+// 発行したトークンで触れるrepoの一覧（GET /installation/repositories）の応答。
+const LISTED = { status: 200, body: JSON.stringify({ total_count: 1, repositories: [{ id: 1, name: REPOSITORY_NAME }] }) };
+
 type Call = { readonly url: string; readonly init: FetchInit };
 
 function fakeFetch(responses: readonly { status: number; body: string }[] | ((url: string) => never)): {
@@ -95,7 +98,7 @@ function makeDeps(overrides: Partial<Deps> = {}): { deps: Deps; out: string[]; e
     uid: 501,
     username: 'synthetic-user',
     nowSeconds: () => NOW,
-    fetch: fakeFetch([{ status: 201, body: grantedBody('review') }]).fetch,
+    fetch: fakeFetch([{ status: 201, body: grantedBody('review') }, LISTED]).fetch,
     readKeychain: async (service, account) => {
       keychainCalls.push([service, account]);
       return `${PEM_BASE64}\n`;
@@ -294,12 +297,17 @@ test('キーチェーンは/usr/bin/securityを決めた引数で呼び、失敗
 });
 
 test('成功すると、標準出力にはトークンと改行だけを出し、キーチェーンの既定のserviceと実行中のユーザーを使う', async () => {
-  const { fetch, calls } = fakeFetch([{ status: 201, body: grantedBody('review') }]);
+  const { fetch, calls } = fakeFetch([{ status: 201, body: grantedBody('review') }, LISTED]);
   const { deps, out, err, keychainCalls } = makeDeps({ fetch });
   assert.equal(await run(ARGS, deps), 0);
   assert.deepEqual(out, [`${TOKEN}\n`]);
   assert.deepEqual(keychainCalls, [['kurashi-ledger-codex-reviewer', 'synthetic-user']]);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
+  // 2つ目の要求は、発行したトークンで触れるrepoの確認。
+  assert.equal(calls[1]?.url, 'https://api.github.com/installation/repositories?per_page=100');
+  assert.equal(calls[1]?.init.method, 'GET');
+  assert.equal(calls[1]?.init.headers['Authorization'], `Bearer ${TOKEN}`);
+  assert.ok(calls[1]?.init.signal instanceof AbortSignal);
   const call = calls[0];
   assert.ok(call !== undefined);
   assert.equal(call.url, `https://api.github.com/app/installations/${INSTALLATION_ID}/access_tokens`);
@@ -313,7 +321,7 @@ test('成功すると、標準出力にはトークンと改行だけを出し�
 });
 
 test('claudeのAppとimplementの用途は、自分のservice・環境変数・権限を使う', async () => {
-  const { fetch, calls } = fakeFetch([{ status: 201, body: grantedBody('implement') }]);
+  const { fetch, calls } = fakeFetch([{ status: 201, body: grantedBody('implement') }, LISTED]);
   const { deps, out, keychainCalls } = makeDeps({
     fetch,
     env: { KL_GITHUB_APP_ID_CLAUDE: '99', KL_GITHUB_APP_INSTALLATION_ID_CLAUDE: '98', KL_GITHUB_APP_ID_CODEX: '1', KL_GITHUB_APP_INSTALLATION_ID_CODEX: '2' },
@@ -341,11 +349,11 @@ test('用途がreviewなら、App全体の権限ではなくreviewの権限だ�
 
 test('鍵は--key-fileと--key-stdinからも読め、PEMとそのbase64のどちらも受け付ける', async () => {
   for (const material of [PEM, PEM_BASE64]) {
-    const file = makeDeps({ fetch: fakeFetch([{ status: 201, body: grantedBody('review') }]).fetch, readKeyFile: () => ({ text: material }) });
+    const file = makeDeps({ fetch: fakeFetch([{ status: 201, body: grantedBody('review') }, LISTED]).fetch, readKeyFile: () => ({ text: material }) });
     assert.equal(await run([...ARGS, '--key-file', 'synthetic.pem'], file.deps), 0);
     assert.deepEqual(file.out, [`${TOKEN}\n`]);
     assert.deepEqual(file.keychainCalls, []);
-    const stdin = makeDeps({ fetch: fakeFetch([{ status: 201, body: grantedBody('review') }]).fetch, readStdin: async () => material });
+    const stdin = makeDeps({ fetch: fakeFetch([{ status: 201, body: grantedBody('review') }, LISTED]).fetch, readStdin: async () => material });
     assert.equal(await run([...ARGS, '--key-stdin'], stdin.deps), 0);
     assert.deepEqual(stdin.out, [`${TOKEN}\n`]);
   }
@@ -399,6 +407,10 @@ test('発行された権限・repoが要求と違えば、トークンを出さ�
     { permissions: { pull_requests: 'write', metadata: 'read' } },
     { repository_selection: 'all' },
     { repositories: [{ name: REPOSITORY_NAME }, { name: 'other' }] },
+    { repositories: undefined },
+    { repositories: [] },
+    { repositories: [{ name: 'other' }] },
+    { repositories: 'kurashi-ledger' },
   ];
   for (const o of overrides) {
     const { fetch, calls } = fakeFetch([
@@ -415,6 +427,54 @@ test('発行された権限・repoが要求と違えば、トークンを出さ�
     assert.equal(calls[1]?.init.method, 'DELETE');
     assert.equal(calls[1]?.init.headers['Authorization'], `Bearer ${TOKEN}`);
   }
+});
+
+test('発行したトークンで触れるrepoがこのrepoの1件だと確かめられなければ、トークンを出さずに失効させる', async () => {
+  const cases: { name: string; listing: FetchLike | { status: number; body: string } }[] = [
+    { name: '2件', listing: { status: 200, body: JSON.stringify({ total_count: 2, repositories: [{ name: REPOSITORY_NAME }, { name: 'other' }] }) } },
+    { name: '別のrepo', listing: { status: 200, body: JSON.stringify({ total_count: 1, repositories: [{ name: 'other' }] }) } },
+    { name: '件数がない', listing: { status: 200, body: JSON.stringify({ repositories: [{ name: REPOSITORY_NAME }] }) } },
+    { name: '一覧がない', listing: { status: 200, body: JSON.stringify({ total_count: 1 }) } },
+    { name: 'HTTP 403', listing: { status: 403, body: JSON.stringify({ message: `denied ${TOKEN}` }) } },
+    { name: 'JSONでない', listing: { status: 200, body: `<html>${TOKEN}</html>` } },
+    { name: '通信の失敗', listing: async () => { throw Object.assign(new Error(`reset ${TOKEN}`), { cause: { code: 'ECONNRESET' } }); } },
+  ];
+  for (const c of cases) {
+    const calls: Call[] = [];
+    const fetch: FetchLike = async (url, init) => {
+      calls.push({ url, init });
+      if (calls.length === 1) return { status: 201, text: async () => grantedBody('review') };
+      if (calls.length === 2) {
+        if (typeof c.listing === 'function') return c.listing(url, init);
+        const l = c.listing;
+        return { status: l.status, text: async () => l.body };
+      }
+      return { status: 204, text: async () => '' };
+    };
+    const { deps, out, err } = makeDeps({ fetch });
+    assert.equal(await run(ARGS, deps), 1, c.name);
+    assert.deepEqual(out, [], `${c.name}: 標準出力に何かを出した`);
+    const stderr = err.join('');
+    assert.match(stderr, /範囲が要求と違う.*失効させた/, `${c.name}: ${stderr}`);
+    assertNoSecrets(stderr);
+    assert.equal(calls.length, 3, c.name);
+    assert.equal(calls[1]?.url, 'https://api.github.com/installation/repositories?per_page=100');
+    assert.equal(calls[2]?.url, 'https://api.github.com/installation/token');
+    assert.equal(calls[2]?.init.method, 'DELETE');
+    assert.equal(calls[2]?.init.headers['Authorization'], `Bearer ${TOKEN}`);
+  }
+});
+
+test('失効にも失敗したときは、そう伝え、トークンは出さない', async () => {
+  const { fetch } = fakeFetch([
+    { status: 201, body: grantedBody('review', { repositories: undefined }) },
+    { status: 500, body: JSON.stringify({ message: TOKEN }) },
+  ]);
+  const { deps, out, err } = makeDeps({ fetch });
+  assert.equal(await run(ARGS, deps), 1);
+  assert.deepEqual(out, []);
+  assert.match(err.join(''), /失効できなかった（HTTP 500）/);
+  assertNoSecrets(err.join(''));
 });
 
 test('出力を伏せる処理は、長い英数字の並びと既知の秘密を伏せ、serviceの名前等は残す', () => {

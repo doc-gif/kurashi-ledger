@@ -312,12 +312,47 @@ export function checkGrantedScope(response: unknown, purpose: Purpose): string |
     if (granted[name] !== level) return `権限（${name}: ${level}）が付かなかった`;
   }
   if (r.repository_selection !== 'selected') return 'repoが選んだものだけに縮小されていない';
-  if (r.repositories !== undefined) {
-    if (!Array.isArray(r.repositories) || r.repositories.length !== 1) return 'repoが1つでない';
-    const name = (r.repositories[0] as { name?: unknown } | undefined)?.name;
-    if (name !== REPOSITORY_NAME) return `repoが${REPOSITORY_NAME}でない`;
-  }
+  // repositoriesがなければ、縮小した先を確かめられないので失敗にする（fail closed）。
+  return checkOnlyThisRepository(r.repositories, '発行の応答');
+}
+
+// repoの一覧が、このrepoの1件だけか。違う・確かめられなければ理由を返す。
+export function checkOnlyThisRepository(repositories: unknown, where: string): string | null {
+  if (repositories === undefined) return `${where}にrepoの一覧がない（縮小した先を確かめられない）`;
+  if (!Array.isArray(repositories) || repositories.length !== 1) return `${where}のrepoが1つでない`;
+  const name = (repositories[0] as { name?: unknown } | null | undefined)?.name;
+  if (name !== REPOSITORY_NAME) return `${where}のrepoが${REPOSITORY_NAME}でない`;
   return null;
+}
+
+// 発行したトークンで、実際に触れるrepoを数える（GET /installation/repositories）。
+// このrepoの1件だけでなければ、または確かめられなければ、理由を返す。
+export async function verifyTokenRepositories(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<string | null> {
+  let response: FetchResponse;
+  try {
+    response = await fetchImpl(`${API_ORIGIN}/installation/repositories?per_page=100`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': USER_AGENT,
+        'X-GitHub-Api-Version': API_VERSION,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    return `触れるrepoの確認の要求が失敗した（${describeFailure(error)}）`;
+  }
+  if (response.status !== 200) return `触れるrepoを確かめられなかった（HTTP ${response.status}）`;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readBody(response));
+  } catch {
+    return '触れるrepoの確認の応答がJSONでない';
+  }
+  const r = parsed as { total_count?: unknown; repositories?: unknown } | null;
+  if (r === null || typeof r !== 'object' || r.total_count !== 1) return '触れるrepoの数が1でない、または不明';
+  return checkOnlyThisRepository(r.repositories, '触れるrepoの確認');
 }
 
 async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<string> {
@@ -371,7 +406,7 @@ export async function requestInstallationToken(args: {
   }
   const token = (parsed as { token?: unknown } | null)?.token;
   if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new TokenError('GitHubの応答にトークンがない、または形式が違う。');
-  const problem = checkGrantedScope(parsed, args.purpose);
+  const problem = checkGrantedScope(parsed, args.purpose) ?? (await verifyTokenRepositories(args.fetch, token, args.timeoutMs));
   if (problem !== null) {
     const revoked = await revokeToken(args.fetch, token, args.timeoutMs);
     throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${problem}）。${revoked}`);
