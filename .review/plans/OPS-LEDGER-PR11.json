@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "c6834b76afbc08f706f5031cae8fed4e903ce52a",
+  "base_sha": "3c4d1dd4eb756eebdc3a2e0477a155fa2f86968a",
   "task_id": "OPS-LEDGER-PR11",
   "planned_paths": [
     ".review/findings.json"
@@ -30,6 +30,11 @@
       "description": "作業中にCodexがPR11-R010（別件判断の前提にpurposeを含める）とPR11-R011（必須の採用スナップショットの欠落を保存時に拒否する）を追加した。前者はCopilotだけの原因として集約した「判断の前提の再確認」、後者は「計算runの入力閉包の完全性（独立に導く根・逆参照）」と同じ原因になる。",
       "state": "resolved",
       "resolution": "規約に従い、同じ原因はCodexのIDへ寄せる。2つのCopilotだけの原因の出典をPR11-R010・R011へ移し、R101以降の番号帯から外して詰める（未マージのPR内の番号で、ほかからの参照はない）。R011は記録・関係の閉包と採用スナップショットの双方を、入力要求から独立に導いた必要集合との一致として扱う。各スナップショットの粒度・一意性は別の原因として残す。"
+    },
+    {
+      "description": "mainがPR #10（T04）の統合で3c4d1ddへ進んだ。あわせてCopilotが本PRのPR11-R006の教訓（discussion_r4170901342）に、「最も広く解釈する」が不明な分類・金額へ値を割り当てる意味に読め、未知値を推定で確定しないINV-RECORDSと衝突すると指摘した。",
+      "state": "resolved",
+      "resolution": "履歴を書き換えずにmainをmergeする。新しいbaseの条件・台帳はc6834b7と同じで、選択される条件・シナリオ・contextも変わらないため、base_shaだけを更新する。R006の教訓は、不明な値を未知のまま保持して推定で確定しないこと、候補を除外せず影響し得る範囲をincompleteにすることへ書き直す。ほかの教訓に値の割当てと読める表現がないことも確認する。"
     }
   ],
   "assessments": [
