@@ -97,7 +97,7 @@ T16–T19はインターフェースと期待値が確定すれば個別に並�
 ## 並行編集を避ける場所
 
 - データ契約、DB migration、依存関係とlockfile、共通デザイントークン、Figmaの同一ライブラリ、CI権限設定は、タスクで共有資源を宣言し同時担当を1名にする。
-- `package.json`とlockfileの変更は、T02（TypeScript等）→ T05（Playwright）→ T26（起動のscripts）→ T08（React・Vite）の順に1つずつ行い、同時に変更しない。このためT08はT26に依存する。その後も、依存を追加・更新するタスク（T10のルーター、T12のageとtar、T32のBiome、Dependabotの提案を取り込む`DEPS`の担当等）は、着手時に`package.json`とlockfileを共有資源として申告し、同時に編集しない。
+- `package.json`とlockfileの変更は、T02（TypeScript等）→ T05（Playwright）→ T26（起動のscripts）→ T08（React・Vite）の順に1つずつ行い、同時に変更しない。このためT08はT26に依存する。その後も、依存を追加・更新するタスク（T10のルーター、T12のageとtar、T32のBiome、Dependabotの提案を取り込む`DEPS-pr<提案のPR番号>`の担当等）は、着手時に`package.json`とlockfileを共有資源として申告し、同時に編集しない。
 - AIごとに専用branchとworktreeを使う。同じcheckoutや同じローカル実データDBを共有しない。
 - 同一ファイルの別行でも、意味の整合性が必要なら競合として扱う。DB migration番号の重複がないだけでは安全としない。
 - 依存PRが未マージなら、そのAPIを見込みで複製しない。初期運用では積み重ねPRを使わず、独立タスクへ移る。
