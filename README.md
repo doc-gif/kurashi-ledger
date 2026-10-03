@@ -33,6 +33,7 @@
 - [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)
 - [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
+- [記録・照合・計算結果の契約（契約版1.0、合成例）](docs/contracts/README.md)
 - [テスト方針](docs/testing.md)
 - [開発環境と作業の規約（Node.jsの版、`npm run setup`、ブラウザ試験、CI）](docs/development.md)
 - [公開範囲と公開前の点検](docs/public-data.md)
