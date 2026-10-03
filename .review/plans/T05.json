@@ -141,7 +141,7 @@
         },
         {
           "id": "trust",
-          "method": "ci.ymlを読み、イベント・permissions・persist-credentials・SHA固定・secretsの不使用・計画の検査がbaseのcheckoutから実行されることを確かめる。Quality gateが、どれかのジョブの失敗・中断・想定外のskipでも失敗することを、gateの判定の処理を合成の入力で確かめ、PRの途中で意図的に失敗させるcommitを1度pushしてgateの失敗をrunで確かめてから元に戻す。gateがpull_requestのmerge commitの親をhead・baseのSHAと照合して記録することをrunで見る。",
+          "method": "ci.ymlを読み、イベント・permissions・persist-credentials・SHA固定・secretsの不使用・計画の検査がbaseのcheckoutから実行されることを確かめる。Quality gateが、どれかのジョブの失敗・中断・想定外のskipでも失敗することを、gateの判定の処理を合成の入力（成功・失敗・中断・skip・親の不一致・push）で確かめる。実際のrunでは、最初のrun（37087512129）でWindowsのchecksが失敗し、gateが失敗したことで確かめた（意図的に失敗させるcommitは、同じことを確かめる実際の失敗があったので加えない）。gateがpull_requestのmerge commitの親をhead・baseのSHAと照合して記録することをrunで見る。",
           "expected": "失敗・中断・欠けたジョブ（skipped）はgateの失敗になる（push時の計画の検査だけは対象外として扱いを分ける）。gateのsummaryに、試験したmerge commitとhead・baseのSHAが出る。CIの合格は独立レビュー・所有者の承認の代わりにならないと文書に書かれている。"
         }
       ]
