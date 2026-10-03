@@ -637,6 +637,18 @@ function refOf(v: unknown): Obj | undefined {
 
 function checkTypeRules(type: RecordType, body: Obj, out: Out): void {
   switch (type) {
+    case "payslip": {
+      // 記録の型の4の「帰属の区分」の保存の検査: 区分ordinaryの明細は、分類がknownのretroactive-adjustmentの行を持たない。
+      if (factValue(body["incomeTimingKind"]) !== "ordinary") return;
+      const lines = factValue(body["otherEarnings"]);
+      if (!Array.isArray(lines)) return;
+      lines.forEach((row, i) => {
+        if (isObj(row) && factValue(row["category"]) === "retroactive-adjustment") {
+          out.add("value-invalid", `$.body.otherEarnings[${i}].category`, "帰属の区分ordinaryの明細に遡及差額の行");
+        }
+      });
+      return;
+    }
     case "annual-document": {
       const list = factValue(body["includedOtherPayers"]);
       if (Array.isArray(list)) {

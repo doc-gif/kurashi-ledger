@@ -39,13 +39,13 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | EX-04b | EX-04 (b) | 遡及差額、参照の粒度（記録全体の関係はwholeだけ） | T06・T11 |
 | EX-04c | EX-04 (c) | 正式通知の差し替え、未確認の差し替え、決定額の行は1行、決定額を使うrunの根と閉包、runのあとの変化、取消した橋の記録 | T06・T11・T15・T18 |
 | EX-04d | EX-04 (d) | 同じ種類・同じ年度の通知（表記の違い・発行者不明・別の発行者・3件以上・other）、二重登録の類と年度 | T11・T18・T19 |
-| EX-05 | EX-05 | 年またぎ、4つの日付、帰属と候補の年、根拠の食い違い、例示の規則、帰属の区分が分からない明細（候補の年はすべての年）、規則より優先する利用者の指定（年間資料とは`conflict`、前提が崩れたら`undetermined`） | T11・T14・T16 |
+| EX-05 | EX-05 | 年またぎ、4つの日付、帰属と候補の年、根拠の食い違い、例示の規則、帰属の区分が分からない明細・この版が知らない区分の値（候補の年はすべての年）、規則より優先する利用者の指定（年間資料とは`conflict`、支払予定日や区分の改訂で前提が崩れたら`undetermined`） | T11・T14・T16 |
 | EX-06 | EX-06 | 年間資料の採用・比較・不一致・説明、範囲の一部だけの集計、coverage、対応表がない場合、明細の合計では比べない項目（`not-compared`・`annual-no-counterpart`）、runの採用の写し | T11・T14・T15 |
 | EX-07 | EX-07 | 予測の実績化、消込、使えない関係、取り下げ、行IDの予約、識別の次元、配分の符号、runの閉包 | T06・T11・T15・T20 |
 | EX-08 | EX-08 | 金額の4つの状態、新しい情報による変化と把握時点の再現 | T06・T10・T12 |
 | EX-09 | EX-09 | 雇用条件の期間の重なり（不明な境界） | T06・T17 |
 | TC-01 | 共通の型の2・7・9 | 改訂の競合、理由と状態の遷移、存在しない参照、不正な期間、把握日とAsia/Tokyoの日付、取消の先、変えられない項目 | T06・T07・T09 |
-| TC-02 | 共通の型の4・12 | Factの許す状態（帰属の区分は`known`・`unknown`だけで、並べていない値も拒否）、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
+| TC-02 | 共通の型の4・12 | Factの許す状態（帰属の区分は`known`・`unknown`だけで、並べていない値と、`ordinary`の明細の遡及差額の行も拒否）、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
 | TC-03 | 共通の型の5、照合の規則の2・8 | 分からない値で絞り込まない（日付・明細の種類・行の並び・結んだ入金の日付・期間の端） | T06・T11 |
 | TC-04 | 記録の型の10 | 差し替えの系列の取消と取消の取り消し、拒否する形（自己参照・循環・分岐・次元の不一致）、未確認の系列、把握時点の再現 | T06・T11 |
 | TC-05 | 照合の規則の3、記録の型の5 | 通勤手当を含む振込と精算の入金の混在 | T11 |
@@ -105,7 +105,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 - 改訂の共通の形: `revision` 1、`reason` `create`、`status`は理由から（`void`なら`voided`、ほかは`active`）、`duplicateOf`・`importKey`は`not-applicable`（`entryChannel` `manual`）、`changeNote`は`unknown`、`writeRequestId`は`w-<scenarioId>-<opId>`（同じ操作の再送は同じキー）。`restoreUnchecked`で置く改訂は、1つの操作で複数の改訂を置くので、改訂ごとに`w-<scenarioId>-<opId>-<記録のID>-v<版>`にする（`writeRequestId`はデータベース全体で予約するキーなので重ねない。台帳の検査が重なりを見つける）。`knownOn`は、`create`・`new-information`では`unknown`、`correct-input-error`・`void`・`unvoid`では直前の改訂から引き継ぐ。
 - 版2以上の改訂の`body`は、直前の採用された改訂の`body`に、書いた項目だけを差し替えたもの（取消・取消の取り消しは何も書かない）。
-- `body`の`Fact`の項目: 給与明細の帰属の区分`incomeTimingKind`は`known`の`ordinary`（examples.mdの「読み方」の6。区分が分からない明細の場面は`unknown`と書く）。「〜の場合だけ」の項目（照合配分の`settlesForecastLine`・`confirmedAgainst`、`annual-coverage`の`amount`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`）は、その場合でなければ`not-applicable`、その場合なら省略できない。`supersedes`は`not-applicable`。資料から写す並び（`otherEarnings`・`otherDeductions`・`amounts`・`installments`・`statusDates`）は`known`の空、`includedOtherPayers`は`unknown`。ほかは`unknown`。
+- `body`の`Fact`の項目: 給与明細の帰属の区分`incomeTimingKind`は、遡及差額の行（分類`retroactive-adjustment`）を持つ明細は`unknown`、ほかは`known`の`ordinary`（examples.mdの「読み方」の6。区分が分からない明細の場面は`unknown`と書く）。「〜の場合だけ」の項目（照合配分の`settlesForecastLine`・`confirmedAgainst`、`annual-coverage`の`amount`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`）は、その場合でなければ`not-applicable`、その場合なら省略できない。`supersedes`は`not-applicable`。資料から写す並び（`otherEarnings`・`otherDeductions`・`amounts`・`installments`・`statusDates`）は`known`の空、`includedOtherPayers`は`unknown`。ほかは`unknown`。
 - `Fact`でない項目: 文字列（表示名・表題・行の名前・`reasonNote`）は`合成`、予測の行の`lineStatus`は`open`。ほかは省略できない。
 
 補ったあとの記録は、契約の保存の条件を満たさなければならない（台帳の検査が確かめる）。

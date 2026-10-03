@@ -1079,6 +1079,147 @@
           ]
         }
       ]
+    },
+    {
+      "scenarioId": "EX-05-g4",
+      "title": "指定のあとで帰属の区分を改訂すると指定の前提が崩れ、規則に戻さずundetermined",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-g",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2027-01-22T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_506",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-01-22"},
+            "changeNote": {"state": "known", "value": "勤務先の説明で区分を確かめ直す"},
+            "body": {"incomeTimingKind": {"state": "unknown"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "帰属の区分は帰属の候補の年の表の次元に使う項目なので、指定（dcs_502）のあとで区分を改訂すると、指定の前提が崩れる。前提の崩れた指定があるので順1でundetermined（規則にも戻さない。区分がunknownなので規則も当てはまらない）。候補の年は区分がunknown・勤務期間がnot-statedなのですべての年。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "4", "quote": "支払予定日・勤務期間・行の並びと行の期間・帰属の区分）が、判断を保存したあとで変わったら要再確認"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "前提が崩れた指定、またはその見方で解決できない指定がある明細は、下の表の順1でundeterminedにする（規則の根拠に戻さず"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "帰属の区分を改訂する等でdcs_502の前提が崩れたら、規則の2027に戻さずundeterminedにする"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_506", "revision": 2, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "帰属未判定のpay_506は候補の年に2026を含むので、2026年の集計はincomplete（指定の2026で数えたままにしない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-h",
+      "title": "復元で入った、この版が知らない帰属の区分の値は、unknownと同じに扱う（規則を当てはめず、候補の年はすべての年。conflictにしない）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2027-01-10T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": ["value-invalid"],
+          "records": [
+            {
+              "id": "pay_507",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_1",
+                "paymentKind": {"state": "known", "value": "bonus"},
+                "incomeTimingKind": {"state": "known", "value": "officer-bonus"},
+                "workPeriod": {"state": "not-applicable"},
+                "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+                "grossPay": {"state": "known", "value": 200000}
+              }
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_507"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "officer-bonusは契約版2.0が並べていない区分の値（新しい版で足した区分でありうる）。拡張できる列挙の知らない値はunknownと同じに扱うので、例示の規則（区分ordinaryの規則）を当てはめず、根拠が0件でundetermined。候補の年は帰属の区分の次元からすべての年（支払予定日の2026に狭めない）。ordinaryに読み替えない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "1", "quote": "すべての判定で、そのFactの状態がunknownの場合と同じに扱う"},
+            {"doc": "common-types.md", "section": "1", "quote": "0・対象外・既定の値（ordinary等）に読み替えない"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "incomeTimingKindがunknown（この版が知らない値を含む）ならすべての年"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_507", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "候補の年はすべての年なので、2027年の集計にもpay_507をundeterminedで挙げる。知らない区分の値は保存の検査のすり抜け（save-checkのconflict）とはみなさないので、状態はundetermined。",
+          "cites": [
+            {"doc": "common-types.md", "section": "1", "quote": "9の「保存の検査をすり抜けたデータ」（conflictで挙げる）とはみなさず、この規則で扱う"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "保存の検査をすり抜けたデータとしてconflictにはしない"}
+          ]
+        }
+      ]
     }
   ]
 }

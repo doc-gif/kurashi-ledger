@@ -54,6 +54,12 @@ export function readLedgerFiles(dir: string = LEDGER_DIR): LedgerFiles {
 
 const NO_DEFAULT = Symbol("no-default");
 
+function hasRetroactiveLine(body: Obj): boolean {
+  const lines = body["otherEarnings"];
+  const list = isObj(lines) && lines["state"] === "known" ? lines["value"] : undefined;
+  return Array.isArray(list) && list.some((row) => isObj(row) && isObj(row["category"]) && row["category"]["state"] === "known" && row["category"]["value"] === "retroactive-adjustment");
+}
+
 function conditionalDefault(type: RecordType, field: string, body: Obj): unknown | typeof NO_DEFAULT | undefined {
   const na = { state: "not-applicable" };
   if (type === "allocation") {
@@ -67,8 +73,9 @@ function conditionalDefault(type: RecordType, field: string, body: Obj): unknown
     if (field === "explainedComparisons") return t === "mismatch-explanation" ? NO_DEFAULT : na;
   }
   if (type === "forecast" && field === "accountId") return body["subject"] === "deposit" ? NO_DEFAULT : na;
-  // 合成例の読み方の6（契約版2.0）: 給与明細の帰属の区分は、書いていなければknownのordinary（通常の給与等）。
-  if (type === "payslip" && field === "incomeTimingKind") return { state: "known", value: "ordinary" };
+  // 合成例の読み方の6（契約版2.0）: 給与明細の帰属の区分は、書いていなければ、遡及差額の行（分類retroactive-adjustment）を
+  // 持つ明細はunknown（役員賞与と遡及差額はいまは対象外）、ほかはknownのordinary（通常の給与等）。
+  if (type === "payslip" && field === "incomeTimingKind") return hasRetroactiveLine(body) ? { state: "unknown" } : { state: "known", value: "ordinary" };
   return undefined;
 }
 
