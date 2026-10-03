@@ -24,9 +24,10 @@
       "id": "PR2-R003",
       "invariant_id": "INV-TASKS",
       "cause_key": "dependency-before-consumer",
-      "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
+      "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+        "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197"
       ]
     },
     {
@@ -167,6 +168,318 @@
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
         "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+      ]
+    },
+    {
+      "id": "PR11-R001",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "revision-reason-field-rules",
+      "lesson": "改訂の理由ごとに変更できる項目と状態の遷移を列挙する。取消・取消解除では本文と関係を維持・復元し、本文や把握日の訂正は訂正の改訂に分ける。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592713",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747549",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941"
+      ]
+    },
+    {
+      "id": "PR11-R002",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "supersession-series-current-record",
+      "lesson": "差し替え系列は、分岐・循環・別系列への誤接続・中間や末端の取消と取消解除・未確定の差し替えを含めて現在の記録が一意に決まる系列全体の規則で定め、保存条件と例を同じ規則から導く。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319576",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467683",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467727",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592793",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345145",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995574"
+      ]
+    },
+    {
+      "id": "PR11-R003",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "rounding-step-association",
+      "lesson": "丸め手順を結果項目へ一意に結び付け、keyと順序の一意性、参照先の実在と一致、適用順、手順間の値の連続と方式どおりの結果を保存時に検査する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319720",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747456",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393950840",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601"
+      ]
+    },
+    {
+      "id": "PR11-R004",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "required-fact-state-constraint",
+      "lesson": "Factの既定（unknown・not-stated・not-applicableを許す）を、規則が依存する項目に残さない。確定配分の確認済み版、必須の参照、制度版・地域、把握日、軸の日付、通知の分類・金額などは、許す状態とその組合せを項目ごとに定める。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699625",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699666",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836480",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168574471",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395270955",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397903585"
+      ]
+    },
+    {
+      "id": "PR11-R005",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "notice-issuer-identity",
+      "lesson": "正式通知の重複判定は、安定した発行者キーと発行者の種類の整合で行う。表示名の表記差・不明・3件以上での未判断の組を別件とみなして加算しない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535788",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397600549"
+      ]
+    },
+    {
+      "id": "PR11-R006",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "unknown-narrows-scope",
+      "lesson": "不明な期間・一覧・分類・金額・帰属の根拠は、未知のまま保持して推定で確定しない。不存在・空・0・対象外として扱って候補年や集計範囲を狭めず、影響し得る範囲を除外せずにincompleteにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394871157",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319530",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991016",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991079",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168109005",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248770",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248829",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954"
+      ]
+    },
+    {
+      "id": "PR11-R007",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "record-level-ref-line-whole",
+      "lesson": "差し替え・二重登録・判断の対象など記録全体に働く参照はline=wholeに限り、行を指す参照を保存時に拒否する。照合配分や証憑など意図した行参照は分けて維持する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366"
+      ]
+    },
+    {
+      "id": "PR11-R008",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "confirmation-identity-comparison",
+      "lesson": "照合の確定条件は勤務先・口座・支払者などの識別次元を網羅し、Factと非Factの混在を含めて1つの比較規則で判定する。未確定を一致として扱わず、推定の手掛かりは確定条件と分ける。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747509",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057"
+      ]
+    },
+    {
+      "id": "PR11-R009",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "calculation-result-type-scope",
+      "lesson": "共通の計算結果型が表せる値の種類と判別子を定める。非数値の判断結果は、型・状態・比較を持つ別の契約として決定先と受入条件を明記する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+      ]
+    },
+    {
+      "id": "PR11-R010",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "decision-premise-recheck",
+      "lesson": "判断や確定した関係は、根拠にしたすべての属性（入金の用途、対象の項目、確認した版、識別次元、正規の発行者ID、行の状態など）を前提として保持し、前提が変わったら要再確認として使わない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956"
+      ]
+    },
+    {
+      "id": "PR11-R011",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "run-pinned-input-completeness",
+      "lesson": "計算runに固定する入力（記録・関係の閉包、採用スナップショット、比較項目）は、計算対象と入力要求から独立に導いた必要集合と過不足なく一致することを保存時に検査する。逆向きに効く配分・判断、取消済みの橋渡し記録、直接持つマスタIDも含める。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693"
+      ]
+    },
+    {
+      "id": "PR11-R101",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "unresolvable-relation-as-absent",
+      "lesson": "参照先を解決できない・使えない関係を「関係なし」として扱わない。差し替え・帰属・比較・実績化では、壊れた関係を系列や集計のconflict・incompleteとして表に出す。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638737",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995480",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169331465",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609766",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+      ]
+    },
+    {
+      "id": "PR11-R102",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "ref-revision-semantics",
+      "lesson": "参照ごとにcurrentと整数版のどちらを指すかを定め、過去時点の見方や固定した記録を未来の版へ結び付けない。関係の参照と確認済みの版を二重に固定して矛盾させない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319639",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394711089",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395565138"
+      ]
+    },
+    {
+      "id": "PR11-R103",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "pinned-snapshot-granularity",
+      "lesson": "runに固定するスナップショットは、実行時の判定を一意に再現できる粒度で持つ。項目別の適用状態、年と支払者ごとに1つの採用、一意なキー、再確認に使う比較値と正規IDを含める。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638670",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995601",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170073901",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394283625",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992"
+      ]
+    },
+    {
+      "id": "PR11-R104",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "annual-document-indivisible-scope",
+      "lesson": "年間資料の値は範囲全体の不可分な総額として扱う。採用・比較・説明・runへの固定は資料の年と確定範囲に一致するときだけ許し、部分範囲や支払者ごとに重ねて加算しない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319878",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392035",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877085",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528442",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745593",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+      ]
+    },
+    {
+      "id": "PR11-R105",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "self-referential-step-inputs",
+      "lesson": "状態や上限の判定に、その判定の結果や対象自身を入力として含めない。段階ごとの入力集合を先に確定し、同じ計算を述べる各節で含める状態をそろえる。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170365823",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170623177",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397221035"
+      ]
+    },
+    {
+      "id": "PR11-R106",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "contract-type-expressiveness",
+      "lesson": "共通の型（集計値・coverage・不足状態・記録の種類）が、規則の求める全ケース（年間以外、採用未決定、採用元の混在、通知の重複、対応表の未定義、不完全な実績）を偽らずに表せるか確かめる。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319780",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319842",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392077",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699707",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394879245",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057"
+      ]
+    },
+    {
+      "id": "PR11-R107",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "free-value-identity-key",
+      "lesson": "同一性・重複判定・集計に使うキーを自由な文字列や表示名にしない。型・名前空間・許す次元を定めた判別できるキーとし、集合の中での一意性か合算の規則を定める。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167391984",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877133",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876181",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170141612",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397135859"
+      ]
+    },
+    {
+      "id": "PR11-R108",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "restated-facts-drift",
+      "lesson": "件数・列挙・ID・連番・前提のマスタを本文や合成例で手書きで繰り返すと正本とずれる。正本を参照し、合成例はfixtureとして契約の保存条件を満たすか確かめる。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170289483",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279"
+      ]
+    },
+    {
+      "id": "PR11-R109",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "lifecycle-transition-revalidation",
+      "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745539",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055"
+      ]
+    },
+    {
+      "id": "PR11-R110",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "state-classification-precedence",
+      "lesson": "状態の判定表は、条件が重なるときの優先順を明示する。異常終了・取り下げ・0件（空集合）・使えない関係などの境界でも結果が一意に決まるようにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168169997",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609700",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397135859"
+      ]
+    },
+    {
+      "id": "PR11-R111",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "recorded-time-ordering",
+      "lesson": "版の順序を時計の時刻に頼らない。時計の後退や同じ時刻でも一意に並ぶ記録順（連番など）を使い、生の時計値どうしの比較を保存条件にしない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168108952",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345106",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434527"
+      ]
+    },
+    {
+      "id": "PR11-R112",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-assessment-drift",
+      "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974"
       ]
     }
   ]
