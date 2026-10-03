@@ -2,7 +2,7 @@
 
 複数勤務先の給与・銀行入金、税金・社会保険の記録と見通しを管理する個人向けアプリの設計プロジェクトです。
 
-**2026-10-02に製品の実装を始めました。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算、製品の試験はまだありません（開発用のスクリプトの試験とCIはあります）。実装側AIは作業中のPRをDraftにし、レビュー依頼時はOpenへ切り替えて引き継ぎます。引継ぎ後は、実装していない別のAIの内容レビューを待ちます。マージは、そのレビューのacceptedと[規約の条件](AGENTS.md)を満たした自分のPRだけを実装側が手動で行い、自動マージは行いません。
+**2026-10-02に製品の実装を始めました。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算はまだありません。製品のコードは、記録と履歴のドメイン（T06、`src/domain/records/`）とその試験から始めました（開発用のスクリプトの試験とCIもあります）。実装側AIは作業中のPRをDraftにし、レビュー依頼時はOpenへ切り替えて引き継ぎます。引継ぎ後は、実装していない別のAIの内容レビューを待ちます。マージは、そのレビューのacceptedと[規約の条件](AGENTS.md)を満たした自分のPRだけを実装側が手動で行い、自動マージは行いません。
 
 ## 別のAIが作業を引き継ぐとき
 
@@ -10,11 +10,11 @@
 
 ## 開発環境
 
-いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIです。アプリの起動、UIのビルド、製品の試験はまだありません。
+いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CI、記録と履歴のドメイン（T06。画面・保存・APIはまだない）とその試験です。アプリの起動とUIのビルドはまだありません。
 
 - Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
 - 手元の版は[mise](https://mise.jdx.dev)でそろえられます。ルートの`mise.toml`がNode.js 24.21.0とPython 3.11.17を固定し、どのworktreeでも`mise install`で同じ版になります（macOSの導入、Windowsでの扱い、版の正本の役割は[開発環境](docs/development.md)の「miseで版をそろえる」）。
-- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験と、合成データの台帳の検査）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
+- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験、合成データの台帳の検査、記録ドメインの試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
 - CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
 - レビュー運用ツール（Python 3.11以上）は、`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査します（[手順](tools/review_guard/README.md)）。
