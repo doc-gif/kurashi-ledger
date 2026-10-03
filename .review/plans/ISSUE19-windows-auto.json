@@ -28,7 +28,7 @@
     {
       "description": "GitHubのWindowsのrunnerは管理者で動くので、管理者でないユーザーでの動き（symlinkを作れないときの弱めた確認、T26の本人だけのACL）は、CIでは確かめられていなかった。",
       "state": "resolved",
-      "resolution": "Windowsで一時の一般のローカルユーザーを作り、タスク スケジューラ（パスワードのログオン、権限は制限）でnpm testと同じ試験をそのユーザーとして実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
+      "resolution": "Windowsで一時の一般のローカルユーザーを作り、そのユーザーとしてログオンして（Start-Process -Credential。タスク スケジューラはS4Uの登録が拒否され、パスワードのタスクは起動されなかったので使わない）npm testと同じ試験を実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
     }
   ],
   "assessments": [
@@ -69,7 +69,7 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "試験は合成のプロジェクトと合成のnpm・127.0.0.1の合成のregistryだけを使う。CIで作る一時のローカルユーザーのパスワードは、ジョブのステップの中で暗号論的な乱数から作り、表示・ファイルへの保存・ログ出力をせず、ユーザーの作成とタスクの登録に渡すだけにする。ジョブの最後にタスクとユーザーを消す（runnerは使い捨てのVM）。secretsを使わず、artifactをuploadしない。step summaryには試験の名前・skip・diagnostic・版・ユーザーの種別（管理者でないこと）だけを書き、ユーザー名・SIDは書かない。",
+      "reason": "試験は合成のプロジェクトと合成のnpm・127.0.0.1の合成のregistryだけを使う。CIで作る一時のローカルユーザーのパスワードは、ジョブのステップの中で暗号論的な乱数から作り、表示・ファイルへの保存・ログ出力をせず、ユーザーの作成とそのユーザーでの起動に渡すだけにする。ジョブの最後にユーザーを消す（runnerは使い捨てのVM）。secretsを使わず、artifactをuploadしない。step summaryには試験の名前・skip・diagnostic・版・ユーザーの種別（管理者でないこと）だけを書き、ユーザー名・SIDは書かない。",
       "checks": [
         {
           "id": "public",
