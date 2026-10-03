@@ -16,7 +16,8 @@
     "scripts/setup-lock.test.ts",
     "scripts/setup.test.ts",
     "tests/support/windows-console.test.ts",
-    "tests/support/windows-console.ts"
+    "tests/support/windows-console.ts",
+    ".github/copilot-instructions.md"
   ],
   "conflicts": [
     {
@@ -162,7 +163,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "状態資料・台帳のT05・ADR一覧のT05行・ADR-0008・開発環境の資料・Issue #19の記述が、同じ内容（CIで自動で確かめる・残る手での確認とその理由）を指すことを読み合わせる。",
+          "method": "状態資料・台帳のT05・ADR一覧のT05行・ADR-0008・開発環境の資料・README・docs/testing.md・Copilotの指示（.github/copilot-instructions.md）・Issue #19の記述が、同じ内容（CIで自動で確かめる・残る手での確認とその理由）を指すことを読み合わせる。",
           "expected": "「CIでは確かめていない」「手で確かめる」の古い記述が残らない。手で残る項目は理由とともに1か所（開発環境の資料）に書き、ほかはそこを参照する。"
         }
       ]
