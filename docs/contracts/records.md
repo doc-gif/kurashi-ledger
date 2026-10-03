@@ -256,9 +256,9 @@
 | `id` | `Id<EvidenceFile>` | ID（接頭辞`evf`） |
 | `sha256` | `Text` | 内容のSHA-256（64文字の小文字16進） |
 | `byteSize` | `Count` | バイト数 |
-| `mediaType` | `Text` | 例`application/pdf` |
+| `mediaType` | `Text`（空でない） | 例`application/pdf`。空の文字列は保存しない |
 | `originalFileName` | `Text` | 取込時の元の名前。個人情報を含みうる。保存名に使わない |
-| `storageName` | `Text` | データルートの`evidence/`の中の保存名。ハッシュに基づく（ADR-0006） |
+| `storageName` | `Text`（空でない） | 空の文字列は保存しない。データルートの`evidence/`の中の保存名。ハッシュに基づく（ADR-0006） |
 | `importedAt` | `Instant` | 取込日時（取込を始めたときの時計の値）。業務の時刻で、保存の時点の代わりにしない（記録時点の再現・順序には使わない。[共通の型](common-types.md)の7の「保存の時点」） |
 | `recordedAt` | `Instant` | 記録日時（証憑ファイルの保存のときの注入した時計の値。保存の時点。同7） |
 | `recordedSeq` | 1以上の整数 | 保存の連番（同7の「保存の順序」） |
