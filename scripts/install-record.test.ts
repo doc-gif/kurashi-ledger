@@ -82,10 +82,14 @@ function lockfileText(packages: Record<string, unknown>): string {
   return `${JSON.stringify(lock, null, 2)}\n`;
 }
 
-// npmと同じ形の実行ファイルのリンク。POSIXでは本体への相対のsymlink、Windowsでは.cmdのshim（通常のファイル）。
+// npmと同じ形の実行ファイルのリンク。POSIXでは本体への相対のsymlink。Windowsでは、npm（cmd-shim）と同じく、
+// 拡張子のないshimと.cmdのshim（どちらも通常のファイル。symlinkを作る権限は要らない）。照合に渡す合成の
+// 実行環境（runtime）はdarwinなので、拡張子のない名前を見る。.cmdのshimだけのときにwin32の実行環境で通ることは、
+// 「入った依存の実行ファイルのリンクが.binになければ、記録を書かない」の試験が全OSで確かめる。
 function linkTool(root: string): void {
   const bin = join(root, 'node_modules', '.bin');
   if (process.platform === 'win32') {
+    writeFileSync(join(bin, 'required-tool'), '#!/bin/sh\nexec node "$(dirname "$0")/../required-dep/cli.js" "$@"\n');
     writeFileSync(join(bin, 'required-tool.cmd'), '@node "%~dp0\\..\\required-dep\\cli.js" %*\r\n');
   } else {
     symlinkSync('../required-dep/cli.js', join(bin, 'required-tool'));
