@@ -79,19 +79,76 @@ export function isHtml(contentType: string): boolean {
 // HTMLを要素の単位で読む小さな字句解析（ADR-0009の1）。コメント・宣言（doctype等）・処理命令と、生のテキストを
 // 中身に持つ要素（script・style・title・textarea等）の中身を、要素と区別する。属性は引用符を考えて読む。
 type HtmlToken =
-  | { readonly kind: 'start'; readonly name: string; readonly attrs: ReadonlyMap<string, string>; readonly end: number }
+  | { readonly kind: 'start'; readonly name: string; readonly attrs: ReadonlyMap<string, DecodedAttribute>; readonly end: number }
   | { readonly kind: 'end'; readonly name: string; readonly end: number }
   | { readonly kind: 'comment' | 'declaration' | 'text'; readonly text: string; readonly end: number };
 
 const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'title', 'textarea', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
 
-function decodeEntities(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos);/gi, (all, body: string) => {
-    const lower = body.toLowerCase();
-    if (lower.startsWith('#x')) return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
-    if (lower.startsWith('#')) return String.fromCodePoint(Number.parseInt(lower.slice(1), 10));
-    return ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" } as Record<string, string>)[lower] ?? all;
-  });
+// 0x80〜0x9Fの数値の文字参照の置き換え（HTMLの仕様の「numeric character reference end state」の表）。
+const C1_REPLACEMENTS: Readonly<Record<number, number>> = {
+  0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x0192, 0x84: 0x201e, 0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021, 0x88: 0x02c6,
+  0x89: 0x2030, 0x8a: 0x0160, 0x8b: 0x2039, 0x8c: 0x0152, 0x8e: 0x017d, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201c,
+  0x94: 0x201d, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014, 0x98: 0x02dc, 0x99: 0x2122, 0x9a: 0x0161, 0x9b: 0x203a,
+  0x9c: 0x0153, 0x9e: 0x017e, 0x9f: 0x0178,
+};
+// 名前の文字参照のうち、判定に関わりうるもの（セミコロンあり。大文字小文字を区別する）。ASCIIの英字とハイフンに
+// なる名前の参照はHTMLにないので、ほかの名前の参照からmetaの名前（ASCII）ができることはない。
+const NAMED: Readonly<Record<string, string>> = {
+  amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>', quot: '"', QUOT: '"', apos: "'",
+  dash: '‐', hyphen: '‐', minus: '−',
+};
+// セミコロンなしでも解く古い形（属性の値では、あとに英数字か=が続くときは解かない）。
+const LEGACY = ['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT'];
+
+export type DecodedAttribute = { readonly value: string; readonly unresolved: boolean };
+
+// 属性の値の文字参照を、HTMLの仕様の属性の値の規則で解く。数値の参照は10進・16進とも、セミコロンを省略できる。
+// 0・範囲外・サロゲートはU+FFFD。解けない&（知らない名前の参照等）が残ればunresolvedにする。
+export function decodeAttributeValue(raw: string): DecodedAttribute {
+  let out = '';
+  let unresolved = false;
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i] ?? '';
+    if (ch !== '&') {
+      out += ch;
+      i += 1;
+      continue;
+    }
+    const rest = raw.slice(i);
+    const numeric = /^&#(?:[xX]([0-9A-Fa-f]+)|([0-9]+));?/.exec(rest);
+    if (numeric !== null) {
+      let code = numeric[1] !== undefined ? Number.parseInt(numeric[1], 16) : Number.parseInt(numeric[2] ?? '', 10);
+      if (!Number.isFinite(code) || code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) code = 0xfffd;
+      code = C1_REPLACEMENTS[code] ?? code;
+      out += String.fromCodePoint(code);
+      i += numeric[0].length;
+      continue;
+    }
+    const named = /^&([A-Za-z][A-Za-z0-9]*)(;?)/.exec(rest);
+    if (named !== null) {
+      const name = named[1] ?? '';
+      if (named[2] === ';' && NAMED[name] !== undefined) {
+        out += NAMED[name];
+        i += named[0].length;
+        continue;
+      }
+      const legacy = LEGACY.find((n) => name.startsWith(n));
+      if (named[2] !== ';' || legacy !== undefined) {
+        const after = rest[1 + (legacy?.length ?? 0)] ?? '';
+        if (legacy !== undefined && !/[A-Za-z0-9=]/.test(after)) {
+          out += NAMED[legacy] ?? '';
+          i += 1 + legacy.length;
+          continue;
+        }
+      }
+      unresolved = true;
+    }
+    out += '&';
+    i += 1;
+  }
+  return { value: out, unresolved };
 }
 
 // 読めない形（閉じていないコメント・タグ・生のテキストの要素）ならundefined。
@@ -123,7 +180,7 @@ function tokenizeHtml(text: string): HtmlToken[] | undefined {
     if (startTag !== null) {
       const name = (startTag[1] ?? '').toLowerCase();
       let at = pos + startTag[0].length;
-      const attrs = new Map<string, string>();
+      const attrs = new Map<string, DecodedAttribute>();
       const attr = /\s*([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?|\s*\/|\s+/y;
       for (;;) {
         if (at >= text.length) return undefined;
@@ -133,7 +190,7 @@ function tokenizeHtml(text: string): HtmlToken[] | undefined {
         if (m === null || m[0].length === 0) return undefined;
         if (m[1] !== undefined) {
           const key = m[1].toLowerCase();
-          if (!attrs.has(key)) attrs.set(key, decodeEntities(m[2] ?? m[3] ?? m[4] ?? ''));
+          if (!attrs.has(key)) attrs.set(key, decodeAttributeValue(m[2] ?? m[3] ?? m[4] ?? ''));
         }
         at += m[0].length;
       }
@@ -173,9 +230,12 @@ export function injectLaunchId(html: Buffer, launchId: string): Buffer | undefin
     break;
   }
   if (insertAt === undefined) return undefined;
-  const duplicate = tokens.some(
-    (t) => t.kind === 'start' && t.name === 'meta' && (t.attrs.get('name') ?? '').trim().toLowerCase() === LAUNCH_ID_META_NAME,
-  );
+  // 同名の実際のmetaがあるか、ブラウザでの値を確かめられない（解けない文字参照が残る）metaのnameがあれば、重複とみなす。
+  const duplicate = tokens.some((t) => {
+    if (t.kind !== 'start' || t.name !== 'meta') return false;
+    const name = t.attrs.get('name');
+    return name !== undefined && (name.unresolved || name.value.trim().toLowerCase() === LAUNCH_ID_META_NAME);
+  });
   if (duplicate) return undefined;
   return Buffer.from(`${text.slice(0, insertAt)}<meta name="${LAUNCH_ID_META_NAME}" content="${launchId}">${text.slice(insertAt)}`, 'utf8');
 }

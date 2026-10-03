@@ -11,6 +11,7 @@ import type { AddressInfo, Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import { PortInUseError, startLocalServer, type ApiRoute, type LocalServer } from '../src/infrastructure/http/server.ts';
+import type { StaticSource } from '../src/infrastructure/http/static-files.ts';
 import { ownerOnlyTempDirectory, tokenOf } from '../tests/support/http.ts';
 
 const FIXTURE_ROOT = fileURLToPath(new URL('../tests/fixtures/http/static/', import.meta.url));
@@ -286,5 +287,47 @@ test('起動し直したあと、前の起動のページのままのAPI要求�
     await expect(oldPage.locator('#state')).toHaveText('接続済み');
   } finally {
     await second.stop();
+  }
+});
+
+test('文字参照で書いたmetaのnameは、ブラウザのDOMと同じに判定し、配信したページでは識別子のmetaがちょうど1つになる', async ({ page }) => {
+  const names = [
+    'kurashi&#45ledger-launch-id',
+    'kurashi&#x2dledger&#x2Dlaunch&#45;id',
+    '&#107;urashi-ledger-launch-id',
+    'kurashi&#45ledger-launch-idx',
+    'kurashi&dash;ledger-launch-id',
+    'kurashi&#8208;ledger-launch-id',
+  ];
+  const html = (name: string) => `<!doctype html><html lang="ja"><head><meta name="${name}" content="x"><title>t</title></head><body>synthetic</body></html>`;
+  const files = new Map(names.map((name, i) => [`v${i}.html`, html(name)]));
+  const staticSource: StaticSource = {
+    read: async (segments) => {
+      const body = files.get(segments.join('/'));
+      return body === undefined ? undefined : { body: Buffer.from(body), contentType: 'text/html; charset=utf-8' };
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('e2e-refs');
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, staticSource });
+  try {
+    for (const [i, name] of names.entries()) {
+      // ブラウザが、この書き方を識別子と同じ名前のmetaと読むか。
+      await page.setContent(html(name));
+      const browserCount = await page.evaluate(() => document.querySelectorAll('meta[name="kurashi-ledger-launch-id"]').length);
+      const response = await page.goto(`${server.origin}/v${i}.html`);
+      if (browserCount > 0) {
+        // ブラウザで同名になる書き方は、重複として配信しない。
+        expect(response?.status(), name).toBe(500);
+      } else {
+        expect(response?.status(), name).toBe(200);
+        const ids = await page.evaluate(() =>
+          [...document.querySelectorAll('meta[name="kurashi-ledger-launch-id"]')].map((m) => m.getAttribute('content')),
+        );
+        expect(ids, name).toEqual([server.launchId]);
+      }
+    }
+  } finally {
+    await server.close();
+    tmp.cleanup();
   }
 });

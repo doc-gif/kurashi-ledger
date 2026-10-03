@@ -205,7 +205,10 @@ test('トークン交換のエンドポイントだけがcookieなしで有効�
       assert.equal((await post('{}')).status, 403);
       assert.equal((await post('{"token":""}')).status, 403);
       assert.equal((await post('{"token":123}')).status, 403);
-      assert.equal((await post(JSON.stringify({ token: `${tokenOf(server).slice(0, -1)}A` }))).status, 403);
+      // 最後の1文字だけを、必ず違う文字に変える（同じ文字に変えると正しいトークンになり、64回に1回は誤って成功する）。
+      const token = tokenOf(server);
+      const altered = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
+      assert.equal((await post(JSON.stringify({ token: altered }))).status, 403);
       assert.equal((await post(JSON.stringify({ token: tokenOf(another) }))).status, 403);
       assert.equal((await send(server.port, { method: 'GET', path: '/api/session', headers: sameOriginHeaders(server) })).status, 405);
       assert.equal(existsSync(server.launchFile), true);
@@ -860,6 +863,89 @@ test('静的ファイルの読み出し元を差し替えても（T09のmanifest
     for (const options of [{ staticSource, staticRoot: FIXTURE_ROOT }, { staticSource, dev }]) {
       await assert.rejects(startLocalServer({ port: 0, tokenDirectory: tmp.path, ...options }), /同時に使えない/);
     }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+// middlewareが同期でend・nextを呼んでからPromiseを返す場合の、処理の完了の契約（ADR-0009の6・7）。
+async function closeWaitsForMiddleware(kind: 'end' | 'next' | 'reject'): Promise<void> {
+  const tmp = ownerOnlyTempDirectory(`close-sync-${kind}`);
+  try {
+    const events: string[] = [];
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let entered: () => void = () => {};
+    const middlewareEntered = new Promise<void>((resolve) => (entered = resolve));
+    const logs: string[] = [];
+    const dev: LocalServerOptions['dev'] = {
+      async middleware(_req, res, next) {
+        // 呼出しの途中（最初のawaitの前）で、応答を返す（またはnext）。
+        if (kind === 'next') next();
+        else res.end('sync');
+        entered();
+        await released;
+        events.push('middleware-finished');
+        if (kind === 'reject') throw Object.assign(new Error('synthetic late failure'), { code: 'ELATE' });
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+    const response = await send(server.port, { path: '/src/sync.ts' });
+    assert.equal(response.status, kind === 'next' ? 404 : 200);
+    await middlewareEntered;
+    let closed = false;
+    const closing = server.close().then((result) => {
+      closed = true;
+      events.push('closed');
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // 応答はもう返したが、返したPromiseが決着していないので、closeは返らない。
+    assert.equal(closed, false, kind);
+    release();
+    const result = await closing;
+    assert.deepEqual(events, ['middleware-finished', 'closed'], kind);
+    assert.equal(result.launchFile, 'removed');
+    // あとからのrejectも、処理の結果として記録される。
+    if (kind === 'reject') assert.ok(logs.includes('internal-error ELATE'), logs.join('\n'));
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+  } finally {
+    tmp.cleanup();
+  }
+}
+
+test('middlewareが同期でres.end()を呼んでから未完了のPromiseを返すと、closeはそのPromiseの決着まで返らない', async () => {
+  await closeWaitsForMiddleware('end');
+});
+
+test('middlewareが同期でnext()を呼んでから未完了のPromiseを返すと、closeはそのPromiseの決着まで返らない', async () => {
+  await closeWaitsForMiddleware('next');
+});
+
+test('middlewareが同期で応答したあとで返したPromiseがrejectすると、closeはその決着を待ち、失敗を記録する', async () => {
+  await closeWaitsForMiddleware('reject');
+});
+
+test('拒否したupgradeで相手が書込み側を閉じなくても、closeはそのソケットを壊して終わる', async () => {
+  const tmp = ownerOnlyTempDirectory('upgrade-halfopen');
+  try {
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
+    // allowHalfOpen: サーバーが書込み側を閉じても、こちらは閉じない。
+    const client = connect({ host: '127.0.0.1', port: server.port, allowHalfOpen: true });
+    client.on('error', () => {});
+    let received = '';
+    const refused = new Promise<void>((resolve) => client.on('data', (c: Buffer) => ((received += c.toString('latin1')), received.includes('\r\n\r\n') && resolve())));
+    client.write(`GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+    await refused;
+    assert.match(received, /^HTTP\/1\.1 403/);
+    const result = await Promise.race([
+      server.close(),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+    ]);
+    // 拒否したソケットを壊さないと、半分閉じた接続が残り、待受の終了（server.close）が完了しない。
+    assert.notEqual(result, 'timeout');
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+    client.destroy();
   } finally {
     tmp.cleanup();
   }

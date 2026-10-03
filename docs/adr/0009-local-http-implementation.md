@@ -13,7 +13,7 @@ ADR-0003は境界の方式を決め、起動の識別子の「ヘッダの名前
 ### 1. 起動の識別子（ADR-0003の14）
 
 - 値: 起動ごとに作る16バイトの暗号論的乱数のbase64url（22文字。`[A-Za-z0-9_-]{22}`）。秘密ではなく、認証（cookie）の代わりにしない。
-- HTMLへの注入: サーバーが、配信するHTML（交換用のページ、配信ルートのHTML、案内ページ）に`<meta name="kurashi-ledger-launch-id" content="<識別子>">`を入れる。scriptではないのでCSPに影響しない。HTMLは小さな字句解析で読み、コメント・宣言・script・style・title・textarea等の生のテキストの要素の中身を、要素と区別する。注入の契約: doctype・コメント・空白・`<html>`の開始タグのあとの最初の要素が`<head>`の開始タグであること。その直後に入れる。契約を満たさないHTML（`<head>`がない、`<head>`より前にほかの要素や文字がある、閉じていないコメントやタグがある）と、文書のどこかに、name属性が同じ名前（大文字小文字を区別しない、文字参照は解いて比べる）の実際の`<meta>`要素があるHTMLは、識別子があいまいになるので配信しない（500）。コメントやtitleの中の同じ文字列は、重複として扱わない（PR25-R003）。開発時にViteが配信するHTMLへの注入はT08で行い、サーバーは開発時の口に渡した要求ごとに識別子を渡す（`devRequestContext`）。
+- HTMLへの注入: サーバーが、配信するHTML（交換用のページ、配信ルートのHTML、案内ページ）に`<meta name="kurashi-ledger-launch-id" content="<識別子>">`を入れる。scriptではないのでCSPに影響しない。HTMLは小さな字句解析で読み、コメント・宣言・script・style・title・textarea等の生のテキストの要素の中身を、要素と区別する。注入の契約: doctype・コメント・空白・`<html>`の開始タグのあとの最初の要素が`<head>`の開始タグであること。その直後に入れる。契約を満たさないHTML（`<head>`がない、`<head>`より前にほかの要素や文字がある、閉じていないコメントやタグがある）と、文書のどこかに、name属性が同じ名前（大文字小文字を区別しない。文字参照は、HTMLの属性の値の規則で解いて比べる。数値の参照はセミコロンを省略でき、16進も含む。解けない`&`が残るnameは、ブラウザでの値を確かめられないので同名とみなす）の実際の`<meta>`要素があるHTMLは、識別子があいまいになるので配信しない（500）。コメントやtitleの中の同じ文字列は、重複として扱わない（PR25-R003）。開発時にViteが配信するHTMLへの注入はT08で行い、サーバーは開発時の口に渡した要求ごとに識別子を渡す（`devRequestContext`）。
 - API要求: UIは`<meta>`から読み、すべてのAPI要求（トークンの交換を含む）に`Kurashi-Ledger-Launch-Id`ヘッダで付ける。カスタムのヘッダなので、別のoriginからの要求は事前確認（preflight）になり、CORSを返さないサーバーは通さない（追加の防御）。
 - 拒否: ヘッダのない要求と、同じヘッダが2つ以上ある要求は403（`launch-id-required`等）。形の違う・いまの起動と違う値（前の起動のものを含む）は409（`launch-id-mismatch`）で、UIは再読み込みを促す。HMRのWebSocketには付けない（ADR-0003の14）。
 
@@ -59,13 +59,13 @@ T07のデータルートの権限も、この基準を使う。基準を変え�
 
 ### 6. 開発時の口（ADR-0003の7・10。組込みはT08）
 
-- `dev.middleware`（Viteの`server.middlewares`等、Connectの形）: Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけを渡す。処理の完了（`next()`、`res.end()`、返したPromiseの決着）まで、その要求の処理としてcloseが待つ（クライアントの途中切断では完了としない）。`dev.upgrade`の処理が同期で例外を投げても、理由の符号（`upgrade-handler-error`）だけを記録してソケットを壊し、プロセスへ抜けさせない（PR25-R006）。その応答には、応答ごとの新しいnonce（16バイトの乱数のbase64）を`script-src`・`style-src`に加え、`connect-src`に`ws://127.0.0.1:<port>`を加えた開発時のCSPを付ける。nonceと起動の識別子は`devRequestContext(req)`で受け取り、T08がViteのHTMLに入れる。本番の応答（口を使わないとき、交換用のページ、API）のCSPにはnonceを含めない。
+- `dev.middleware`（Viteの`server.middlewares`等、Connectの形）: Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけを渡す。処理の完了まで、その要求の処理としてcloseが待つ。処理の完了の契約（PR25-R001）: サーバーは要求ごとに1つの追跡のPromiseを持ち、(1) middlewareの呼出しが戻るまでは完了を確定しない（同期の例外は失敗）、(2) 返り値がPromiseなら、その決着だけで決まる（rejectは失敗。呼出しの途中にend・nextがあっても待つ）、(3) Promiseでなければ、最初の`next()`か`res.end()`の呼出し（呼出しの途中に起きても、戻ってから確定する）、(4) 応答・接続のclose（クライアントの途中切断）は完了ではない。失敗は、応答をまだ返していなければ500にし、返していれば接続を閉じ、記録する。`dev.upgrade`の処理が同期で例外を投げても、理由の符号（`upgrade-handler-error`）だけを記録してソケットを壊し、プロセスへ抜けさせない（PR25-R006）。その応答には、応答ごとの新しいnonce（16バイトの乱数のbase64）を`script-src`・`style-src`に加え、`connect-src`に`ws://127.0.0.1:<port>`を加えた開発時のCSPを付ける。nonceと起動の識別子は`devRequestContext(req)`で受け取り、T08がViteのHTMLに入れる。本番の応答（口を使わないとき、交換用のページ、API）のCSPにはnonceを含めない。
 - `dev.upgrade`（HMRのWebSocket）: Host、`Origin`（必須で完全一致）・`Sec-Fetch-Site`（あれば`same-origin`）、cookieの検査を通ったupgradeだけを渡す。口がなければ、すべてのupgradeを拒否する。ViteにはこのサーバーのHTTPの`server`を直接渡さない（Viteが自分でupgradeを受けて検査を迂回するため）。
 - 配信ルートと開発時の口は同時に使えない。開発時だけ検査を外す設定はない。
 
 ### 7. 終了（ADR-0002の「起動と終了」）
 
-- closeの契約（PR25-R001）: 新しい接続を受け付けず（待受を止める。終了中に既存の接続へ届いた要求とupgradeは503）、実行中の処理（APIの処理・本文の読込み・開発時のmiddleware）に`AbortSignal`で中止を知らせ、すべての処理の完了を待つ（本文の読込みは中止の合図で503にし、クライアントが本文の途中で切断したときも決着する。APIの処理は`ApiRequest.signal`、開発時のmiddlewareは`devRequestContext(req).signal`で合図を受け、早めに終えてよいが、closeは、APIの処理の完了と、middlewareの処理の完了（`next()`の呼出し、`res.end()`の呼出し、またはmiddlewareが返したPromiseの決着）を待つ。応答・接続の終了（クライアントの途中切断で起きる応答のclose）は、処理の完了として数えない。PR25-R001）。受理したupgradeのソケットは追跡してすべて閉じる（`closeAllConnections`はupgrade済みのソケットを閉じない）。そのあとHTTPの接続を閉じ、待受の終了を待ち、トークンとセッションを無効にし、一時ファイルを消す。closeが終わったあとに、接続や処理は残らない。T09は、closeのあとでDBを閉じ、lockを解放する。
+- closeの契約（PR25-R001）: 新しい接続を受け付けず（待受を止める。終了中に既存の接続へ届いた要求とupgradeは503）、実行中の処理（APIの処理・本文の読込み・開発時のmiddleware）に`AbortSignal`で中止を知らせ、すべての処理の完了を待つ（本文の読込みは中止の合図で503にし、クライアントが本文の途中で切断したときも決着する。APIの処理は`ApiRequest.signal`、開発時のmiddlewareは`devRequestContext(req).signal`で合図を受け、早めに終えてよいが、closeは、APIの処理の完了と、middlewareの処理の完了（6の契約）を待つ。応答・接続の終了（クライアントの途中切断で起きる応答のclose）は、処理の完了として数えない。PR25-R001）。upgradeのソケットは、受け付けるか拒否するかを決める前にすべて追跡し、すべて壊す（`closeAllConnections`はupgradeのソケットを閉じない。拒否して書込み側を閉じたソケットも、相手が閉じなければ残る）。そのあとHTTPの接続を閉じ、待受の終了を待ち、トークンとセッションを無効にし、一時ファイルを消す。closeが終わったあとに、接続や処理は残らない。T09は、closeのあとでDBを閉じ、lockを解放する。
 - 一時ファイルの後始末の結果（PR25-R004）: closeは`removed`・`missing`（すでにない）・`replaced`（作ったものと違うものに置き換わっていたので消していない）・`failed`（消せなかった）を返す。待受の停止とトークン・セッションの無効化は、結果によらず行う。交換のときに消せなかった場合も、closeでもう一度消す。
 - `npm start`は、Ctrl+C（SIGINT）・SIGTERM・SIGHUP（WindowsはSIGBREAKも）でcloseを呼ぶ。一時ファイルを消した（`removed`・`missing`）なら、その旨を表示して終了コード0で終わる。ファイルが残った（`replaced`・`failed`）なら、消したとは表示せず、パスと、中身を確かめて手で消す手順を示して終了コード1で終わる（残ったファイルのトークンは無効）。終了の処理の途中でもう一度受けたら、待たずに1で終わる。lockの解放とDBを閉じることはT09で加える。
 

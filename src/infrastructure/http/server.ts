@@ -78,8 +78,9 @@ export type ApiRoute = {
 // 載せる。middlewareには、Hostの検査を通ったGET/HEADの要求（APIと交換用のページを除く）だけが届き、応答には共通の
 // ヘッダ（開発時のCSP）が付く。upgradeには、Host・Origin・cookieの検査を通った要求だけが届く。
 export type DevIntegration = {
-  // 処理の完了は、next()の呼出し、res.end()の呼出し、またはmiddlewareが返したPromiseの決着（Promiseを返したときは
-  // それを待つ）。クライアントの途中切断（応答のclose）では完了としない。closeはこの完了を待つ。
+  // 処理の完了（runDevMiddlewareの契約）: Promiseを返したときはその決着だけ。返さないときは、最初のnext()か
+  // res.end()の呼出し（呼出しの途中に起きても、戻ってから確定する）。クライアントの途中切断では完了としない。
+  // closeはこの完了を待つ。
   readonly middleware: (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => void | Promise<void>;
   readonly upgrade?: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
 };
@@ -221,6 +222,70 @@ function parseJson(data: Buffer): { ok: true; value: unknown } | { ok: false } {
   } catch {
     return { ok: false };
   }
+}
+
+// 開発時のmiddlewareを1回呼び、その処理の完了まで決着しないPromiseを返す（ADR-0009の6・7の「処理の完了」の契約）。
+// サーバーはこのPromiseを所有し、closeはその決着を待つ。出来事（end・next・応答のclose）では状態を記録するだけで、
+// 完了かどうかはsettleIfDone()の1か所で判定する（一度決着したPromiseは戻せないため、早まって決着させない）。
+// (1) 呼出しが戻るまでは、どの出来事でも完了を確定しない。同期の例外は失敗。
+// (2) 返り値がPromise（thenを持つ値）なら、その決着だけで決まる（resolveで完了、rejectで失敗）。
+// (3) Promiseでなければ、呼出しの途中または後の、最初のnext()かres.end()の呼出しで完了。
+// (4) 応答・接続のclose（クライアントの途中切断）は、どの場合も完了ではない。
+export function runDevMiddleware(
+  middleware: DevIntegration['middleware'],
+  req: IncomingMessage,
+  res: ServerResponse,
+  onNext: (error?: unknown) => void,
+): Promise<void> {
+  return new Promise<void>((resolve, fail) => {
+    let returned = false;
+    let returnedThenable = false;
+    let signaled = false;
+    let settled = false;
+    const settleIfDone = (): void => {
+      if (settled || !returned || returnedThenable || !signaled) return;
+      settled = true;
+      resolve();
+    };
+    const originalEnd = res.end.bind(res) as (...args: unknown[]) => ServerResponse;
+    res.end = ((...args: unknown[]) => {
+      const result = originalEnd(...args);
+      signaled = true;
+      settleIfDone();
+      return result;
+    }) as typeof res.end;
+    const next = (error?: unknown): void => {
+      onNext(error);
+      signaled = true;
+      settleIfDone();
+    };
+    let value: unknown;
+    try {
+      value = middleware(req, res, next);
+    } catch (error) {
+      settled = true;
+      fail(error);
+      return;
+    }
+    returned = true;
+    if (typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function') {
+      returnedThenable = true;
+      (value as PromiseLike<unknown>).then(
+        () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          fail(error);
+        },
+      );
+      return;
+    }
+    settleIfDone();
+  });
 }
 
 export async function startLocalServer(options: LocalServerOptions): Promise<LocalServer> {
@@ -366,32 +431,9 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (path === LAUNCH_SCRIPT_PATH) return sendFile(res, Buffer.from(LAUNCH_SCRIPT, 'utf8'), 'text/javascript; charset=utf-8', current.launchId);
     if (options.dev !== undefined) {
       const dev = options.dev;
-      // middlewareの処理が完了する（next()、res.end()、返したPromiseの決着）まで、この要求の処理として追跡する。
-      // クライアントの途中切断（応答のclose）は、処理の完了ではないので待ち続ける（closeはこれを待つ）。
-      await new Promise<void>((resolve, rejectWork) => {
-        let returnedPromise = false;
-        let ended = false;
-        const originalEnd = res.end.bind(res) as (...args: unknown[]) => ServerResponse;
-        res.end = ((...args: unknown[]) => {
-          ended = true;
-          const result = originalEnd(...args);
-          if (!returnedPromise) resolve();
-          return result;
-        }) as typeof res.end;
-        const next = (error?: unknown): void => {
-          if (!res.headersSent && !ended) reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
-          if (!returnedPromise) resolve();
-        };
-        let returned: void | Promise<void>;
-        try {
-          returned = dev.middleware(req, res, next);
-        } catch (error) {
-          rejectWork(error);
-          return;
-        }
-        if (returned instanceof Promise) {
-          returnedPromise = true;
-          returned.then(() => resolve(), rejectWork);
+      await runDevMiddleware(dev.middleware, req, res, (error) => {
+        if (!res.headersSent && !res.writableEnded) {
+          reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
         }
       });
       return;
@@ -449,6 +491,15 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const path = safePath(req.url);
+    // 受け付けるか拒否するかを決める前に、すべてのupgradeのソケットを追跡する（closeAllConnectionsはupgradeの
+    // ソケットを閉じない。拒否してend()したソケットも、相手が書込み側を閉じなければ残るので、closeで壊す）。
+    upgradedSockets.add(socket);
+    socket.once('close', () => upgradedSockets.delete(socket));
+    // 終了中に届いたupgradeは、応答せずに壊す（終了の手順のあとに残さない）。
+    if (shutdown.signal.aborted) {
+      socket.destroy();
+      return;
+    }
     const refuse = (rejection: Rejection): void => {
       log(`UPGRADE ${path} ${rejection.status} ${rejection.code}`);
       socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -465,9 +516,6 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const upgrade = options.dev?.upgrade;
     if (upgrade === undefined) return refuse({ status: 404, code: 'no-websocket' });
     log(`UPGRADE ${path} accepted`);
-    // closeで閉じるために、渡したソケットを追跡する（closeAllConnectionsはupgrade済みのソケットを閉じない）。
-    upgradedSockets.add(socket);
-    socket.once('close', () => upgradedSockets.delete(socket));
     // 開発時の口の処理が同期で例外を投げても、プロセスへ抜けさせない。理由の符号だけを記録し、ソケットを壊す。
     try {
       upgrade(req, socket, head);
@@ -509,14 +557,15 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     shutdown.abort();
     // 1. 新しい接続を受け付けない（待受を止める。完了の通知は、すべての接続が閉じてから）。
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
-    // 2. upgrade済みの接続を閉じる。
+    // 2. upgradeのソケット（受け付けたものと、拒否して書込み側を閉じたもの）を壊す。
     for (const socket of upgradedSockets) socket.destroy();
-    // 3. 実行中の処理（APIの処理、開発時のmiddlewareの応答の終了またはnext()）に中止を知らせたうえで、すべての完了を
-    //    待つ（処理中に新しく加わったものも待つ）。
+    // 3. 実行中の処理（APIの処理と、開発時のmiddlewareの処理。runDevMiddlewareの契約）に中止を知らせたうえで、
+    //    すべての完了を待つ（処理中に新しく加わったものも待つ）。
     server.closeIdleConnections();
     while (inflight.size > 0) await Promise.allSettled([...inflight]);
     // 4. 残ったHTTPの接続を閉じ、待受の終了を待つ。
     server.closeAllConnections();
+    for (const socket of upgradedSockets) socket.destroy(); // 待つ間に届いたもの
     await stopped;
   };
   try {

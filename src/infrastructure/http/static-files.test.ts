@@ -4,7 +4,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { ownerOnlyTempDirectory } from '../../../tests/support/http.ts';
-import { createDiskStaticSource, injectLaunchId, parseStaticPath } from './static-files.ts';
+import { createDiskStaticSource, decodeAttributeValue, injectLaunchId, parseStaticPath } from './static-files.ts';
 
 test('URLのパスの検査: 配信ルートの中の普通の名前だけをセグメントにする', () => {
   assert.deepEqual(parseStaticPath('/'), { ok: true, segments: ['index.html'] });
@@ -129,5 +129,40 @@ test('ディスクの読み出し元は、配信ルートの実体パスの配�
     assert.equal(await viaLink.read(['escape', 'secret.txt']), undefined);
   } finally {
     tmp.cleanup();
+  }
+});
+
+test('属性の値の文字参照は、ブラウザと同じ規則で解く（セミコロンのない数値の参照・16進・C1・不正な値・古い名前の参照）', () => {
+  const cases: Array<[string, string, boolean]> = [
+    ['kurashi&#45ledger', 'kurashi-ledger', false],
+    ['kurashi&#x2dledger', 'kurashi-ledger', false],
+    ['kurashi&#X2D;ledger', 'kurashi-ledger', false],
+    ['&#0045;&#107', '-k', false],
+    ['&#0;&#x110000;&#xD800;', '\uFFFD\uFFFD\uFFFD', false],
+    ['&#150;', '\u2013', false],
+    ['a&amp;b&lt c', 'a&b< c', false],
+    ['a&ampb', 'a&ampb', true],
+    ['a&amp=b', 'a&amp=b', true],
+    ['a&dash;b&hyphen;c&minus;d', 'a\u2010b\u2010c\u2212d', false],
+    ['a&unknown;b', 'a&unknown;b', true],
+    ['a & b', 'a & b', false],
+  ];
+  for (const [raw, value, unresolved] of cases) assert.deepEqual(decodeAttributeValue(raw), { value, unresolved }, raw);
+});
+
+test('セミコロンのない数値の参照等で書いた同名のmetaも重複とし、ハイフンに似た別の文字の名前は重複としない', () => {
+  const id = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const page = (name: string) => `<!doctype html><html><head><meta name="${name}" content="x"><title>t</title></head><body></body></html>`;
+  for (const name of [
+    'kurashi&#45ledger-launch-id',
+    'kurashi&#x2dledger&#x2Dlaunch&#45;id',
+    '&#107;urashi-ledger-launch-id',
+    'KURASHI&#45LEDGER&#45LAUNCH&#45ID',
+    'kurashi&unknown;-ledger-launch-id',
+  ]) {
+    assert.equal(injectLaunchId(Buffer.from(page(name)), id), undefined, name);
+  }
+  for (const name of ['kurashi&#45ledger-launch-idx', 'kurashi&dash;ledger-launch-id', 'kurashi&#8208;ledger-launch-id']) {
+    assert.notEqual(injectLaunchId(Buffer.from(page(name)), id), undefined, name);
   }
 });
