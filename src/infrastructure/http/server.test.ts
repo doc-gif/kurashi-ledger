@@ -1044,3 +1044,81 @@ test('upgradeを拒否する生の応答にも、通常の応答と同じ必須�
     tmp.cleanup();
   }
 });
+
+test('読み出し元が返すメディア型の大文字小文字によらずHTMLに識別子を入れ、text/htmlxには入れない', async () => {
+  const tmp = ownerOnlyTempDirectory('media-type');
+  try {
+    const page = Buffer.from('<!doctype html><html><head><title>t</title></head><body>x</body></html>');
+    const staticSource: StaticSource = {
+      read: async (segments) =>
+        segments[0] === 'upper.html'
+          ? { body: page, contentType: 'Text/HTML; charset=UTF-8' }
+          : segments[0] === 'other.x'
+            ? { body: page, contentType: 'text/htmlx' }
+            : undefined,
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, staticSource });
+    try {
+      assert.equal((await send(server.port, { path: '/upper.html' })).text.includes(`content="${server.launchId}"`), true);
+      assert.equal((await send(server.port, { path: '/other.x' })).text.includes(server.launchId), false);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('終了が始まったあとに既存の接続で届いたupgradeには、必須のヘッダ付きの503（closing）を返してから接続を閉じる', async () => {
+  const tmp = ownerOnlyTempDirectory('close-upgrade');
+  try {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let started: () => void = () => {};
+    const handlerStarted = new Promise<void>((resolve) => (started = resolve));
+    const api: ApiRoute[] = [
+      {
+        method: 'POST',
+        path: '/api/test/slow',
+        handle: async () => {
+          started();
+          await released;
+          return { status: 200, body: {} };
+        },
+      },
+    ];
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, api });
+    const cookie = await exchange(server);
+    // 1. 終了を止めておくための、終わらない処理。
+    const pending = send(server.port, {
+      method: 'POST',
+      path: '/api/test/slow',
+      headers: sameOriginHeaders(server, { cookie, 'content-type': 'application/json' }),
+      body: '{}',
+    });
+    await handlerStarted;
+    // 2. 既存の接続で、upgradeの要求の途中まで送っておく（要求の途中の接続は、待機中の接続として閉じられない）。
+    const client = connect({ host: '127.0.0.1', port: server.port });
+    client.on('error', () => {});
+    await new Promise<void>((resolve) => client.once('connect', () => resolve()));
+    let received = '';
+    client.on('data', (c: Buffer) => (received += c.toString('latin1')));
+    const clientClosed = new Promise<void>((resolve) => client.once('close', () => resolve()));
+    client.write(`GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 3. 終了を始め、そのあとで要求の残りを送る。
+    const closing = server.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    client.write(`Origin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+    await clientClosed;
+    assert.match(received, /^HTTP\/1\.1 503 /);
+    assert.match(received, /\r\nX-Kurashi-Ledger-Reason: closing\r\n/);
+    assert.match(received, /\r\nCache-Control: no-store\r\n/);
+    assert.match(received, new RegExp(`\\r\\nContent-Security-Policy: ${PRODUCTION_CSP.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\r\\n`));
+    release();
+    assert.equal((await pending).status, 200);
+    assert.equal((await closing).launchFile, 'removed');
+  } finally {
+    tmp.cleanup();
+  }
+});

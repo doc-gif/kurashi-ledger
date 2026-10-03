@@ -1,10 +1,10 @@
 // 静的ファイルの配信の範囲（ADR-0003の13、ADR-0009）: URLのパスの検査と、配信ルートの実体パスの確認。
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { ownerOnlyTempDirectory } from '../../../tests/support/http.ts';
-import { createDiskStaticSource, decodeAttributeValue, injectLaunchId, parseStaticPath } from './static-files.ts';
+import { createDiskStaticSource, decodeAttributeValue, injectLaunchId, isHtml, parseStaticPath } from './static-files.ts';
 
 test('URLのパスの検査: 配信ルートの中の普通の名前だけをセグメントにする', () => {
   assert.deepEqual(parseStaticPath('/'), { ok: true, segments: ['index.html'] });
@@ -164,5 +164,34 @@ test('セミコロンのない数値の参照等で書いた同名のmetaも重�
   }
   for (const name of ['kurashi&#45ledger-launch-idx', 'kurashi&dash;ledger-launch-id', 'kurashi&#8208;ledger-launch-id']) {
     assert.notEqual(injectLaunchId(Buffer.from(page(name)), id), undefined, name);
+  }
+});
+
+test('HTMLの判定は、;より前のメディア型を正規化して、text/htmlと完全に一致するときだけ', () => {
+  for (const type of ['text/html', 'Text/HTML; charset=UTF-8', ' text/html ;charset=utf-8', 'TEXT/HTML']) assert.equal(isHtml(type), true, type);
+  for (const type of ['text/htmlx', 'text/html-sandboxed', 'application/xhtml+xml', 'text/plain', '']) assert.equal(isHtml(type), false, type);
+});
+
+test('ディスクの読み出し元は、実体パスを確かめたあと・開く前に経路が配信ルートの外へ差し替わると、外のファイルを返さない', async () => {
+  const tmp = ownerOnlyTempDirectory('static-race');
+  try {
+    const root = join(tmp.path, 'root');
+    const outside = join(tmp.path, 'outside');
+    mkdirSync(join(root, 'sub'), { recursive: true });
+    mkdirSync(outside);
+    writeFileSync(join(root, 'sub', 'page.txt'), 'inside');
+    writeFileSync(join(outside, 'page.txt'), 'outside-secret');
+    let swapped = false;
+    const source = await createDiskStaticSource(root, () => {
+      if (swapped) return;
+      swapped = true;
+      // 確かめた実体パスの親を、配信ルートの外へのリンクに差し替える。
+      renameSync(join(root, 'sub'), join(root, 'sub-moved'));
+      symlinkSync(outside, join(root, 'sub'), process.platform === 'win32' ? 'junction' : 'dir');
+    });
+    assert.equal(await source.read(['sub', 'page.txt']), undefined);
+    assert.equal(swapped, true);
+  } finally {
+    tmp.cleanup();
   }
 });

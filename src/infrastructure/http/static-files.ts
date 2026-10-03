@@ -6,7 +6,8 @@
 // 2. 読み出し元（StaticSource）: ディスクの読み出し元は、起動時に配信ルートの実体パスを固定し、候補の実体パス
 //    （symlink・junctionを解決したもの）が配信ルートの実体パスの配下にある通常のファイルのときだけ返す。
 //    ディレクトリの一覧は返さない。T09は、manifestで確かめた内容をメモリから返す読み出し元に替える（ADR-0002）。
-import { open, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, realpath, stat } from 'node:fs/promises';
 import { extname, join, sep } from 'node:path';
 import { LAUNCH_ID_META_NAME } from './request-checks.ts';
 
@@ -72,8 +73,9 @@ export function contentTypeFor(name: string): string {
   return CONTENT_TYPES[extname(name).toLowerCase()] ?? 'application/octet-stream';
 }
 
+// HTMLか。;より前のメディア型を正規化し（前後の空白を除いて小文字）、text/htmlと完全に一致するときだけ。
 export function isHtml(contentType: string): boolean {
-  return contentType.startsWith('text/html');
+  return (contentType.split(';')[0] ?? '').trim().toLowerCase() === 'text/html';
 }
 
 // HTMLを要素の単位で読む小さな字句解析（ADR-0009の1）。コメント・宣言（doctype等）・処理命令と、生のテキストを
@@ -256,8 +258,9 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined;
 }
 
-// rootの実体パスを起動時に固定する。rootがディレクトリでなければ例外。
-export async function createDiskStaticSource(root: string): Promise<StaticSource> {
+// rootの実体パスを起動時に固定する。rootがディレクトリでなければ例外。onResolvedは、試験で実体パスを確かめたあと・
+// 開く前に経路を差し替えるためだけに使う。
+export async function createDiskStaticSource(root: string, onResolved?: (real: string) => void): Promise<StaticSource> {
   const rootReal = await realpath(root);
   if (!(await stat(rootReal)).isDirectory()) throw new Error(`配信ルート ${root} がディレクトリでない。`);
   const prefix = rootReal.endsWith(sep) ? rootReal : rootReal + sep;
@@ -272,17 +275,31 @@ export async function createDiskStaticSource(root: string): Promise<StaticSource
       }
       // 実体パスが配信ルートの配下になければ返さない（外を指すsymlink・junctionを含む）。
       if (!real.startsWith(prefix)) return undefined;
+      onResolved?.(real);
       let handle;
       try {
-        handle = await open(real, 'r');
+        handle = await open(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       } catch (error) {
         if (NOT_FOUND_CODES.has(errorCode(error) ?? '')) return undefined;
         throw error;
       }
       try {
-        const info = await handle.stat();
+        const info = await handle.stat({ bigint: true });
         if (!info.isFile()) return undefined;
-        if (info.size > MAX_FILE_BYTES) throw new Error('配信するファイルが大きすぎる。');
+        // 確かめた実体パスと、開いたファイルを結び付ける（確かめたあと・開く前に経路が差し替わっていれば返さない）:
+        // もう一度実体パスを求めて配信ルートの配下にあり、そのファイルが開いたものと同じ（dev・ino）であること。
+        // 開いたあとで差し替えて戻すような、配信ルートの持ち主（同じユーザー）の競合は、ADR-0003の
+        // 「この境界で守らないもの」と同じ扱い。
+        let again: string;
+        try {
+          again = await realpath(real);
+        } catch {
+          return undefined;
+        }
+        if (!again.startsWith(prefix)) return undefined;
+        const current = await lstat(again, { bigint: true }).catch(() => undefined);
+        if (current === undefined || !current.isFile() || current.dev !== info.dev || current.ino !== info.ino) return undefined;
+        if (info.size > BigInt(MAX_FILE_BYTES)) throw new Error('配信するファイルが大きすぎる。');
         const body = await handle.readFile();
         return { body, contentType: contentTypeFor(segments.at(-1) ?? '') };
       } finally {

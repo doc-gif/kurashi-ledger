@@ -144,6 +144,8 @@ export class PortInUseError extends Error {
 }
 
 const DEFAULT_JSON_MAX_BYTES = 64 * 1024;
+// upgradeの拒否の応答を書き切るのを待つ上限（そのあとはソケットを壊す）。
+const REFUSAL_FLUSH_MS = 2000;
 const EXCHANGE_MAX_BYTES = 1024;
 
 function validateRoutes(routes: readonly ApiRoute[]): void {
@@ -326,6 +328,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   // closeが所有するもの: 実行中の要求の処理、upgrade済みのソケット、中止の合図。
   const inflight = new Set<Promise<void>>();
   const upgradedSockets = new Set<Duplex>();
+  // 拒否の応答を書いている途中のupgradeのソケット（書き切ってから自分で壊すので、終了の手順では待つ）。
+  const refusing = new WeakSet<Duplex>();
   const shutdown = new AbortController();
 
   const reject = (res: ServerResponse, rejection: Rejection, api: boolean): void => {
@@ -497,20 +501,19 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     // ソケットを閉じない。拒否してend()したソケットも、相手が書込み側を閉じなければ残るので、closeで壊す）。
     upgradedSockets.add(socket);
     socket.once('close', () => upgradedSockets.delete(socket));
-    // 終了中に届いたupgradeは、応答せずに壊す（終了の手順のあとに残さない）。
-    if (shutdown.signal.aborted) {
-      socket.destroy();
-      return;
-    }
     const refuse = (rejection: Rejection): void => {
       log(`UPGRADE ${path} ${rejection.status} ${rejection.code}`);
       // 通常のHTTPの応答と同じ定義の必須のヘッダと、拒否の理由を付ける（生の応答も出口の契約から外さない）。
       const headers = [...requiredResponseHeaders(PRODUCTION_CSP), ['X-Kurashi-Ledger-Reason', rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
-      socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`);
+      // 書き切ったらソケットを壊す（相手が書込み側を閉じなくても残さない）。書き切れない相手に備え、少しあとにも壊す。
+      refusing.add(socket);
+      socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`, () => socket.destroy());
+      setTimeout(() => socket.destroy(), REFUSAL_FLUSH_MS).unref();
     };
+    // 終了中に届いたupgradeも、503（closing）を書き切ってから壊す。
+    if (shutdown.signal.aborted) return refuse({ status: 503, code: 'closing' });
     const current = session;
     if (current === undefined) return refuse({ status: 503, code: 'starting' });
-    if (shutdown.signal.aborted) return refuse({ status: 503, code: 'closing' });
     const host = checkHost(req, expectedHost);
     if (host !== undefined) return refuse(host);
     const target = checkRequestTarget(req.url);
@@ -563,15 +566,17 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     shutdown.abort();
     // 1. 新しい接続を受け付けない（待受を止める。完了の通知は、すべての接続が閉じてから）。
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
-    // 2. upgradeのソケット（受け付けたものと、拒否して書込み側を閉じたもの）を壊す。
-    for (const socket of upgradedSockets) socket.destroy();
+    // 2. 受け付けたupgradeのソケットを壊す。拒否の応答を書いているものは、書き切ってから壊れる（下の4で待つ）。
+    for (const socket of upgradedSockets) if (!refusing.has(socket)) socket.destroy();
     // 3. 実行中の処理（APIの処理と、開発時のmiddlewareの処理。runDevMiddlewareの契約）に中止を知らせたうえで、
     //    すべての完了を待つ（処理中に新しく加わったものも待つ）。
     server.closeIdleConnections();
     while (inflight.size > 0) await Promise.allSettled([...inflight]);
     // 4. 残ったHTTPの接続を閉じ、待受の終了を待つ。
     server.closeAllConnections();
-    for (const socket of upgradedSockets) socket.destroy(); // 待つ間に届いたもの
+    for (const socket of upgradedSockets) if (!refusing.has(socket)) socket.destroy(); // 待つ間に受け付けたもの
+    // 拒否の応答を書いているソケットが、書き切って（または時間が来て）壊れるのを待つ。
+    await Promise.all([...upgradedSockets].map((socket) => new Promise<void>((resolve) => (socket.destroyed ? resolve() : socket.once('close', () => resolve())))));
     await stopped;
   };
   try {
