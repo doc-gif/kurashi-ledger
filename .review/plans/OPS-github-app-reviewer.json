@@ -27,9 +27,9 @@
       "resolution": "所有者の決定どおり、rulesetの提案を『承認1件を必須・pushで古い承認を取り消す・最新のpushの承認を必須・迂回の一覧を空』にし、所有者の確認待ちと明記する。Appの承認が必須の承認に数えられるか（AppのContents権限がreadのとき）は推測せず、迂回試験の確認項目にする。#38の提案文の調整は、後でマージする側が照合する。"
     },
     {
-      "description": "作業の途中で所有者が範囲を追加した（実装側のClaudeにも2つ目のAppを入れる）。",
+      "description": "作業の途中で所有者が2回、範囲と設計を変えた: (1) 実装側のClaudeにも2つ目のAppを入れる、(2) ClaudeとCodexのどちらも実装とレビューを行うので、Appは役割ではなくAIの身元とし、2つのAppに同じ権限（Contents・Pull requests・Issues・Workflows R/W、Actions・Metadata R、Administrationなし）を与える。",
       "state": "resolved",
-      "resolution": "同じPRで扱う。スクリプトは--roleで役割を選び、役割ごとにキーチェーンのservice・環境変数・縮小する権限を表で持つ。実装側はadministrationを持たない。文書はdocs/github-apps.mdにまとめ、Issue #41に決定を記録した。"
+      "resolution": "同じPRで扱う。スクリプトは--agent codex|claudeで身元（キーチェーンのserviceは所有者が登録した名前を既定にし、--keychain-serviceで変えられる。IDはAIごとの環境変数）、--purpose review|implementでトークンを縮小する権限を選ぶ（reviewはpull_requests:write・contents:read・actions:read、implementはcontents:write・pull_requests:write・issues:write・actions:read・workflows:write）。分離は身元で行い、AIは自分が実装・pushしたPRを承認しない。決定はIssue #41と docs/github-apps.md に記録する。"
     },
     {
       "description": "PR #40（OPS-WRITING）とPR #38が、pr-review-loop・github-agent-operations・external-worker・project-status・READMEを同時に変える。",
@@ -96,7 +96,7 @@
         },
         {
           "id": "trust",
-          "method": "文書で、APPROVEはcommit_idにレビューしたheadを指定してAPIで送り、応答のcommit_idを確かめる手順にしているか、実装側のAppが自分のPRを承認できないこと、rulesetが未設定の間はAppの承認も手続きの記録にすぎないこと、同じmacOSユーザーなので強い隔離ではないことを読み合わせる。",
+          "method": "文書で、APPROVEはcommit_idにレビューしたheadを指定してAPIで送り応答のcommit_idを確かめる手順か、roleのAIと投稿したAppのAIの一致を求めるか、AIが自分の実装・pushしたPRを承認しないと書いたか、rulesetの『承認1件＋最新のpushの承認』で承認者がもう一方のAIのAppか所有者に限られる理由、rulesetが未設定の間はAppの承認も強制ではないこと、同じmacOSユーザーなので強い隔離ではないこと、Appの承認が必須の承認に数えられるか等の未確認の項目を列挙したかを読み合わせる。",
           "expected": "承認の取り違え（別のheadの承認、作者による自己承認、設定前の強制ゲート扱い）を許す記述がない。限界と未検証の項目が列挙されている。"
         }
       ]
