@@ -2,6 +2,7 @@
 // 実際のnpm ciを使う試験は setup.test.ts。
 import assert from 'node:assert/strict';
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -817,6 +818,67 @@ test('記録を書いている最中にシグナルを受けたら、書き終�
   assert.equal(existsSync(recordPath(root)), false);
   assert.deepEqual(readdirSync(join(root, 'node_modules')).filter((n) => n.startsWith(RECORD_FILE_NAME)), []);
   assert.equal(existsSync(join(root, LOCK)), false);
+});
+
+// 印の削除だけを失敗させるには、worktreeの直下を書込み禁止にする。Windowsでは権限でこれを再現できず、
+// rootのユーザーは権限を無視して消せるので、試験しない（処理はOSによらず同じ）。
+const lockUnlinkSkip =
+  process.platform === 'win32'
+    ? 'Windowsでは、試験の中で印の削除だけを確実に失敗させる方法がない（処理はPOSIXと同じ）'
+    : process.getuid?.() === 0
+      ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、削除の失敗を再現できない'
+      : false;
+
+test('印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する', { skip: lockUnlinkSkip }, async () => {
+  // 中断: npm ciの最中にシグナルを受け、片付けの前に印を消せなくなる。
+  const root = makeProject();
+  const interruption = new SetupInterruption({ graceMs: 60_000 });
+  const { run, fake } = blockingCi(root);
+  const { result, lines } = runWith(root, interruption, run);
+  await fake.started;
+  interruption.notify('SIGINT');
+  chmodSync(root, 0o555);
+  let code: number;
+  try {
+    fake.exit({ status: null, signal: 'SIGINT' });
+    code = await result;
+  } finally {
+    chmodSync(root, 0o755);
+  }
+  assert.equal(code, 130, lines.join('\n'));
+  assert.match(lines.join('\n'), /SIGINT を受けたので中断した。依存の導入の記録は残していない。/);
+  assert.match(lines.join('\n'), /印（\.kurashi-ledger-setup\.lock）を消せなかった/);
+  assert.match(lines.join('\n'), /rm \.kurashi-ledger-setup\.lock/);
+  assert.equal(existsSync(recordPath(root)), false);
+  assert.equal(existsSync(join(root, LOCK)), true, '印は残り、照合と次のsetupを止める');
+  assert.equal(verifyInstallRecord(root, runtime).ok, false);
+
+  // 成功: 記録を書いたあとで印を消せなくなる。記録は有効なまま0で終え、印が残ることを伝える。
+  const root2 = makeProject();
+  const lines2: string[] = [];
+  let code2: number;
+  try {
+    code2 = await runSetup({
+      root: root2,
+      runtime,
+      runNpmCi: () => ({ done: Promise.resolve(fakeSuccessfulCi(root2)) }),
+      syncDirectory: (dir) => {
+        syncDirectoryEntries(dir);
+        chmodSync(root2, 0o555);
+      },
+      log: (l) => lines2.push(l),
+      error: (l) => lines2.push(l),
+    });
+  } finally {
+    chmodSync(root2, 0o755);
+  }
+  assert.equal(code2, 0, lines2.join('\n'));
+  assert.match(lines2.join('\n'), /を消せなかった/);
+  assert.equal(existsSync(recordPath(root2)), true);
+  assert.equal(existsSync(join(root2, LOCK)), true);
+  assert.equal(verifyInstallRecord(root2, runtime).ok, false, '印があるあいだは照合が止まる');
+  rmSync(join(root2, LOCK));
+  assert.equal(verifyInstallRecord(root2, runtime).ok, true, '印を消せば記録は有効');
 });
 
 test('確定点より後に届いたシグナルでは、記録を残したまま成功で終える', async () => {

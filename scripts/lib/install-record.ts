@@ -297,30 +297,39 @@ export function acquireSetupLock(root: string): SetupLock {
 }
 
 // 自分の印だけを消す。消えていたり差し替えられていたりすれば消さずに、その旨を返す。
+// 調べる・消す操作が失敗しても例外にせず、残った印の案内を返す（中断の終了コードや、成功・失敗の
+// 判断を、印の後始末の失敗で変えないため。印が残れば、照合と次のsetupは止まる）。
 export function releaseSetupLock(root: string, lock: SetupLock): string | null {
   const path = setupLockPath(root);
-  let stat;
   try {
-    stat = lstatSync(path);
-  } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') {
-      return `作業中の印（${SETUP_LOCK_NAME}）が、終わる前に消えていた。`;
-    }
-    throw error;
-  }
-  let token: unknown;
-  if (stat.isFile()) {
+    let stat;
     try {
-      token = (JSON.parse(readFileSync(path, 'utf8')) as { token?: unknown }).token;
-    } catch {
-      token = undefined;
+      stat = lstatSync(path);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') {
+        return `作業中の印（${SETUP_LOCK_NAME}）が、終わる前に消えていた。`;
+      }
+      throw error;
     }
+    let token: unknown;
+    if (stat.isFile()) {
+      try {
+        token = (JSON.parse(readFileSync(path, 'utf8')) as { token?: unknown }).token;
+      } catch {
+        token = undefined;
+      }
+    }
+    if (token !== lock.token) {
+      return `作業中の印（${SETUP_LOCK_NAME}）が自分の印でない（途中で差し替えられた等）ので、消さずに残した。中身を確かめてから消す。`;
+    }
+    unlinkSync(path);
+    return null;
+  } catch (error) {
+    return [
+      `作業中の印（${SETUP_LOCK_NAME}）を消せなかった: ${error instanceof Error ? error.message : String(error)}`,
+      `印が残っているあいだは、照合と次の \`npm run setup\` が止まる。原因（権限等）を直してから、印を消す（macOS: \`rm ${SETUP_LOCK_NAME}\`、WindowsのPowerShell: \`Remove-Item ${SETUP_LOCK_NAME}\`）。`,
+    ].join('\n');
   }
-  if (token !== lock.token) {
-    return `作業中の印（${SETUP_LOCK_NAME}）が自分の印でない（途中で差し替えられた等）ので、消さずに残した。中身を確かめてから消す。`;
-  }
-  unlinkSync(path);
-  return null;
 }
 
 // シグナルで中断したときの片付け。シグナルの処理から呼ぶほか、試験から直接呼べる。

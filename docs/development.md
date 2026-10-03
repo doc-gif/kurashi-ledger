@@ -49,7 +49,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`・`SIGHUP`）で止めると、新しい手順を始めず、動いている`npm ci`の終了を待ってから、記録と書きかけのファイルと自分の印を消して終える（終了コードはCtrl+Cで130。数秒かかることがある）。記録が残らないので、`npm run setup`をやり直す。Ctrl+Cを重ねても片付けは飛ばさない。
 
-印が残るのは、setupを強制終了したとき（macOS: `kill -9`やアクティビティモニタの「強制終了」、Windows: タスク マネージャーでの終了やコンソールを閉じたとき、電源断）と、片付けで記録を消せなかったとき（そう表示する）だけ。印が残っていると、次のsetupと照合（`check:install`・`build`）が止まり、印に書いたプロセス番号と開始時刻を表示する。次の手順で消す（印は自動では消さない。ADR-0008）。
+印が残るのは、setupを強制終了したとき（macOS: `kill -9`やアクティビティモニタの「強制終了」、Windows: タスク マネージャーでの終了やコンソールを閉じたとき、電源断）と、片付けで記録や印を消せなかったとき（そう表示する）だけ。印が残っていると、次のsetupと照合（`check:install`・`build`）が止まり、印に書いたプロセス番号と開始時刻を表示する。次の手順で消す（印は自動では消さない。ADR-0008）。
 
 1. 動いているsetupがないことを確かめる（macOS: `ps -p <番号>`やアクティビティモニタ、Windows: タスク マネージャー）。番号は別のプロセスに再利用されうるので、開始時刻も見る。
 2. 印を消す（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）。片付けで記録を消せなかったと表示された場合は、原因（権限等）を直してから、記録`node_modules/.kurashi-ledger-install.json`も消す。
