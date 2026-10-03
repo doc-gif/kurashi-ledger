@@ -316,6 +316,7 @@
     "eligibility": [
       {
         "input": "legalSpouse",
+        "subject": "配偶者",
         "allowed": [
           true
         ],
@@ -326,6 +327,7 @@
       },
       {
         "input": "sameHousehold",
+        "subject": "配偶者と納税者",
         "allowed": [
           true
         ],
@@ -336,6 +338,7 @@
       },
       {
         "input": "businessFamilyEmployee",
+        "subject": "配偶者",
         "allowed": [
           false
         ],
@@ -447,6 +450,7 @@
     "eligibility": [
       {
         "input": "legalSpouse",
+        "subject": "配偶者",
         "allowed": [
           true
         ],
@@ -457,6 +461,7 @@
       },
       {
         "input": "sameHousehold",
+        "subject": "配偶者と納税者",
         "allowed": [
           true
         ],
@@ -467,6 +472,7 @@
       },
       {
         "input": "businessFamilyEmployee",
+        "subject": "配偶者",
         "allowed": [
           false
         ],
@@ -476,23 +482,62 @@
         }
       },
       {
-        "input": "spouseClaimsSpecialDeduction",
+        "input": "spouseAppliesSpecialDeduction",
+        "subject": "配偶者",
+        "object": "納税者（配偶者が自分の配偶者特別控除で納税者を対象にする）",
         "allowed": [
           false
         ],
+        "meaning": "その年の年末調整・確定申告で、配偶者が配偶者特別控除の適用を受ける",
         "source": {
           "ref": "nta-ta-1195",
-          "location": "同(3)（配偶者が配偶者特別控除を適用していない）"
+          "location": "同(3)・冒頭の「夫婦の間で互いに受けることはできません」"
         }
       },
       {
-        "input": "spouseWithheldWithSourceDeductionSpouse",
-        "allowed": [
-          false
+        "anyOf": [
+          {
+            "input": "spouseWithheldViaSalaryDeclaration",
+            "allowed": [
+              false
+            ]
+          },
+          {
+            "input": "spouseAppliesSpecialDeduction",
+            "allowed": [
+              false
+            ]
+          }
         ],
+        "subject": "配偶者",
+        "object": "納税者（配偶者の給与所得者の扶養控除等申告書・従たる給与の申告書の源泉控除対象配偶者）",
+        "meaning": "配偶者が年中に源泉控除対象配偶者がある居住者として源泉徴収されていない。ただし、配偶者が年末調整・確定申告で配偶者特別控除の適用を受けなかった場合を除く（源泉徴収されていても、spouseAppliesSpecialDeductionがfalseなら満たす）。資料の「等」のほかの除く場合は確かめていない",
         "source": {
           "ref": "nta-ta-1195",
-          "location": "同(4)(5)（配偶者が源泉控除対象配偶者がある居住者として源泉徴収されていない）"
+          "location": "同(4)"
+        }
+      },
+      {
+        "anyOf": [
+          {
+            "input": "spouseWithheldViaPensionDeclaration",
+            "allowed": [
+              false
+            ]
+          },
+          {
+            "input": "spouseAppliesSpecialDeduction",
+            "allowed": [
+              false
+            ]
+          }
+        ],
+        "subject": "配偶者",
+        "object": "納税者（配偶者の公的年金等の受給者の扶養親族等申告書の源泉控除対象配偶者）",
+        "meaning": "(4)と同じ形で、公的年金等の申告書による源泉徴収",
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(5)"
         }
       }
     ],
@@ -541,6 +586,7 @@
     "eligibility": [
       {
         "input": "relationship",
+        "subject": "親族",
         "allowed": [
           "relative",
           "foster-child",
@@ -553,6 +599,7 @@
       },
       {
         "input": "sameHousehold",
+        "subject": "親族と納税者",
         "allowed": [
           true
         ],
@@ -563,6 +610,7 @@
       },
       {
         "input": "businessFamilyEmployee",
+        "subject": "親族",
         "allowed": [
           false
         ],
@@ -598,6 +646,7 @@
     "eligibility": [
       {
         "input": "relationship",
+        "subject": "親族",
         "allowed": [
           "relative",
           "foster-child"
@@ -609,6 +658,7 @@
       },
       {
         "input": "sameHousehold",
+        "subject": "親族と納税者",
         "allowed": [
           true
         ],
@@ -619,6 +669,7 @@
       },
       {
         "input": "businessFamilyEmployee",
+        "subject": "親族",
         "allowed": [
           false
         ],
@@ -628,23 +679,43 @@
         }
       },
       {
-        "input": "claimsSpecificRelativeDeductionItself",
+        "input": "relativeAppliesSpecificRelativeDeduction",
+        "subject": "親族（特定親族）",
+        "object": "親族自身の特定親族",
         "allowed": [
           false
         ],
+        "meaning": "特定親族自身が、自分の所得税で特定親族特別控除を適用している",
         "source": {
           "ref": "nta-ta-1177",
           "location": "同(7)"
         }
       },
       {
-        "input": "sourceDeductionRelativeWithheld",
+        "input": "relativeDeclaredSourceDeductionRelativeAndWithheld",
+        "subject": "親族（特定親族）",
+        "object": "親族が申告した別の人（親族の源泉控除対象親族である特定親族）",
         "allowed": [
           false
         ],
+        "meaning": "特定親族が、自分の扶養控除等申告書に源泉控除対象親族の特定親族がいる旨を記載し、源泉徴収されている",
         "source": {
           "ref": "nta-ta-1177",
-          "location": "同(8)(9)（源泉控除対象親族として源泉徴収されていない）"
+          "location": "同(8)"
+        }
+      },
+      {
+        "input": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
+        "scope": "taxpayer",
+        "subject": "ほかの人",
+        "object": "納税者本人",
+        "allowed": [
+          false
+        ],
+        "meaning": "ほかの人が、扶養控除等申告書（公的年金等の申告書を含む）に、納税者が源泉控除対象親族の特定親族である旨を記載し、源泉徴収されている（入力のtaxpayerに持つ）",
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(9)"
         }
       }
     ],

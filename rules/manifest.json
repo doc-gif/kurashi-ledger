@@ -409,6 +409,52 @@
         "nta-hotei2025-scope",
         "nta-hotei2025-payment"
       ],
+      "requiredInputs": [
+        {
+          "path": "residency"
+        },
+        {
+          "path": "incomeSources"
+        },
+        {
+          "path": "taxpayerEvent.kind"
+        },
+        {
+          "path": "returnKind",
+          "procedures": [
+            "tax-return"
+          ]
+        },
+        {
+          "path": "salaryRevenue"
+        },
+        {
+          "path": "socialInsuranceDeduction"
+        },
+        {
+          "path": "otherIncomeDeductions"
+        },
+        {
+          "path": "incomeAdjustmentEligible"
+        },
+        {
+          "path": "withheldTax"
+        },
+        {
+          "path": "taxCredits"
+        },
+        {
+          "path": "spouse",
+          "nullable": true
+        },
+        {
+          "path": "relatives",
+          "emptyAllowed": true
+        },
+        {
+          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld"
+        }
+      ],
       "unsupportedInputs": [
         {
           "path": "residency",
@@ -540,6 +586,52 @@
         "nta-shinkoku2025-balance",
         "egov-tsusoku",
         "nta-hotei2025-scope"
+      ],
+      "requiredInputs": [
+        {
+          "path": "residency"
+        },
+        {
+          "path": "incomeSources"
+        },
+        {
+          "path": "taxpayerEvent.kind"
+        },
+        {
+          "path": "returnKind",
+          "procedures": [
+            "tax-return"
+          ]
+        },
+        {
+          "path": "salaryRevenue"
+        },
+        {
+          "path": "socialInsuranceDeduction"
+        },
+        {
+          "path": "otherIncomeDeductions"
+        },
+        {
+          "path": "incomeAdjustmentEligible"
+        },
+        {
+          "path": "withheldTax"
+        },
+        {
+          "path": "taxCredits"
+        },
+        {
+          "path": "spouse",
+          "nullable": true
+        },
+        {
+          "path": "relatives",
+          "emptyAllowed": true
+        },
+        {
+          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld"
+        }
       ],
       "unsupportedInputs": [
         {

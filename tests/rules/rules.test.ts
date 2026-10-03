@@ -370,7 +370,11 @@ function checkIncomeTaxData(data: Obj, where: string, problems: Problems): void 
     if (!Array.isArray(el) || el.length === 0) problems.add(`${where} ${k}`, "適用要件（eligibility）がない（所得・年齢だけで控除しない。PR29-R006）");
     arr(el).forEach((e, i) => {
       const o = obj(e);
-      if (!nonEmpty(o["input"]) || !Array.isArray(o["allowed"]) || o["allowed"].length === 0 || !isObj(o["source"])) problems.add(`${where} ${k}.eligibility[${i}]`, "{ input, allowed（1件以上）, source }");
+      // 1つの条件は1つの入力（input・allowed）か、原典の例外を含むanyOf（どれかを満たせばよい）。主語（subject）を必須にし、1つの真偽値で複数の条件を代えない（PR29-R006）。
+      const alts = Array.isArray(o["anyOf"]) ? o["anyOf"].map(obj) : [o];
+      const shapeOk = alts.length > 0 && alts.every((a) => nonEmpty(a["input"]) && Array.isArray(a["allowed"]) && a["allowed"].length > 0);
+      if (!shapeOk || !isObj(o["source"]) || !nonEmpty(o["subject"])) problems.add(`${where} ${k}.eligibility[${i}]`, "{ input, allowed（1件以上）, subject, source }か{ anyOf: [{ input, allowed }], subject, source }");
+      if (o["scope"] === "taxpayer" && !String(o["input"]).startsWith("taxpayer.")) problems.add(`${where} ${k}.eligibility[${i}]`, "納税者の入力（scope taxpayer）はtaxpayer.で始める");
     });
   }
 }
@@ -391,7 +395,13 @@ function checkAgeRange(o: Obj, ref: string, w: string, problems: Problems): void
 function familyFields(data: Obj): { spouse: Map<string, unknown[]>; relative: Map<string, unknown[]> } {
   const collect = (keys: string[]): Map<string, unknown[]> => {
     const out = new Map<string, unknown[]>();
-    for (const k of keys) for (const e of arr(obj(data[k])["eligibility"])) out.set(String(obj(e)["input"]), arr(obj(e)["allowed"]));
+    for (const k of keys) {
+      for (const e of arr(obj(data[k])["eligibility"])) {
+        const o = obj(e);
+        if (o["scope"] === "taxpayer") continue; // 納税者の入力はrequiredInputsで確かめる
+        for (const a of Array.isArray(o["anyOf"]) ? o["anyOf"].map(obj) : [o]) out.set(String(a["input"]), arr(a["allowed"]));
+      }
+    }
     return out;
   };
   return { spouse: collect(["spouseDeduction", "spouseSpecialDeduction"]), relative: collect(["dependentDeduction", "specificRelativeDeduction"]) };
@@ -429,6 +439,28 @@ function inputUnsupported(rs: Obj, input: unknown, procedure: unknown): { violat
     }
   }
   return { violates, unknown };
+}
+
+// 手続ごとの必須の入力（manifestのrequiredInputs。PR29-R005）。欠けた・null（nullableでない）・unknownの入力は、分からない入力として数える。
+// 家族がない（spouseがnull、relativesが空の並び）ことは、欠けた入力ではない。
+function missingRequired(rs: Obj, input: unknown, procedure: unknown): string[] {
+  const out: string[] = [];
+  for (const r of arr(rs["requiredInputs"])) {
+    const o = obj(r);
+    if (Array.isArray(o["procedures"]) && !o["procedures"].includes(procedure)) continue;
+    const path = String(o["path"]);
+    let cur: unknown = input;
+    let missing = false;
+    for (const part of path.split(".")) {
+      if (!isObj(cur) || !(part in cur)) {
+        missing = true;
+        break;
+      }
+      cur = cur[part];
+    }
+    if (missing || cur === "unknown" || (cur === null && o["nullable"] !== true) || (Array.isArray(cur) && cur.length === 0 && o["emptyAllowed"] !== true)) out.push(`${path}（必須の入力）`);
+  }
+  return out;
 }
 
 const REVIEW_RECORD = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)#(pullrequestreview|issuecomment)-[1-9][0-9]*$/;
@@ -547,6 +579,7 @@ export function validateRules(input: RulesInput): string[] {
     if (listed.size === 0) problems.add(w, "一次資料（sources）がない");
     else if (![...listed].some((s) => sources.get(s)?.["primary"] === true)) problems.add(w, "一次資料（primary: true）が要る");
     const applies = checkApplies(rs, `${w} ${key}`, problems);
+    if (rs["kind"] === "calculation" && (!Array.isArray(rs["requiredInputs"]) || rs["requiredInputs"].length === 0 || !rs["requiredInputs"].every((r) => nonEmpty(obj(r)["path"])))) problems.add(`${w} ${key}`, "計算の規則には必須の入力（requiredInputs: [{ path, procedures?, nullable?, emptyAllowed? }]）が要る");
     ruleSets.set(key, { rs, applies, used: new Set<string>() });
     // 制度データ
     const data = obj(input.dataFiles.get(String(rs["data"])));
@@ -626,7 +659,7 @@ export function validateRules(input: RulesInput): string[] {
     }
     if (!targetCovered(target, entry.applies)) problems.add(w, "targetが規則の適用の範囲（applies）に当たらない");
     if (unsup.violates.length > 0) problems.add(w, `入力が規則の未対応の条件に当たるのに${String(status)}: ${unsup.violates.join("・")}`);
-    const unknownInputs = [...unsup.unknown];
+    const unknownInputs = [...unsup.unknown, ...missingRequired(entry.rs, caseInput, target["procedure"])];
     if (entry.rs["regime"] === "income-tax" && entry.rs["kind"] === "calculation") {
       const fields = familyFields(obj(input.dataFiles.get(String(entry.rs["data"]))));
       const ci = obj(caseInput);
@@ -842,6 +875,18 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["計算するケースの入力が未対応の条件に当たる", (c) => (input(c, "REG-02")["taxpayerEvent"] = { kind: "death", date: "2026-12-05" }), "未対応の条件に当たるのに"],
     ["家族が年の中途で死亡したのに計算する", (c) => (obj(arr(input(c, "REG-11")["relatives"])[0])["livingAtYearEnd"] = false), "未対応の条件に当たるのに"],
     ["家族の適用要件の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["businessFamilyEmployee"], "businessFamilyEmployeeがない"],
+    ["特定親族の(8)の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["relativeDeclaredSourceDeductionRelativeAndWithheld"], "relativeDeclaredSourceDeductionRelativeAndWithheldがない"],
+    ["配偶者の(4)の入力がない", (c) => delete obj(input(c, "REG-24")["spouse"])["spouseWithheldViaSalaryDeclaration"], "spouseWithheldViaSalaryDeclarationがない"],
+    ["必須の入力taxpayerEventがない", (c) => delete input(c, "REG-02")["taxpayerEvent"], "taxpayerEvent.kind（必須の入力）"],
+    ["確定申告の必須の入力returnKindがない", (c) => delete input(c, "REG-17")["returnKind"], "returnKind（必須の入力）"],
+    ["必須の入力residencyがない", (c) => delete input(c, "REG-02")["residency"], "residency（必須の入力）"],
+    ["必須の入力incomeSourcesがない", (c) => delete input(c, "REG-03")["incomeSources"], "incomeSources（必須の入力）"],
+    ["必須の入力taxCreditsがない", (c) => delete input(c, "REG-12")["taxCredits"], "taxCredits（必須の入力）"],
+    ["必須の入力taxCreditsがnull", (c) => (input(c, "REG-12")["taxCredits"] = null), "taxCredits（必須の入力）"],
+    ["配偶者の項目そのものがない（nullとは違う）", (c) => delete input(c, "REG-02")["spouse"], "spouse（必須の入力）"],
+    ["納税者の(9)の入力がない", (c) => delete obj(input(c, "REG-19")["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"], "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（必須の入力）"],
+    ["計算の規則に必須の入力の定義がない", (c) => delete ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["requiredInputs"], "requiredInputs"],
+    ["1つの条件に主語がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["specificRelativeDeduction"])["eligibility"])[4])["subject"], "subject"],
     ["分からない適用要件で計算する", (c) => (obj(input(c, "REG-11")["spouse"])["sameHousehold"] = "unknown"), "分からない入力があるのにcomputed"],
     ["incompleteなのに結果がすべて分かる", (c) => (obj(caseOf(c.cases, "REG-02")["expected"])["status"] = "incomplete"), "unknownの結果がない"],
     ["特定親族の生年月日の範囲", (c) => (obj(c.data.get("rules/income-tax/jp-2025.json")?.["specificRelativeDeduction"])["bornFrom"] = "2003-01-01"), "年齢の上限"],
