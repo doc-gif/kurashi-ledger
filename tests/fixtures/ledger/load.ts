@@ -115,6 +115,15 @@ export interface ExpandContext {
   scenarioId: string;
   opId: string;
   previous: Obj | undefined;
+  // writeRequestIdを書かなかったときの既定。省略すると w-<scenarioId>-<opId>（保存の操作ごとに1つ。同じ操作の再送は同じキー）。
+  // restoreUncheckedのように1つの操作で複数の改訂を置く場合は、改訂ごとに一意のキーを渡す（restoredWriteRequestId）。
+  defaultWriteRequestId?: string;
+}
+
+// restoreUncheckedで置く改訂ごとの既定のwriteRequestId。writeRequestIdはデータベース全体で予約するキーなので（共通の型の9・10）、
+// 1つの操作で置く複数の改訂に同じキーを付けない。
+export function restoredWriteRequestId(scenarioId: string, opId: string, recordId: string, revision: number): string {
+  return `w-${scenarioId}-${opId}-${recordId}-v${revision}`;
 }
 
 // 省略した改訂の共通の形の項目とbodyを補う。版2以上は、直前の採用された改訂のbodyに、書いた項目だけを差し替える。
@@ -157,7 +166,7 @@ export function expandRecord(compact: Obj, ctx: ExpandContext): Obj {
     changeNote: "changeNote" in compact ? compact["changeNote"] : { state: "unknown" },
     duplicateOf: "duplicateOf" in compact ? compact["duplicateOf"] : { state: "not-applicable" },
     entryChannel,
-    writeRequestId: "writeRequestId" in compact ? compact["writeRequestId"] : `w-${ctx.scenarioId}-${ctx.opId}`,
+    writeRequestId: "writeRequestId" in compact ? compact["writeRequestId"] : (ctx.defaultWriteRequestId ?? `w-${ctx.scenarioId}-${ctx.opId}`),
     importKey: inherit("importKey", { state: "not-applicable" }),
     body,
   };

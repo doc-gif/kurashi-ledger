@@ -43,6 +43,7 @@ import {
   readLedgerFiles,
   REPO_ROOT,
   resolveOperations,
+  restoredWriteRequestId,
   stableStringify,
   type LedgerFiles,
   type Obj,
@@ -122,7 +123,7 @@ const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: re
   "save-check": { states: ["conflict"], ref: RECORD_TYPES },
 };
 
-// AggregateKeyの表（共通の型の11）。
+// AggregateKeyの表（共通の型の11）。許すscopeの次元は修飾子で決まる場合がある（allowedDims）。
 const AGG_KINDS: Readonly<Record<string, { axis: string; modifiers: Readonly<Record<string, readonly string[]>>; dims: readonly string[] }>> = {
   "deposit-amount": { axis: "deposit-date", modifiers: {}, dims: ["accountIds"] },
   "payslip-item": { axis: "scheduled-pay-date", modifiers: { item: PAYSLIP_AMOUNT_ITEMS }, dims: ["employerIds"] },
@@ -131,7 +132,8 @@ const AGG_KINDS: Readonly<Record<string, { axis: string; modifiers: Readonly<Rec
   "forecast-remaining": {
     axis: "expected-month",
     modifiers: { forecastMeasure: ["gross-pay", "net-pay", "bank-transfer", "deposit-amount"] },
-    dims: ["employerIds", "accountIds"],
+    // 口座で絞れるのはforecastMeasureがdeposit-amountのときだけ（下のallowedDims）。
+    dims: ["employerIds"],
   },
   "notice-determination": { axis: "subject-year", modifiers: { noticeType: NOTICE_TYPES, category: ["annual-total"] }, dims: [] },
 };
@@ -264,6 +266,19 @@ function lineIdsOf(record: Obj): Set<string> {
   return ids;
 }
 
+// 照合配分が行で指せる行のID（共通の型の2の表: 予測の行と、給与明細のotherEarningsの行だけ）。
+// lineIdsOfは行IDの予約の検査に使うので、控除の行も含めたまま変えない。
+function referableLineIds(record: Obj): Set<string> {
+  const ids = new Set<string>();
+  const body = isObj(record["body"]) ? record["body"] : {};
+  const field = record["recordType"] === "payslip" ? "otherEarnings" : record["recordType"] === "forecast" ? "lines" : undefined;
+  if (field === undefined) return ids;
+  let v = body[field];
+  if (isObj(v)) v = v["state"] === "known" ? v["value"] : undefined;
+  if (Array.isArray(v)) for (const e of v) if (isObj(e) && typeof e["lineId"] === "string") ids.add(e["lineId"]);
+  return ids;
+}
+
 function jstDate(instant: string): string {
   return new Date(Date.parse(instant) + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
@@ -321,13 +336,14 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
     const target = latest(state, dupOf["id"]);
     if (target !== undefined && target["status"] !== "active") codes.add("ref-target-invalid");
   }
-  // 照合配分の行を指す参照は、参照先の現在の版にある行だけ（共通の型の2）。
+  // 照合配分の行を指す参照は、参照先の現在の版にある、その項目が指せる種類の行だけ（共通の型の2）。
+  // 給与明細で指せるのは支給の行（otherEarnings）だけ、予測は見込みの行（lines）だけ。控除の行（otherDeductions）は指せない。
   if (rec["recordType"] === "allocation" && isObj(rec["body"])) {
     for (const end of ["from", "to"]) {
       const ref = rec["body"][end];
       if (isObj(ref) && typeof ref["id"] === "string" && typeof ref["line"] === "string" && ref["line"] !== "whole") {
         const target = latest(state, ref["id"]);
-        if (target !== undefined && !lineIdsOf(target).has(ref["line"])) codes.add("ref-target-invalid");
+        if (target !== undefined && !referableLineIds(target).has(ref["line"])) codes.add("ref-target-invalid");
       }
     }
   }
@@ -479,12 +495,19 @@ function replayOps(
             continue;
           }
           let rec: Obj;
+          const rid = String(r["id"]);
+          const rrev = typeof r["revision"] === "number" ? r["revision"] : 1;
           try {
-            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, String(r["id"])) });
+            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, rid), defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, rrev) });
           } catch (e) {
             problems.add(w, `記録を補えない: ${(e as Error).message}`);
             continue;
           }
+          // writeRequestIdはデータベース全体で予約するキー（共通の型の9・10）。復元で置く改訂どうし・既存の保存と重ねない。
+          const rwrid = String(rec["writeRequestId"]);
+          const rseen = state.writeRequests.get(rwrid);
+          if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
+          else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }) });
           for (const v of checkRecordStatic(rec)) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
@@ -532,6 +555,28 @@ function replayOps(
 
 const FACT_JURISDICTION = SPECS.fact({ t: "object", fields: { kind: SPECS.enm("national", "prefecture", "municipality", "insurer"), code: SPECS.text } }, ["known", "unknown"]);
 
+// 計算結果の2: 必要な入力が足りなければincomplete。computed・provisionalのrunの射影が、固定した給与明細のうち
+// 要求（payslip-item・payslip-by-income-yearのitem）の項目が分からない（unknown・not-stated）ものを入力に持てば問題にする（PR11-R006）。
+function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Problems): void {
+  if (run["status"] !== "computed" && run["status"] !== "provisional") return;
+  const requests = Array.isArray(run["requests"]) ? run["requests"] : [];
+  const items = new Set<string>();
+  for (const r of requests) {
+    const key = isObj(r) && isObj(r["key"]) ? r["key"] : undefined;
+    if (key !== undefined && (key["kind"] === "payslip-item" || key["kind"] === "payslip-by-income-year") && typeof key["item"] === "string") items.add(key["item"]);
+  }
+  const inputs = Array.isArray(run["inputsRecords"]) ? run["inputsRecords"] : [];
+  for (const ref of inputs) {
+    if (!isObj(ref) || typeof ref["id"] !== "string" || typeof ref["revision"] !== "number") continue;
+    const rev = state.records.get(ref["id"])?.[ref["revision"] - 1];
+    if (rev === undefined || rev["recordType"] !== "payslip" || !isObj(rev["body"])) continue;
+    for (const item of items) {
+      const st = factStateOf(rev["body"][item]);
+      if (st === "unknown" || st === "not-stated") problems.add(w, `${String(run["status"])}のrunが、分からない入力（${ref["id"]}版${ref["revision"]}の${item}が${st}）を要求している`);
+    }
+  }
+}
+
 function checkRunProjection(run: unknown, state: State, w: string, problems: Problems): void {
   if (!isObj(run)) {
     problems.add(w, "runがない");
@@ -574,6 +619,8 @@ function checkRunProjection(run: unknown, state: State, w: string, problems: Pro
   const prev = run["previousRunId"];
   const ps = factStateOf(prev);
   if (ps !== "known" && ps !== "not-applicable") problems.add(w, "previousRunIdはknownかnot-applicable");
+  if (run["requests"] !== undefined) checkRequests({ state, where: w, problems, commonCount: 0 }, run["requests"]);
+  checkComputedRunInputs(run, state, w, problems);
   for (const field of ["inputsRecords", "explanationRefs"]) {
     const list = run[field];
     if (list === undefined) continue;
@@ -645,6 +692,15 @@ function axisOrder(axis: string, v: unknown): string {
   return String(v);
 }
 
+// 共通の型の11の「許すscopeの次元」: forecast-remainingは、gross-pay・net-pay・bank-transferはemployerIdsだけ、
+// deposit-amountはemployerIdsとaccountIds。
+function allowedDims(key: Obj): readonly string[] {
+  const spec = AGG_KINDS[String(key["kind"])];
+  if (spec === undefined) return [];
+  if (key["kind"] === "forecast-remaining" && key["forecastMeasure"] === "deposit-amount") return ["employerIds", "accountIds"];
+  return spec.dims;
+}
+
 function checkAggregateKey(ctx: CheckCtx, query: Obj, allowRejected: boolean): string | undefined {
   const key = query["key"];
   if (!isObj(key) || typeof key["kind"] !== "string" || AGG_KINDS[key["kind"]] === undefined) {
@@ -669,7 +725,7 @@ function checkAggregateKey(ctx: CheckCtx, query: Obj, allowRejected: boolean): s
       ctx.problems.add(ctx.where, `scope.${dim}が並びではない`);
       continue;
     }
-    if (list.length > 0 && !spec.dims.includes(dim) && !allowRejected) ctx.problems.add(ctx.where, `kind ${key["kind"]}に許さない次元${dim}`);
+    if (list.length > 0 && !allowedDims(key).includes(dim) && !allowRejected) ctx.problems.add(ctx.where, `kind ${key["kind"]}（${stableStringify(key)}）に許さない次元${dim}`);
     for (const x of list) requireRecord(ctx, x, dim === "employerIds" ? ["employer"] : ["account"]);
   }
   if (!axisValueOk(spec.axis, scope["from"]) || !axisValueOk(spec.axis, scope["to"])) ctx.problems.add(ctx.where, "scope.from・toの型が軸に合わない");
@@ -738,7 +794,10 @@ function checkAggregate(ctx: CheckCtx, query: Obj, expect: Obj): void {
   if (values.length > 1 && kind !== "annual-value") ctx.problems.add(ctx.where, "coverageで分けた並びはannual-valueだけ");
   const coverages = new Set<string>();
   values.forEach((v, i) => {
-    if (!isObj(v)) return;
+    if (!isObj(v)) {
+      ctx.problems.add(ctx.where, `values[${i}]がobjectではない（集計値の形）`);
+      return;
+    }
     const st = v["state"];
     if (typeof st !== "string" || !AGG_STATES.includes(st)) ctx.problems.add(ctx.where, `values[${i}].stateが表にない`);
     const sum = v["knownSum"];
@@ -775,7 +834,11 @@ function checkYearRanges(ctx: CheckCtx, v: unknown): void {
   }
   let prevTo: number | null | undefined;
   v.forEach((r, i) => {
-    if (!isObj(r)) return;
+    if (!isObj(r)) {
+      ctx.problems.add(ctx.where, `candidateYears[${i}]がobjectではない（{ from, to }の範囲）`);
+      prevTo = undefined;
+      return;
+    }
     const from = r["from"];
     const to = r["to"];
     const okEnd = (x: unknown): boolean => x === null || isCalendarYear(x);
@@ -842,6 +905,60 @@ function checkRequests(ctx: CheckCtx, requests: unknown): void {
       continue;
     }
     checkAggregateKey(ctx, r, false);
+  }
+}
+
+// 計算結果の1のAdoptionSnapshot。adoptedRefとcoverageの状態は選択で1つに決まる（共通の型の12）。
+// adoptedRefはFact<Ref>で、年間資料を採用した場合はknown・整数の版・line wholeの年間資料の参照（共通の型の2の表）。
+function checkAdoptionSnapshot(ctx: CheckCtx, a: unknown, w: string): void {
+  if (!isObj(a)) {
+    ctx.problems.add(ctx.where, `${w}がobjectではない（AdoptionSnapshot）`);
+    return;
+  }
+  const keys = ["year", "payers", "selection", "adoptedRef", "coverage", "comparisons"];
+  for (const k of keys) if (!(k in a)) ctx.problems.add(ctx.where, `${w}.${k}がない`);
+  for (const k of Object.keys(a)) if (!keys.includes(k)) ctx.problems.add(ctx.where, `${w}に表にない項目: ${k}`);
+  if (!isCalendarYear(a["year"])) ctx.problems.add(ctx.where, `${w}.yearが年ではない`);
+  const payers = a["payers"];
+  if (!Array.isArray(payers) || payers.length === 0 || new Set(payers).size !== payers.length) ctx.problems.add(ctx.where, `${w}.payersは空でなく、同じ支払者を2回含まない`);
+  else payers.forEach((p) => requireRecord(ctx, p, ["employer"]));
+  const selection = String(a["selection"]);
+  if (!SELECTIONS.includes(selection)) ctx.problems.add(ctx.where, `${w}.selectionが表にない`);
+  const adopted = a["adoptedRef"];
+  const as = factStateOf(adopted);
+  if (selection === "annual-document") {
+    if (as !== "known" || !isObj(adopted)) ctx.problems.add(ctx.where, `${w}.adoptedRefは、annual-documentならknownのFact<Ref>`);
+    else {
+      for (const v of checkRefShape(adopted["value"], `${w}.adoptedRef.value`, "integer")) ctx.problems.add(ctx.where, `${v.path} ${v.message}`);
+      const ref = adopted["value"];
+      if (isObj(ref)) {
+        if (ref["line"] !== "whole") ctx.problems.add(ctx.where, `${w}.adoptedRefのlineはwholeだけ`);
+        requireRecord(ctx, ref["id"], ["annual-document"]);
+        const revs = ctx.state.records.get(String(ref["id"]));
+        if (revs !== undefined && typeof ref["revision"] === "number" && ref["revision"] > revs.length) ctx.problems.add(ctx.where, `${w}.adoptedRefの版がない`);
+      }
+    }
+  } else if (as !== "not-applicable") ctx.problems.add(ctx.where, `${w}.adoptedRefは、annual-document以外ならnot-applicable`);
+  const coverage = a["coverage"];
+  const cs = factStateOf(coverage);
+  const cv = isObj(coverage) ? coverage["value"] : undefined;
+  const expectedCoverage = selection === "annual-document" ? "annual-document" : selection === "adoption-needed" ? undefined : "entered-records-only";
+  if (expectedCoverage === undefined ? cs !== "not-applicable" : cs !== "known" || cv !== expectedCoverage) {
+    ctx.problems.add(ctx.where, `${w}.coverageは選択${selection}に合わない（共通の型の12）`);
+  }
+  const comparisons = a["comparisons"];
+  if (!Array.isArray(comparisons)) ctx.problems.add(ctx.where, `${w}.comparisonsが並びではない`);
+  else {
+    if (selection !== "annual-document" && comparisons.length > 0) ctx.problems.add(ctx.where, `${w}.comparisonsは、annual-document以外なら空`);
+    const fields = new Set<string>();
+    comparisons.forEach((c, j) => {
+      if (!isObj(c) || !ANNUAL_AMOUNT_ITEMS.includes(String(c["field"])) || !COMPARISON_STATES.includes(String(c["state"]))) {
+        ctx.problems.add(ctx.where, `${w}.comparisons[${j}]は{ field, state }`);
+        return;
+      }
+      if (fields.has(String(c["field"]))) ctx.problems.add(ctx.where, `${w}.comparisonsで同じfieldが2回`);
+      fields.add(String(c["field"]));
+    });
   }
 }
 
@@ -965,14 +1082,7 @@ function checkOne(ctx: CheckCtx, check: Obj): void {
         ctx.problems.add(ctx.where, "adoptionsが並びではない");
         return;
       }
-      for (const a of list) {
-        if (!isObj(a) || !isCalendarYear(a["year"]) || !Array.isArray(a["payers"]) || !SELECTIONS.includes(String(a["selection"]))) {
-          ctx.problems.add(ctx.where, "AdoptionSnapshotの形");
-          continue;
-        }
-        if (!Array.isArray(a["comparisons"])) ctx.problems.add(ctx.where, "comparisonsが並びではない");
-        else for (const c of a["comparisons"]) if (!isObj(c) || !ANNUAL_AMOUNT_ITEMS.includes(String(c["field"])) || !COMPARISON_STATES.includes(String(c["state"]))) ctx.problems.add(ctx.where, "comparisonsの要素の形");
-      }
+      list.forEach((a, i) => checkAdoptionSnapshot(ctx, a, `adoptions[${i}]`));
       return;
     }
     case "roundingStep":
@@ -1188,7 +1298,10 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
   const covered = new Set<string>();
   if (!Array.isArray(common["coverageExceptions"])) problems.add("common-setup", "coverageExceptionsが並びではない（例外がなければ空の並び）");
   const exceptions = Array.isArray(common["coverageExceptions"]) ? common["coverageExceptions"] : [];
-  for (const e of exceptions) if (isObj(e)) covered.add(`${String(e["section"])}|${String(e["subsection"] ?? "")}`);
+  exceptions.forEach((e, i) => {
+    if (!isObj(e) || typeof e["section"] !== "string" || typeof e["reason"] !== "string") problems.add("common-setup", `coverageExceptions[${i}]は{ section, subsection?, reason }`);
+    else covered.add(`${e["section"]}|${String(e["subsection"] ?? "")}`);
+  });
   const tags = new Set<string>();
   const caseIds = new Set<string>();
   const scenarioIds = new Set<string>();
@@ -1522,6 +1635,95 @@ test("台帳のファイルの一覧: .gitignoreで除外したOSのメタデー
   // 一覧は.gitignoreの行を写したもの。.gitignoreに同じ名前の行がなければ、一覧を直す。
   const gitignore = readFileSync(join(REPO_ROOT, ".gitignore"), "utf8").split("\n").map((l) => l.trim());
   for (const name of OS_METADATA_FILES_FROM_GITIGNORE) assert.ok(gitignore.includes(name), `.gitignoreに${name}の行がない`);
+});
+
+test("検査の自己確認: runの採用の写しのadoptedRefはFact<Ref>（known・整数の版・line whole）", () => {
+  const snapshot = (copy: LedgerFiles): Obj => {
+    const c = check(scenario(firstCase(copy, "EX-06"), "EX-06-d"), "c01");
+    const a = ((c["expect"] as Obj)["adoptions"] as Obj[])[0];
+    assert.ok(a);
+    return a;
+  };
+  const cases: [string, (a: Obj) => void, string][] = [
+    ["Factの外枠がない", (a) => (a["adoptedRef"] = { id: "ann_602", revision: 1, line: "whole" }), "adoptedRef"],
+    ["版がcurrent", (a) => (a["adoptedRef"] = { state: "known", value: { id: "ann_602", revision: "current", line: "whole" } }), "revision"],
+    ["行を指す", (a) => (a["adoptedRef"] = { state: "known", value: { id: "ann_602", revision: 1, line: "l1" } }), "line"],
+    ["年間資料でない記録", (a) => (a["adoptedRef"] = { state: "known", value: { id: "pay_601", revision: 1, line: "whole" } }), "種類"],
+    ["annual-documentなのにnot-applicable", (a) => (a["adoptedRef"] = { state: "not-applicable" }), "adoptedRef"],
+    ["coverageが選択に合わない", (a) => (a["coverage"] = { state: "known", value: "entered-records-only" }), "coverage"],
+    ["payersが空", (a) => (a["payers"] = []), "payers"],
+  ];
+  for (const [name, f, word] of cases) {
+    const p = mutated((copy) => f(snapshot(copy)));
+    assert.ok(p.some((x) => x.includes("EX-06-d c01") && x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+
+test("検査の自己確認: 実績化のfromで明細の行を指せるのは支給の行（otherEarnings）だけ", () => {
+  const alloc = (copy: LedgerFiles): Obj => (op(scenario(firstCase(copy, "EX-04b"), "EX-04b-b2"), "o8")["record"] as Obj)["body"] as Obj;
+  const pay = (copy: LedgerFiles): Obj => (op(scenario(firstCase(copy, "EX-04b"), "EX-04b-b2"), "o1")["record"] as Obj)["body"] as Obj;
+  assert.deepEqual(mutated(() => undefined), []);
+  const deduction = mutated((copy) => {
+    pay(copy)["otherDeductions"] = { state: "known", value: [{ lineId: "d1", label: "その他の控除", amount: { state: "known", value: 100 } }] };
+    alloc(copy)["from"] = { id: "pay_402", revision: "current", line: "d1" };
+  });
+  assert.ok(deduction.some((x) => x.includes("EX-04b-b2 o8") && x.includes("ref-target-invalid")), deduction.join("\n"));
+  const missing = mutated((copy) => {
+    alloc(copy)["from"] = { id: "pay_402", revision: "current", line: "l9" };
+  });
+  assert.ok(missing.some((x) => x.includes("EX-04b-b2 o8") && x.includes("ref-target-invalid")), missing.join("\n"));
+});
+
+test("検査の自己確認: 検査の中の並びのobjectでない要素を位置付きの問題にする", () => {
+  const values = mutated((copy) => {
+    ((check(scenario(firstCase(copy, "EX-01"), "EX-01-a"), "c01")["expect"]) as Obj)["values"] = [null];
+  });
+  assert.ok(values.some((x) => x.includes("EX-01-a c01") && x.includes("values[0]")), values.join("\n"));
+  const years = mutated((copy) => {
+    ((check(scenario(firstCase(copy, "EX-01"), "EX-01-a"), "c12")["expect"]) as Obj)["candidateYears"] = [null];
+  });
+  assert.ok(years.some((x) => x.includes("EX-01-a c12") && x.includes("candidateYears[0]")), years.join("\n"));
+  const exceptions = mutated((copy) => {
+    copy.commonSetup["coverageExceptions"] = [null];
+  });
+  assert.ok(exceptions.some((x) => x.includes("coverageExceptions[0]")), exceptions.join("\n"));
+  const adoptions = mutated((copy) => {
+    ((check(scenario(firstCase(copy, "EX-06"), "EX-06-d"), "c01")["expect"]) as Obj)["adoptions"] = [null];
+  });
+  assert.ok(adoptions.some((x) => x.includes("adoptions[0]")), adoptions.join("\n"));
+});
+
+test("検査の自己確認: 見込みの集計で口座の次元を許すのはdeposit-amountだけ", () => {
+  const p = mutated((copy) => {
+    const q = check(scenario(firstCase(copy, "EX-07"), "EX-07-a"), "c03")["query"] as Obj;
+    (q["scope"] as Obj)["accountIds"] = ["acct_2"];
+  });
+  assert.ok(p.some((x) => x.includes("EX-07-a c03") && x.includes("許さない次元accountIds")), p.join("\n"));
+  const q = mutated((copy) => {
+    const c = check(scenario(firstCase(copy, "EX-07"), "EX-07-a"), "c03");
+    const query = c["query"] as Obj;
+    (query["key"] as Obj)["forecastMeasure"] = "deposit-amount";
+    (query["scope"] as Obj)["accountIds"] = ["acct_2"];
+  });
+  assert.ok(!q.some((x) => x.includes("許さない次元")), q.join("\n"));
+});
+
+test("検査の自己確認: 復元で置く改訂のwriteRequestIdは一意にし、重なりを見つける", () => {
+  const p = mutated((copy) => {
+    const records = op(scenario(firstCase(copy, "EX-02"), "EX-02-c4"), "o1")["records"] as Obj[];
+    for (const r of records.slice(0, 2)) r["writeRequestId"] = "w-dup";
+  });
+  assert.ok(p.some((x) => x.includes("EX-02-c4 o1") && x.includes("records[1]") && x.includes("w-dup")), p.join("\n"));
+  assert.notEqual(restoredWriteRequestId("S", "o1", "pay_205", 1), restoredWriteRequestId("S", "o1", "pay_206", 1));
+  assert.notEqual(restoredWriteRequestId("S", "o1", "pay_205", 1), restoredWriteRequestId("S", "o1", "pay_205", 2));
+});
+
+test("検査の自己確認: computedのrunの射影が分からない入力を要求していれば見つける", () => {
+  const p = mutated((copy) => {
+    const body = (op(scenario(firstCase(copy, "EX-04a"), "EX-04a-a4"), "o2")["record"] as Obj)["body"] as Obj;
+    delete body["incomeTax"];
+  });
+  assert.ok(p.some((x) => x.includes("EX-04a-a4") && x.includes("分からない入力") && x.includes("pay_405")), p.join("\n"));
 });
 
 test("台帳のIDの接頭辞は契約の表と同じ", () => {

@@ -165,6 +165,22 @@
           "expect": {"values": [{"state": "complete", "knownSum": 48000, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "実績は実績の記録の側で数える。予測を書き換えない。",
           "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "実績化した分は、実績の記録の側で集計に入る。予測の側では残りだけが見込みの集計に入る"}, {"doc": "examples.md", "section": "EX-07", "quote": "fc_701を書き換えない"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": ["acct_2"], "from": "2026-11", "to": "2026-11"}
+          },
+          "expect": {"error": "rejected-request"},
+          "reason": "給与の総支給額の見込み（gross-pay）の集計で許すscopeの次元はemployerIdsだけ。口座を指定した要求は、黙って無視せず拒否する（口座で絞れるのはdeposit-amountの見込みだけ）。",
+          "cites": [
+            {"doc": "common-types.md", "section": "11", "quote": "gross-pay・net-pay・bank-transferはemployerIds。deposit-amountはemployerIdsとaccountIds"},
+            {"doc": "common-types.md", "section": "11", "quote": "許す次元以外の次元に空でない値を指定した要求は、黙って無視せず拒否する"}
+          ]
         }
       ]
     },

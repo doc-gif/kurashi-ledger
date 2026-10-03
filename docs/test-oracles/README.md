@@ -103,7 +103,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 `record`は、examples.mdの「読み方」の1〜7の既定を項目ごとに決めたものとして、次のとおり補う（`load.ts`の`expandRecord`）。
 
-- 改訂の共通の形: `revision` 1、`reason` `create`、`status`は理由から（`void`なら`voided`、ほかは`active`）、`duplicateOf`・`importKey`は`not-applicable`（`entryChannel` `manual`）、`changeNote`は`unknown`、`writeRequestId`は`w-<scenarioId>-<opId>`。`knownOn`は、`create`・`new-information`では`unknown`、`correct-input-error`・`void`・`unvoid`では直前の改訂から引き継ぐ。
+- 改訂の共通の形: `revision` 1、`reason` `create`、`status`は理由から（`void`なら`voided`、ほかは`active`）、`duplicateOf`・`importKey`は`not-applicable`（`entryChannel` `manual`）、`changeNote`は`unknown`、`writeRequestId`は`w-<scenarioId>-<opId>`（同じ操作の再送は同じキー）。`restoreUnchecked`で置く改訂は、1つの操作で複数の改訂を置くので、改訂ごとに`w-<scenarioId>-<opId>-<記録のID>-v<版>`にする（`writeRequestId`はデータベース全体で予約するキーなので重ねない。台帳の検査が重なりを見つける）。`knownOn`は、`create`・`new-information`では`unknown`、`correct-input-error`・`void`・`unvoid`では直前の改訂から引き継ぐ。
 - 版2以上の改訂の`body`は、直前の採用された改訂の`body`に、書いた項目だけを差し替えたもの（取消・取消の取り消しは何も書かない）。
 - `body`の`Fact`の項目: 「〜の場合だけ」の項目（照合配分の`settlesForecastLine`・`confirmedAgainst`、`annual-coverage`の`amount`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`）は、その場合でなければ`not-applicable`、その場合なら省略できない。`supersedes`は`not-applicable`。資料から写す並び（`otherEarnings`・`otherDeductions`・`amounts`・`installments`・`statusDates`）は`known`の空、`includedOtherPayers`は`unknown`。ほかは`unknown`。
 - `Fact`でない項目: 文字列（表示名・表題・行の名前・`reasonNote`）は`合成`、予測の行の`lineStatus`は`open`。ほかは省略できない。
@@ -158,7 +158,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | `runClosure` | 入力の要求と仮定の参照から決まる必要な閉包 | `{ records, allocations（usageAtRun）, decisions（premiseAtRun） }` |
 | `runInputChange` | runのあとの変化（入力が変わった） | `{ added?, removed?, versionChanged? }`（書いたものだけ検査） |
 | `runScopeChanged`、`runChain` | 範囲の雇用先の変化、runの履歴の鎖 | `{ changed }`、`{ chain }`（最初のrunから） |
-| `requiredAdoptions` | 年間の値の要求から決まる採用の写しの必要な集合 | `{ adoptions }` |
+| `requiredAdoptions` | 年間の値の要求から決まる採用の写しの必要な集合 | `{ adoptions }`（AdoptionSnapshotの形。`adoptedRef`は`Fact<Ref>`で、年間資料を採用したら`known`・整数の版・`line` `whole`、ほかの選択では`not-applicable`。`coverage`も選択で決まる） |
 | `roundingStep`、`roundingValidation` | 丸めの計算、丸めの記録の形 | `{ after }`、`{ valid, reason? }`（`reason`はその形が示す欠陥。ほかの欠陥が同時に見つかってもよい） |
 | `includedPayersPrompt` | 「前職分を含むかの確認」の表示 | `{ shown }` |
 
@@ -166,7 +166,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ### runの射影
 
-計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。
+計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。状態は入力と矛盾させない: `computed`・`provisional`のrunが要求する明細の項目（`requests`の`payslip-item`等の`item`）は、固定した明細でどれも分かっている（`unknown`・`not-stated`ならincomplete。計算結果の2）。台帳の検査がこれを確かめる。
 
 ## 制度のケース
 
@@ -199,7 +199,8 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 - ファイルの形、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
 - 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
-- 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形等。
+- 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、集計の要求のscopeが許す次元（`forecast-remaining`で口座を許すのは`deposit-amount`だけ。拒否を期待する検査は`{ error: rejected-request }`で書ける）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形、採用の写しの形等。期待の中の並びのobjectでない要素は、位置を示して問題にする。
+- 照合配分が行を指す参照は、その項目が指せる種類の行に実在すること（給与明細は支給の行`otherEarnings`だけで、控除の行は指せない。予測は見込みの行）。
 - 引用の語句が契約の節に実在すること、examples.mdのEX-NNの見出しと小見出しをすべての場面のどれかが扱うこと、受入条件のタグをそれぞれ1つ以上の場面が持つこと、制度のケースの必須の項目。
 - 検査そのものが誤りを見逃さないことを、台帳を写して壊した版で確かめる。
 

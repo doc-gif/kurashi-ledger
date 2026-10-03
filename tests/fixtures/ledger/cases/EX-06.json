@@ -1186,7 +1186,7 @@
                 "year": 2026,
                 "payers": ["emp_1", "emp_3"],
                 "selection": "annual-document",
-                "adoptedRef": {"id": "ann_602", "revision": 1},
+                "adoptedRef": {"state": "known", "value": {"id": "ann_602", "revision": 1, "line": "whole"}},
                 "coverage": {"state": "known", "value": "annual-document"},
                 "comparisons": [{"field": "paymentAmount", "state": "no-coverage"}]
               }

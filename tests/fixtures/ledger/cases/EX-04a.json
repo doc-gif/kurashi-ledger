@@ -52,7 +52,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "not-applicable"},
-            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         },
         {
@@ -90,7 +98,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "known", "value": "run_401"},
-            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         },
         {
@@ -114,7 +130,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "known", "value": "run_401"},
-            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         },
         {
@@ -138,7 +162,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "not-applicable"},
-            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         }
       ],
@@ -304,7 +336,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "not-applicable"},
-            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         },
         {
@@ -342,7 +382,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "known", "value": "run_401"},
-            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 2}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         }
       ],
@@ -435,7 +483,15 @@
             "status": "computed",
             "inputStage": "fixed",
             "previousRunId": {"state": "not-applicable"},
-            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_7", "revision": 2}, {"id": "emp_1", "revision": 1}]
+            "inputsRecords": [{"id": "pay_401", "revision": 1}, {"id": "emp_7", "revision": 2}, {"id": "emp_1", "revision": 1}],
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "payslip-item", "item": "incomeTax"},
+                "axis": "scheduled-pay-date",
+                "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+              }
+            ]
           }
         },
         {
@@ -531,7 +587,8 @@
               "employerId": "emp_2",
               "paymentKind": {"state": "known", "value": "salary"},
               "scheduledPayDate": {"state": "known", "value": "2026-05-25"},
-              "grossPay": {"state": "known", "value": 50000}
+              "grossPay": {"state": "known", "value": 50000},
+              "incomeTax": {"state": "known", "value": 1500}
             }
           }
         },
