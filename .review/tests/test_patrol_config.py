@@ -26,6 +26,8 @@ class PatrolConfigTests(unittest.TestCase):
     def test_required_check_is_the_ci_quality_gate(self):
         workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn(f"name: {self.config['required_check']}", workflow)
+        # The gate logs the tested merge commit in this variable; the patrol reads it (PR38-R007).
+        self.assertIn(f"{self.config['tested_commit_env']}: ${{{{ github.sha }}}}", workflow)
 
     def test_policy_paths_cover_workflow_checkers_conditions_and_ledger(self):
         policy = self.config["policy_paths"]

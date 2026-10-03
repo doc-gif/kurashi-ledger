@@ -3,20 +3,26 @@
 Reading uses `gh api` GET requests (the caller's existing gh login; this module never reads a
 token). Any failed, rate-limited or truncated read marks the data incomplete, and the judgment
 becomes "unconfirmed" instead of "no PRs" or "no findings". Posting needs --post; the default is
-a dry run. It never checks out, builds or runs code from a pull request, and never merges.
+a dry run, and posting is serialized across patrols by an OS file lock. It never checks out,
+builds or runs code from a pull request, and never merges.
 """
 import argparse
+import contextlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 import guard
 import patrol
 
 API = "https://api.github.com/"
 MAX_PAGES = 30
+MAX_LOG = 5 * 1_048_576
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
 
 
@@ -32,9 +38,13 @@ class GhTransport:
     def __init__(self, timeout=60):
         self.timeout = timeout
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, text=False):
         args = ["gh", "api", "--include", "--method", method,
                 "-H", "Accept: application/vnd.github+json", path]
+        if text:
+            # Job logs contain terminal escape sequences; gh refuses to print them otherwise.
+            # They are stripped before parsing and never shown.
+            args.insert(2, "--allow-escape-sequences")
         if payload is not None:
             args += ["--input", "-"]
         try:
@@ -70,6 +80,13 @@ def check_status(status, headers, path, body=""):
 class GitHub:
     def __init__(self, transport, repository, max_pages=MAX_PAGES):
         self.transport, self.repo, self.max_pages = transport, repository, max_pages
+
+    def get_text(self, path):
+        status, headers, body = self.transport.request("GET", path, text=True)
+        check_status(status, headers, path, body)
+        if len(body) > MAX_LOG:
+            raise SourceError("invalid-response", f"{path}: log too large")
+        return ANSI.sub("", body)
 
     def get(self, path):
         status, headers, body = self.transport.request("GET", path)
@@ -126,7 +143,30 @@ def comment_items(issue_comments, reviews):
     return items
 
 
-def read_pull(gh, raw, config):
+def ci_evidence(gh, run, config):
+    """The commit that the latest successful required run tested, and that commit's parents.
+
+    The run's log names the tested commit in the environment variable `tested_commit_env`
+    (this repository's Quality gate prints TESTED_SHA). Any doubt raises, so the PR becomes
+    unconfirmed rather than ready.
+    """
+    if (run.get("app") or {}).get("slug") != "github-actions" or not isinstance(run.get("id"), int):
+        raise SourceError("ci-evidence", "the required check is not a GitHub Actions job")
+    log = gh.get_text(f"repos/{gh.repo}/actions/jobs/{run['id']}/logs")
+    name = re.escape(config["tested_commit_env"])
+    found = set(re.findall(rf"^\S+\s+{name}: ([0-9a-f]{{40}})\s*$", log, flags=re.M))
+    if len(found) != 1:
+        raise SourceError("ci-evidence", f"{config['tested_commit_env']} not found exactly once in the log")
+    tested = found.pop()
+    value, _ = gh.get(f"repos/{gh.repo}/commits/{tested}")
+    parents = [p.get("sha") for p in value.get("parents", [])] if isinstance(value, dict) else None
+    if not parents or not all(guard.sha(p) for p in parents):
+        raise SourceError("ci-evidence", f"parents of {tested} not read")
+    return {"check_run_id": run["id"], "tested_sha": tested, "parents": parents}
+
+
+def read_pull(gh, raw, config, tips, issues):
+    """Read one PR completely, or record why not. tips and issues are per-run caches."""
     number = raw.get("number")
     pull = {"number": number, "draft": bool(raw.get("draft")), "state": raw.get("state"),
             "head_sha": (raw.get("head") or {}).get("sha"), "base_ref": (raw.get("base") or {}).get("ref"),
@@ -136,13 +176,25 @@ def read_pull(gh, raw, config):
                 or not patrol.branch_ok(pull["base_ref"]):
             raise SourceError("invalid-response", f"pull {number}")
         repo = gh.repo
+        if pull["base_ref"] not in tips:
+            tips[pull["base_ref"]] = gh.base_tip(pull["base_ref"])
         pull["files"] = [f.get("filename") for f in gh.pages(f"repos/{repo}/pulls/{number}/files?per_page=100")]
         pull["comments"] = comment_items(gh.pages(f"repos/{repo}/issues/{number}/comments?per_page=100"),
                                          gh.pages(f"repos/{repo}/pulls/{number}/reviews?per_page=100"))
+        runs = gh.pages(f"repos/{repo}/commits/{pull['head_sha']}/check-runs?per_page=100", key="check_runs")
         pull["check_runs"] = [{"id": r.get("id"), "name": r.get("name"), "status": r.get("status"),
-                               "conclusion": r.get("conclusion"), "head_sha": r.get("head_sha")}
-                              for r in gh.pages(f"repos/{repo}/commits/{pull['head_sha']}/check-runs?per_page=100",
-                                                key="check_runs")]
+                               "conclusion": r.get("conclusion"), "head_sha": r.get("head_sha")} for r in runs]
+        latest = max((r for r in runs if r.get("name") == config["required_check"]
+                      and r.get("head_sha") == pull["head_sha"] and isinstance(r.get("id"), int)),
+                     key=lambda r: r["id"], default=None)
+        if latest and latest.get("status") == "completed" and latest.get("conclusion") == "success":
+            pull["ci_evidence"] = ci_evidence(gh, latest, config)
+        for ref in issue_refs(pull, config):
+            if ref not in issues:
+                value, _ = gh.get(f"repos/{repo}/issues/{int(ref)}")
+                if not isinstance(value, dict) or value.get("state") not in {"open", "closed"}:
+                    raise SourceError("invalid-response", f"issue #{ref}")
+                issues[ref] = value["state"]
         pull["complete"] = True
     except SourceError as exc:
         pull["errors"].append(str(exc))
@@ -163,68 +215,94 @@ def snapshot(gh, config, numbers=None):
             snap["errors"].append("not open or not found: " + ", ".join(f"#{n}" for n in missing))
         raw = [p for p in raw if p.get("number") in set(numbers)]
     for item in raw:
-        pull = read_pull(gh, item, config)
-        ref = pull["base_ref"]
-        if patrol.branch_ok(ref) and ref not in snap["base_tips"]:
-            try:
-                snap["base_tips"][ref] = gh.base_tip(ref)
-            except SourceError as exc:
-                snap["errors"].append(f"base {ref}: {exc}")
-                snap["base_tips"][ref] = None
-        for ref_number in issue_refs(pull, config):
-            if ref_number not in snap["issues"]:
-                try:
-                    value, _ = gh.get(f"repos/{gh.repo}/issues/{int(ref_number)}")
-                    snap["issues"][ref_number] = value.get("state") if isinstance(value, dict) else None
-                except SourceError:
-                    snap["issues"][ref_number] = None
-        snap["pulls"].append(pull)
-    snap["issues"] = {k: v for k, v in snap["issues"].items() if v is not None}
+        snap["pulls"].append(read_pull(gh, item, config, snap["base_tips"], snap["issues"]))
     snap["complete"] = not snap["errors"]
     return snap
 
 
 def issue_refs(pull, config):
-    refs = []
-    try:
-        records = patrol.collect(pull, config)["handoffs"]
-    except (patrol.Invalid, KeyError, TypeError):
-        return refs
-    for record in records[-1:]:
-        refs += patrol.ISSUE_REF.findall(record["task_id"])
-    return refs
+    records = patrol.collect(pull, config)["handoffs"]
+    return patrol.ISSUE_REF.findall(records[-1]["task_id"]) if records else []
 
 
-def post_notices(gh, config, judgment, dry_run=True):
-    """Post each new notice once. Re-read the PR, base tip and comments right before posting;
-    skip on any change or read failure. Concurrent patrols see each other's marker on re-read."""
-    outcome = []
-    for pull in judgment["pulls"]:
-        for notice in pull.get("notices", []):
-            entry = {"pr": pull["number"], "kind": notice["kind"], "head_sha": notice["head_sha"],
-                     "base_sha": notice["base_sha"]}
+def default_lock_path(repository):
+    return Path.home() / ".review-patrol" / (repository.replace("/", "__") + ".lock")
+
+
+@contextlib.contextmanager
+def post_lock(path, timeout=60.0, interval=0.5):
+    """An exclusive OS file lock held for re-read, re-judge and post. Yields False on timeout."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        deadline, locked = time.monotonic() + timeout, False
+        while True:
             try:
-                value, _ = gh.get(f"repos/{gh.repo}/pulls/{int(pull['number'])}")
-                fresh = read_pull(gh, value, config)
-                tip = gh.base_tip(fresh["base_ref"]) if patrol.branch_ok(fresh["base_ref"]) else None
-                if not fresh["complete"]:
-                    entry["action"] = "skipped-unconfirmed"
-                elif value.get("state") != "open" or fresh["head_sha"] != notice["head_sha"] \
-                        or tip != notice["base_sha"]:
-                    entry["action"] = "skipped-changed"
-                elif (notice["kind"], notice["head_sha"], notice["base_sha"]) in \
-                        patrol.collect(fresh, config)["notices"]:
-                    entry["action"] = "skipped-duplicate"
-                elif dry_run:
-                    entry["action"] = "dry-run"
+                if os.name == "nt":
+                    import msvcrt
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                 else:
-                    gh.post_comment(pull["number"], notice["body"])
-                    entry["action"] = "posted"
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(interval)
+        try:
+            yield locked
+        finally:
+            if locked:
+                if os.name == "nt":
+                    import msvcrt
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def post_notices(gh, config, judgment, dry_run=True, lock_path=None, lock_timeout=60.0):
+    """Post each notice once. With the lock held, re-read the PR from scratch and judge it again;
+    post only when the same notice (kind, head, base) is still due. A patrol that cannot take
+    the lock posts nothing. Patrols that post must share the lock file (one machine)."""
+    due = [(pull["number"], n) for pull in judgment["pulls"] for n in pull.get("notices", [])]
+    if not due:
+        return []
+    if dry_run:
+        return [dict(entry(number, n), action="dry-run") for number, n in due]
+    outcome = []
+    lock = post_lock(lock_path, timeout=lock_timeout) if lock_path else contextlib.nullcontext(True)
+    with lock as locked:
+        for number, notice in due:
+            item = entry(number, notice)
+            if not locked:
+                outcome.append(dict(item, action="skipped-locked"))
+                continue
+            try:
+                value, _ = gh.get(f"repos/{gh.repo}/pulls/{int(number)}")
+                if not isinstance(value, dict) or value.get("state") != "open":
+                    outcome.append(dict(item, action="skipped-changed"))
+                    continue
+                tips, issues = {}, {}
+                fresh = read_pull(gh, value, config, tips, issues)
+                again = patrol.judge_pull(fresh, tips.get(fresh["base_ref"]), config, issues)
+                still = {(n["kind"], n["head_sha"], n["base_sha"]) for n in again["notices"]}
+                if (notice["kind"], notice["head_sha"], notice["base_sha"]) not in still:
+                    action = "skipped-unconfirmed" if again["state"] == patrol.UNCONFIRMED else "skipped-changed"
+                    outcome.append(dict(item, action=action, state=again["state"]))
+                    continue
+                gh.post_comment(number, notice["body"])
+                outcome.append(dict(item, action="posted"))
             except SourceError as exc:
-                entry["action"] = "skipped-unconfirmed"
-                entry["error"] = str(exc)
-            outcome.append(entry)
+                outcome.append(dict(item, action="skipped-unconfirmed", error=str(exc)))
     return outcome
+
+
+def entry(number, notice):
+    return {"pr": number, "kind": notice["kind"], "head_sha": notice["head_sha"], "base_sha": notice["base_sha"]}
 
 
 def main(argv=None, transport=None):
@@ -233,6 +311,7 @@ def main(argv=None, transport=None):
     parser.add_argument("--pr", type=int, action="append", help="limit to these open PR numbers")
     parser.add_argument("--snapshot-out", help="also write the fetched snapshot (new file only)")
     parser.add_argument("--post", action="store_true", help="post new notices (default: dry run)")
+    parser.add_argument("--lock-file", help="lock shared by every patrol that posts (default: under the home directory)")
     args = parser.parse_args(argv)
     try:
         guard.require_runtime()
@@ -246,7 +325,8 @@ def main(argv=None, transport=None):
         if result["result"] == "unconfirmed":
             result["posting"] = "not attempted: data is unconfirmed"
         else:
-            result["posting"] = post_notices(gh, config, result, dry_run=not args.post)
+            lock = args.lock_file or default_lock_path(config["repository"])
+            result["posting"] = post_notices(gh, config, result, dry_run=not args.post, lock_path=lock)
         for pull in result["pulls"]:
             for notice in pull.get("notices", []):
                 notice.pop("body", None)

@@ -77,9 +77,35 @@ class ClassificationTests(unittest.TestCase):
         comments = [comment(1, T1, handoff_body(base=BASE)), comment(2, T2, review_body("accepted", base=BASE))]
         self.assertEqual(only(judged(pull(comments), tip=BASE2))["state"], patrol.FIXES)
         comments.append(comment(3, T3, handoff_body(base=BASE2)))
-        result = only(judged(pull(comments), tip=BASE2))
+        result = only(judged(pull(comments, ci_base=BASE2), tip=BASE2))
         self.assertEqual(result["state"], patrol.READY)
         self.assertNotIn("review", result)
+
+    def test_same_head_new_base_with_the_old_base_ci_success_is_not_ready(self):
+        # PR38-R007: the latest gate ran on a merge with BASE; the new ready is for BASE2.
+        ready = [comment(1, T1, handoff_body(base=BASE2))]
+        result = only(judged(pull(ready, ci_base=BASE), tip=BASE2))
+        self.assertEqual(result["state"], patrol.FIXES)
+        self.assertEqual([n["kind"] for n in result["notices"]], ["ci-other-base"])
+        accepted = ready + [comment(2, T2, review_body("accepted", base=BASE2))]
+        self.assertEqual(only(judged(pull(accepted, ci_base=BASE), tip=BASE2))["state"], patrol.FIXES)
+
+    def test_missing_or_mismatched_ci_evidence_is_unconfirmed(self):
+        ready = [comment(1, T1, handoff_body())]
+        for change in ("missing", "other-run", "bad-sha", "no-parents"):
+            with self.subTest(change=change):
+                target = pull(ready)
+                if change == "missing":
+                    del target["ci_evidence"]
+                elif change == "other-run":
+                    target["ci_evidence"]["check_run_id"] = 99
+                elif change == "bad-sha":
+                    target["ci_evidence"]["tested_sha"] = "not-a-sha"
+                else:
+                    target["ci_evidence"]["parents"] = None
+                result = judged(target)
+                self.assertEqual(only(result)["state"], patrol.UNCONFIRMED)
+                self.assertEqual(result["result"], "unconfirmed")
 
     def test_ci_failure_pending_missing_and_rerun(self):
         ready = [comment(1, T1, handoff_body())]
@@ -93,7 +119,7 @@ class ClassificationTests(unittest.TestCase):
         for conclusion in ("cancelled", "skipped", "timed_out", "neutral", None):
             with self.subTest(conclusion=conclusion):
                 self.assertEqual(only(judged(pull(ready, checks=[gate(conclusion)])))["state"], patrol.FIXES)
-        rerun = [gate("failure", run_id=10), gate("success", run_id=11)]
+        rerun = [gate("failure", run_id=10), gate("success", run_id=11)]  # evidence is for run 11
         self.assertEqual(only(judged(pull(ready, checks=rerun)))["state"], patrol.READY)
         rerun_failed = [gate("success", run_id=10), gate("failure", run_id=11)]
         self.assertEqual(only(judged(pull(ready, checks=rerun_failed)))["state"], patrol.FIXES)
@@ -111,8 +137,23 @@ class ClassificationTests(unittest.TestCase):
     def test_issue_named_by_the_handoff(self):
         closed = only(judged(pull([comment(1, T1, handoff_body())]), issues={"7": "closed"}))
         self.assertTrue(any("#7" in w and "closed" in w for w in closed["warnings"]))
-        unread = only(judged(pull([comment(1, T1, handoff_body())]), issues={}))
-        self.assertTrue(any("#7" in w and "not read" in w for w in unread["warnings"]))
+        # PR38-R001: an issue that could not be read makes the PR unconfirmed, not a warning.
+        unread = judged(pull([comment(1, T1, handoff_body())]), issues={})
+        self.assertEqual(unread["result"], "unconfirmed")
+        self.assertEqual(only(unread)["state"], patrol.UNCONFIRMED)
+        self.assertEqual(only(unread)["notices"], [])
+
+    def test_draft_is_work_in_progress_even_with_a_matching_ready(self):
+        # PR38-R006: back to Draft after a ready (and even after an accepted) is not a candidate.
+        ready = [comment(1, T1, handoff_body())]
+        self.assertEqual(only(judged(pull(ready, draft=True)))["state"], patrol.IN_PROGRESS)
+        accepted = ready + [comment(2, T2, review_body("accepted"))]
+        self.assertEqual(only(judged(pull(accepted)))["state"], patrol.ACCEPTED)
+        self.assertEqual(only(judged(pull(accepted, draft=True)))["state"], patrol.IN_PROGRESS)
+        stale = only(judged(pull(ready, head=HEAD2, draft=True)))
+        self.assertEqual((stale["state"], stale["notices"]), (patrol.IN_PROGRESS, []))
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body(status="needs-owner"))], draft=True)))["state"],
+                         patrol.OWNER)
 
 
 class SameAccountAndTrustTests(unittest.TestCase):
@@ -145,10 +186,35 @@ class SameAccountAndTrustTests(unittest.TestCase):
         self.assertEqual(result["state"], patrol.READY)
         self.assertEqual(sum("untrusted" in w for w in result["warnings"]), 2)
 
-    def test_marker_inside_a_code_fence_or_mid_line_is_not_a_record(self):
-        quoted = "例:\n```text\n" + review_body("accepted") + "\n```\n本文 <!-- " + NS + ":review:v1 -->"
-        result = only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, quoted)])))
-        self.assertEqual(result["state"], patrol.READY)
+    def test_only_a_marker_on_the_first_line_is_a_record(self):
+        # PR38-R004: an example after a preface, inside a fence or after a real record never counts.
+        examples = ["例として次のように書く。\n\n" + review_body("accepted"),
+                    "例:\n```text\n" + review_body("accepted") + "\n```",
+                    "本文 <!-- " + NS + ":review:v1 -->\ndecision: accepted"]
+        for body in examples:
+            with self.subTest(body=body.splitlines()[0]):
+                result = only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, body)])))
+                self.assertEqual(result["state"], patrol.READY)
+        trailing = review_body("changes-requested") + "\n\n書式の例:\n" + review_body("accepted")
+        result = only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, trailing)])))
+        self.assertEqual(result["state"], patrol.FIXES)
+        self.assertTrue(any("not on the first line" in w for w in result["warnings"]))
+        leading_blank = "\n\n" + review_body("accepted")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, leading_blank)])))["state"],
+                         patrol.ACCEPTED)
+
+    def test_trusted_logins_extend_trust_for_bot_accounts(self):
+        bot = comment(2, T2, review_body("changes-requested"), association="NONE", login="example-app[bot]")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), bot])))["state"], patrol.READY)
+        extended = config()
+        extended["trusted_logins"] = ["example-app[bot]"]
+        result = patrol.judge(snapshot(pull([comment(1, T1, handoff_body()), bot])), extended)
+        self.assertEqual(only(result)["state"], patrol.FIXES)
+        # Trust is not a role: the bot's role still comes from the body.
+        note = comment(3, T3, "LGTM", association="NONE", login="example-app[bot]", source="review",
+                       review_state="APPROVED", commit_id=HEAD)
+        result = patrol.judge(snapshot(pull([comment(1, T1, handoff_body()), note])), extended)
+        self.assertEqual(only(result)["state"], patrol.READY)
 
     def test_unreadable_or_unmarked_reviewer_text_after_ready_is_unconfirmed(self):
         placeholder = review_body("changes-requested | accepted | needs-owner")
@@ -250,6 +316,7 @@ class ParseAndConfigTests(unittest.TestCase):
 
     def test_config_is_validated(self):
         for key, value in [("marker_namespace", "Bad Name"), ("repository", "no-slash"),
+                           ("tested_commit_env", "lower"), ("trusted_logins", "not-a-list"),
                            ("trusted_associations", []), ("policy_paths", ["/abs"]), ("reviewer_roles", {})]:
             with self.subTest(key=key):
                 bad = config()

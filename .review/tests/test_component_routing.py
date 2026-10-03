@@ -45,6 +45,8 @@ class ComponentRoutingTests(unittest.TestCase):
                 ("package-lock.json", {"INV-G6-ARTIFACTS"}),
                 ("src/infrastructure/http/server.ts", {"INV-G7-HTTP"}),
                 ("docs/adr/0003-local-http-boundary.md", {"INV-G7-HTTP"}),
+                # PR38-R002: the G7 implementation contract that PR #25 (T26) adds.
+                ("docs/adr/0009-local-http-implementation.md", {"INV-G7-HTTP"}),
                 ("src/start.ts", {"INV-G5-MODE", "INV-G6-ARTIFACTS", "INV-G7-HTTP"})]:
             with self.subTest(path=path):
                 selected = self.selected(path)
@@ -64,17 +66,19 @@ class ComponentRoutingTests(unittest.TestCase):
 
     def test_a_plan_without_the_component_assessment_is_rejected(self):
         base = "a" * 40
-        plan = guard.prepare(self.catalog, self.ledger, ["src/infrastructure/http/server.ts"], base)
-        plan["task_id"] = "OPS-ROUTING"
-        for assessment in plan["assessments"]:
-            assessment["reason"] = "Synthetic routing fixture preserves the selected condition"
-            for check in assessment["checks"]:
-                check.update(method="inspect synthetic routing fixture", expected="condition remains covered")
-        self.assertEqual(guard.check(self.catalog, self.ledger, plan, ["src/infrastructure/http/server.ts"],
-                                     base)["result"], "metadata-complete")
-        plan["assessments"] = [a for a in plan["assessments"] if a["id"] != "INV-G7-HTTP"]
-        with self.assertRaisesRegex(ValueError, "missing invariant assessments:.*INV-G7-HTTP"):
-            guard.check(self.catalog, self.ledger, plan, ["src/infrastructure/http/server.ts"], base)
+        for path in ["src/infrastructure/http/server.ts", "docs/adr/0009-local-http-implementation.md"]:
+            with self.subTest(path=path):
+                plan = guard.prepare(self.catalog, self.ledger, [path], base)
+                plan["task_id"] = "OPS-ROUTING"
+                for assessment in plan["assessments"]:
+                    assessment["reason"] = "Synthetic routing fixture preserves the selected condition"
+                    for check in assessment["checks"]:
+                        check.update(method="inspect synthetic routing fixture", expected="condition remains covered")
+                self.assertEqual(guard.check(self.catalog, self.ledger, plan, [path], base)["result"],
+                                 "metadata-complete")
+                plan["assessments"] = [a for a in plan["assessments"] if a["id"] != "INV-G7-HTTP"]
+                with self.assertRaisesRegex(ValueError, "missing invariant assessments:.*INV-G7-HTTP"):
+                    guard.check(self.catalog, self.ledger, plan, [path], base)
 
 
 if __name__ == "__main__":

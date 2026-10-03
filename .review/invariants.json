@@ -381,6 +381,7 @@
       "condition": "G7（HTTPの境界）: Host、`Sec-Fetch-Site`・`Origin`、起動ごとのトークンとcookie、起動の識別子、CSP、`no-store`、静的配信の範囲。規則はADR-0003を正とし、G7は起動の識別子を自分で作ってG6に依存しない（ADR-0007の4）。",
       "paths": [
         "docs/adr/0003-local-http-boundary.md",
+        "docs/adr/0009-local-http-implementation.md",
         "docs/adr/0007-shared-safety-checks.md",
         "src/infrastructure/http/**",
         "src/start.ts",

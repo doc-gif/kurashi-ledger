@@ -31,7 +31,6 @@ WORKER_STATUSES = {"ready-for-review", "working", "needs-owner", "blocked", "pau
 # The leading status word counts ("working（中断中）" is working). "ready-for-reviewではない" does not match.
 STATUS = re.compile(r"(ready-for-review|working|needs-owner|blocked|paused)(?![\w-])")
 FIELD = re.compile(r"([a-z_]+):[ \t]*(.*)")
-FENCE = re.compile(r"^\s*(```|~~~)")
 ISSUE_REF = re.compile(r"#([1-9][0-9]{0,8})\b")
 MAX_BODY = 65_536
 MAX_SNAPSHOT = 16 * 1_048_576
@@ -40,6 +39,8 @@ NOTICE_TEXT = {
     "stale-handoff": "最新のhead/baseに対応するready-for-reviewの引継ぎがない（古い引継ぎは使わない）。"
                      "新しいhead/baseで検証し、引継ぎを出し直してほしい。",
     "ci-failed": "このhead/baseの必須のcheckが成功していない。修正して、新しいhead/baseで引き継いでほしい。",
+    "ci-other-base": "必須のcheckの最新の成功は、いまのbaseの先端とのmerge commitを試験したものではない。"
+                     "最新のbaseで試験し直し、引継ぎを出し直してほしい。",
 }
 
 
@@ -51,6 +52,12 @@ def load_config(value):
     require(guard.text(value.get("repository")) and re.fullmatch(
         r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", value["repository"]) is not None, "invalid repository")
     require(guard.text(value.get("required_check")), "missing required_check")
+    require(isinstance(value.get("tested_commit_env"), str)
+            and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", value["tested_commit_env"]) is not None,
+            "tested_commit_env must name the environment variable that the required check logs")
+    logins = value.get("trusted_logins", [])
+    require(isinstance(logins, list) and all(guard.text(item) for item in logins),
+            "trusted_logins must be a list of strings")
     roles = value.get("reviewer_roles")
     require(isinstance(roles, dict) and roles and all(
         guard.text(k) and guard.text(v) for k, v in roles.items()), "reviewer_roles must map role to reviewer")
@@ -71,42 +78,39 @@ def markers(ns):
 
 
 def parse_records(body, ns):
-    """Return (records, unmarked_role) found in one body.
+    """Return (records, unmarked_role, misplaced) for one body.
 
-    A record starts with the marker alone on a line outside a code fence, followed by
-    `key: value` lines up to the first line that is not one. Text is never interpreted further.
-    `unmarked_role` is the role when the body looks like a record (a `role:` line first) but has
-    no marker, so it is reported instead of being silently dropped.
+    Only a marker on the first non-empty line starts a record (docs/pr-review-loop.md: the marker
+    is the first line). It is followed by `key: value` lines up to the first line that is not one.
+    A marker on any later line is an example or a quote and is never read as a record; `misplaced`
+    reports it. `unmarked_role` is the role when the first line is `role: ...` without a marker.
+    Text is never interpreted further.
     """
     if not isinstance(body, str):
-        return [], None
+        return [], None, False
     if len(body) > MAX_BODY:
-        return [{"kind": None, "fields": {}, "error": "body too large"}], None
+        return [{"kind": None, "fields": {}, "error": "body too large"}], None, False
     known = markers(ns)
-    lines = body.replace("\r\n", "\n").split("\n")
-    records, fenced, i = [], False, 0
-    while i < len(lines):
-        line = lines[i]
-        if FENCE.match(line):
-            fenced = not fenced
-        elif not fenced and line.strip() in known:
-            kind, fields, error = known[line.strip()], {}, None
-            i += 1
-            while i < len(lines):
-                match = FIELD.fullmatch(lines[i].strip())
-                if not match:
-                    break
-                key, value = match.group(1), match.group(2).strip()
-                if key in fields:
-                    error = f"duplicate field {key}"
-                fields[key] = value
-                i += 1
-            records.append({"kind": kind, "fields": fields, "error": error})
-            continue
-        i += 1
-    first = FIELD.fullmatch(next((l.strip() for l in lines if l.strip()), ""))
-    unmarked = first.group(2).strip() if not records and first and first.group(1) == "role" else None
-    return records, unmarked
+    lines = [line.strip() for line in body.replace("\r\n", "\n").split("\n")]
+    while lines and not lines[0]:
+        lines.pop(0)
+    if not lines:
+        return [], None, False
+    misplaced = any(line in known for line in lines[1:])
+    if lines[0] in known:
+        fields, error = {}, None
+        for line in lines[1:]:
+            match = FIELD.fullmatch(line)
+            if not match:
+                break
+            key, value = match.group(1), match.group(2).strip()
+            if key in fields:
+                error = f"duplicate field {key}"
+            fields[key] = value
+        return [{"kind": known[lines[0]], "fields": fields, "error": error}], None, misplaced
+    first = FIELD.fullmatch(lines[0])
+    unmarked = first.group(2).strip() if first and first.group(1) == "role" else None
+    return [], unmarked, misplaced
 
 
 def handoff(fields):
@@ -163,15 +167,18 @@ def collect(pull, config):
     """
     ns, roles = config["marker_namespace"], config["reviewer_roles"]
     trusted = set(config["trusted_associations"])
+    trusted_logins = set(config.get("trusted_logins", []))
     out = {"handoffs": [], "reviews": [], "unreadable": [], "notices": set(), "warnings": []}
     for item in sorted(pull.get("comments", []), key=order):
-        records, unmarked = parse_records(item.get("body"), ns)
+        records, unmarked, misplaced = parse_records(item.get("body"), ns)
         where = f"{item.get('source', 'comment')} {item.get('id')}"
         at = {"at": item.get("created_at"), "id": item.get("id") if isinstance(item.get("id"), int) else 0}
-        if item.get("author_association") not in trusted:
-            if records or unmarked:
+        if item.get("author_association") not in trusted and item.get("login") not in trusted_logins:
+            if records or unmarked or misplaced:
                 out["warnings"].append(f"{where}: record from an untrusted author association ignored")
             continue
+        if misplaced:
+            out["warnings"].append(f"{where}: a marker that is not on the first line is not a record")
         if unmarked:
             out["warnings"].append(f"{where}: role {unmarked!r} without the marker; not counted as a record")
             if unmarked in roles:
@@ -196,7 +203,12 @@ def collect(pull, config):
     return out
 
 
-def required_check(pull, config):
+def required_check(pull, config, base_tip):
+    """The latest run of the required check for this head, and whether it tested this base.
+
+    A pull_request run tests a merge commit. Its success counts only when the commit it tested
+    (pull["ci_evidence"], read from the run) has exactly the parents [base tip, head].
+    """
     runs = [r for r in pull.get("check_runs", [])
             if r.get("name") == config["required_check"] and r.get("head_sha") == pull["head_sha"]]
     if not runs:
@@ -204,8 +216,17 @@ def required_check(pull, config):
     latest = max(runs, key=lambda r: r.get("id") if isinstance(r.get("id"), int) else 0)
     if latest.get("status") != "completed":
         return {"status": "pending", "id": latest.get("id")}
-    return {"status": "success" if latest.get("conclusion") == "success" else "failure",
-            "conclusion": latest.get("conclusion"), "id": latest.get("id")}
+    if latest.get("conclusion") != "success":
+        return {"status": "failure", "conclusion": latest.get("conclusion"), "id": latest.get("id")}
+    evidence = pull.get("ci_evidence")
+    if not isinstance(evidence, dict) or evidence.get("check_run_id") != latest.get("id") \
+            or not guard.sha(evidence.get("tested_sha")) or not isinstance(evidence.get("parents"), list):
+        return {"status": "unconfirmed", "id": latest.get("id"),
+                "reason": "the commit tested by the latest successful run was not read"}
+    if evidence["parents"] != [base_tip, pull["head_sha"]]:
+        return {"status": "other-base", "id": latest.get("id"), "tested_sha": evidence["tested_sha"],
+                "parents": evidence["parents"]}
+    return {"status": "success", "id": latest.get("id"), "tested_sha": evidence["tested_sha"]}
 
 
 def copilot(pull, config):
@@ -257,29 +278,32 @@ def judge_pull(pull, base_tip, config, issues):
     result["handoff"] = {k: latest[k] for k in ("worker_status", "agent_id", "task_id", "head_sha", "base_sha", "id")}
     if latest.get("invalid"):
         return finish(IN_PROGRESS, "the latest handoff is not readable; earlier handoffs are not used")
+    unread = [ref for ref in ISSUE_REF.findall(latest["task_id"]) if issues.get(ref) is None]
+    if unread:
+        result.update(state=UNCONFIRMED, reasons=["issues named by the latest handoff were not read: "
+                                                  + ", ".join(f"#{ref}" for ref in unread)])
+        return result
     for ref in ISSUE_REF.findall(latest["task_id"]):
-        state = issues.get(ref)
-        if state is None:
-            result["warnings"].append(f"issue #{ref} named by the handoff was not read")
-        elif state != "open" and int(ref) != number:
-            result["warnings"].append(f"issue #{ref} named by the handoff is {state}")
+        if issues[ref] != "open" and int(ref) != number:
+            result["warnings"].append(f"issue #{ref} named by the handoff is {issues[ref]}")
     if latest["worker_status"] == "needs-owner":
         return finish(OWNER, "the latest handoff is needs-owner")
     if latest["worker_status"] != "ready-for-review":
         return finish(IN_PROGRESS, f"the latest handoff is {latest['worker_status']}")
-    if latest["head_sha"] != head:
-        return finish(FIXES, "the ready-for-review is for an older head (pushed after the handoff)", "stale-handoff")
-    if latest["base_sha"] != base_tip:
-        return finish(FIXES, "the ready-for-review is for an older base (base moved after the handoff)",
-                      "stale-handoff")
     if result["draft"]:
-        result["warnings"].append("ready-for-review on a Draft PR; Copilot does not review drafts")
+        # Draft means work in progress (AGENTS.md); a ready-for-review is honoured only when Open.
+        return finish(IN_PROGRESS, "the PR is a Draft; a ready-for-review counts only on an Open PR")
     since = order(latest)
     unreadable = [u["reason"] for u in records["unreadable"] if order(u) >= since]
     if unreadable:
         result.update(state=UNCONFIRMED, reasons=["reviewer text after the ready-for-review is not readable; "
                                                   "a human has to check it"] + unreadable)
         return result
+    if latest["head_sha"] != head:
+        return finish(FIXES, "the ready-for-review is for an older head (pushed after the handoff)", "stale-handoff")
+    if latest["base_sha"] != base_tip:
+        return finish(FIXES, "the ready-for-review is for an older base (base moved after the handoff)",
+                      "stale-handoff")
     after = [r for r in records["reviews"]
              if r["head_sha"] == head and r["base_sha"] == base_tip and order(r) >= since]
     for r in after:
@@ -289,7 +313,7 @@ def judge_pull(pull, base_tip, config, issues):
     older = [r["id"] for r in records["reviews"] if r not in after]
     if older:
         result["outdated_reviews"] = older
-    ci = required_check(pull, config)
+    ci = required_check(pull, config, base_tip)
     result["ci"] = ci
     if independent:
         last = independent[-1]
@@ -300,6 +324,12 @@ def judge_pull(pull, base_tip, config, issues):
             return finish(FIXES, "the reviewer requested changes for this head/base")
     if ci["status"] == "failure":
         return finish(FIXES, f"required check {config['required_check']} is {ci.get('conclusion')}", "ci-failed")
+    if ci["status"] == "other-base":
+        return finish(FIXES, f"required check {config['required_check']} succeeded on a merge with another base",
+                      "ci-other-base")
+    if ci["status"] == "unconfirmed":
+        result.update(state=UNCONFIRMED, reasons=[ci["reason"]])
+        return result
     if ci["status"] in {"missing", "pending"}:
         return finish(WAITING_CI, f"required check {config['required_check']} is {ci['status']} for this head")
     if independent:

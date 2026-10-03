@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "note": "PRの巡回の判定（tools/review_guard/patrol.py）の、このrepoの設定。役割は本文の印とrole欄だけで決め、loginでは決めない。trusted_associationsは役割ではなく、外部の第三者が書いた印を読まないための信頼の境界。copilot_loginsはCopilotの補助レビューの有無を表示するためだけに使い、判定と承認には使わない。",
+  "note": "PRの巡回の判定（tools/review_guard/patrol.py）の、このrepoの設定。役割は本文の印とrole欄だけで決め、loginでは決めない。trusted_associationsは役割ではなく、外部の第三者が書いた印を読まないための信頼の境界。copilot_loginsはCopilotの補助レビューの有無を表示するためだけに使い、判定と承認には使わない。 tested_commit_env は、必須のcheckのジョブのログで試験したmerge commitを示す環境変数の名前（.github/workflows/ci.ymlのQuality gate）。trusted_logins は、author_associationが信頼の値にならないアカウント（GitHub Appのbot等）の記録も読むための追加の一覧で、役割は本文の印で決める。",
   "repository": "doc-gif/kurashi-ledger",
   "marker_namespace": "kurashi-ledger",
   "required_check": "Quality gate",
+  "tested_commit_env": "TESTED_SHA",
   "reviewer_roles": {
     "codex-reviewer": "codex",
     "claude-reviewer": "claude",
@@ -14,6 +15,7 @@
     "MEMBER",
     "COLLABORATOR"
   ],
+  "trusted_logins": [],
   "copilot_logins": [
     "copilot-pull-request-reviewer[bot]",
     "Copilot"

@@ -25,6 +25,8 @@ CONFIG = {
     "repository": "example-owner/example-repo",
     "marker_namespace": NS,
     "required_check": "Quality gate",
+    "tested_commit_env": "TESTED_SHA",
+    "trusted_logins": [],
     "reviewer_roles": {"codex-reviewer": "codex", "claude-reviewer": "claude", "reviewer": "legacy-reviewer"},
     "trusted_associations": ["OWNER", "MEMBER", "COLLABORATOR"],
     "copilot_logins": ["copilot-pull-request-reviewer[bot]"],
@@ -60,10 +62,26 @@ def gate(conclusion="success", head=HEAD, run_id=10, status="completed"):
             "conclusion": conclusion if status == "completed" else None, "head_sha": head}
 
 
-def pull(comments=(), head=HEAD, checks=None, files=("src/example.ts",), number=5, draft=False):
-    return {"number": number, "draft": draft, "state": "open", "head_sha": head, "base_ref": "main",
-            "complete": True, "errors": [], "files": list(files), "comments": list(comments),
-            "check_runs": [gate(head=head)] if checks is None else list(checks)}
+def evidence_for(checks, head, ci_base):
+    """What the source reads for the latest successful gate: the tested merge and its parents."""
+    gates = [c for c in checks if c["name"] == "Quality gate" and c["head_sha"] == head]
+    if not gates:
+        return None
+    latest = max(gates, key=lambda c: c["id"])
+    if latest["status"] != "completed" or latest["conclusion"] != "success":
+        return None
+    return {"check_run_id": latest["id"], "tested_sha": "9" * 40, "parents": [ci_base, head]}
+
+
+def pull(comments=(), head=HEAD, checks=None, files=("src/example.ts",), number=5, draft=False, ci_base=BASE):
+    checks = [gate(head=head)] if checks is None else list(checks)
+    result = {"number": number, "draft": draft, "state": "open", "head_sha": head, "base_ref": "main",
+              "complete": True, "errors": [], "files": list(files), "comments": list(comments),
+              "check_runs": checks}
+    evidence = evidence_for(checks, head, ci_base)
+    if evidence:
+        result["ci_evidence"] = evidence
+    return result
 
 
 def snapshot(*pulls, tip=BASE, issues=None):

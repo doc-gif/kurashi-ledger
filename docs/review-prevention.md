@@ -37,6 +37,8 @@ Gitアダプタはbaseがheadに取り込まれているか確認して三点dif
 
 **状態: 提案。repoの設定は変えていない。** repoの設定は所有者が判断する（[タスク台帳](implementation-tasks.md)のT23）。設定するまでは、下の「設定するまでの扱い」のとおり手続きで補う。
 
+**2026-10-03の所有者の決定:** 下の推奨の1（レビュー用の別アカウント）について、所有者は、別のユーザーアカウントではなく、CodexとClaudeそれぞれのGitHub Appを用意することを選んだ（[Issue #41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。AppはCODEOWNERSの所有者になれないので、rulesetの具体（承認の数、最新のpushの承認等）は、Appの導入を記録する作業（Issue #41）の結果を正とし、この節の推奨の1・2はその結果に合わせて置き換える。後でmainに入る側が、この節との食い違いを照合する。下の迂回試験の手順は、承認者をAppに読み替えて使う。巡回の判定では、Appのbotが書いた記録を読むために、そのloginを`.review/patrol.json`の`trusted_logins`に加える（役割は本文の印のまま。T23の後続）。
+
 ### 問題
 
 - `pull_request`のworkflowはPR自身が変えられるので、CI（`review plan`等）の合格は、workflow・検査器・条件・原因台帳を変えるPRの迂回を防がない。
