@@ -7,7 +7,7 @@
   ],
   "conflicts": [
     {
-      "description": "CodexがPR #11のR番号を連番で採番しており（PR11-R001〜R009）、Copilotだけが出した原因には採番した担当がいない。同じ番号帯を使うと、Codexの今後の採番と衝突する。",
+      "description": "CodexがPR #11のR番号を連番で採番しており（PR11-R001〜R011。R010・R011は作業中の2026-10-03に追加された）、Copilotだけが出した原因には採番した担当がいない。同じ番号帯を使うと、Codexの今後の採番と衝突する。",
       "state": "resolved",
       "resolution": "規約（docs/review-prevention.md、tools/review_guard/README.md）が定めるのはPR<N>-R<3桁以上>の書式と、同じ原因を同じIDへ対応付けることだけで、Copilotだけの原因の採番は定めていない。CodexのIDはそのまま使い、Copilotだけの原因はPR11-R101以降の番号帯を使う。この約束はPR本文に書き、規約文書は変更しない。"
     },
@@ -25,6 +25,11 @@
       "description": "PR #11はまだOpenで、登録の後にも新しいレビューが付きうる。台帳は解消状態の正本ではない。",
       "state": "resolved",
       "resolution": "引継ぎの直前にPR #11のレビュー・inline・コメントを全ページ取り直し、新しい指摘があれば同じ原因のIDへ出典を足すか、新しい原因として加える。台帳には解消状態・対応commitを書かない。"
+    },
+    {
+      "description": "作業中にCodexがPR11-R010（別件判断の前提にpurposeを含める）とPR11-R011（必須の採用スナップショットの欠落を保存時に拒否する）を追加した。前者はCopilotだけの原因として集約した「判断の前提の再確認」、後者は「計算runの入力閉包の完全性（独立に導く根・逆参照）」と同じ原因になる。",
+      "state": "resolved",
+      "resolution": "規約に従い、同じ原因はCodexのIDへ寄せる。2つのCopilotだけの原因の出典をPR11-R010・R011へ移し、R101以降の番号帯から外して詰める（未マージのPR内の番号で、ほかからの参照はない）。R011は記録・関係の閉包と採用スナップショットの双方を、入力要求から独立に導いた必要集合との一致として扱う。各スナップショットの粒度・一意性は別の原因として残す。"
     }
   ],
   "assessments": [
@@ -47,8 +52,8 @@
       "checks": [
         {
           "id": "duplicates",
-          "method": "PR #11の全ページのレビュー・inline・コメントを取得し、本文のrole: codex-reviewerでCodexを識別する。Copilotのinline（返信を除く）とoverviewのPreviously missedを全件抽出し、各指摘がちょうど1つのIDに対応することをscriptで確かめる。登録する全候補をguard.py triageへ1回で入力し、既存の原因キーとの一致とバッチ内の重複を確認する。",
-          "expected": "CodexのPR11-R001〜R009は同じIDで登録される。Copilotの指摘は全件がいずれか1つのIDに対応し、Codexと同じ原因は出典の追加だけになる。triageは既存キーに一致する候補だけupdate-existingを返し、バッチの重複はない。validateが成功する。"
+          "method": "PR #11の全ページのレビュー・inline・コメントを取得し、本文のrole: codex-reviewerでCodexを識別する。Copilotのinline（返信を除く）とoverviewのPreviously missedを全件抽出し、各指摘がちょうど1つのIDに対応することをscriptで確かめる。登録する全候補をguard.py triageへ1回で入力し、既存の原因キーとの一致とバッチ内の重複を確認する。 引継ぎの直前に全ページを取り直し、追加されたCodexの内容レビューとCopilotの指摘も同じ手順で対応付ける。",
+          "expected": "CodexのPR11-R001〜R011は同じIDで登録される。Copilotの指摘は全件がいずれか1つのIDに対応し、Codexと同じ原因は出典の追加だけになる。triageは既存キーに一致する候補だけupdate-existingを返し、バッチの重複はない。validateが成功する。"
         },
         {
           "id": "trust",
