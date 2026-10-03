@@ -67,7 +67,7 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 | Windows | `scripts/install-record.test.ts`の、印を消せないときの1件 | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | 別のPowerShellで印を削除できない共有の指定で開いたまま（`$f = [System.IO.File]::Open("$PWD\.kurashi-ledger-setup.lock", 'Open', 'Read', 'Read')`）、`npm ci`の最中にCtrl+Cを押し、130で終わり、印が残ったことと消し方が表示されること。`$f.Close()`のあと印を消すと、`npm run setup`が進むこと |
 | macOS・Linuxのroot | `scripts/install-record.test.ts`の、印を消せないときの1件 | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipの件数を記録する（GitHubのhosted runnerは一般のユーザー） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。件数と一覧の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（件数を書き写さない）。
 
 飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。T05のWindowsのCIでは、出力にこの旨が出たかを記録する。
 
