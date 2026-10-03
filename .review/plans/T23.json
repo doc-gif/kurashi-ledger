@@ -49,6 +49,21 @@
       "description": "PR38-R006: Draftを警告だけにしていたので、Draftに戻した作業中のPRも着手候補・acceptedになりえた。",
       "state": "resolved",
       "resolution": "Draftのあいだは、needs-owner以外を作業中（in-progress）とし、着手候補・accepted・通知を出さない。READMEの「Open/Draftの状態は判定に使わない」を、「Openであることは完了の根拠にしない。Draftは作業中」に直す。"
+    },
+    {
+      "description": "PR38-R010: レビューは「実装していない反対側」（Claude実装はCodex、Codex実装はClaude）だけを数える必要があるが、引継ぎの書式に実装側の系統の欄がない。欄を加えると、PR #40（所有者の最優先。docs/pr-review-loop.mdの書式を短くする）と同じ箇所を変え、文書の変更を最小にする方針とも衝突する。",
+      "state": "resolved",
+      "resolution": "書式は変えず、agent_idの先頭（設定のagent_sides。codex→codex、claude→claude）で系統を決める。レビュー役の系統はroleで決め（codex-reviewer→codex、claude-reviewer→claude）、旧表記のreviewerはレビューのagent_idの先頭で決める。roleとagent_idの系統が食い違う、または系統を決められないレビューは数えず未確認にする。実装側と同じ系統のレビューは数えない（警告）。実装側の系統が分からないときは、ready後のレビューがあれば未確認。agent_idは協調用の表示で、本人確認ではない（その限界をREADMEに書く）。pr-review-loopには自分の6節に1文だけ足す。"
+    },
+    {
+      "description": "PR38-R009: issue commentとpull reviewは別の資源で、同じ秒の記録の前後をIDで決める契約がない。",
+      "state": "resolved",
+      "resolution": "同じ資源の中だけIDで順序付ける。最新の引継ぎと同じ秒に、別の資源の記録（引継ぎ・レビュー・読めないレビュー役の記録）があれば、前後を証明できないので未確認にする。"
+    },
+    {
+      "description": "PR38-R012: 所有者はGitHub Appを選んだ（Issue #41）が、保護の節に旧案（別アカウント＋CODEOWNERS）の推奨と、それを前提にした迂回試験の期待結果が残っている。",
+      "state": "resolved",
+      "resolution": "旧案の推奨・選択肢・手順を外し、節を「保留（Issue #41の確定案を待つ）」にする。問題の記述、迂回試験で確かめる観点（具体の設定に依存しない）、設定するまでの扱いだけを残す。設定の実施や所有者への再承認は求めない。"
     }
   ],
   "assessments": [
@@ -67,7 +82,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "判定は最新head/baseとPRのコメント・レビューの印に結び付け、古いready・別headのレビュー・自己レビュー・Copilotの承認を、着手候補やacceptedに数えない。投稿は（PR・種別・head・base）の印で重複を防ぎ、投稿の直前に取り直す。不変条件の台帳には追加だけを行い、既存の条件・paths・シナリオ・原因台帳を変えない（CIのci.pyが報告するbaseとの差分は追加だけになる）。保護の提案は設定を変えず、構造検査・自己申告・AIの判定を独立承認と取り違えない。 PR38のレビュー（R001〜R007）を受けて、関連Issueの取得失敗を未確認に伝える、投稿の直前に取り直したデータで判定し直す、印は本文の1行目だけを読む、投稿をOSのロックで直列化する、Draftを作業中にする、必須のcheckが試験したbaseを確かめる、G7のpathsにADR-0009を加える。GitHub Appのbotの記録を読めるよう、設定にtrusted_logins（既定は空）を加える（役割は本文の印のまま）。",
+      "reason": "判定は最新head/baseとPRのコメント・レビューの印に結び付け、古いready・別headのレビュー・自己レビュー・Copilotの承認を、着手候補やacceptedに数えない。投稿は（PR・種別・head・base）の印で重複を防ぎ、投稿の直前に取り直す。不変条件の台帳には追加だけを行い、既存の条件・paths・シナリオ・原因台帳を変えない（CIのci.pyが報告するbaseとの差分は追加だけになる）。保護の提案は設定を変えず、構造検査・自己申告・AIの判定を独立承認と取り違えない。 PR38のレビュー（R001〜R007）を受けて、関連Issueの取得失敗を未確認に伝える、投稿の直前に取り直したデータで判定し直す、印は本文の1行目だけを読む、投稿をOSのロックで直列化する、Draftを作業中にする、必須のcheckが試験したbaseを確かめる、G7のpathsにADR-0009を加える。GitHub Appのbotの記録を読めるよう、設定にtrusted_logins（既定は空）を加える（役割は本文の印のまま）。 2回目のレビュー（R008〜R012）を受けて、PRのファイル一覧の件数をPRの詳細のchanged_filesと照合する、別資源の同じ秒の記録を未確認にする、反対側の系統のレビューだけを数える、保存したsnapshotのrepositoryを設定と照合する、保護の節の旧案を外す。",
       "checks": [
         {
           "id": "duplicates",
@@ -76,8 +91,8 @@
         },
         {
           "id": "trust",
-          "method": "試験: 古いhead/baseのready、workingで取り消したready、実装者と同じagent_idのレビュー、外部の作者（author_association）の印、Copilotの承認、GitHubのAPPROVEDだけ（印なし）を与える。ci.pyで、候補の台帳の差分が追加だけと報告されることを確かめる。 前置きの文のあとの印・後置の例示の印を数えないこと、Draftに戻したPRが着手候補・acceptedにならないこと、同じheadで新しいbaseのreadyと古いbaseのCIの成功の組合せが着手候補・acceptedにならないこと、試験したbaseの証拠を読めなければ未確認になること、関連Issueの取得失敗で終了コード3・投稿なしになることを試験する。",
-          "expected": "どれも着手候補・acceptedにならない。台帳の差分の報告は追加だけ。判定の出力は承認・マージの許可ではないと明記される。 どれも着手候補・acceptedにならず、証拠や関連Issueを読めないときは未確認。"
+          "method": "試験: 古いhead/baseのready、workingで取り消したready、実装者と同じagent_idのレビュー、外部の作者（author_association）の印、Copilotの承認、GitHubのAPPROVEDだけ（印なし）を与える。ci.pyで、候補の台帳の差分が追加だけと報告されることを確かめる。 前置きの文のあとの印・後置の例示の印を数えないこと、Draftに戻したPRが着手候補・acceptedにならないこと、同じheadで新しいbaseのreadyと古いbaseのCIの成功の組合せが着手候補・acceptedにならないこと、試験したbaseの証拠を読めなければ未確認になること、関連Issueの取得失敗で終了コード3・投稿なしになることを試験する。 同じ系統の別subagentのaccepted（両方向）、旧roleで系統が分からないレビュー、roleとagent_idの系統の食い違い、同じ秒のreadyとレビュー（両方の順序とIDの大小の逆転）、ファイル一覧の打切り（changed_filesとの不一致）、別repoのsnapshot・repositoryの欠落を試験する。",
+          "expected": "どれも着手候補・acceptedにならない。台帳の差分の報告は追加だけ。判定の出力は承認・マージの許可ではないと明記される。 どれも着手候補・acceptedにならず、証拠や関連Issueを読めないときは未確認。 同じ系統・系統不明のレビューはacceptedにならず、順序や完全性を証明できないときは未確認、別repoのsnapshotは拒否される。"
         }
       ]
     },
@@ -93,7 +108,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "README・状態資料・台帳・pr-review-loop・review-prevention・tools/review_guard/READMEの記述を読み合わせる。判定の分類と、pr-review-loopの「レビュー開始の条件」「重複防止」が同じ条件を指すか確かめる。",
+          "method": "README・状態資料・台帳・pr-review-loop・review-prevention・tools/review_guard/READMEの記述を読み合わせる。判定の分類と、pr-review-loopの「レビュー開始の条件」「重複防止」が同じ条件を指すか確かめる。 保護の節が旧案を推奨・手順として残さず、Issue #41の確定案を待つ保留であることを、PRの説明・計画・READMEと照合する。",
           "expected": "入口の間で、判定ツールの位置付け（補助で、承認・マージの許可ではない）と、定期実行の登録はT24であることが一致する。"
         }
       ]
