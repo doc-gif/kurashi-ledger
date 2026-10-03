@@ -6,6 +6,7 @@
     ".github/workflows/ci.yml",
     "README.md",
     "docs/adr/0008-install-record.md",
+    "tests/support/prevent-deletion.ts",
     "docs/adr/README.md",
     "docs/development.md",
     "docs/implementation-tasks.md",
