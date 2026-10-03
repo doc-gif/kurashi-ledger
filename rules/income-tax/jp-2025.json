@@ -884,15 +884,69 @@
     "yearEndAdjustmentMultiplier": "1.021"
   },
   "yearEndAdjustmentLimits": {
-    "description": "年末調整の対象の範囲。主たる給与等の金額が2,000万円を超える人は年末調整をしない。課税給与所得金額が18,050,000円を超える場合は年末調整の対象とならない。",
+    "description": "12月に行う年末調整の対象者の条件（targetConditions）。扶養控除等申告書を提出し、年末まで勤務している人が対象で、給与の総額が2,000万円を超える人と、災害減免法による源泉徴収の猶予・還付を受けた人を除く。条件はmanifestのunsupportedInputs（年末調整だけ）とidで一対一に対応する。課税給与所得金額の上限（taxableIncomeMax）は、給与の上限の収入の給与所得控除後の金額で、別の条件ではない。",
     "source": {
-      "ref": "nta-hotei2025-scope",
-      "location": "【給与所得の源泉徴収票の提出範囲】(4)ロ"
+      "ref": "nta-ta-2665",
+      "location": "12月に行う年末調整の対象となる人"
     },
-    "crossCheckSource": {
-      "ref": "nta-nencho2025-rates",
-      "location": "55ページ 速算表の注2"
-    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-hotei2025-scope",
+        "location": "【給与所得の源泉徴収票の提出範囲】(4)ロ"
+      },
+      {
+        "ref": "nta-nencho2025-rates",
+        "location": "55ページ 速算表の注2"
+      }
+    ],
+    "targetConditions": [
+      {
+        "id": "dependent-declaration",
+        "input": "yearEndAdjustment.dependentDeclarationSubmitted",
+        "allowed": [
+          true
+        ],
+        "meaning": "給与所得者の扶養控除等（異動）申告書を、年末調整を行う日までにこの支払者へ提出している",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "概要"
+        }
+      },
+      {
+        "id": "employed-at-year-end",
+        "input": "yearEndAdjustment.employedAtYearEnd",
+        "allowed": [
+          true
+        ],
+        "meaning": "1年を通じて勤務しているか、年の中途で就職し年末まで勤務している（年の中途の退職者の年末調整はこの版の範囲外）",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人"
+        }
+      },
+      {
+        "id": "salary-total-max",
+        "input": "salaryRevenue",
+        "maxRef": "salaryRevenueMax",
+        "meaning": "1年間に支払うべきことが確定した給与の総額がsalaryRevenueMax以下",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人の(1)"
+        }
+      },
+      {
+        "id": "disaster-relief",
+        "input": "yearEndAdjustment.disasterReliefWithholding",
+        "allowed": [
+          false
+        ],
+        "meaning": "災害減免法により、その年の給与の源泉徴収について徴収猶予や還付を受けていない",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人の(2)"
+        }
+      }
+    ],
     "salaryRevenueMax": 20000000,
     "taxableIncomeMax": 18050000
   },

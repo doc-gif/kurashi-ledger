@@ -422,9 +422,9 @@ function checkAgeRange(o: Obj, ref: string, w: string, problems: Problems): void
   }
 }
 
-// 家族の入力（PR29-R006）。入力の項目は、制度データの適用要件（eligibility。anyOfの代替を含む）と区分の条件（requires）の入力をすべて持つ。
-// 分からない入力の数え方: 控除ごとに当てはまる所得・年齢の範囲の人についてだけ、適用要件を条件群として評価する。
-// 条件群はORで、既知の代替で満たせば、ほかの代替のunknownで不足にしない。どの代替でも決まらない条件群だけを不足に数える。
+// 家族の入力（PR29-R006）。人ごとの基本の項目（生年月日・合計所得金額・12月31日に生存しているか・居住者か）は必ず持つ。
+// 適用要件の入力は、欠けていればunknownと同じに扱い、必要なときだけ不足に数える（下の手順）。
+// 型の検査（R010）は、この手順と別に、値があれば常に行う。不正な値は既知の入力として扱わない。
 interface FamilyCheck {
   missingKeys: string[];
   invalid: string[];
@@ -447,16 +447,39 @@ function domainOf(alt: Obj): readonly unknown[] | "boolean" | undefined {
   return allowed.length > 0 && allowed.every((x) => typeof x === "boolean") ? "boolean" : undefined;
 }
 
-function evalGroup(e: Obj, person: Obj, ci: Obj): "met" | "unmet" | "unknown" {
+// 判定の結果。met（当たる）・unmet（当たらないと分かる）・unknown（決まらない。決まらない入力の名前を持つ）。
+interface Judged {
+  state: "met" | "unmet" | "unknown";
+  unknown: string[];
+}
+const MET: Judged = { state: "met", unknown: [] };
+const UNMET: Judged = { state: "unmet", unknown: [] };
+
+// AND: 1つでもunmetならunmet（ほかの未知の入力は数えない）。unmetがなく、unknownがあればunknown。
+function all(parts: readonly Judged[]): Judged {
+  if (parts.some((p) => p.state === "unmet")) return UNMET;
+  const unknown = parts.flatMap((p) => p.unknown);
+  return unknown.length > 0 ? { state: "unknown", unknown } : MET;
+}
+
+// 条件群（anyOfはOR）: 既知の代替で満たせばmet（ほかの代替のunknownを数えない）。どの代替でも決まらなければunknown。
+function evalGroup(e: Obj, person: Obj, ci: Obj): Judged {
   const alts = Array.isArray(e["anyOf"]) ? e["anyOf"].map(obj) : [e];
-  let unknown = false;
+  const unknown: string[] = [];
   for (const a of alts) {
     const path = String(a["input"]);
     const v = path.startsWith("taxpayer.") ? obj(ci["taxpayer"])[path.slice("taxpayer.".length)] : person[path];
-    if (v === undefined || v === "unknown") unknown = true;
-    else if (arr(a["allowed"]).includes(v)) return "met";
+    const dom = domainOf(a);
+    if (v === undefined || v === "unknown" || (dom !== undefined && !validValue(v, dom))) unknown.push(path);
+    else if (arr(a["allowed"]).includes(v)) return MET;
   }
-  return unknown ? "unknown" : "unmet";
+  return unknown.length > 0 ? { state: "unknown", unknown } : UNMET;
+}
+
+// 値の範囲の判定。値が分からない・不正なら、その入力の名前でunknown。
+function range(v: unknown, name: string, ok: (n: number) => boolean): Judged {
+  if (!isInt(v) || v < 0) return { state: "unknown", unknown: [name] };
+  return ok(v) ? MET : UNMET;
 }
 
 function familyCheck(data: Obj, ci: Obj): FamilyCheck {
@@ -470,9 +493,9 @@ function familyCheck(data: Obj, ci: Obj): FamilyCheck {
   const sr = obj(data["specificRelativeDeduction"]);
   const srBr = arr(sr["brackets"]).map(obj);
   const srMax = Number(srBr[srBr.length - 1]?.["totalIncomeMax"]);
-  // 入力の名前と許す値の範囲（domain。真偽の要件は真偽値）。
+  const groupsOf = (k: string): Obj[] => arr(obj(data[k])["eligibility"]).map(obj);
+  // 入力の名前と許す値の範囲（domain。真偽の要件は真偽値）。同じ入力が複数の条件に現れるとき、どれか1つでも範囲がなければ、範囲がないとする。
   const domains = new Map<string, readonly unknown[] | "boolean" | undefined>();
-  // 同じ入力が複数の条件に現れるとき、どれか1つでも許す値の範囲がなければ、範囲がないとする。
   const register = (a: Obj): string => {
     const k = String(a["input"]);
     const d = domainOf(a);
@@ -480,53 +503,80 @@ function familyCheck(data: Obj, ci: Obj): FamilyCheck {
     return k;
   };
   const inputsOf = (keys: string[]): string[] =>
-    keys.flatMap((k) =>
-      arr(obj(data[k])["eligibility"])
-        .map(obj)
-        .filter((e) => e["scope"] !== "taxpayer")
-        .flatMap((e) => (Array.isArray(e["anyOf"]) ? e["anyOf"].map(obj) : [e]).map(register)),
-    );
-  const catInputs = arr(dep["categories"]).flatMap((c) => arr(obj(c)["requires"]).map((r) => register(obj(r))));
+    keys.flatMap((k) => groupsOf(k).flatMap((e) => (Array.isArray(e["anyOf"]) ? e["anyOf"].map(obj) : [e]).map(register)));
+  const personal = (k: string): boolean => !k.startsWith("taxpayer.");
+  const spouseInputs = inputsOf(["spouseDeduction", "spouseSpecialDeduction"]).filter(personal);
+  const relativeInputs = [...inputsOf(["dependentDeduction", "specificRelativeDeduction"]), ...arr(dep["categories"]).flatMap((c) => arr(obj(c)["requires"]).map((r) => register(obj(r))))].filter(personal);
   if (ci["spouse"] !== null && !isObj(ci["spouse"])) out.invalid.push("spouse（objectかnull）");
   if (!Array.isArray(ci["relatives"]) || !ci["relatives"].every(isObj)) out.invalid.push("relatives（objectの並び）");
-  if (arr(ci["relatives"]).length > 0) {
-    const tv = obj(ci["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"];
-    if (tv !== undefined && !validValue(tv, "boolean")) out.invalid.push("taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（真偽値かunknown）");
+  if ("taxpayer" in ci && !isObj(ci["taxpayer"])) out.invalid.push("taxpayer（object）");
+  // 納税者側の入力（No.1177の(9)）: 型は値があれば常に確かめる。必要かどうかは特定親族特別控除の判定で決める。
+  for (const [k, v] of Object.entries(obj(ci["taxpayer"]))) {
+    const dom = domains.get(`taxpayer.${k}`);
+    if (!domains.has(`taxpayer.${k}`)) out.invalid.push(`taxpayer.${k}（制度データの適用要件にない入力）`);
+    else if (dom === undefined || !validValue(v, dom)) out.invalid.push(`taxpayer.${k}（真偽値かunknown: ${JSON.stringify(v)}）`);
   }
-  const people: [string, Obj, string[], (p: Obj) => string[]][] = [];
-  if (ci["spouse"] !== null) {
-    people.push(["spouse", obj(ci["spouse"]), inputsOf(["spouseDeduction", "spouseSpecialDeduction"]), (p) => {
-      const t = p["totalIncome"];
-      if (typeof t !== "number") return ["spouseDeduction", "spouseSpecialDeduction"];
-      return t <= spouseMax ? ["spouseDeduction"] : t <= spouseSpecialMax ? ["spouseSpecialDeduction"] : [];
-    }]);
-  }
-  arr(ci["relatives"]).forEach((r, i) => {
-    people.push([`relatives[${i}]`, obj(r), [...inputsOf(["dependentDeduction", "specificRelativeDeduction"]), ...catInputs], (p) => {
-      const t = p["totalIncome"];
-      const age = isLocalDate(p["birthDate"]) ? ageOn(p["birthDate"], ref) : undefined;
-      const rel: string[] = [];
-      if ((typeof t !== "number" || t <= depMax) && (age === undefined || age >= 16)) rel.push("dependentDeduction");
-      if ((typeof t !== "number" || (t > depMax && t <= srMax)) && (age === undefined || (age >= Number(sr["ageMin"]) && age < Number(sr["ageBelow"])))) rel.push("specificRelativeDeduction");
-      return rel;
-    }]);
-  });
-  for (const [name, p, keys, relevant] of people) {
+  // 本人の合計所得金額の下限（給与所得控除後の金額から、所得金額調整控除の最大の額を引いた額）。配偶者の控除の候補の判定に使う。
+  const salary = ci["salaryRevenue"];
+  const adj = obj(data["incomeAdjustmentDeduction"]);
+  const taxpayerMin = ((): number | undefined => {
+    if (!isInt(salary) || salary < 0) return undefined;
+    const e = decToNumber(employmentIncomeOf(data, "", new Problems())?.(salary));
+    const over = Number(adj["revenueOver"]);
+    const cap = Number(adj["revenueCap"]);
+    const maxAdj = salary > over ? Math.ceil((Math.min(salary, cap) - over) * Number(adj["rate"])) : 0;
+    return Number.isFinite(e) ? e - maxAdj : undefined;
+  })();
+  const taxpayerSpouseMax = Math.max(...arr(obj(data["spouseSpecialDeduction"])["taxpayerTotalIncomeMax"]).map(Number));
+  const taxpayerForSpouse: Judged = taxpayerMin !== undefined && taxpayerMin > taxpayerSpouseMax ? UNMET : MET;
+  const ageOf = (p: Obj): number | undefined => (isLocalDate(p["birthDate"]) ? ageOn(p["birthDate"], ref) : undefined);
+  const age = (p: Obj, ok: (a: number) => boolean): Judged => {
+    const a = ageOf(p);
+    return a === undefined ? { state: "unknown", unknown: ["birthDate"] } : ok(a) ? MET : UNMET;
+  };
+  // 控除ごとの候補の判定（所得・年齢・本人の所得）と、額を決めるのに要る入力（候補で適用要件がunmetでないときだけ数える）。
+  type Deduction = { key: string; candidate: (p: Obj) => Judged; amountInputs: (p: Obj) => Judged };
+  const none = (): Judged => MET;
+  const spouseDeductions: Deduction[] = [
+    { key: "spouseDeduction", candidate: (p) => all([taxpayerForSpouse, range(p["totalIncome"], "totalIncome", (t) => t <= spouseMax)]), amountInputs: (p) => age(p, () => true) },
+    { key: "spouseSpecialDeduction", candidate: (p) => all([taxpayerForSpouse, range(p["totalIncome"], "totalIncome", (t) => t > spouseMax && t <= spouseSpecialMax)]), amountInputs: none },
+  ];
+  const relativeDeductions: Deduction[] = [
+    {
+      key: "dependentDeduction",
+      candidate: (p) => all([range(p["totalIncome"], "totalIncome", (t) => t <= depMax), age(p, (a) => a >= 16)]),
+      amountInputs: (p) => {
+        const a = ageOf(p);
+        if (a === undefined || a < 70) return MET;
+        return all(arr(dep["categories"]).flatMap((c) => arr(obj(c)["requires"]).map((r) => evalGroup(obj(r), p, ci))).filter((j) => j.state === "unknown"));
+      },
+    },
+    {
+      key: "specificRelativeDeduction",
+      candidate: (p) => all([range(p["totalIncome"], "totalIncome", (t) => t > depMax && t <= srMax), age(p, (a) => a >= Number(sr["ageMin"]) && a < Number(sr["ageBelow"]))]),
+      amountInputs: none,
+    },
+  ];
+  const people: [string, Obj, string[], Deduction[]][] = [];
+  if (ci["spouse"] !== null) people.push(["spouse", obj(ci["spouse"]), spouseInputs, spouseDeductions]);
+  arr(ci["relatives"]).forEach((r, i) => people.push([`relatives[${i}]`, obj(r), relativeInputs, relativeDeductions]));
+  for (const [name, p, keys, deductions] of people) {
+    for (const k of ["birthDate", "totalIncome", "livingAtYearEnd", "resident"]) if (!(k in p)) out.missingKeys.push(`${name}.${k}`);
     for (const k of new Set(["birthDate", "totalIncome", "livingAtYearEnd", "resident", ...keys])) {
-      if (!(k in p)) {
-        out.missingKeys.push(`${name}.${k}`);
-        continue;
-      }
+      if (!(k in p)) continue;
       const dom = k === "birthDate" ? "date" : k === "totalIncome" ? "income" : k === "livingAtYearEnd" || k === "resident" ? "boolean" : domains.get(k);
       if (dom === undefined) out.invalid.push(`${name}.${k}（制度データに許す値の範囲（domain）がない）`);
       else if (!validValue(p[k], dom)) out.invalid.push(`${name}.${k}（型か値が正しくない: ${JSON.stringify(p[k])}）`);
     }
-    for (const k of ["birthDate", "totalIncome"]) if (p[k] === "unknown") out.unknown.push(`${name}.${k}`);
-    for (const d of relevant(p)) {
-      for (const e of arr(obj(data[d])["eligibility"]).map(obj)) if (evalGroup(e, p, ci) === "unknown") out.unknown.push(`${name}.${d}の条件（${String(e["input"] ?? arr(e["anyOf"]).map((a) => obj(a)["input"]).join("|"))}）`);
-      if (d === "dependentDeduction" && isLocalDate(p["birthDate"]) && ageOn(p["birthDate"], ref) >= 70) {
-        for (const c of arr(dep["categories"]).map(obj)) for (const r of arr(c["requires"])) if (p[String(obj(r)["input"])] === "unknown") out.unknown.push(`${name}.${String(obj(r)["input"])}`);
-      }
+    // 控除ごとに同じ手順: 候補でない、または既知の不適格の条件があれば0（その控除の未知の入力を数えない）。
+    // 候補（か未決）で適用要件が決まらなければ、決まらない入力だけを不足に数える。適用の余地がある未知の値を0で補わない。
+    for (const d of deductions) {
+      const cand = d.candidate(p);
+      if (cand.state === "unmet") continue;
+      const elig = all(groupsOf(d.key).map((e) => evalGroup(e, p, ci)));
+      if (elig.state === "unmet") continue;
+      const need = all([cand, elig, d.amountInputs(p)]);
+      for (const k of new Set(need.unknown)) out.unknown.push(`${k.startsWith("taxpayer.") ? k : `${name}.${k}`}（${d.key}の判定）`);
     }
   }
   return out;
@@ -551,6 +601,8 @@ function valuesAt(input: unknown, path: string): unknown[] {
 }
 
 // 規則のunsupportedInputsに当たるか（「unknown」は未対応ではなく不足として別に扱う）。
+// 条件はallowed（許す値の列挙）かmax（数の上限。上限ちょうどは範囲内。PR29-R011の年末調整の給与の上限）。
+// maxの条件で数でない値は、型の検査（requiredInputs）が別に問題にするので、ここでは当たるとしない。
 function inputUnsupported(rs: Obj, input: unknown, procedure: unknown): { violates: string[]; unknown: string[] } {
   const violates: string[] = [];
   const unknown: string[] = [];
@@ -558,9 +610,10 @@ function inputUnsupported(rs: Obj, input: unknown, procedure: unknown): { violat
     const o = obj(u);
     if (Array.isArray(o["procedures"]) && !o["procedures"].includes(procedure)) continue;
     const allowed = arr(o["allowed"]);
+    const max = o["max"];
     for (const v of valuesAt(input, String(o["path"]))) {
       if (v === "unknown") unknown.push(String(o["path"]));
-      else if (!allowed.includes(v)) violates.push(String(o["path"]));
+      else if (isInt(max) ? typeof v === "number" && v > max : !allowed.includes(v)) violates.push(String(o["path"]));
     }
   }
   return { violates, unknown };
@@ -578,7 +631,6 @@ function missingRequired(rs: Obj, input: unknown, procedure: unknown): string[] 
     if (isObj(o["when"])) {
       const v = valuesAt(input, String(when["path"]))[0];
       if (typeof when["greaterThan"] === "number" && typeof v === "number" && !(v > when["greaterThan"])) continue;
-      if (when["nonEmpty"] === true && Array.isArray(v) && v.length === 0) continue;
     }
     const path = String(o["path"]);
     let cur: unknown = input;
@@ -618,6 +670,45 @@ function invalidRequired(rs: Obj, input: unknown, procedure: unknown): string[] 
     if (!ok) out.push(`${String(o["path"])}（型か値が正しくない: ${JSON.stringify(cur)}）`);
   }
   return out;
+}
+
+// 年末調整の対象者の条件（PR29-R011。タックスアンサーNo.2665）。制度データのyearEndAdjustmentLimits.targetConditionsの全部が、
+// manifestのunsupportedInputs（procedures: year-end-adjustmentだけ、yearEndAdjustmentConditionが同じid）と一対一で、
+// 同じ入力・同じ許す値（給与の上限はmaxがsalaryRevenueMaxと同じ）を持ち、その入力は年末調整の必須の入力。
+// taxableIncomeMaxは、上限の収入の給与所得控除後の金額と同じ（別の条件ではない）。確定申告にはこれらの条件を当てない。
+function checkYearEndAdjustmentConditions(rs: Obj, data: Obj, w: string, problems: Problems): void {
+  const limits = obj(data["yearEndAdjustmentLimits"]);
+  const conds = arr(limits["targetConditions"]).map(obj);
+  if (conds.length === 0) {
+    problems.add(w, "yearEndAdjustmentLimits.targetConditions（年末調整の対象者の条件）がない");
+    return;
+  }
+  const unsup = arr(rs["unsupportedInputs"]).map(obj);
+  const linked = unsup.filter((u) => "yearEndAdjustmentCondition" in u);
+  const ids = new Set<string>();
+  for (const c of conds) {
+    const id = String(c["id"]);
+    if (ids.has(id)) problems.add(w, `targetConditionsのidが重なる: ${id}`);
+    ids.add(id);
+    const us = linked.filter((u) => u["yearEndAdjustmentCondition"] === id);
+    if (us.length !== 1) {
+      problems.add(w, `年末調整の対象者の条件（${id}）に対応するunsupportedInputsが1つでない: ${us.length}`);
+      continue;
+    }
+    const u = obj(us[0]);
+    if (u["path"] !== c["input"]) problems.add(w, `年末調整の対象者の条件（${id}）の入力がunsupportedInputsのpathと違う`);
+    if (JSON.stringify(u["procedures"]) !== JSON.stringify(["year-end-adjustment"])) problems.add(w, `年末調整の対象者の条件（${id}）のunsupportedInputsは、proceduresがyear-end-adjustmentだけ（確定申告に当てない）`);
+    if ("maxRef" in c) {
+      const max = limits[String(c["maxRef"])];
+      if (!isInt(max) || u["max"] !== max || "allowed" in u) problems.add(w, `年末調整の対象者の条件（${id}）の上限が、unsupportedInputsのmaxと制度データの${String(c["maxRef"])}で違う`);
+    } else if (JSON.stringify(u["allowed"]) !== JSON.stringify(c["allowed"]) || arr(c["allowed"]).length === 0 || "max" in u) problems.add(w, `年末調整の対象者の条件（${id}）の許す値が、unsupportedInputsのallowedと違う`);
+    const req = arr(rs["requiredInputs"]).map(obj).find((r) => r["path"] === c["input"] && (!Array.isArray(r["procedures"]) || r["procedures"].includes("year-end-adjustment")));
+    if (req === undefined) problems.add(w, `年末調整の対象者の条件（${id}）の入力${String(c["input"])}が、年末調整の必須の入力（requiredInputs）にない`);
+  }
+  for (const u of linked) if (!ids.has(String(u["yearEndAdjustmentCondition"]))) problems.add(w, `unsupportedInputsのyearEndAdjustmentCondition（${String(u["yearEndAdjustmentCondition"])}）が制度データのtargetConditionsにない`);
+  const revenueMax = limits["salaryRevenueMax"];
+  const emp = isInt(revenueMax) ? decToNumber(employmentIncomeOf(data, "", new Problems())?.(revenueMax)) : Number.NaN;
+  if (limits["taxableIncomeMax"] !== emp) problems.add(w, `yearEndAdjustmentLimits.taxableIncomeMaxが、salaryRevenueMaxの給与所得控除後の金額（${emp}）と違う`);
 }
 
 const REVIEW_RECORD = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)#(pullrequestreview|issuecomment)-[1-9][0-9]*$/;
@@ -800,7 +891,11 @@ export function validateRules(input: RulesInput): string[] {
       if (!nonEmpty(ref.location)) problems.add(`${dw} ${ref.path}`, "原典の箇所（location）がない");
     }
     checkDataRounding(data, dw, problems);
-    if (rs["regime"] === "income-tax" && rs["kind"] === "calculation") checkIncomeTaxData(data, dw, problems);
+    if (rs["regime"] === "income-tax" && rs["kind"] === "calculation") {
+      checkIncomeTaxData(data, dw, problems);
+      checkYearEndAdjustmentConditions(rs, data, `${w} ${key}`, problems);
+    }
+    for (const u of arr(rs["unsupportedInputs"]).map(obj)) if (!nonEmpty(u["path"]) || (isInt(u["max"]) ? "allowed" in u : arr(u["allowed"]).length === 0)) problems.add(`${w} ${key}`, `unsupportedInputs（${String(u["path"])}）はpathと、allowed（許す値の列挙）かmax（数の上限）のどちらか1つを持つ`);
   });
   // 地域の符号の体系（docs/rules/README.mdの「地域の符号」）の資料。
   const codeSystem = obj(m["jurisdictionCodeSystem"]);
@@ -1064,7 +1159,7 @@ const mapField = (c: { data: Map<string, Obj> }, i: number): Obj => obj(arr(c.da
 const variant = (c: { data: Map<string, Obj> }, f: number, v: number): Obj => obj(arr(mapField(c, f)["variants"])[v]);
 const term = (c: { data: Map<string, Obj> }, f: number, v: number, t: number): Obj => obj(arr(obj(variant(c, f, v)["mapping"])["terms"])[t]);
 
-test("検査の自己確認: 入力による未対応、家族の控除の適用要件、特定親族の年齢、帰属の例、承認の証跡の誤りを見つける（PR29-R001〜R006）", () => {
+test("検査の自己確認: 入力による未対応、家族の控除の適用要件、特定親族の年齢、帰属の例、承認の証跡の誤りを見つける（PR29-R001〜R011）", () => {
   type C = { manifest: Obj; data: Map<string, Obj>; cases: Obj[] };
   const input = (c: C, id: string): Obj => obj(caseOf(c.cases, id)["input"]);
   const approved = (c: C, approval: unknown): void => {
@@ -1078,9 +1173,9 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["入力による未対応の例が、未対応の条件に当たらない", (c) => (input(c, "REG-21")["taxpayerEvent"] = { kind: "none" }) && (input(c, "REG-21")["returnKind"] = "regular"), "入力も未対応の条件"],
     ["計算するケースの入力が未対応の条件に当たる", (c) => (input(c, "REG-02")["taxpayerEvent"] = { kind: "death", date: "2026-12-05" }), "未対応の条件に当たるのに"],
     ["家族が年の中途で死亡したのに計算する", (c) => (obj(arr(input(c, "REG-11")["relatives"])[0])["livingAtYearEnd"] = false), "未対応の条件に当たるのに"],
-    ["家族の適用要件の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["businessFamilyEmployee"], "businessFamilyEmployeeがない"],
-    ["特定親族の(8)の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["relativeDeclaredSourceDeductionRelativeAndWithheld"], "relativeDeclaredSourceDeductionRelativeAndWithheldがない"],
-    ["配偶者の(4)の入力がない", (c) => delete obj(input(c, "REG-24")["spouse"])["spouseWithheldViaSalaryDeclaration"], "spouseWithheldViaSalaryDeclarationがない"],
+    ["家族の適用要件の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["businessFamilyEmployee"], "relatives[0].businessFamilyEmployee（specificRelativeDeductionの判定）"],
+    ["特定親族の(8)の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["relativeDeclaredSourceDeductionRelativeAndWithheld"], "relatives[0].relativeDeclaredSourceDeductionRelativeAndWithheld（specificRelativeDeductionの判定）"],
+    ["配偶者の(3)の入力がない", (c) => delete obj(input(c, "REG-24")["spouse"])["spouseAppliesSpecialDeduction"], "spouse.spouseAppliesSpecialDeduction（spouseSpecialDeductionの判定）"],
     ["必須の入力taxpayerEventがない", (c) => delete input(c, "REG-02")["taxpayerEvent"], "taxpayerEvent.kind（必須の入力）"],
     ["確定申告の必須の入力returnKindがない", (c) => delete input(c, "REG-17")["returnKind"], "returnKind（必須の入力）"],
     ["必須の入力residencyがない", (c) => delete input(c, "REG-02")["residency"], "residency（必須の入力）"],
@@ -1088,7 +1183,7 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["必須の入力taxCreditsがない", (c) => delete input(c, "REG-12")["taxCredits"], "taxCredits（必須の入力）"],
     ["必須の入力taxCreditsがnull", (c) => (input(c, "REG-12")["taxCredits"] = null), "taxCredits（必須の入力）"],
     ["配偶者の項目そのものがない（nullとは違う）", (c) => delete input(c, "REG-02")["spouse"], "spouse（必須の入力）"],
-    ["納税者の(9)の入力がない", (c) => delete obj(input(c, "REG-19")["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"], "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（必須の入力）"],
+    ["納税者の(9)の入力がない", (c) => delete obj(input(c, "REG-19")["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"], "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（specificRelativeDeductionの判定）"],
     ["計算の規則に必須の入力の定義がない", (c) => delete ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["requiredInputs"], "requiredInputs"],
     ["一般の扶養親族の区分のageMinがない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["dependentDeduction"])["categories"])[0])["ageMin"], "年齢の範囲の形"],
     ["老人扶養親族の区分のageMinが整数でない", (c) => (obj(arr(obj(c.data.get("rules/income-tax/jp-2025.json")?.["dependentDeduction"])["categories"])[2])["ageMin"] = "70"), "年齢の範囲の形"],
@@ -1116,7 +1211,7 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["関係の許す値の範囲がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["dependentDeduction"])["eligibility"])[0])["domain"], "domain）がない"],
     ["合計所得金額がnull", (c) => (obj(arr(input(c, "REG-19")["relatives"])[1])["totalIncome"] = null), "totalIncome（型か値が正しくない"],
     ["真偽の要件が文字列false", (c) => (obj(arr(input(c, "REG-22")["relatives"])[0])["businessFamilyEmployee"] = "false"), "businessFamilyEmployee（型か値が正しくない"],
-    ["特定親族の所属の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["specificRelativeClaimedAsSpecificRelativeByOther"], "specificRelativeClaimedAsSpecificRelativeByOtherがない"],
+    ["特定親族の所属の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["specificRelativeClaimedAsSpecificRelativeByOther"], "relatives[0].specificRelativeClaimedAsSpecificRelativeByOther（specificRelativeDeductionの判定）"],
     ["特定親族の所属が分からないのに計算する", (c) => (obj(arr(input(c, "REG-19")["relatives"])[0])["specificRelativeClaimedAsSpouseByOther"] = "unknown"), "specificRelativeClaimedAsSpouseByOther"],
     ["配偶者の特定親族としての所属が分からないのに計算する", (c) => (obj(input(c, "REG-24")["spouse"])["spouseClaimedAsSpecificRelativeByOther"] = "unknown"), "spouseClaimedAsSpecificRelativeByOther"],
     ["給与等の収入金額が文字列", (c) => (input(c, "REG-16")["salaryRevenue"] = "9123457"), "salaryRevenue（型か値が正しくない"],
@@ -1126,6 +1221,29 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["確定申告の確定申告だけの控除がない", (c) => delete input(c, "REG-17")["returnOnlyDeductions"], "returnOnlyDeductions（必須の入力）"],
     ["年末調整に確定申告だけの控除がある", (c) => (input(c, "REG-02")["returnOnlyDeductions"] = 120000), "未対応の条件に当たるのに"],
     ["必須の入力の型の定義がない", (c) => delete obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["requiredInputs"])[0])["type"], "requiredInputs"],
+    // 年末調整の対象者の条件（PR29-R011。タックスアンサーNo.2665）
+    ["年末調整の給与の上限を超えるのに計算する", (c) => (input(c, "REG-32")["salaryRevenue"] = 20000001), "未対応の条件に当たるのに"],
+    ["上限の未対応の例が上限ちょうど", (c) => (input(c, "REG-33")["salaryRevenue"] = 20000000), "入力も未対応の条件"],
+    ["扶養控除等申告書を提出していないのに計算する", (c) => (obj(input(c, "REG-02")["yearEndAdjustment"])["dependentDeclarationSubmitted"] = false), "未対応の条件に当たるのに"],
+    ["年の中途の退職者を年末調整で計算する", (c) => (obj(input(c, "REG-09")["yearEndAdjustment"])["employedAtYearEnd"] = false), "未対応の条件に当たるのに"],
+    ["災害減免法の徴収猶予を受けたのに計算する", (c) => (obj(input(c, "REG-13")["yearEndAdjustment"])["disasterReliefWithholding"] = true), "未対応の条件に当たるのに"],
+    ["年末調整の対象者の条件の入力がない", (c) => delete input(c, "REG-02")["yearEndAdjustment"], "yearEndAdjustment.dependentDeclarationSubmitted（必須の入力）"],
+    ["年末調整の対象者の条件の入力が真偽値でない", (c) => (obj(input(c, "REG-02")["yearEndAdjustment"])["employedAtYearEnd"] = "yes"), "yearEndAdjustment.employedAtYearEnd（型か値が正しくない"],
+    ["給与の上限を確定申告にも当てる", (c) => delete obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["unsupportedInputs"]).map(obj).find((u) => u["yearEndAdjustmentCondition"] === "salary-total-max"))["procedures"], "proceduresがyear-end-adjustmentだけ"],
+    ["給与の上限を確定申告にも当てると、確定申告の境界の例が未対応になる", (c) => delete obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["unsupportedInputs"]).map(obj).find((u) => u["yearEndAdjustmentCondition"] === "salary-total-max"))["procedures"], "REG-34: 入力が規則の未対応の条件に当たるのに"],
+    ["manifestの給与の上限が制度データと違う", (c) => (obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["unsupportedInputs"]).map(obj).find((u) => u["yearEndAdjustmentCondition"] === "salary-total-max"))["max"] = 19999999), "上限が、unsupportedInputsのmaxと"],
+    ["制度データの給与の上限だけを変える", (c) => (obj(c.data.get("rules/income-tax/jp-2025.json")?.["yearEndAdjustmentLimits"])["salaryRevenueMax"] = 25000000), "上限が、unsupportedInputsのmaxと"],
+    ["課税給与所得金額の上限が給与の上限と合わない", (c) => (obj(c.data.get("rules/income-tax/jp-2026.json")?.["yearEndAdjustmentLimits"])["taxableIncomeMax"] = 18000000), "taxableIncomeMaxが"],
+    ["対象者の条件にunsupportedInputsがない", (c) => (ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["unsupportedInputs"] = arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["unsupportedInputs"]).filter((u) => obj(u)["yearEndAdjustmentCondition"] !== "disaster-relief")), "（disaster-relief）に対応するunsupportedInputsが1つでない"],
+    ["unsupportedInputsの条件が対象者の条件にない", (c) => (obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["unsupportedInputs"]).map(obj).find((u) => u["yearEndAdjustmentCondition"] === "disaster-relief"))["yearEndAdjustmentCondition"] = "disaster"), "targetConditionsにない"],
+    ["対象者の条件の許す値が違う", (c) => (obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["unsupportedInputs"]).map(obj).find((u) => u["yearEndAdjustmentCondition"] === "dependent-declaration"))["allowed"] = [true, false]), "許す値が、unsupportedInputsのallowedと違う"],
+    ["対象者の条件の入力が必須でない", (c) => (ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["requiredInputs"] = arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["requiredInputs"]).filter((r) => obj(r)["path"] !== "yearEndAdjustment.employedAtYearEnd")), "必須の入力（requiredInputs）にない"],
+    ["対象者の条件がない", (c) => delete obj(c.data.get("rules/income-tax/jp-2026.json")?.["yearEndAdjustmentLimits"])["targetConditions"], "targetConditions（年末調整の対象者の条件）がない"],
+    ["未対応の条件に許す値も上限もない", (c) => delete obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["unsupportedInputs"])[0])["allowed"], "allowed（許す値の列挙）かmax"],
+    // 家族の控除の判定の手順（PR29-R006の残り）: 候補で適用要件が決まらなければ不足
+    ["特定親族の候補でNo.1177の(9)が分からないのに計算する", (c) => (obj(caseOf(c.cases, "REG-39")["expected"])["status"] = "computed"), "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（specificRelativeDeductionの判定）"],
+    ["16歳未満の子を特定親族の候補に変える", (c) => Object.assign(obj(arr(input(c, "REG-37")["relatives"])[0]), { birthDate: "2006-05-05", totalIncome: 850000 }), "REG-37: 分からない入力があるのにcomputed: taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld"],
+    ["事業専従者でなくなると所属が要る", (c) => (obj(arr(input(c, "REG-38")["relatives"])[0])["businessFamilyEmployee"] = false), "relatives[0].dependentClaimedByOtherTaxpayer（dependentDeductionの判定）"],
     ["1つの条件に主語がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["specificRelativeDeduction"])["eligibility"])[4])["subject"], "subject"],
     ["分からない適用要件で計算する", (c) => (obj(input(c, "REG-11")["spouse"])["sameHousehold"] = "unknown"), "分からない入力があるのにcomputed"],
     ["incompleteなのに結果がすべて分かる", (c) => (obj(caseOf(c.cases, "REG-02")["expected"])["status"] = "incomplete"), "unknownの結果がない"],
@@ -1160,6 +1278,16 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
   // 当てはまらない控除の要件は不足に数えない: 所得0の配偶者の配偶者特別控除の要件、850万円以下の所得金額調整控除の対象か。
   assert.deepEqual(mutated((c) => (obj(input(c, "REG-11")["spouse"])["spouseWithheldViaPensionDeclaration"] = "unknown")), []);
   assert.deepEqual(mutated((c) => (input(c, "REG-02")["incomeAdjustmentEligible"] = "unknown")), []);
+  // 控除ごとに同じ手順（PR29-R006の残り）: 候補でない人・既知の不適格の条件がある控除の未知の入力は、不足に数えない。
+  // 16歳未満の子だけなら、子の適用要件もNo.1177の(9)も要らない（REG-37）。欠けていても同じ。
+  assert.deepEqual(mutated((c) => (obj(arr(input(c, "REG-37")["relatives"])[0])["sameHousehold"] = "unknown")), []);
+  assert.deepEqual(mutated((c) => delete obj(input(c, "REG-37")["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"]), []);
+  // 事業専従者と分かっている親族は、ほかの要件が分からなくても扶養控除0（REG-38。AND）。
+  assert.deepEqual(mutated((c) => (obj(arr(input(c, "REG-38")["relatives"])[0])["sameHousehold"] = "unknown")), []);
+  // 本人の合計所得金額が1,000万円を超える（REG-32）なら、配偶者の控除の候補でなく、配偶者の適用要件が分からなくても計算する。
+  assert.deepEqual(mutated((c) => (input(c, "REG-32")["spouse"] = { ...obj(input(c, "REG-11")["spouse"]), sameHousehold: "unknown", spouseAppliesSpecialDeduction: "unknown" })), []);
+  // 給与の上限ちょうど（REG-32）は年末調整の対象。上限を超える同じ収入の確定申告（REG-34）は計算する。
+  assert.deepEqual(mutated((c) => (input(c, "REG-34")["salaryRevenue"] = 25000000)).filter((x) => x.includes("未対応")), []);
   // 正しい承認の証跡なら、approvedの規則とケースは通る。
   const ok = mutated((c) => {
     approved(c, goodApproval);

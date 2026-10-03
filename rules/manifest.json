@@ -245,6 +245,17 @@
       "retrievedOn": "2026-10-03"
     },
     {
+      "id": "nta-ta-2665",
+      "title": "タックスアンサーNo.2665 年末調整の対象となる人",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2665.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-10",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
       "id": "nta-shinkoku2025-taxable",
       "title": "令和7年分 確定申告の手引き 手順4「課税される所得金額・課税される所得金額に対する税額」",
       "publisher": "国税庁",
@@ -424,6 +435,7 @@
         "nta-ta-1195",
         "nta-ta-1177",
         "nta-ta-1181",
+        "nta-ta-2665",
         "nta-2025kiso-qa",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
@@ -516,11 +528,24 @@
           "type": "array"
         },
         {
-          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
-          "when": {
-            "path": "relatives",
-            "nonEmpty": true
-          },
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "procedures": [
+            "year-end-adjustment"
+          ],
           "type": "boolean"
         }
       ],
@@ -600,6 +625,48 @@
             "year-end-adjustment"
           ],
           "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "dependent-declaration",
+          "reason": "扶養控除等申告書を提出していない人は年末調整の対象とならない（タックスアンサーNo.2665）"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "employed-at-year-end",
+          "reason": "年の中途で退職した人の年末調整（No.2665の年の中途で行う年末調整）は範囲外。年の中途で退職して12月に行う年末調整の対象とならない人も同じ"
+        },
+        {
+          "path": "salaryRevenue",
+          "max": 20000000,
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "salary-total-max",
+          "reason": "給与の総額が2,000万円を超える人は年末調整の対象とならない（No.2665の(1)）。確定申告にはこの上限を当てない"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "allowed": [
+            false
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "disaster-relief",
+          "reason": "災害減免法により給与の源泉徴収の猶予・還付を受けた人は年末調整の対象とならない（No.2665の(2)）"
         }
       ]
     },
@@ -660,6 +727,7 @@
         "nta-ta-1195",
         "nta-ta-1177",
         "nta-ta-1181",
+        "nta-ta-2665",
         "nta-2025kiso-qa",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
@@ -751,11 +819,24 @@
           "type": "array"
         },
         {
-          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
-          "when": {
-            "path": "relatives",
-            "nonEmpty": true
-          },
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "procedures": [
+            "year-end-adjustment"
+          ],
           "type": "boolean"
         }
       ],
@@ -835,6 +916,48 @@
             "year-end-adjustment"
           ],
           "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "dependent-declaration",
+          "reason": "扶養控除等申告書を提出していない人は年末調整の対象とならない（タックスアンサーNo.2665）"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "employed-at-year-end",
+          "reason": "年の中途で退職した人の年末調整（No.2665の年の中途で行う年末調整）は範囲外。年の中途で退職して12月に行う年末調整の対象とならない人も同じ"
+        },
+        {
+          "path": "salaryRevenue",
+          "max": 20000000,
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "salary-total-max",
+          "reason": "給与の総額が2,000万円を超える人は年末調整の対象とならない（No.2665の(1)）。確定申告にはこの上限を当てない"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "allowed": [
+            false
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "disaster-relief",
+          "reason": "災害減免法により給与の源泉徴収の猶予・還付を受けた人は年末調整の対象とならない（No.2665の(2)）"
         }
       ]
     },
