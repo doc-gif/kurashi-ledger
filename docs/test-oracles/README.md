@@ -190,7 +190,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 - **T11（照合）:** `unreconciled`・`allocationUsage`・`forecastLine`・`attribution`・`comparison`・`adoption`・`duplicateCandidates`・`decisionPremise`・`seriesStatus`と、所得の年・年間の値・見込み・決定額の`aggregate`を、照合の結果と比べる。`orderVariants`で入力の順序を入れ替えても同じ結果になることを確かめる。`rules`に合わせて、比較の対応表と帰属の規則を注入する（`none`なら規則なし）。
 - **T15（計算基盤）:** `saveRun`の射影を、架空の計算器の版の`requests`等で補って保存の検査に使う。`runClosure`・`requiredAdoptions`・`runInputChange`・`roundingStep`・`roundingValidation`は、計算器に依存しない判定の試験になる。
 - **T14（制度調査）:** `regime/regime-cases.json`の雛形を、一次資料で確かめた値で埋め、`approved`の条件を満たしたものだけを後続へ渡す。
-- 読み込みは`load.ts`の`readLedgerFiles`・`resolveOperations`・`expandRecord`を使ってよい。不正な要素（JSONでないファイル、objectでない場面・操作、型の違う`reason`・`revision`・`body`）は黙って除かず、場面IDと位置を含む誤りにする。
+- 読み込みは`load.ts`の`readLedgerFiles`・`resolveOperations`・`expandRecord`を使ってよい。不正な要素（JSONでないファイル、objectでない場面・操作、型の違う`reason`・`revision`・`body`）は黙って除かず、場面IDと位置を含む誤りにする。例外として、`cases/`・`regime/`の中の`.DS_Store`・`Thumbs.db`（OSが自動で作るメタデータで、`.gitignore`でも除外している名前。`load.ts`の`OS_METADATA_FILES_FROM_GITIGNORE`）は、名前が完全に一致するものだけを読み飛ばす。ほかのJSONでないファイルは、場所を示して誤りにする。
 
 ## 台帳の検査
 

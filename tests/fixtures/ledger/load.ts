@@ -23,11 +23,20 @@ export interface LedgerFiles {
   regime: { file: string; data: Obj }[];
 }
 
-// cases/・regime/に置けるのはJSONのファイルだけ。ほかの名前（拡張子の違い、隠しファイル等）を黙って読み飛ばさず、誤りにする。
+// OSが自動で作るメタデータのファイルの名前。リポジトリの.gitignoreの「.DS_Store」「Thumbs.db」の行と同じ一覧にする
+// （.gitignoreの行を変えたら、ここも同じに直す。ledger.test.tsが一致を確かめる）。台帳の入力ではないので、
+// 名前が完全に一致するものだけを読み飛ばす。
+export const OS_METADATA_FILES_FROM_GITIGNORE: readonly string[] = [".DS_Store", "Thumbs.db"];
+
+// cases/・regime/に置けるのはJSONのファイルだけ。上のOSのメタデータを除き、ほかの名前（拡張子の違い、隠しファイル等）を
+// 黙って読み飛ばさず、場所を示して誤りにする。
 export function ledgerFileNames(sub: string, names: readonly string[]): string[] {
-  const bad = names.filter((f) => !/^[0-9A-Za-z][0-9A-Za-z._-]*\.json$/.test(f));
-  if (bad.length > 0) throw new Error(`${sub}/にJSONでないか名前の形が違うファイルがある: ${bad.join(", ")}`);
-  return [...names].sort();
+  const inputs = names.filter((f) => !OS_METADATA_FILES_FROM_GITIGNORE.includes(f));
+  const bad = inputs.filter((f) => !/^[0-9A-Za-z][0-9A-Za-z._-]*\.json$/.test(f));
+  if (bad.length > 0) {
+    throw new Error(`tests/fixtures/ledger/${sub}/に、JSONでないか名前の形が違うファイルがある: ${bad.map((f) => `tests/fixtures/ledger/${sub}/${f}`).join(", ")}`);
+  }
+  return [...inputs].sort();
 }
 
 export function readLedgerFiles(dir: string = LEDGER_DIR): LedgerFiles {

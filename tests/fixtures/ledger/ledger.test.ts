@@ -35,7 +35,18 @@ import {
   type RecordType,
   type StaticCode,
 } from "./contract-shape.ts";
-import { CONTRACTS_DIR, expandRecord, ledgerFileNames, readLedgerFiles, resolveOperations, stableStringify, type LedgerFiles, type Obj } from "./load.ts";
+import {
+  CONTRACTS_DIR,
+  expandRecord,
+  ledgerFileNames,
+  OS_METADATA_FILES_FROM_GITIGNORE,
+  readLedgerFiles,
+  REPO_ROOT,
+  resolveOperations,
+  stableStringify,
+  type LedgerFiles,
+  type Obj,
+} from "./load.ts";
 
 // ---- 拒否の理由（docs/test-oracles/README.mdの「拒否の理由」の表と同じ）
 
@@ -1497,8 +1508,20 @@ test("検査の自己確認: 操作の並びの不正な要素を黙って除か
     (o["record"] as Obj)["body"] = "不正なbody";
   });
   assert.ok(r.some((x) => x.includes("EX-01-a") && x.includes("bodyがobjectではない")), r.join("\n"));
-  assert.throws(() => ledgerFileNames("cases", ["EX-01.json", "EX-01.json.bak", ".DS_Store"]), /EX-01\.json\.bak, \.DS_Store/);
   assert.deepEqual(ledgerFileNames("cases", ["TC-01.json", "EX-01.json"]), ["EX-01.json", "TC-01.json"]);
+});
+
+test("台帳のファイルの一覧: .gitignoreで除外したOSのメタデータだけを読み飛ばし、ほかは場所付きの誤りにする", () => {
+  assert.deepEqual(ledgerFileNames("cases", ["EX-01.json", ".DS_Store", "Thumbs.db"]), ["EX-01.json"]);
+  assert.throws(() => ledgerFileNames("cases", ["EX-01.json", ".DS_Store", "notes.txt"]), /tests\/fixtures\/ledger\/cases\/notes\.txt/);
+  assert.throws(() => ledgerFileNames("regime", ["regime-cases.json", "regime-cases.json.bak"]), /tests\/fixtures\/ledger\/regime\/regime-cases\.json\.bak/);
+  // 名前が完全に一致するものだけ（大文字小文字や接尾辞の違うものは読み飛ばさない）。
+  assert.throws(() => ledgerFileNames("cases", ["._.DS_Store"]), /cases\/\._\.DS_Store/);
+  assert.throws(() => ledgerFileNames("cases", [".ds_store"]), /cases\/\.ds_store/);
+  assert.throws(() => ledgerFileNames("cases", ["Thumbs.db.json.tmp"]), /Thumbs\.db\.json\.tmp/);
+  // 一覧は.gitignoreの行を写したもの。.gitignoreに同じ名前の行がなければ、一覧を直す。
+  const gitignore = readFileSync(join(REPO_ROOT, ".gitignore"), "utf8").split("\n").map((l) => l.trim());
+  for (const name of OS_METADATA_FILES_FROM_GITIGNORE) assert.ok(gitignore.includes(name), `.gitignoreに${name}の行がない`);
 });
 
 test("台帳のIDの接頭辞は契約の表と同じ", () => {
