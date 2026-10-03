@@ -247,7 +247,8 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398337046",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171079776",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159300"
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159300",
+        "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684861"
       ]
     },
     {
@@ -466,7 +467,7 @@
       "id": "PR11-R109",
       "invariant_id": "INV-RECORDS",
       "cause_key": "lifecycle-transition-revalidation",
-      "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。 正規IDを変える保存では正規IDに依存するすべての保存条件を再検査し、取込キーなど冪等性のキーは取消後も予約し、保存後に要求範囲へ加わった記録も変化として検知する。 再検査で記録の保存条件を満たさなくなる保存は拒否し、確定済みの関係は拒否の理由にせず確かめ直して要再確認・前提の崩れにする。記録のIdと版、過去の計算runと履歴は書き換えない（runは入力が変わったと示す）。",
+      "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。 正規IDを変える保存では正規IDに依存するすべての保存条件を再検査し、取込キーなど冪等性のキーは取消後も予約し、保存後に要求範囲へ加わった記録も変化として検知する。 再検査で記録の保存条件を満たさなくなる保存は拒否し、確定済みの関係は拒否の理由にせず確かめ直して要再確認・前提の崩れにする。復元・取込・移行で検査をすり抜けた既存のデータは、導く判定のたびに同じ条件で確かめ、満たさないものを黙って有効とも除外ともせず、要確認（古いデータ）・使えない関係・集計のincompleteとして示す。記録のIdと版、過去の計算runと履歴は書き換えない（runは入力が変わったと示す）。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
@@ -475,7 +476,8 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944768",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014254",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159278"
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159278",
+        "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684870"
       ]
     },
     {
