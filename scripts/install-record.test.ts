@@ -856,7 +856,7 @@ test('記録を書いている最中にシグナルを受けたら、書き終�
 });
 
 // 印の削除だけを失敗させる（tests/support/prevent-deletion.ts）。POSIXはworktreeの直下を書込み禁止にし、Windowsは
-// 印のDELETEと直下のDELETE_CHILDを拒否するACEを付ける（Issue #19）。rootのユーザーは権限を無視して消せるので、
+// ほかのプロセスが削除の共有を許さずに印を開いたままにする（Issue #19）。rootのユーザーは権限を無視して消せるので、
 // 理由を出して飛ばす（処理はOSによらず同じ）。代わりの確認は docs/development.md の「環境によって飛ばす試験」。
 const lockUnlinkSkip =
   process.platform !== 'win32' && process.getuid?.() === 0
