@@ -6,7 +6,7 @@
 
 - いまは所有者とAIが同じGitHubアカウント（doc-gif）を使う。レビューはCOMMENTの記録（`decision: accepted`等）で、GitHub上の承認ではない。作者自身は自分のPRを承認できないので、承認を必須にすると誰もマージできない（[修正前の整合確認](review-prevention.md)）。
 - 所有者は、2つ目のユーザーアカウントではなく、GitHub Appを選んだ。Appの承認は別の身元からのGitHubの正式な承認になるので、将来rulesetで「作者と別の身元による最新のpushの承認」を必須にし、レビューの分離を手続きだけでなくGitHubに強制させられる。
-- ClaudeとCodexのどちらも、実装とレビューの両方を行う（例: PR #4はCodexが実装し、Claudeがレビューした）。そのため、Appは**役割ではなくAIの身元**を表す。分離は身元で行う: **AIは、自分が実装したPRや、自分がpushしたPRを承認しない**（[現在の状態](project-status.md)の「レビュー」、[PRレビューのループ](pr-review-loop.md)）。
+- ClaudeとCodexのどちらも、実装とレビューの両方を行う（例: PR #4はCodexが実装し、Claudeがレビューした）。そのため、Appは**役割ではなくAIの身元**を表す。分離は身元で行う: **AIは、自分が実装したPRや、自分がpushしたPRを承認しない**（[GitHub・複数AIの運用](github-agent-operations.md)の「レビューと権限」、[PRレビューのループ](pr-review-loop.md)）。
 - トークンの発行は、第三者のgh拡張ではなく、依存を加えない自作のスクリプトで行う（所有者の決定）。トークンを標準出力に出して`GH_TOKEN="$(…)"`で受ける形は、発行に失敗したときにghが保存済みのdoc-gif（管理者）の資格情報へ黙って戻るので使わない（PR42-R004）。所有者の決定で、スクリプトがコマンドを実行する形にした。
 
 ## 所有者が用意したもの（2026-10-03）
@@ -65,7 +65,8 @@ webhookは使わない。インストールできるのは所有者のアカウ�
 ```sh
 sha=<レビュー済みのmainの40文字のSHA>
 repo=<この repo の checkout>
-git -C "$repo" fetch origin --prune && git -C "$repo" merge-base --is-ancestor "$sha" origin/main && echo "mainに含まれる"
+git -C "$repo" fetch origin --prune || exit 1
+git -C "$repo" merge-base --is-ancestor "$sha" origin/main || exit 1
 dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"
 mkdir -p "$dir/lib" && chmod 700 "$dir"
 git -C "$repo" cat-file blob "$sha:scripts/github-app-token.ts" > "$dir/github-app-token.ts"
@@ -73,7 +74,7 @@ git -C "$repo" cat-file blob "$sha:scripts/lib/github-app-token.ts" > "$dir/lib/
 printf '{"type":"module"}\n' > "$dir/package.json"
 ```
 
-3行目で「mainに含まれる」と表示されなければ、取り出さない。以下の例では、この写しのディレクトリを`KL_APP_TOKEN_DIR`（秘密ではない）とする。`NODE_OPTIONS`は、スクリプトより先にほかのコードを読み込ませられるので、例ではすべて`env -u NODE_OPTIONS`で外して実行する。ghを使う例は、PRのcheckoutの外（例えば`$HOME`）をカレントディレクトリにし、`--repo`やAPIのパスでrepoを指定する。写しを新しくするのは、スクリプトの変更が独立したレビューを経てmainに入ったときだけ。**このスクリプトと`PURPOSES`（用途ごとの権限）の変更は、権限の制御の変更**で、実装していない別の担当のレビューを受ける。
+SHAがmainに含まれなければ、4行目で終わり、取り出さない（`|| exit 1`。対話のシェルに貼るときは、サブシェル`( … )`で囲む）。以下の例では、この写しのディレクトリを`KL_APP_TOKEN_DIR`（秘密ではない）とする。`NODE_OPTIONS`は、スクリプトより先にほかのコードを読み込ませられるので、例ではすべて`env -u NODE_OPTIONS`で外して実行する。Windowsでは、PowerShellは`Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue`、cmdは`set NODE_OPTIONS=`を先に実行してから、`node "%KL_APP_TOKEN_DIR%\github-app-token.ts" …`（PowerShellは`node "$env:KL_APP_TOKEN_DIR\github-app-token.ts" …`）とする。ghを使う例は、PRのcheckoutの外（例えば`$HOME`）をカレントディレクトリにし、`--repo`やAPIのパスでrepoを指定する。写しを新しくするのは、スクリプトの変更が独立したレビューを経てmainに入ったときだけ。**このスクリプトと`PURPOSES`（用途ごとの権限）の変更は、権限の制御の変更**で、実装していない別の担当のレビューを受ける。
 
 ## 使い方（スクリプトがコマンドを実行する）
 
@@ -99,11 +100,11 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   2. 応答の権限が要求と完全に一致し（GitHubが必ず加える`metadata: read`のほかは、多くも少なくもない）、repoがこのrepoの1件だけかを確かめる。さらに、発行したトークンで`GET /installation/repositories`を呼び、触れるrepoがこのrepoの1件だけかを確かめる。どれかが違う、または確かめられないときは、トークンを失効させ（`DELETE /installation/token`）、**コマンドを実行せずに**終える。
   3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境は次のようにする（試験で確かめた範囲）。
      - 外す: `GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、`GH_DEBUG`、gitの資格情報・SSH・設定・trace（`GIT_TRACE*`・`GIT_CURL_VERBOSE`）に関わる変数、`NODE_OPTIONS`。`GIT_TRACE_REDACT=1`にする。
-     - ghには、空の一時の設定ディレクトリ（`GH_CONFIG_DIR`。所有者だけが使える権限）を渡す。`HOME`も同じディレクトリにする。gitのlibcurlは、資格情報のhelperより前に`HOME`の`.netrc`（`_netrc`）を読むので、利用者の`.netrc`に所有者の資格情報があっても使わない（127.0.0.1の合成のサーバーで、親の環境では送られ、子の環境では送られないことを確かめた）。
+     - ghには、空の一時の設定ディレクトリ（`GH_CONFIG_DIR`。所有者だけが使える権限）を渡す。`HOME`も同じディレクトリにし、環境変数`NETRC`を外す。gitのlibcurlは、資格情報のhelperより前に`.netrc`（`_netrc`）を読む（curl 8.16.0以降は、`NETRC`が指すファイルを`HOME`より前に読む）ので、利用者の`.netrc`に所有者の資格情報があっても使わない。127.0.0.1の合成のサーバーで、親の環境ではHOMEの`.netrc`の資格情報が送られ、子の環境では（親に`NETRC`があっても）送られないことを、CIの3つのOSのgitで確かめた。`NETRC`を読む新しいlibcurlでの対照は、CIのgitの版によっては確かめていない。
      - gitは、利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や利用者の`url.*.insteadOf`を使わない）。repoの設定（`.git/config`）は読まれるので、資格情報のhelperの一覧を空に戻し、`https://github.com/`と`https://github.com/doc-gif/kurashi-ledger.git`の`http.*.extraheader`を空にし、`core.askPass`を空にする（一時のrepoの設定に置いた値が使われないことを、実際のgitで確かめた）。repoの設定の`url.*.insteadOf`は外せないので、pushの前に確かめる（下の「push」）。
      - SSHを使えない（`GIT_SSH_COMMAND=false`）。端末に聞かない（`GIT_TERMINAL_PROMPT=0`）。`https://github.com`への資格情報としてだけ、`GH_TOKEN`を返すhelperを使う。
   4. 子が終わったら、一時の設定ディレクトリを消し、トークンを失効させる（失敗したら標準エラーに伝える。トークンは1時間で失効する）。失効の応答の401は、すでに無効なので成功と同じに扱う。
-- シグナル: 発行の直前から失効が終わるまで、SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK（OSが受けられるもの）を受ける。子が動いていれば同じシグナルを子へ送り（SIGINTも）、子の終了を待つ。発行や確認の要求は中断する。トークンがあれば失効させてから、128+番号で終える。SIGKILL・強制終了・電源断では失効できない（トークンは1時間で失効する）。発行の要求の途中で中断した場合、GitHubが発行したトークンを受け取れず失効できないことがある（同じく1時間で失効する）。
+- シグナル: 発行の直前から失効が終わるまで、SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK（OSが受けられるもの）を受ける。子が動いていれば同じシグナルを子へ送り（SIGINTも）、子の終了を待つ。確認の要求は中断する。発行の要求は中断せず（中断すると、発行されたトークンを受け取れず失効できない）、15秒の上限の中で受け取ったトークンを失効させる。トークンがあれば失効させてから、128+番号で終える。SIGKILL・強制終了・電源断では失効できない（トークンは1時間で失効する）。
 - 出力: このスクリプト自身は標準出力に何も書かない（子の出力はそのまま見える）。エラーは標準エラーに、HTTPの状態とGitHubのメッセージを出す。鍵・JWT・トークンは出さない（既知の値と、数字を含む長い英数字の並びを伏せる）。
 - 終了コード: 子の終了コード（シグナルで終わったら128+番号）。このスクリプト自身の失敗（引数の誤り・発行や確認の失敗）は125で、そのときコマンドは実行していない。コマンドを実行できなければ126、見つからなければ127。
 - 時間の上限: GitHubへの各要求（発行・確認・失効）は15秒、キーチェーンは60秒（許可のダイアログに答える時間。シグナルでは中断しない）、標準入力の鍵は10秒。`--key-file`は、FIFO等で待たないよう、開く前に通常のファイルかを確かめ、待たずに開く。子のコマンドには上限を置かない。
@@ -157,7 +158,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr comment <番号> --repo doc-gif/kurashi-ledger --body-file <引継ぎのファイル>
 ```
 
-PRの作者が自分のAppのbotであることを2つ目で確かめる。マージも同じ用途のトークンで、AGENTS.mdの条件と`--match-head-commit`を守る（`… -- gh pr merge <番号> --repo doc-gif/kurashi-ledger --merge --match-head-commit <SHA>`）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
+PRの作者が自分のAppのbotであることを2つ目で確かめる。マージも同じ用途のトークンで、[マージ条件の正本](github-agent-operations.md#merge-conditions)と`--match-head-commit`を守る（`… -- gh pr merge <番号> --repo doc-gif/kurashi-ledger --merge --match-head-commit <SHA>`）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
 
 **commitの作者（任意。所有者が決める）:** 既定は変えない（いまのgitの設定のまま。commitは子の外で作る）。Appの身元を作者にしたい場合は、そのcommitだけ`git -c user.name='<appの名前>[bot]' -c user.email='<botのユーザーID>+<appの名前>[bot]@users.noreply.github.com' commit ...`とする。botのユーザーIDは`gh api 'users/<appの名前>[bot]' --jq .id`で分かる（App IDとは別）。
 
