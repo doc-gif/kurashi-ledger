@@ -54,6 +54,8 @@ process.exitCode = await runSetup({
     const cleanup = () => rmSync(configDir, { recursive: true, force: true });
     try {
       const emptyConfigs = { user: join(configDir, 'user-npmrc'), global: join(configDir, 'global-npmrc') };
+      // 空のファイルを作るだけで、書き込むバイトはない（短い書込みは起こらない）。作れなければ例外になり、
+      // 下のcatchで一時ディレクトリを消して、npm ciの起動の失敗として扱う。
       writeFileSync(emptyConfigs.user, '');
       writeFileSync(emptyConfigs.global, '');
       const child = spawn(process.execPath, [npmCli, ...npmCiArguments(runtime, emptyConfigs)], {

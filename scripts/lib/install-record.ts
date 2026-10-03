@@ -70,7 +70,41 @@ export type SetupDependencies = {
   readonly interruption?: SetupInterruption | undefined;
   // 試験で、ディレクトリの反映の失敗を起こすために差し替える。
   readonly syncDirectory?: ((dir: string) => void) | undefined;
+  // 試験で、短い書込み・書込みや反映や名前変更の失敗を起こすために差し替える（作業中の印と記録の両方）。
+  readonly fileIo?: FileIo | undefined;
 };
+
+// 印と記録を書くファイルの操作。試験で差し替えられるように、ここにまとめる。
+export type FileIo = {
+  // 書いたバイト数を返す（要求より少ないことがある）。
+  readonly write: (fd: number, buffer: Uint8Array, offset: number, length: number) => number;
+  readonly fsync: (fd: number) => void;
+  readonly rename: (from: string, to: string) => void;
+};
+
+export const NODE_FILE_IO: FileIo = {
+  write: (fd, buffer, offset, length) => writeSync(fd, buffer, offset, length),
+  fsync: (fd) => fsyncSync(fd),
+  rename: (from, to) => renameSync(from, to),
+};
+
+// 文字列を全バイト書き切ってから、ディスクへ反映する。writeは要求より少ないバイト数で戻ることがある
+// （短い書込み）ので、残りを書き続ける。進まない（0バイト）・数がおかしい・例外のときは失敗として例外を
+// 投げ、反映しない。呼び出し側が、書きかけのファイルを消す。作業中の印・記録・一時ファイルは、すべてこの
+// 関数で書く（ADR-0008）。
+export function writeAllAndSync(fd: number, text: string, io: FileIo = NODE_FILE_IO): void {
+  const bytes = Buffer.from(text, 'utf8');
+  let offset = 0;
+  while (offset < bytes.length) {
+    const rest = bytes.length - offset;
+    const written = io.write(fd, bytes, offset, rest);
+    if (!Number.isInteger(written) || written <= 0 || written > rest) {
+      throw new Error(`ファイルを書き切れなかった（${bytes.length}バイトのうち${offset}バイトのあと、書込みが${String(written)}バイトで戻った）`);
+    }
+    offset += written;
+  }
+  io.fsync(fd);
+}
 
 // setupが受け付ける終了のシグナル（ADR-0008）。WindowsではCtrl+CがSIGINT、Ctrl+BreakがSIGBREAKになる。
 export function setupSignals(platform: string): NodeJS.Signals[] {
@@ -266,7 +300,7 @@ function describeSetupLock(root: string): string {
 // worktree単位の排他。排他的な作成（wx。既存のファイルやリンクがあれば失敗する）で印を作り、
 // 作れなければ何も変えずに止める。残った印を、プロセス番号の生死で判断して自動で消すことはしない
 // （番号は再利用されうる。ADR-0006のG3と同じ考え方）。
-export function acquireSetupLock(root: string): SetupLock {
+export function acquireSetupLock(root: string, io: FileIo = NODE_FILE_IO): SetupLock {
   const path = setupLockPath(root);
   const token = randomBytes(16).toString('hex');
   let fd: number;
@@ -284,16 +318,34 @@ export function acquireSetupLock(root: string): SetupLock {
     }
     throw error;
   }
+  // 印を書き切れない（短い書込みが進まない、反映や閉じる操作の失敗）と、照合用の乱数を読めず、終わっても
+  // 自分の印と分からないので、印が残り続ける。この印は直前に排他的に作った自分のものなので、消してから止める。
+  let failure: unknown = null;
   try {
-    writeSync(fd, `${JSON.stringify({ format: 1, token, pid: process.pid, startedAt: new Date().toISOString() })}\n`);
-    fsyncSync(fd);
+    writeAllAndSync(fd, `${JSON.stringify({ format: 1, token, pid: process.pid, startedAt: new Date().toISOString() })}\n`, io);
   } catch (error) {
-    closeSync(fd);
-    unlinkIfPresent(path);
-    throw error;
+    failure = error;
   }
-  closeSync(fd);
+  try {
+    closeSync(fd);
+  } catch (error) {
+    failure ??= error;
+  }
+  if (failure !== null) {
+    try {
+      unlinkIfPresent(path);
+    } catch (removeError) {
+      throw new Error(
+        `作業中の印を書き切れず（${describeError(failure)}）、作った印も消せなかった（${describeError(removeError)}）。依存は何も変えていない。原因を直してから印を消す（macOS: \`rm ${SETUP_LOCK_NAME}\`、WindowsのPowerShell: \`Remove-Item ${SETUP_LOCK_NAME}\`）。`,
+      );
+    }
+    throw failure;
+  }
   return { token };
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // 自分の印だけを消す。消えていたり差し替えられていたりすれば消さずに、その旨を返す。
@@ -541,6 +593,7 @@ export function writeInstallRecord(
   root: string,
   record: InstallRecord,
   syncDirectory: (dir: string) => void = syncDirectoryEntries,
+  io: FileIo = NODE_FILE_IO,
 ): void {
   const dir = nodeModulesPath(root);
   if (inspectNodeModules(root) === 'absent') {
@@ -553,15 +606,28 @@ export function writeInstallRecord(
   const temp = join(dir, `${RECORD_FILE_NAME}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
   try {
     const fd = openSync(temp, 'wx', 0o644);
+    let failure: unknown = null;
     try {
-      writeSync(fd, `${JSON.stringify(record, null, 2)}\n`);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+      writeAllAndSync(fd, `${JSON.stringify(record, null, 2)}\n`, io);
+    } catch (error) {
+      failure = error;
     }
-    renameSync(temp, recordPath(root));
+    try {
+      closeSync(fd);
+    } catch (error) {
+      failure ??= error;
+    }
+    if (failure !== null) throw failure;
+    // 書き切って反映した一時ファイルだけを、記録の名前にする。
+    io.rename(temp, recordPath(root));
   } catch (error) {
-    unlinkIfPresent(temp);
+    // 一時ファイルは記録の名前ではないので、消せなくても照合には使われない。消す操作の失敗で元の失敗を
+    // 隠さないよう、元の失敗を伝える。
+    try {
+      unlinkIfPresent(temp);
+    } catch {
+      // 元の失敗を優先する
+    }
     throw error;
   }
   try {
@@ -729,7 +795,7 @@ export async function runSetup(deps: SetupDependencies): Promise<number> {
   const interruption = deps.interruption ?? new SetupInterruption();
   let lock: SetupLock;
   try {
-    lock = acquireSetupLock(deps.root);
+    lock = acquireSetupLock(deps.root, deps.fileIo);
   } catch (e) {
     deps.error(
       e instanceof SetupLockError
@@ -829,7 +895,7 @@ async function runSetupLocked(deps: SetupDependencies, interruption: SetupInterr
     return 1;
   }
   try {
-    writeInstallRecord(root, record, deps.syncDirectory);
+    writeInstallRecord(root, record, deps.syncDirectory, deps.fileIo);
   } catch (e) {
     // 名前変更のあとに失敗した場合は、置いた記録が残っていることがある。消せたことを確かめてから
     // 「残していない」と伝える。消せなければ例外のまま外へ送り、runSetupが印を残す（照合を止めておく）。

@@ -12,13 +12,16 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import {
+  type FileIo,
   type NpmCiResult,
   type Runtime,
+  NODE_FILE_IO,
   RECORD_FILE_NAME,
   SetupInterruption,
   cleanupAfterInterruption,
@@ -32,8 +35,10 @@ import {
   npmCiArguments,
   observeInstall,
   recordPath,
+  releaseSetupLock,
   runSetup,
   verifyInstallRecord,
+  writeAllAndSync,
   writeInstallRecord,
 } from './lib/install-record.ts';
 
@@ -916,4 +921,145 @@ test('確定点より後に届いたシグナルでは、記録を残したま�
   interruption.notify('SIGINT');
   assert.equal(verifyInstallRecord(root, runtime).ok, true);
   assert.equal(existsSync(join(root, LOCK)), false);
+});
+
+// ---- 短い書込み（writeが要求より少ないバイト数で戻る）と、書込み・反映・名前変更の失敗。
+// ファイルの操作を差し替えて、すべてのOSで確かめる（skipしない）。
+
+// 1回にmaxバイトまでしか書かない（実際のファイルに書く）。onWriteで、書く中身ごとに振る舞いを変えられる。
+function shortWriteIo(max: number, onWrite?: (text: string) => number | undefined): FileIo & { writes: number } {
+  const io = {
+    writes: 0,
+    write: (fd: number, buffer: Uint8Array, offset: number, length: number) => {
+      io.writes += 1;
+      const override = onWrite?.(Buffer.from(buffer).toString('utf8'));
+      if (override !== undefined) return override;
+      return writeSync(fd, buffer, offset, Math.min(length, max));
+    },
+    fsync: NODE_FILE_IO.fsync,
+    rename: NODE_FILE_IO.rename,
+  };
+  return io;
+}
+
+const isLockText = (text: string) => text.includes('"token"');
+
+test('短い書込みでも、全バイトを書き切ってから反映する。0バイトや多すぎる数は失敗にして反映しない', () => {
+  const text = `{"synthetic":"${'値'.repeat(20)}"}\n`;
+  const expected = Buffer.from(text, 'utf8');
+  const sink: number[] = [];
+  let synced = 0;
+  const memoryIo = (step: (rest: number) => number): FileIo => ({
+    write: (_fd, buffer, offset, length) => {
+      const n = step(length);
+      if (n > 0) sink.push(...buffer.subarray(offset, offset + Math.min(n, length)));
+      return n;
+    },
+    fsync: () => {
+      synced += 1;
+    },
+    rename: NODE_FILE_IO.rename,
+  });
+  writeAllAndSync(0, text, memoryIo((rest) => Math.min(rest, 3)));
+  assert.deepEqual(Buffer.from(sink), expected, '3バイトずつでも全部書く');
+  assert.equal(synced, 1, '書き切ってから1回だけ反映する');
+
+  for (const bad of [0, -1, 1.5, Number.NaN]) {
+    sink.length = 0;
+    synced = 0;
+    let calls = 0;
+    assert.throws(
+      () => writeAllAndSync(0, text, memoryIo((rest) => (++calls === 1 ? Math.min(rest, 4) : bad))),
+      /書き切れなかった/,
+      String(bad),
+    );
+    assert.equal(synced, 0, '書き切れなければ反映しない');
+  }
+  synced = 0;
+  assert.throws(() => writeAllAndSync(0, text, memoryIo((rest) => rest + 1)), /書き切れなかった/, '要求より多い数');
+  assert.equal(synced, 0);
+});
+
+test('作業中の印は短い書込みでも全部書き、書き切れなければ（0バイト・例外・反映の失敗）自分の印を消して止まる', () => {
+  const root = makeProject();
+  const io = shortWriteIo(5);
+  const lock = acquireSetupLock(root, io);
+  assert.ok(io.writes > 1, '短い書込みを繰り返した');
+  const saved = JSON.parse(readFileSync(join(root, LOCK), 'utf8')) as { token?: unknown };
+  assert.equal(saved.token, lock.token, '照合用の乱数まで書き切っている');
+  assert.equal(releaseSetupLock(root, lock), null);
+  assert.equal(existsSync(join(root, LOCK)), false);
+
+  const failures: [string, FileIo][] = [
+    ['0バイト', shortWriteIo(5, () => 0)],
+    ['途中から0バイト', (() => {
+      let n = 0;
+      return shortWriteIo(5, () => (++n > 2 ? 0 : undefined));
+    })()],
+    ['書込みの例外', shortWriteIo(5, () => {
+      throw Object.assign(new Error('synthetic write failure'), { code: 'EIO' });
+    })],
+    ['反映の失敗', { ...NODE_FILE_IO, fsync: () => {
+      throw Object.assign(new Error('synthetic fsync failure'), { code: 'EIO' });
+    } }],
+  ];
+  for (const [label, failing] of failures) {
+    assert.throws(() => acquireSetupLock(root, failing), /書き切れなかった|synthetic/, label);
+    assert.equal(existsSync(join(root, LOCK)), false, `${label}: 書きかけの印を残さない`);
+  }
+});
+
+test('setup全体でも、短い書込みなら記録まで書き切り、書き切れなければ印も記録も残さない', async () => {
+  // 短い書込みだけなら成功し、記録は照合を通り、印は消える。
+  const ok = makeProject();
+  const okLines: string[] = [];
+  const io = shortWriteIo(7);
+  const code = await runSetup({
+    root: ok,
+    runtime,
+    runNpmCi: () => ({ done: Promise.resolve().then(() => fakeSuccessfulCi(ok)) }),
+    fileIo: io,
+    log: (l) => okLines.push(l),
+    error: (l) => okLines.push(l),
+  });
+  assert.equal(code, 0, okLines.join('\n'));
+  assert.ok(io.writes > 2);
+  assert.equal(verifyInstallRecord(ok, runtime).ok, true);
+  assert.equal(existsSync(join(ok, LOCK)), false);
+
+  const throwing = (message: string) => () => {
+    throw Object.assign(new Error(message), { code: 'EIO' });
+  };
+  const cases: [string, FileIo, RegExp][] = [
+    ['印の書込みが0バイト', shortWriteIo(7, (t) => (isLockText(t) ? 0 : undefined)), /作業中の印を作れない|書き切れなかった/],
+    ['記録の書込みが0バイト', shortWriteIo(7, (t) => (isLockText(t) ? undefined : 0)), /記録は残していない/],
+    ['記録の書込みの例外', shortWriteIo(7, (t) => (isLockText(t) ? undefined : throwing('synthetic write failure')() )), /記録は残していない/],
+    ['記録の反映の失敗', (() => {
+      let n = 0;
+      return { ...NODE_FILE_IO, fsync: (fd: number) => (++n === 1 ? NODE_FILE_IO.fsync(fd) : throwing('synthetic fsync failure')()) };
+    })(), /記録は残していない/],
+    ['名前変更の失敗', { ...NODE_FILE_IO, rename: throwing('synthetic rename failure') }, /記録は残していない/],
+  ];
+  for (const [label, failing, message] of cases) {
+    const root = makeProject();
+    const lines: string[] = [];
+    const result = await runSetup({
+      root,
+      runtime,
+      runNpmCi: () => ({ done: Promise.resolve().then(() => fakeSuccessfulCi(root)) }),
+      fileIo: failing,
+      log: (l) => lines.push(l),
+      error: (l) => lines.push(l),
+    });
+    const output = lines.join('\n');
+    assert.equal(result, 1, `${label}\n${output}`);
+    assert.match(output, message, label);
+    assert.equal(existsSync(join(root, LOCK)), false, `${label}: 印を残さない`);
+    assert.equal(existsSync(recordPath(root)), false, `${label}: 記録を残さない`);
+    const leftovers = existsSync(join(root, 'node_modules'))
+      ? readdirSync(join(root, 'node_modules')).filter((n) => n.startsWith(RECORD_FILE_NAME))
+      : [];
+    assert.deepEqual(leftovers, [], `${label}: 書きかけの一時ファイルを残さない`);
+    assert.equal(verifyInstallRecord(root, runtime).ok, false);
+  }
 });
