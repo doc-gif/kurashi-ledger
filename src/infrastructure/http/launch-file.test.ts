@@ -243,3 +243,49 @@ test('確かめたあとで末端や深い祖先が差し替わると、作成�
     outside.cleanup();
   }
 });
+
+test('開いたあとでファイル自身が別の通常のファイルに差し替わると、作成は失敗し、差し替え先の内容と権限を変えず、トークンを書かない', () => {
+  const tmp = ownerOnlyTempDirectory('swapfile');
+  try {
+    const dir = verifyTokenDirectory(tmp.path);
+    const path = join(dir.path, 'launch-z.html');
+    const moved = join(dir.path, 'launch-z-original.html');
+    const replacement = join(dir.path, 'replacement.html');
+    writeFileSync(replacement, 'someone else', { mode: 0o644 });
+    if (process.platform === 'win32') grantOthers(replacement, '(R)');
+    const before = process.platform === 'win32' ? checkOwnerOnly(replacement, 'file') : { mode: lstatSync(replacement).mode & 0o777 };
+    let renameError: string | undefined;
+    assert.throws(
+      () =>
+        createLaunchFile(dir, 'launch-z.html', 'synthetic-token', (step) => {
+          if (step !== 'opened') return;
+          try {
+            renameSync(path, moved);
+            renameSync(replacement, path);
+          } catch (error) {
+            renameError = (error as { code?: string }).code;
+            throw error;
+          }
+        }),
+      /違うものに置き換わった|EPERM|EBUSY|EACCES/,
+    );
+    if (renameError !== undefined) {
+      // OSが開いているファイルの名前の変更を拒んだ（差し替えられなかった）。
+      assert.ok(process.platform === 'win32', String(renameError));
+    } else {
+      // 差し替え先の内容と権限は変わらない。
+      assert.equal(readFileSync(path, 'utf8'), 'someone else');
+      if (process.platform === 'win32') {
+        assert.deepEqual(checkOwnerOnly(path, 'file'), before);
+        assert.equal(checkOwnerOnly(path, 'file').ok, false);
+      } else {
+        assert.deepEqual({ mode: lstatSync(path).mode & 0o777 }, before);
+      }
+      // 開いていた元のファイルにも、トークンは書かれていない。
+      assert.equal(readFileSync(moved, 'utf8'), '');
+    }
+    for (const name of readdirSync(dir.path)) assert.equal(readFileSync(join(dir.path, name), 'utf8').includes('synthetic-token'), false, name);
+  } finally {
+    tmp.cleanup();
+  }
+});

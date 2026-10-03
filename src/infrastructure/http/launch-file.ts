@@ -17,7 +17,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { checkOwnerOnly, checkPathNotReplaceable, ownerOnlyDirectoryHint, restrictToOwner } from './owner-only.ts';
+import { checkOwnerOnly, checkPathNotReplaceable, ownerOnlyDirectoryHint, restrictOpenFileToOwner } from './owner-only.ts';
 
 // 確かめたディレクトリ。実体パスと、確かめたときの経路の各要素（末端からルートまで）のdev・ino。
 export type VerifiedDirectory = {
@@ -126,16 +126,20 @@ export function createLaunchFile(
     const opened = fstatSync(fd, { bigint: true });
     created = { path, dev: opened.dev, ino: opened.ino, directory };
     onStep?.('opened');
-    // 経路を確かめ直してから、パスで権限を変える（差し替わっていれば、差し替え先の権限を変えない）。
+    // 各操作を開いたハンドルに結び付ける（ADR-0009の3）。権限の変更は、POSIXではハンドルにfchmodするだけで、
+    // パスでは変えない。Windowsはハンドルに設定できないので、パスで設定する直前に、経路とファイル自身が開いた
+    // ものと同じであることを確かめ、違えば変更せずに止める。
     confirmDirectoryUnchanged(directory);
-    restrictToOwner(path, 'file');
+    confirmSameFile(path, opened.dev, opened.ino);
+    restrictOpenFileToOwner(fd, path);
     onStep?.('restricted');
+    // 権限を変えたあとで、経路とファイルが同じで、本人だけの権限であることを、読むだけの操作で確かめる。
     confirmDirectoryUnchanged(directory);
-    const now = lstatSync(path, { bigint: true });
-    if (now.isSymbolicLink() || !now.isFile() || now.dev !== opened.dev || now.ino !== opened.ino) {
-      throw new Error(`一時ファイル ${path} が、作ったファイルと違うものに置き換わった。`);
-    }
-    // 権限を確かめてから、トークンを書く。
+    confirmSameFile(path, opened.dev, opened.ino);
+    const check = checkOwnerOnly(path, 'file');
+    if (!check.ok) throw new Error(`一時ファイル ${path} を本人だけの権限にできなかった: ${check.reason}`);
+    confirmSameFile(path, opened.dev, opened.ino);
+    // 確認に通ってから、開いたハンドルにだけトークンを書く。
     const data = Buffer.from(content, 'utf8');
     let written = 0;
     while (written < data.length) written += writeSync(fd, data, written, data.length - written);
@@ -153,6 +157,19 @@ export function createLaunchFile(
   }
   closeSync(fd);
   return created;
+}
+
+// パスのファイルが、開いたファイル（dev・ino）と同じ通常のファイルであること。違えば例外にする。
+function confirmSameFile(path: string, dev: bigint, ino: bigint): void {
+  let now;
+  try {
+    now = lstatSync(path, { bigint: true });
+  } catch {
+    throw new Error(`一時ファイル ${path} が、作ったあとでなくなった。`);
+  }
+  if (now.isSymbolicLink() || !now.isFile() || now.dev !== dev || now.ino !== ino) {
+    throw new Error(`一時ファイル ${path} が、作ったファイルと違うものに置き換わった（変更していない）。`);
+  }
 }
 
 export type RemoveResult = 'removed' | 'missing' | 'replaced';

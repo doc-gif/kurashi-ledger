@@ -13,7 +13,7 @@
 // T07（データルートの権限）も同じ基準を使う（ADR-0006の1「権限」）。基準を変えるときは、ADR-0009と両方の試験を
 // 同じPRで直す。
 import { spawnSync } from 'node:child_process';
-import { chmodSync, lstatSync } from 'node:fs';
+import { chmodSync, fchmodSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { userInfo } from 'node:os';
 
@@ -188,6 +188,22 @@ export function restrictToOwner(path: string, kind: OwnerOnlyKind): void {
     check = checkPosix(path, kind);
   }
   if (!check.ok) throw new Error(`${path} を本人だけの権限にできなかった: ${check.reason}`);
+}
+
+// 開いた（作ったばかりの）ファイルを本人だけの権限にする（ADR-0009の3・4）。
+// - POSIX: 開いたハンドルにfchmod(0600)するだけで、パスでは変えない。macOSの拡張ACLは、確かめた本人専用の
+//   ディレクトリ（ほかのユーザーへのallowのエントリがない）の中で作るので、継承しうるのはdenyと本人へのallowだけで、
+//   消す必要がない（呼び出し側が、パスで読んで確かめる）。
+// - Windows: Node.jsからハンドルにACLを設定できないので、パスで設定する。呼び出し側が、直前にパスのファイルが
+//   開いたものと同じことを確かめる。確かめてから設定するまでの短い間の、同じユーザー・管理者による差し替えは
+//   保証しない（ADR-0003の「この境界で守らないもの」）。
+export function restrictOpenFileToOwner(fd: number, path: string): void {
+  if (process.platform === 'win32') {
+    if (lstatSync(path).isSymbolicLink()) throw new Error(`${path} はリンクなので、権限を変えない。`);
+    runWindowsAcl(path, 'restrict-file');
+    return;
+  }
+  fchmodSync(fd, 0o600);
 }
 
 // 直し方の案内（利用者がディレクトリを用意するとき）。

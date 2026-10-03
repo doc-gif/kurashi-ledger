@@ -1005,3 +1005,42 @@ test('要求の対象がorigin-formでない要求（absolute-form・authority-f
     tmp.cleanup();
   }
 });
+
+test('upgradeを拒否する生の応答にも、通常の応答と同じ必須のヘッダと拒否の理由が付き、CORSのヘッダは付かない', async () => {
+  const tmp = ownerOnlyTempDirectory('upgrade-headers');
+  try {
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
+    try {
+      const cookie = await exchange(server);
+      const host = `127.0.0.1:${server.port}`;
+      const base = { host, origin: server.origin, cookie };
+      const cases: Array<[string, Record<string, string>, string, number]> = [
+        ['/hmr', { ...base, host: `localhost:${server.port}` }, 'host-mismatch', 403],
+        ['http://attacker.invalid/hmr', base, 'bad-request-target', 400],
+        ['/hmr', { ...base, origin: `http://127.0.0.1:${server.port + 1}` }, 'origin-mismatch', 403],
+        ['/hmr', { host, cookie }, 'origin-required', 403],
+        ['/hmr', { host, origin: server.origin }, 'session-required', 401],
+        ['/hmr', base, 'no-websocket', 404],
+      ];
+      for (const [target, headers, code, status] of cases) {
+        const lines = Object.entries(headers).map(([n, v]) => `${n}: ${v}\r\n`).join('');
+        const res = await sendRaw(server.port, `GET ${target} HTTP/1.1\r\n${lines}Connection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+        assert.equal(res.status, status, code);
+        const head = res.raw.split('\r\n\r\n')[0] ?? '';
+        const fields = new Map(head.split('\r\n').slice(1).map((l) => [l.slice(0, l.indexOf(':')).toLowerCase(), l.slice(l.indexOf(':') + 1).trim()]));
+        assert.equal(fields.get('content-security-policy'), PRODUCTION_CSP, code);
+        assert.equal(fields.get('cache-control'), 'no-store', code);
+        assert.equal(fields.get('referrer-policy'), 'no-referrer', code);
+        assert.equal(fields.get('x-content-type-options'), 'nosniff', code);
+        assert.equal(fields.get('cross-origin-resource-policy'), 'same-origin', code);
+        assert.equal(fields.get('x-frame-options'), 'DENY', code);
+        assert.equal(fields.get('x-kurashi-ledger-reason'), code);
+        assert.deepEqual([...fields.keys()].filter((k) => k.startsWith('access-control-')), [], code);
+      }
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});

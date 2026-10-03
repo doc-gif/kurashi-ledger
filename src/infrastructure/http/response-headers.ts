@@ -67,14 +67,19 @@ function filterHeaders(headers: HeadersArgument): HeadersArgument {
   return kept;
 }
 
+// すべての応答に付けるヘッダの名前と値（定義はこの1か所）。通常のHTTPの出口（enforceResponseHeaders）と、
+// upgradeを拒否する生の応答の両方が使う。
+export function requiredResponseHeaders(csp: string): ReadonlyArray<readonly [string, string]> {
+  return [...FIXED_HEADERS, ['Content-Security-Policy', csp]];
+}
+
 // resに、出口で付け直すヘッダを設定する。cspは、その応答に使うCSP（本番はPRODUCTION_CSP）。
 export function enforceResponseHeaders(res: ServerResponse, csp: string): void {
   const apply = (): void => {
     for (const name of res.getHeaderNames()) {
       if (name.toLowerCase().startsWith('access-control-')) res.removeHeader(name);
     }
-    for (const [name, value] of FIXED_HEADERS) res.setHeader(name, value);
-    res.setHeader('Content-Security-Policy', csp);
+    for (const [name, value] of requiredResponseHeaders(csp)) res.setHeader(name, value);
   };
   apply();
   const original = res.writeHead.bind(res) as (...args: unknown[]) => ServerResponse;

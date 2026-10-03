@@ -41,7 +41,7 @@ import {
   type BodyType,
   type Rejection,
 } from './request-checks.ts';
-import { PRODUCTION_CSP, developmentCsp, enforceResponseHeaders } from './response-headers.ts';
+import { PRODUCTION_CSP, developmentCsp, enforceResponseHeaders, requiredResponseHeaders } from './response-headers.ts';
 import { createLaunchSession, type LaunchSession } from './session.ts';
 import {
   createDiskStaticSource,
@@ -504,7 +504,9 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     }
     const refuse = (rejection: Rejection): void => {
       log(`UPGRADE ${path} ${rejection.status} ${rejection.code}`);
-      socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+      // 通常のHTTPの応答と同じ定義の必須のヘッダと、拒否の理由を付ける（生の応答も出口の契約から外さない）。
+      const headers = [...requiredResponseHeaders(PRODUCTION_CSP), ['X-Kurashi-Ledger-Reason', rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
+      socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`);
     };
     const current = session;
     if (current === undefined) return refuse({ status: 503, code: 'starting' });
