@@ -170,7 +170,7 @@ test('モード700でも、ほかのユーザーを許可する拡張ACL（macOS
 test('経路の判定（POSIX）: 所有者がroot・本人以外、またはstickyなしでほかのユーザーも書ける祖先があれば拒否する', () => {
   const uid = 1000;
   const entry = (path: string, owner: number, mode: number) => ({ path, uid: owner, mode });
-  const ok = [entry('/home/u/tok', uid, 0o40700), entry('/home/u', uid, 0o40755), entry('/home', 0, 0o40755), entry('/', 0, 0o40755)];
+  const ok = [entry('/home/shared/tok', uid, 0o40700), entry('/home/shared', uid, 0o40755), entry('/home', 0, 0o40755), entry('/', 0, 0o40755)];
   assert.deepEqual(evaluatePosixChain(ok, uid), { ok: true });
   // stickyのある共有のディレクトリ（/tmp等）の中の、自分のディレクトリは許す。
   assert.deepEqual(evaluatePosixChain([entry('/tmp/tok', uid, 0o40700), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)], uid), { ok: true });
@@ -179,14 +179,14 @@ test('経路の判定（POSIX）: 所有者がroot・本人以外、またはsti
     [entry('/srv/tok', uid, 0o40700), entry('/srv', 0, 0o40775), entry('/', 0, 0o40755)],
     [entry('/tmp/x/tok', uid, 0o40700), entry('/tmp/x', 2000, 0o41777), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)],
     [entry('/tmp/x/tok', uid, 0o40700), entry('/tmp/x', 2000, 0o40755), entry('/tmp', 0, 0o41777), entry('/', 0, 0o40755)],
-    [entry('/home/u/tok', uid, 0o40700), entry('/home/u', 2000, 0o40755), entry('/', 0, 0o40755)],
+    [entry('/home/shared/tok', uid, 0o40700), entry('/home/shared', 2000, 0o40755), entry('/', 0, 0o40755)],
   ]) {
     assert.equal(evaluatePosixChain(chain, uid).ok, false, JSON.stringify(chain));
   }
 });
 
 test('経路の判定（Windows・macOSのACL）: ほかのユーザーに削除・子の削除・権限の変更を許すエントリを拒否し、読取りと継承専用は許す', () => {
-  const paths = ['C:\\Users\\u\\tok', 'C:\\Users\\u', 'C:\\'];
+  const paths = ['C:\\Users\\Shared\\tok', 'C:\\Users\\Shared', 'C:\\'];
   const sys = 'S-1-5-18';
   const tok = `O:${USER}D:(A;0;2032127;;;${USER})`;
   const home = `O:${sys}D:(A;3;2032127;;;${USER})(A;3;2032127;;;${sys})(A;3;2032127;;;S-1-5-32-544)`;
