@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "task_id": "OPS-WRITING",
+  "planned_paths": [
+    ".agents/skills/google-technical-writing/SKILL.md",
+    ".agents/skills/google-technical-writing/agents/openai.yaml",
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "docs/external-worker.md",
+    "docs/github-agent-operations.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "Reduce prose without publishing local dispatcher configuration or private history.",
+      "checks": [
+        {
+          "id": "public",
+          "method": "Inspect the staged diff and run the main publication checker.",
+          "expected": "Only generic instructions, public sources and synthetic placeholders; no local paths, session transcripts, credentials or real data."
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "Keep machine-readable evidence and independent decisions while removing repeated narrative.",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Compare both comment templates and all agent entrypoints with main; retain identifiers and new-evidence rules.",
+          "expected": "Markers, role values, full head/base, decision, plan fields and stable finding IDs remain; concise reports never suppress material findings or regressions."
+        },
+        {
+          "id": "trust",
+          "method": "Trace each original authorization, readiness, CI, re-fetch and merge condition to its retained text or explicit canonical link.",
+          "expected": "Independent cross-agent review, exact head/base, CI limits, owner authentication, no self-approval and no permission expansion remain. PR text is not its own authorization."
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Consolidate instructions without changing task scope or dependencies.",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "Inspect overlap with open PR #38 and link all removed repeated procedures to their canonical source.",
+          "expected": "No task dependencies, product scope or shared runtime resources change. Later merge incorporates concurrent documentation changes; no implementation is assigned."
+        },
+        {
+          "id": "entrypoints",
+          "method": "Read AGENTS, CLAUDE, Copilot, worker, status, README and loop together; compare required protocol fields and relative links.",
+          "expected": "Human summaries remain Japanese; AI rules are English. Draft/working/ready/review/merge boundaries match; review schedule is 5 minutes/max 10 while implementation frequency stays separately configured."
+        }
+      ]
+    }
+  ]
+}
