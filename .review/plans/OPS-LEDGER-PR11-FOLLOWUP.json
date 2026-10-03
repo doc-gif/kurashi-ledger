@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "base_sha": "105332efcf7029c2f6ce7430a933038e630d4a28",
+  "task_id": "OPS-LEDGER-PR11-FOLLOWUP",
+  "planned_paths": [
+    ".review/findings.json"
+  ],
+  "conflicts": [
+    {
+      "description": "PR #14はPR #11の取得を2026-10-03T00:29Z頃で区切った。その後マージ（105332e、03:12Z）までに、Codexの内容レビュー5件とCopilotの指摘（inline 14件、Previously missed 3件）が付いた。",
+      "state": "resolved",
+      "resolution": "区切りはPR #14の最後の取得（Codexのreview 5398071753、Copilotのoverview 5398044049まで）に含まれた項目のIDとし、その集合にない項目だけを対象にする（IDの差で機械的に決め、時刻だけに頼らない）。PR #11はマージ済みなので、取得は全ページの取り直しで完了とする。"
+    },
+    {
+      "description": "区切りより後のCodexの指摘は、PR #11の内容レビューでPR #14が台帳に登録したID（PR11-R004・R005・R011・R102・R106〜R109）をそのまま使っている。Copilotだけの原因の番号帯（R101〜R112）を、Codexも既存の原因として参照している。",
+      "state": "resolved",
+      "resolution": "新しいIDは作らず、既存IDの出典に追加する（同じ原因は同じIDへ対応付ける規約）。教訓を一般化する場合は、更新の根拠になった公開の指摘を同じ変更で出典に加える（PR16-R002の教訓）。どの既存の原因にも当たらない指摘があればPR11-R113以降を使う。"
+    },
+    {
+      "description": "T14の下調べで見つかり、所有者の依頼でPR #11で直した3点（丸め方の不足、年だけによる規則の選択、丸めではない段階。PR #11のissuecomment-5964427430）は、レビューの指摘ではない。",
+      "state": "resolved",
+      "resolution": "3点はいずれも、契約の型が実際の制度の求めるケースを表せないという原因で、既存のPR11-R106（contract-type-expressiveness）に当たる。根拠のコメントは公開で、一次資料の公開URLを示しているので、R106の出典に加え、教訓に一般化した1文を足す。新しいIDは作らない。レビューの指摘ではないこと・解消状態を書かないことをPR本文に明記する。"
+    },
+    {
+      "description": "PR #11の実装担当がスレッドの返信で挙げたIDと、原因から見た対応先が違う指摘がある（Copilot 4170944750: 途中で失敗したrunの保存条件。実装担当はPR11-R110を挙げた）。",
+      "state": "resolved",
+      "resolution": "台帳の対応付けは原因で決める。途中で失敗したrunを契約の型と保存条件で表せないという原因なので、PR11-R110（状態の判定の優先順）ではなくPR11-R106（型の表現力）へ対応付け、PR本文に理由を書いて別担当のレビューに委ねる。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "台帳に加えるのは、PR #11の公開レビュー・コメントのURL、一般化した原因キーと教訓だけ。T14の下調べのコメントも公開で、一次資料の公開URLだけを示している。実際の給与・勤務先・氏名、個人のパス、秘密、所有者の私的な指示は書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分を目視し、追加した出典がPR #11の公開URLだけであることと、金額・個人のパス・トークン・メールアドレスの形の文字列がないことを機械的に確認する。commitの前に`node scripts/check-public.ts --staged`を実行する。",
+          "expected": "追加した出典はPR #11の公開URLだけで、実データ・秘密・個人のパスは0件。公開検査は該当なし。外部サービスへの送信はない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "同じ原因は1つのIDに集約し、CodexのIDと既存の台帳のIDを再採番しない。教訓を更新した項目は、更新の根拠を出典に持つ。台帳は原因と教訓の索引で、解消状態を持たない。検査器・条件・計画の書式は変えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "PR #11の全ページのレビュー・inline・コメントを取得し、PR #14の最後の取得にないIDの項目だけを対象にする。本文のrole: codex-reviewerでCodexを識別する。Copilotのinline（返信を除く）とoverviewのPreviously missedを抽出し、overviewが参照するdiscussionがinlineに含まれることと、対象の各指摘がちょうど1つのIDに対応することをscriptで確かめる。更新する全候補をguard.py triageへ1回で入力し、既存の原因キーとの一致とバッチ内の重複を確認する。教訓を変える項目は、その根拠が出典にあることを確かめる。",
+          "expected": "対象のCopilotの指摘はすべて1つのIDに対応する。triageは既存の原因キーに一致する候補をupdate-existingとし、バッチの重複はない。新しいIDが要らない場合は、その理由を本文に書く。validateが成功する。"
+        },
+        {
+          "id": "trust",
+          "method": "差分が.review/findings.jsonと本計画だけであることを三点diffで確かめ、base側の検査器でguard.py checkとci.pyを実行する。教訓に解消状態・対応commit・accepted・所有者判断を書いていないことを目視する。",
+          "expected": "条件・検査器・試験は変わらず、ci.pyはpolicy_changesなし・ledger_changed=trueを報告する。checkのmetadata-completeは記入の充足だけを示し、台帳の内容はCodexの独立レビューを受ける。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "共有資源の原因台帳を、ほかのopen PRと同時に編集しない。作業規約、状態資料、タスク台帳、契約文書は変更しない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "作業開始時と引継ぎの直前に、open PRの変更ファイルを全ページ取得し、.review/findings.jsonを変更するPRがないことを確認する。",
+          "expected": "台帳を同時に変更するPRはない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "IDの扱い・同じ原因の集約・triageの手順を、AGENTS.md、docs/review-prevention.md、tools/review_guard/README.md、docs/pr-review-loop.mdと照合する。READMEの更新の要否を確認する。",
+          "expected": "入口の記述と矛盾しない。使い方・セットアップ・運用規則は変わらないので、ルートとツールのREADMEは更新不要。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    }
+  }
+}
