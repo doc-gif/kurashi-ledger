@@ -32,6 +32,7 @@
 - [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
 - [記録・照合・計算結果の契約（契約版1.0、合成例）](docs/contracts/README.md)
+- [合成データと期待結果の台帳（T03）](docs/test-oracles/README.md)
 - [テスト方針](docs/testing.md)
 - [開発環境と作業の規約（Node.jsの版、`npm run setup`）](docs/development.md)
 - [公開範囲と公開前の点検](docs/public-data.md)
