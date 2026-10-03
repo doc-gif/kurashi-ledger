@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "base_sha": "c6834b76afbc08f706f5031cae8fed4e903ce52a",
+  "task_id": "T04",
+  "planned_paths": [
+    "design/README.md",
+    "design/components.md",
+    "design/figma-map.json",
+    "design/tokens.json",
+    "docs/implementation-plan.md",
+    "docs/project-status.md",
+    "docs/implementation-tasks.md"
+  ],
+  "conflicts": [
+    {
+      "description": "このPRはレビュー運用の手順（事前の計画）がmainに入る前に作業を始めたため、計画は実装の後に、実際の差分から作った移行用のものである。",
+      "state": "resolved",
+      "resolution": "docs/review-prevention.md の移行の決まりに従い、「実装前に計画済み」とは記録しない。最新main（c6834b7）を取り込んだ後の差分から条件を選び直し、各条件を確認し直した。"
+    },
+    {
+      "description": "docs/project-status.md はPR #6（PR #4に統合）が書き換えたため、T04の完了をこのPRで先に書くと競合した。Codex PR10-R004、Copilot 4167964285。",
+      "state": "resolved",
+      "resolution": "マージの順番をPR #6（PR #4）→ PR #10 とし、PR #4がmainに入った後に最新mainをmergeして、Figmaの行を作成済みに直した。PR #4の決定（実装の再開、役割の交代、条件付きの自己マージ等）は変更しない。"
+    },
+    {
+      "description": "2026-10-02の所有者決定: FigmaのファイルURLを公開しない。機能色（赤・黄土色）を承認。",
+      "state": "resolved",
+      "resolution": "design/・Issue #7・PR #10からURLとfile keyを除き、node IDだけを残した（履歴は1つのcommitにまとめ直し済み）。機能色は変えず、承認を design/README.md に記録した。"
+    },
+    {
+      "description": "Status BadgeとT01の金額・記録の状態の対応を「T01のmain統合後に決める」とだけ残しており、決めるタスクがなく、T08はT01に依存していなかった（Copilot review 5395839447 の「Previously missed」）。",
+      "state": "resolved",
+      "resolution": "台帳のT08節に依存T01と、対応の決定（not-statedの表示の要否、実績・見込み・正式通知の区別を含む）を受入条件として加え、design/README.md・components.mdはその受入条件を参照する。実装計画の依存図にT01→T08を加え、並行作業の表をそろえる。台帳はT08節だけを変える（PR #11・#12と行が重ならない）。"
+    },
+    {
+      "description": "Amount Inputはチェックを外すとEmptyに戻るが、T01の契約では未入力（空欄）はunknownとして保存される。チェックを外して保存すると不明に戻り、チェックの操作が意味を持たない（Copilot review 5395958798 の「Previously missed」）。",
+      "state": "resolved",
+      "resolution": "設計段階では不変条件だけを決める。Emptyは保存しない編集中の状態で、独立の状態としても0としても保存しない。保存して再表示した状態は保存した状態と一致させ、黙って変えない。保存時に不明へ変えて画面で示すか、エラーで止めるかは項目ごとのUXの選択なので、台帳のT08節の受入条件に置く（項目ごとの規則はT09・T10）。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "T04の差分は design/ のトークン・Figmaの対応表・部品仕様と、docs/ の状態記述だけで、保存先・DB・lock・バックアップ・配信成果物・依存を変更しない。INV-RECORDSの関連条件として選ばれたが、この差分は保存や更新の処理に触れない。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分にlockの取得・保持の記述やコードがないことを確認する。",
+          "expected": "lockの同一性に影響しない。"
+        },
+        {
+          "id": "recovery",
+          "method": "差分に強制終了後の再取得・生存判定の変更がないことを確認する。",
+          "expected": "lockの回復に影響しない（Mac/Windowsとも同じ）。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "公開物は合成情報だけにする。design/ の例の値・勤務先は架空（「勤務先A（架空）」等）。2026-10-02の所有者決定により、FigmaのファイルURLとfile keyを公開領域（repo・Issue・PR）に置かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "origin/mainとの差分と `git log -p origin/main..HEAD` を、Figmaのドメイン・file key・個人のホームディレクトリのパス・メールアドレス・トークン/鍵の形式でgrepする。Issue #7とPR #10の本文・コメント・レビュー（全ページ）も同じくgrepする。差分を読み、例の金額・名前が合成であることを確かめる。",
+          "expected": "どのgrepも0件。例の値は合成（123,456円、250,000円等）で、実在の勤務先・氏名・明細を含まない。新しい外部サービスを使わない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "preserve",
+      "reason": "T04はUIの見た目と部品の契約だけを定める。金額入力は空欄・0円・不明を別の状態にし、不明を0にしない（チェックを外すと空欄に戻る）。不明は入力の誤りにせず、合計に不明が含まれるときは確定値に見せない。実績（確定）と見込みはStatus Badgeで分ける。計算・制度の値・期待値は追加しない。 Amount InputのEmptyは保存しない編集中の状態で、T01の契約（未入力はunknown）に合わせて独立の状態として保存せず、0としても保存しない。保存して再表示した状態は保存した状態と一致させる。保存時のEmptyの扱い（不明として保存して示すか、エラーで止めるか）は項目ごとに異なるので、T08の受入条件にする。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "design/components.md の「値の状態」「組合せの規則」「不明はエラーにしない」、Figmaの金額の表示規則（12:136）と金額の一覧（13:74）を読み、不明・0・空欄・対象外の表示と遷移を照合する。組合せの規則から全組合せを導くスクリプトで、規則の表・figma-map.jsonのcombinationRule・Figmaのバリアントの一致を確かめる。 Amount InputのEmptyの保存時の扱いを、T01の契約（PR #11のdocs/contracts/common-types.md「未入力はunknown」）と照合する。",
+          "expected": "不明・0円・空欄・対象外が全ての状態で別の文言と見た目になる。不明から0へ変わる操作がない。合計に不明を含むと「不明」バッジ付きの小計になり、確定値として表示しない。銀行入金と給与の合算や二重計上を行う部品・例はない。 Emptyは保存されず、0にもならない。保存して再表示した状態は保存した状態と一致する（不明で保存したものはチェック済みの不明として表示され、黙って変わらない）。保存時の扱いの決定はT08の受入条件にある。"
+        },
+        {
+          "id": "history",
+          "method": "差分に税・保険の計算、制度の年・地域・出典、期待値、計算runの記録が含まれないことを確認する。Status Badgeの状態とT01の契約（unknown / not-stated / not-applicable / known(0)）の対応が未決として残っていることを確認する。",
+          "expected": "T04は計算・制度データ・期待値を追加しない（履歴の再現性に影響しない）。Status BadgeとT01の状態（unknown / not-stated / not-applicable / known(0)、実績・見込み・正式通知）の対応は、T08の受入条件として台帳に置き、T08はT01に依存する。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "not-applicable",
+      "reason": "T04の差分は design/ のトークン・Figmaの対応表・部品仕様と、docs/ の状態記述だけで、保存先・DB・lock・バックアップ・配信成果物・依存を変更しない。INV-RECORDSの関連条件として選ばれたが、この差分は保存や更新の処理に触れない。 design/tokens.json はT08でCSSの生成元になるが、生成方法とbuildのmanifestはT08で決めるため、T04は配信成果物を作らない。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "差分にNode.js・依存・build・DB版の対応に関わる変更（package.json、lockfile、scripts/）がないことを確認する。",
+          "expected": "更新・rollbackの対応関係は変わらない。"
+        },
+        {
+          "id": "artifact",
+          "method": "差分に配信成果物・manifestの作成手順がないことを確認する。tokens.jsonは成果物ではなくGit管理の入力であることをdesign/README.mdで確かめる。",
+          "expected": "成果物の入れ替えや既存成果物の扱いに影響しない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "T04の差分は design/ のトークン・Figmaの対応表・部品仕様と、docs/ の状態記述だけで、保存先・DB・lock・バックアップ・配信成果物・依存を変更しない。INV-RECORDSの関連条件として選ばれたが、この差分は保存や更新の処理に触れない。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分にデータルートの検査・作成・初期化の記述やコードがないことを確認する。",
+          "expected": "初回作成と復元途中の区別に影響しない。"
+        },
+        {
+          "id": "aliases",
+          "method": "差分にパスの正規化・別名の判定がないことを確認する。",
+          "expected": "別名・禁止先の判定に影響しない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "T04の差分は design/ のトークン・Figmaの対応表・部品仕様と、docs/ の状態記述だけで、保存先・DB・lock・バックアップ・配信成果物・依存を変更しない。INV-RECORDSの関連条件として選ばれたが、この差分は保存や更新の処理に触れない。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分のパスに migrations/・src/infrastructure/storage/ 等がないことを確認する。",
+          "expected": "DB・journal・migrationに関する変更がないので、rollbackの性質は変わらない。"
+        },
+        {
+          "id": "restore",
+          "method": "差分のパスにバックアップ・復元の処理や手順の変更がないことを確認する。",
+          "expected": "復元の各段階に影響しない。"
+        },
+        {
+          "id": "manifest",
+          "method": "差分にmanifestの書式・ハッシュ対象の変更がないことを確認する。",
+          "expected": "manifestの扱いは変わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "T04の完了に合わせて状態資料（docs/project-status.md、docs/implementation-plan.md）を作成済みにそろえる。T08が使う成果物（tokens.json、figma-map.json、components.md）と、T08の受入条件として引き継ぐ確認を design/README.md に置く。Status BadgeとT01の金額・記録の状態の対応を決めるタスクがなかったため、台帳のT08節に依存（T01）と受入条件を加え、実装計画の依存図と表もそろえる。package.json・lockfile・CI・Figma以外の共有資源は変更しない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "docs/implementation-tasks.md のT01・T04・T08節、docs/implementation-plan.md の依存図（mermaid）と並行作業の表、design/README.md の「T08の受入条件として引き継ぐもの」を照合する。差分にpackage.json・lockfile・workflowがないことを確認する。PR #11（T01）とPR #12（T02）が変更する台帳の行（T01節、26・34・36・61行目付近）と、このPRが変更するT08節の行が重ならないことを確認する。",
+          "expected": "T08の依存はT01・T04・T05・T26で、台帳・依存図・表の3か所が一致する。T01→T08を加えても循環しない（T01はT00だけに依存する）。Status Badgeと状態の対応の決定はT08の受入条件にあり、T01の契約が確定する前にT08が状態をAPIとして固定しない。引き継いだほかの確認もT08の範囲に収まる。lockfile等の同時編集はない。PR #11・#12とは別の行の変更で、後にマージする側が最新mainを取り込めば両立する。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "docs/project-status.md・docs/implementation-plan.md・design/README.md・ルートREADMEのFigma/T04に関する記述を読み比べる。古い記述（「未作成」「T04で作る」）が残っていないことをgrepで確かめる。",
+          "expected": "状態資料と実装計画は「基礎と最初の3部品をT04で作成済み」で一致し、URLを含まない。ルートREADMEの方針（白・グレー＋少量の青緑、Figmaの基礎と部品を先に設計）と矛盾しない。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RECORDS": {
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        }
+      ]
+    }
+  }
+}
