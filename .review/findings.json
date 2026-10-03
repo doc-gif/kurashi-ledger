@@ -261,7 +261,8 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954"
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954",
+        "https://github.com/doc-gif/kurashi-ledger/pull/14#discussion_r4170901342"
       ]
     },
     {
@@ -611,7 +612,9 @@
       "cause_key": "destructive-op-follows-link",
       "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957"
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+        "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+        "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
       ]
     }
   ]
