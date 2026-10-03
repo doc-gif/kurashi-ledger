@@ -8,7 +8,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { readKeyFileFromDisk, readKeyFromStream, readKeychainKey, run, spawnChild, type ExecFileLike } from './lib/github-app-token.ts';
+import {
+  isExecutableFile,
+  onProcessSignals,
+  readKeyFileFromDisk,
+  readKeyFromStream,
+  readKeychainKey,
+  resolveCommand,
+  run,
+  spawnChild,
+  type ExecFileLike,
+} from './lib/github-app-token.ts';
 
 const execFileAsync = promisify(execFile) as unknown as ExecFileLike;
 const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
@@ -23,9 +33,11 @@ process.exitCode = await run(process.argv.slice(2), {
   readKeychain: (service, account) => readKeychainKey(service, account, process.platform, execFileAsync),
   readKeyFile: (path) => readKeyFileFromDisk(path, process.platform, uid),
   readStdin: () => readKeyFromStream(process.stdin),
+  resolveCommand: (program) => resolveCommand(program, process.env, process.platform, (path) => isExecutableFile(path, process.platform)),
   // ghの空の設定ディレクトリ（mkdtempは所有者だけが使える権限で作る）。子の終了後に、このディレクトリだけを消す。
   makeConfigDir: () => mkdtempSync(join(tmpdir(), 'kl-gh-config-')),
   removeConfigDir: (path) => rmSync(path, { recursive: true, force: true }),
   runChild: spawnChild,
+  onSignals: onProcessSignals,
   stderr: (text) => process.stderr.write(text),
 });

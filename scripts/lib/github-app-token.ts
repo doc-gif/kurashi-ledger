@@ -12,13 +12,16 @@
 // - 依存を加えない（Node.jsの組込みだけ）。
 import { spawn } from 'node:child_process';
 import { createPrivateKey, sign, type KeyObject } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs';
+import { accessSync, closeSync, constants, fstatSync, lstatSync, openSync, readSync, statSync, type Stats } from 'node:fs';
 import { constants as osConstants } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 
 export const API_ORIGIN = 'https://api.github.com';
 export const API_VERSION = '2022-11-28';
+export const REPOSITORY_OWNER = 'doc-gif';
 export const REPOSITORY_NAME = 'kurashi-ledger';
+// 文書のpushのURL（利用者名なし。範囲を限った資格情報のhelperが当たる）。
+export const PUSH_URL = `https://github.com/${REPOSITORY_OWNER}/${REPOSITORY_NAME}.git`;
 export const USER_AGENT = 'kurashi-ledger-github-app-token';
 export const KEYCHAIN_TOOL = '/usr/bin/security';
 export const MAX_KEY_BYTES = 16 * 1024;
@@ -283,6 +286,12 @@ export function tokenRequest(
   };
 }
 
+// 時間の上限と、シグナルによる中断の両方で止まるsignal。
+function requestSignal(timeoutMs: number, abort: AbortSignal | undefined): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return abort === undefined ? timeout : AbortSignal.any([timeout, abort]);
+}
+
 // 出力してよい文にする: 既知の秘密と、長い英数字の並び（JWT・トークン・鍵の行になりうる）を伏せ、
 // 制御文字を除き、長さを切る。
 export function sanitize(text: string, secrets: readonly string[]): string {
@@ -337,6 +346,7 @@ function githubMessage(body: string, secrets: readonly string[]): string {
 // 「GitHub's token formats」。installation tokenの接頭辞は ghs_）。ここでは、接頭辞、使う文字（英数字と . _ -）、
 // 長さの範囲だけを確かめる。空白・制御文字・引用符等を含むもの、ほかの種類のトークンは受け付けない。
 export const TOKEN_PATTERN = /^ghs_[A-Za-z0-9._-]{36,8188}$/;
+const HEADER_SAFE = /^[\x21-\x7e]{1,8192}$/;
 
 // 応答の権限・repoが要求どおりか。違えば理由を返す（トークンは含めない）。
 export function checkGrantedScope(response: unknown, purpose: Purpose): string | null {
@@ -372,7 +382,12 @@ export function checkOnlyThisRepository(repositories: unknown, where: string): s
 
 // 発行したトークンで、実際に触れるrepoを数える（GET /installation/repositories）。
 // このrepoの1件だけでなければ、または確かめられなければ、理由を返す。
-export async function verifyTokenRepositories(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<string | null> {
+export async function verifyTokenRepositories(
+  fetchImpl: FetchLike,
+  token: string,
+  timeoutMs: number,
+  abort?: AbortSignal,
+): Promise<string | null> {
   let response: FetchResponse;
   try {
     response = await fetchImpl(`${API_ORIGIN}/installation/repositories?per_page=100`, {
@@ -383,7 +398,7 @@ export async function verifyTokenRepositories(fetchImpl: FetchLike, token: strin
         'User-Agent': USER_AGENT,
         'X-GitHub-Api-Version': API_VERSION,
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: requestSignal(timeoutMs, abort),
       redirect: 'error',
     });
   } catch (error) {
@@ -402,6 +417,7 @@ export async function verifyTokenRepositories(fetchImpl: FetchLike, token: strin
 }
 
 // 失効させる（DELETE /installation/token）。成功ならnull、失敗なら秘密を含まない理由を返す。
+// 401は、トークンがすでに有効でない（失効済み・期限切れ）ので成功と同じに扱う。シグナルでは中断しない。
 export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<string | null> {
   try {
     const response = await fetchImpl(`${API_ORIGIN}/installation/token`, {
@@ -415,7 +431,7 @@ export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
-    return response.status === 204 ? null : `トークンを失効できなかった（HTTP ${response.status}）。1時間で失効する。`;
+    return response.status === 204 || response.status === 401 ? null : `トークンを失効できなかった（HTTP ${response.status}）。1時間で失効する。`;
   } catch (error) {
     return `トークンを失効できなかった（${describeFailure(error)}）。1時間で失効する。`;
   }
@@ -429,6 +445,8 @@ export async function requestInstallationToken(args: {
   readonly timeoutMs: number;
   // 既知の秘密の一覧。発行したトークンを、得た直後にここへ加える（呼出し側の失敗の出力でも伏せるため）。
   readonly secrets: string[];
+  // シグナルを受けたら、発行と確認の要求を中断する（失効は中断しない）。
+  readonly abort?: AbortSignal;
 }): Promise<string> {
   const request = tokenRequest(args.installationId, args.jwt, args.purpose);
   let response: FetchResponse;
@@ -437,7 +455,7 @@ export async function requestInstallationToken(args: {
       method: request.method,
       headers: request.headers,
       body: request.body,
-      signal: AbortSignal.timeout(args.timeoutMs),
+      signal: requestSignal(args.timeoutMs, args.abort),
       redirect: 'error',
     });
   } catch (error) {
@@ -458,8 +476,13 @@ export async function requestInstallationToken(args: {
   if (typeof token !== 'string' || token === '') throw new TokenError('GitHubの応答にトークンがない。');
   // 形の検査より前に既知の秘密に加える（形が違っても、エラーの出力に出さない）。
   args.secrets.push(token);
-  if (!TOKEN_PATTERN.test(token)) throw new TokenError('GitHubの応答のトークンの形式が違う（使わない）。');
-  const problem = checkGrantedScope(parsed, args.purpose) ?? (await verifyTokenRepositories(args.fetch, token, args.timeoutMs));
+  if (!TOKEN_PATTERN.test(token)) {
+    // 形が違っても、ヘッダに入れて安全な値（印字できるASCIIだけ）なら、失効を試みる。
+    const revokeProblem = HEADER_SAFE.test(token) ? await revokeToken(args.fetch, token, args.timeoutMs) : 'ヘッダに入れられない値なので失効を試みていない。1時間で失効する。';
+    throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${revokeProblem ?? '発行されたトークンは失効させた。'}`);
+  }
+  const problem =
+    checkGrantedScope(parsed, args.purpose) ?? (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
   if (problem !== null) {
     const revokeProblem = await revokeToken(args.fetch, token, args.timeoutMs);
     const shown = sanitize(problem, [...secrets, token]);
@@ -612,16 +635,31 @@ export async function readKeyFromStream(stream: KeyStream, timeoutMs: number = S
   }
 }
 
-// 子プロセスの環境。親の環境から、GitHubの資格情報と、gitの資格情報・SSH・設定に関わる変数を外し、
-// Appのトークンだけを渡す。ghは空の設定ディレクトリを使い、保存済みのdoc-gifの資格情報に戻れない。
-// gitは利用者・システムの設定（credential.helper=osxkeychain、url.*.insteadOf等）を読まず、SSHを使えず
-// （GIT_SSH_COMMAND=false）、github.comへのHTTPSだけ、GH_TOKENを返すhelperで認証する。
-const REMOVED_ENV = /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST|GH_CONFIG_DIR|GIT_CONFIG.*|GIT_ASKPASS|SSH_ASKPASS|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GCM_.*|KL_GITHUB_APP_.*)$/i;
+// 子プロセスの環境。親の環境から、GitHubの資格情報と、gitの資格情報・SSH・設定・traceに関わる変数を外し、
+// Appのトークンだけを渡す。
+// - ghは空の一時の設定ディレクトリ（GH_CONFIG_DIR）を使い、保存済みのdoc-gifの資格情報に戻れない。
+// - HOMEも同じ一時のディレクトリにする。gitのlibcurlは資格情報のhelperより前にHOMEの.netrc（_netrc）を読むので、
+//   利用者の.netrcに所有者の資格情報があっても使わない（PR42-R004の系統のN1）。
+// - gitは利用者・システムの設定（credential.helper=osxkeychain、url.*.insteadOf等）を読まず、SSHを使えず
+//   （GIT_SSH_COMMAND=false）、端末やaskPassで聞かず、github.comへのHTTPSだけ、GH_TOKENを返すhelperで認証する。
+//   repoの設定（.git/config）は読まれるので、資格情報のhelperの一覧を空に戻し、extraheaderを空にし、askPassを空にする
+//   （extraheaderはURLの細かさで選ばれるので、文書のpushのURLと同じ細かさのURLでも空にする）。
+// - traceは外し、残っても資格情報を伏せさせる（GIT_TRACE_REDACT=1）。
+const REMOVED_ENV =
+  /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST|GH_CONFIG_DIR|GH_DEBUG|GIT_CONFIG.*|GIT_ASKPASS|SSH_ASKPASS|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GIT_TRACE.*|GIT_CURL_VERBOSE|GCM_.*|KL_GITHUB_APP_.*|NODE_OPTIONS|HOME)$/i;
 export const GIT_CREDENTIAL_HELPER = '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f';
 
 // 利用者の設定（~/.gitconfig）の代わりに読ませる、存在しないファイル（gitは、ない設定ファイルを空として扱う）。
 // 空のデバイス（/dev/null、Windowsの\\.\nul）は、WindowsのgitがEINVALで読めないので使わない。
 export const UNUSED_GIT_GLOBAL_CONFIG = 'git-global-config-unused';
+
+export const CHILD_GIT_CONFIG: readonly (readonly [string, string])[] = [
+  ['credential.helper', ''],
+  ['credential.https://github.com.helper', GIT_CREDENTIAL_HELPER],
+  ['http.https://github.com/.extraheader', ''],
+  [`http.${PUSH_URL}.extraheader`, ''],
+  ['core.askPass', ''],
+];
 
 export function childEnvironment(
   parent: Readonly<Record<string, string | undefined>>,
@@ -632,8 +670,14 @@ export function childEnvironment(
   for (const [name, value] of Object.entries(parent)) {
     if (value !== undefined && !REMOVED_ENV.test(name)) env[name] = value;
   }
+  const gitConfig: Record<string, string> = { GIT_CONFIG_COUNT: String(CHILD_GIT_CONFIG.length) };
+  CHILD_GIT_CONFIG.forEach(([key, value], i) => {
+    gitConfig[`GIT_CONFIG_KEY_${i}`] = key;
+    gitConfig[`GIT_CONFIG_VALUE_${i}`] = value;
+  });
   return {
     ...env,
+    HOME: configDir,
     GH_TOKEN: token,
     GH_CONFIG_DIR: configDir,
     GH_PROMPT_DISABLED: '1',
@@ -642,55 +686,116 @@ export function childEnvironment(
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(configDir, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
-    GIT_CONFIG_COUNT: '2',
-    GIT_CONFIG_KEY_0: 'credential.helper',
-    GIT_CONFIG_VALUE_0: '',
-    GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
-    GIT_CONFIG_VALUE_1: GIT_CREDENTIAL_HELPER,
+    GIT_TRACE_REDACT: '1',
+    ...gitConfig,
   };
+}
+
+// 実行するコマンドを、発行の前に絶対パスへ解決する。見つからなければnull（発行しない）。
+// - パスの区切りを含む名前は、絶対パスのときだけ使う（相対パスはcwd、つまりPRのcheckoutの中を指しうる）。
+// - PATHのうち、空・相対の項目は使わない。
+// - Windowsでは、シェルなしで実行できる.exe・.comだけを探す（.cmd・.batは実行できない）。
+export function resolveCommand(
+  program: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+  isExecutableFile: (path: string) => boolean,
+): string | null {
+  const windows = platform === 'win32';
+  const path = windows ? win32 : posix;
+  const hasSeparator = program.includes('/') || (windows && program.includes('\\'));
+  const extensions = windows ? (/\.(exe|com)$/i.test(program) ? [''] : ['.exe', '.com']) : [''];
+  if (hasSeparator) {
+    if (!path.isAbsolute(program)) return null;
+    for (const ext of extensions) if (isExecutableFile(program + ext)) return program + ext;
+    return null;
+  }
+  const pathKey = Object.keys(env).find((k) => (windows ? k.toUpperCase() === 'PATH' : k === 'PATH'));
+  const pathValue = pathKey === undefined ? '' : (env[pathKey] ?? '');
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (dir === '' || !path.isAbsolute(dir)) continue;
+    for (const ext of extensions) {
+      const candidate = path.join(dir, program + ext);
+      if (isExecutableFile(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+export function isExecutableFile(path: string, platform: NodeJS.Platform): boolean {
+  try {
+    if (!statSync(path).isFile()) return false;
+    if (platform !== 'win32') accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type ChildResult =
   | { readonly kind: 'exited'; readonly code: number | null; readonly signal: NodeJS.Signals | null }
   | { readonly kind: 'failed'; readonly code: string };
 
+export type ChildHandle = { readonly result: Promise<ChildResult>; kill(signal: NodeJS.Signals): void };
+
+function signalNumber(signal: NodeJS.Signals | null): number | undefined {
+  return signal === null ? undefined : (osConstants.signals as Readonly<Record<string, number | undefined>>)[signal];
+}
+
 // 子の結果を終了コードにする。シグナルは128+番号。起動できなければ126、見つからなければ127。
 export function exitCodeOf(result: ChildResult): number {
   if (result.kind === 'failed') return result.code === 'ENOENT' ? EXIT_NOT_FOUND : EXIT_CANNOT_EXECUTE;
   if (result.code !== null) return result.code;
-  const number = result.signal === null ? undefined : (osConstants.signals as Readonly<Record<string, number | undefined>>)[result.signal];
+  const number = signalNumber(result.signal);
   return number === undefined ? EXIT_OWN_FAILURE : 128 + number;
 }
 
-// 子を実行する（シェルを通さない）。親が受けたSIGTERM・SIGHUPは子へ送る。SIGINT（端末のCtrl+C）は子も
-// 受けるので、親は子の終了を待ってから失効させる。
-export function spawnChild(
-  command: readonly [string, ...string[]],
-  env: Record<string, string>,
-  stdin: 'inherit' | 'ignore',
-): Promise<ChildResult> {
-  return new Promise((resolve) => {
-    const [program, ...args] = command;
-    const child = spawn(program, args, { env, stdio: [stdin, 'inherit', 'inherit'], shell: false, windowsHide: true });
-    const forward = (signal: NodeJS.Signals) => () => {
-      child.kill(signal);
-    };
-    const handlers: [NodeJS.Signals, () => void][] = [
-      ['SIGINT', () => undefined],
-      ['SIGTERM', forward('SIGTERM')],
-      ['SIGHUP', forward('SIGHUP')],
-    ];
-    for (const [signal, handler] of handlers) process.on(signal, handler);
-    const done = (result: ChildResult): void => {
-      for (const [signal, handler] of handlers) process.off(signal, handler);
-      resolve(result);
-    };
+export function exitCodeOfSignal(signal: NodeJS.Signals): number {
+  const number = signalNumber(signal);
+  return number === undefined ? EXIT_OWN_FAILURE : 128 + number;
+}
+
+// 子を実行する（シェルを通さない）。シグナルの転送はrunが行う。
+export function spawnChild(command: readonly [string, ...string[]], env: Record<string, string>, stdin: 'inherit' | 'ignore'): ChildHandle {
+  const [program, ...args] = command;
+  const child = spawn(program, args, { env, stdio: [stdin, 'inherit', 'inherit'], shell: false, windowsHide: true });
+  const result = new Promise<ChildResult>((resolve) => {
     child.once('error', (error) => {
       const code = (error as { code?: unknown }).code;
-      done({ kind: 'failed', code: typeof code === 'string' ? code : 'unknown' });
+      resolve({ kind: 'failed', code: typeof code === 'string' ? code : 'unknown' });
     });
-    child.once('exit', (code, signal) => done({ kind: 'exited', code, signal }));
+    child.once('exit', (code, signal) => resolve({ kind: 'exited', code, signal }));
   });
+  return {
+    result,
+    kill: (signal) => {
+      try {
+        child.kill(signal);
+      } catch {
+        // すでに終わっている等。
+      }
+    },
+  };
+}
+
+// 発行から失効までに受けるシグナル。このOSで受けられるものだけを登録する。
+export const HANDLED_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGHUP', 'SIGBREAK'];
+
+export function onProcessSignals(handler: (signal: NodeJS.Signals) => void): () => void {
+  const registered: [NodeJS.Signals, () => void][] = [];
+  for (const signal of HANDLED_SIGNALS) {
+    if (signalNumber(signal) === undefined) continue;
+    const listener = (): void => handler(signal);
+    try {
+      process.on(signal, listener);
+      registered.push([signal, listener]);
+    } catch {
+      // このOSでは受けられない（WindowsのSIGQUIT等）。
+    }
+  }
+  return () => {
+    for (const [signal, listener] of registered) process.off(signal, listener);
+  };
 }
 
 export type Deps = {
@@ -704,15 +809,19 @@ export type Deps = {
   readKeychain(service: string, account: string): Promise<string>;
   readKeyFile(path: string): KeyFileResult;
   readStdin(): Promise<string>;
+  // コマンドを絶対パスへ解決する。見つからなければnull。
+  resolveCommand(program: string): string | null;
   makeConfigDir(): string;
   removeConfigDir(path: string): void;
-  runChild(command: readonly [string, ...string[]], env: Record<string, string>, stdin: 'inherit' | 'ignore'): Promise<ChildResult>;
+  runChild(command: readonly [string, ...string[]], env: Record<string, string>, stdin: 'inherit' | 'ignore'): ChildHandle;
+  // シグナルの受け取りを登録し、解除する関数を返す。
+  onSignals(handler: (signal: NodeJS.Signals) => void): () => void;
   stderr(text: string): void;
   readonly timeoutMs?: number;
 };
 
 // トークンを発行し、範囲を確かめる。確かめられなければTokenErrorを投げる（トークンは失効させてある）。
-export async function mintToken(options: Options, deps: Deps, secrets: string[]): Promise<string> {
+export async function mintToken(options: Options, deps: Deps, secrets: string[], abort?: AbortSignal): Promise<string> {
   let material: string;
   if (options.key.kind === 'keychain') {
     material = await deps.readKeychain(options.key.service, deps.username());
@@ -729,6 +838,7 @@ export async function mintToken(options: Options, deps: Deps, secrets: string[])
   const key = loadPrivateKey(pem);
   const jwt = createAppJwt(options.appId, key, deps.nowSeconds());
   secrets.push(jwt);
+  if (abort?.aborted === true) throw new TokenError('シグナルを受けたので、発行の前に止めた。');
   return requestInstallationToken({
     fetch: deps.fetch,
     installationId: options.installationId,
@@ -736,11 +846,14 @@ export async function mintToken(options: Options, deps: Deps, secrets: string[])
     purpose: options.purpose,
     timeoutMs: deps.timeoutMs ?? REQUEST_TIMEOUT_MS,
     secrets,
+    ...(abort === undefined ? {} : { abort }),
   });
 }
 
 // 終了コード: 子の終了コード（シグナルは128+番号、起動できない126、見つからない127）。
 // このスクリプト自身の失敗（引数の誤り・発行の失敗）は125で、子を起動しない。
+// 発行から失効までにシグナル（SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK）を受けたら、子があれば転送し、
+// 発行と確認を中断し、トークンがあれば失効させてから、128+番号で終える。SIGKILL等の強制終了では失効できない。
 export async function run(argv: readonly string[], deps: Deps): Promise<number> {
   let parsed: ParseResult;
   try {
@@ -757,40 +870,75 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
     return 0;
   }
   const { options } = parsed;
+  // 発行の前に、実行するコマンドを解決する。見つからなければ発行しない。
+  const [program, ...programArgs] = options.command;
+  const resolved = deps.resolveCommand(program);
+  if (resolved === null) {
+    deps.stderr('実行するコマンドが見つからない（PATHの絶対パスの場所、または絶対パスで指定する）。トークンは発行していない。\n');
+    return EXIT_NOT_FOUND;
+  }
+  const command: [string, ...string[]] = [resolved, ...programArgs];
+
   const secrets: string[] = [];
-  let token: string;
+  const controller = new AbortController();
+  // シグナルの受け取りの状態（ハンドラの中から変わるので、オブジェクトに持つ）。
+  const state: { received: NodeJS.Signals | null; child: ChildHandle | null } = { received: null, child: null };
+  const offSignals = deps.onSignals((signal) => {
+    if (state.received === null) state.received = signal;
+    controller.abort();
+    state.child?.kill(signal);
+  });
   try {
-    token = await mintToken(options, deps, secrets);
-  } catch (error) {
-    if (error instanceof TokenError) {
-      deps.stderr(`トークンを発行できなかった。コマンドは実行していない: ${sanitize(error.message, secrets)}\n`);
-    } else {
-      deps.stderr(`トークンを発行できなかった。コマンドは実行していない: 予期しないエラー（${describeFailure(error)}）。\n`);
-    }
-    return EXIT_OWN_FAILURE;
-  }
-  let configDir: string | undefined;
-  let result: ChildResult;
-  try {
-    configDir = deps.makeConfigDir();
-    const env = childEnvironment(deps.env, token, configDir);
-    result = await deps.runChild(options.command, env, options.key.kind === 'stdin' ? 'ignore' : 'inherit');
-  } catch (error) {
-    result = { kind: 'failed', code: 'internal' };
-    deps.stderr(`コマンドを実行できなかった（${describeFailure(error)}）。\n`);
-  } finally {
-    if (configDir !== undefined) {
-      try {
-        deps.removeConfigDir(configDir);
-      } catch (error) {
-        deps.stderr(`注意: ghの一時の設定ディレクトリを消せなかった（${describeFailure(error)}）。\n`);
+    let token: string;
+    try {
+      token = await mintToken(options, deps, secrets, controller.signal);
+    } catch (error) {
+      if (state.received !== null) {
+        deps.stderr(`シグナル（${state.received}）を受けたので止めた。コマンドは実行していない。\n`);
+        return exitCodeOfSignal(state.received);
       }
+      if (error instanceof TokenError) {
+        deps.stderr(`トークンを発行できなかった。コマンドは実行していない: ${sanitize(error.message, secrets)}\n`);
+      } else {
+        deps.stderr(`トークンを発行できなかった。コマンドは実行していない: 予期しないエラー（${describeFailure(error)}）。\n`);
+      }
+      return EXIT_OWN_FAILURE;
     }
+    let result: ChildResult | null = null;
+    if (state.received === null) {
+      let configDir: string | undefined;
+      try {
+        configDir = deps.makeConfigDir();
+        const env = childEnvironment(deps.env, token, configDir);
+        const handle = deps.runChild(command, env, options.key.kind === 'stdin' ? 'ignore' : 'inherit');
+        state.child = handle;
+        // 起動と登録の間に届いたシグナルも転送する。
+        if (state.received !== null) handle.kill(state.received);
+        result = await handle.result;
+      } catch (error) {
+        result = { kind: 'failed', code: 'internal' };
+        deps.stderr(`コマンドを実行できなかった（${describeFailure(error)}）。\n`);
+      } finally {
+        state.child = null;
+        if (configDir !== undefined) {
+          try {
+            deps.removeConfigDir(configDir);
+          } catch (error) {
+            deps.stderr(`注意: ghの一時の設定ディレクトリを消せなかった（${describeFailure(error)}）。\n`);
+          }
+        }
+      }
+      if (result.kind === 'failed' && result.code !== 'internal') {
+        deps.stderr(`コマンドを実行できなかった（${sanitize(result.code, secrets)}）。\n`);
+      }
+    } else {
+      deps.stderr(`シグナル（${state.received}）を受けたので、コマンドは実行していない。\n`);
+    }
+    const revokeProblem = await revokeToken(deps.fetch, token, deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    if (revokeProblem !== null) deps.stderr(`注意: ${revokeProblem}\n`);
+    if (state.received !== null) return exitCodeOfSignal(state.received);
+    return result === null ? EXIT_OWN_FAILURE : exitCodeOf(result);
+  } finally {
+    offSignals();
   }
-  if (result.kind === 'failed' && result.code !== 'internal') {
-    deps.stderr(`コマンドを実行できなかった（${sanitize(result.code, secrets)}）。\n`);
-  }
-  const revokeProblem = await revokeToken(deps.fetch, token, deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
-  if (revokeProblem !== null) deps.stderr(`注意: ${revokeProblem}\n`);
-  return exitCodeOf(result);
 }

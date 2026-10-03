@@ -2,11 +2,12 @@
 // 鍵は試験の中で生成したRSA鍵だけを使う。ネットワーク・キーチェーンは使わない（fetch・キーチェーン・子プロセスは注入する）。
 // 秘密の番兵（トークン等）は、公開検査の型に当たらないよう、実行時に組み立てる。
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createPublicKey, generateKeyPairSync, verify, type KeyObject } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { createServer } from 'node:http';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import {
@@ -22,6 +23,7 @@ import {
   KEYCHAIN_TOOL,
   MAX_KEY_BYTES,
   PURPOSES,
+  PUSH_URL,
   REPOSITORY_NAME,
   TOKEN_PATTERN,
   TokenError,
@@ -30,6 +32,7 @@ import {
   childEnvironment,
   createAppJwt,
   exitCodeOf,
+  isExecutableFile,
   keyFileProblem,
   loadPrivateKey,
   parseArgs,
@@ -37,6 +40,7 @@ import {
   readKeyFileFromDisk,
   readKeyFromStream,
   readKeychainKey,
+  resolveCommand,
   run,
   sanitize,
   spawnChild,
@@ -94,13 +98,20 @@ type Call = { readonly url: string; readonly init: FetchInit };
 type Reply = { readonly status: number; readonly body: string } | ((url: string, init: FetchInit) => Promise<{ status: number; text(): Promise<string> }>);
 
 // 要求と子の起動の順を1つの列に記録する。
-function harness(replies: readonly Reply[], overrides: Partial<Deps> = {}, child: ChildResult = { kind: 'exited', code: 0, signal: null }) {
+function harness(
+  replies: readonly Reply[],
+  overrides: Partial<Deps> = {},
+  child: ChildResult | ((kill: (signal: NodeJS.Signals) => void) => Promise<ChildResult>) = { kind: 'exited', code: 0, signal: null },
+) {
   const events: string[] = [];
   const calls: Call[] = [];
   const err: string[] = [];
   const keychainCalls: string[][] = [];
   const children: { command: readonly string[]; env: Record<string, string>; stdin: string }[] = [];
   const removed: string[] = [];
+  const killed: NodeJS.Signals[] = [];
+  const signalHandlers: ((signal: NodeJS.Signals) => void)[] = [];
+  let unregistered = 0;
   let usernameCalls = 0;
   let i = 0;
   const fetch: FetchLike = async (url, init) => {
@@ -131,6 +142,10 @@ function harness(replies: readonly Reply[], overrides: Partial<Deps> = {}, child
     readStdin: async () => {
       throw new Error('標準入力は使わない');
     },
+    resolveCommand: (program) => {
+      events.push(`resolve ${program}`);
+      return program === 'no-such-command' ? null : `/synthetic/bin/${program}`;
+    },
     makeConfigDir: () => {
       events.push('mkdir');
       return CONFIG_DIR;
@@ -139,15 +154,42 @@ function harness(replies: readonly Reply[], overrides: Partial<Deps> = {}, child
       events.push('rmdir');
       removed.push(path);
     },
-    runChild: async (command, env, stdin) => {
+    runChild: (command, env, stdin) => {
       events.push('child');
       children.push({ command, env, stdin });
-      return child;
+      const kill = (signal: NodeJS.Signals): void => {
+        events.push(`kill ${signal}`);
+        killed.push(signal);
+      };
+      return { result: typeof child === 'function' ? child(kill) : Promise.resolve(child), kill };
+    },
+    onSignals: (handler) => {
+      signalHandlers.push(handler);
+      return () => {
+        unregistered++;
+      };
     },
     stderr: (text) => err.push(text),
     ...overrides,
   };
-  return { deps, events, calls, err, keychainCalls, children, removed, usernameCalls: () => usernameCalls };
+  const fire = (signal: NodeJS.Signals): void => {
+    events.push(`signal ${signal}`);
+    for (const h of signalHandlers) h(signal);
+  };
+  return {
+    deps,
+    events,
+    calls,
+    err,
+    keychainCalls,
+    children,
+    removed,
+    killed,
+    fire,
+    usernameCalls: () => usernameCalls,
+    unregistered: () => unregistered,
+    registered: () => signalHandlers.length,
+  };
 }
 
 function assertNoSecrets(text: string, extra: readonly string[] = []): void {
@@ -322,6 +364,8 @@ test('実際のファイルで: 権限600の鍵ファイルは読め、644はmac
 
 // WindowsにはFIFOがなく、ファイルのsymlinkの作成に権限が要る（docs/development.mdの「環境によって飛ばす試験」）。
 const posixOnly = process.platform === 'win32' ? 'WindowsにはFIFOがなく、ファイルのsymlinkの作成に権限が要る' : false;
+// Node.jsは、Windowsでほかのプロセスへシグナル（Ctrl+C等）を送れない（kill は強制終了になる）。
+const posixSignalsOnly = process.platform === 'win32' ? 'Windowsでは、ほかのプロセスへシグナルを送れない（killは強制終了になる）' : false;
 // FIFOを開く処理が止まると、試験のプロセスごと止まる。そのため、FIFOに触れる確認は別のプロセスで行い、時間の上限を置く。
 const FIFO_TIMEOUT_MS = 20_000;
 test('実際のファイルで: 鍵ファイルへのsymlinkとFIFOを、開く前に拒む（FIFOで止まらない）', { skip: posixOnly }, () => {
@@ -432,31 +476,40 @@ test('標準入力の鍵: 端末を拒み、16KiBを超えたら止め、時間�
   assert.ok(destroyed, '時間切れのあとで標準入力を閉じていない');
 });
 
-test('子の環境: Appのトークンだけを渡し、ghとgitが保存済みの資格情報・SSH・利用者の設定に戻らない', () => {
+test('子の環境: Appのトークンだけを渡し、ghとgitが保存済みの資格情報・.netrc・SSH・trace・利用者とrepoの設定に戻らない', () => {
   const parent = {
     PATH: '/usr/bin',
     HOME: '/synthetic/home',
+    LANG: 'C',
     GITHUB_TOKEN: 'parent-github-token',
     GH_TOKEN: 'parent-gh-token',
     GH_ENTERPRISE_TOKEN: 'x',
     github_enterprise_token: 'x',
     GH_HOST: 'example.test',
     GH_CONFIG_DIR: '/synthetic/home/.config/gh',
+    GH_DEBUG: 'api',
     GIT_ASKPASS: '/x',
     SSH_ASKPASS: '/x',
     GIT_SSH: '/x',
     GIT_SSH_COMMAND: 'ssh -i x',
     GIT_CONFIG_PARAMETERS: "'url.ssh://github.com/.insteadof'='https://github.com/'",
-    GIT_CONFIG_COUNT: '5',
-    GIT_CONFIG_KEY_4: 'x',
+    GIT_CONFIG_COUNT: '9',
+    GIT_CONFIG_KEY_8: 'x',
+    GIT_TRACE: '1',
+    GIT_TRACE_CURL: '1',
+    GIT_TRACE_PACKET: '/tmp/x',
+    GIT_TRACE_REDACT: '0',
+    GIT_CURL_VERBOSE: '1',
     GCM_PROVIDER: 'x',
+    NODE_OPTIONS: '--require x',
     KL_GITHUB_APP_ID_CODEX: '1',
     UNDEFINED: undefined,
   };
   const env = childEnvironment(parent, TOKEN, CONFIG_DIR);
   assert.deepEqual(env, {
     PATH: '/usr/bin',
-    HOME: '/synthetic/home',
+    LANG: 'C',
+    HOME: CONFIG_DIR,
     GH_TOKEN: TOKEN,
     GH_CONFIG_DIR: CONFIG_DIR,
     GH_PROMPT_DISABLED: '1',
@@ -465,37 +518,126 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(CONFIG_DIR, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
-    GIT_CONFIG_COUNT: '2',
+    GIT_TRACE_REDACT: '1',
+    GIT_CONFIG_COUNT: '5',
     GIT_CONFIG_KEY_0: 'credential.helper',
     GIT_CONFIG_VALUE_0: '',
     GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
     GIT_CONFIG_VALUE_1: GIT_CREDENTIAL_HELPER,
+    GIT_CONFIG_KEY_2: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_2: '',
+    GIT_CONFIG_KEY_3: `http.${PUSH_URL}.extraheader`,
+    GIT_CONFIG_VALUE_3: '',
+    GIT_CONFIG_KEY_4: 'core.askPass',
+    GIT_CONFIG_VALUE_4: '',
   });
+  assert.equal(PUSH_URL, 'https://github.com/doc-gif/kurashi-ledger.git');
   // helperはトークンの値を含まず、子の環境のGH_TOKENを読む。
   assert.ok(!GIT_CREDENTIAL_HELPER.includes(TOKEN));
   assert.match(GIT_CREDENTIAL_HELPER, /\$GH_TOKEN"/);
 });
 
-test('子の環境の実際のgitは、github.comのHTTPSの資格情報としてAppのトークンを返し、ほかのhostには返さない', () => {
+// 子の環境で実際のgitを動かす。cwdのrepoの設定（.git/config）も読まれる。
+function gitIn(cwd: string, env: Record<string, string>, args: string[], input?: string) {
+  return spawnSync('git', args, { cwd, env, encoding: 'utf8', timeout: 20_000, ...(input === undefined ? {} : { input }) });
+}
+
+test('子の環境の実際のgit: github.comにだけAppのトークンを返し、利用者とrepoの設定のhelper・extraheader・askPassを使わない', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
   try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
     // 利用者の設定（HOMEの.gitconfig）に、保存済みの資格情報を返すhelperがあっても使わない。
-    writeFileSync(join(dir, '.gitconfig'), '[credential]\n\thelper = "!f() { echo username=stored-user; echo password=stored-secret; }; f"\n');
+    writeFileSync(join(home, '.gitconfig'), '[credential]\n\thelper = "!f() { echo username=stored-user; echo password=stored-secret; }; f"\n');
+    // repoの設定（PRのcheckoutや他人のworktreeにありうる）に、helper・URLごとのhelper・extraheader・askPassを置く。
+    const repo = join(dir, 'repo');
+    assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
+    const evil = (name: string) => `!f() { echo username=x-access-token; echo password=${name}; }; f`;
+    for (const [key, value] of [
+      ['credential.helper', evil('repo-plain')],
+      ['credential.https://github.com.helper', evil('repo-scoped')],
+      [`http.${PUSH_URL}.extraheader`, 'AUTHORIZATION: basic repo-header'],
+      ['http.https://github.com/.extraheader', 'AUTHORIZATION: basic repo-header-host'],
+      ['core.askPass', '/synthetic/askpass'],
+    ] as const) {
+      assert.equal(spawnSync('git', ['-C', repo, 'config', key, value]).status, 0, key);
+    }
     const configDir = join(dir, 'gh-config');
     mkdirSync(configDir);
-    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: dir, USERPROFILE: dir }, TOKEN, configDir);
-    const fill = (host: string) =>
-      spawnSync('git', ['credential', 'fill'], { cwd: dir, env, input: `protocol=https\nhost=${host}\n\n`, encoding: 'utf8', timeout: 20_000 });
-    const github = fill('github.com');
-    assert.equal(github.status, 0, github.stderr);
-    assert.match(github.stdout, /^username=x-access-token$/m);
-    assert.ok(github.stdout.split(/\r?\n/).includes(`password=${TOKEN}`));
-    assert.ok(!github.stdout.includes('stored-secret'), '利用者の設定のhelperを使った');
-    // ほかのhostにはhelperがなく、端末にも聞かない（GIT_TERMINAL_PROMPT=0）ので失敗する。
-    const other = fill('example.test');
-    assert.notEqual(other.status, 0);
-    assert.ok(!other.stdout.includes(TOKEN));
-    assert.ok(!other.stdout.includes('stored-secret'));
+    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home }, TOKEN, configDir);
+    for (const cwd of [home, repo]) {
+      const github = gitIn(cwd, env, ['credential', 'fill'], 'protocol=https\nhost=github.com\n\n');
+      assert.equal(github.status, 0, github.stderr);
+      assert.match(github.stdout, /^username=x-access-token$/m);
+      assert.ok(github.stdout.split(/\r?\n/).includes(`password=${TOKEN}`), cwd);
+      assert.doesNotMatch(github.stdout, /stored-secret|repo-plain|repo-scoped/, '利用者やrepoの設定のhelperを使った');
+      // ほかのhostにはhelperがなく、端末にも聞かない（GIT_TERMINAL_PROMPT=0）ので失敗する。
+      const other = gitIn(cwd, env, ['credential', 'fill'], 'protocol=https\nhost=example.test\n\n');
+      assert.notEqual(other.status, 0);
+      assert.doesNotMatch(other.stdout, new RegExp(`${TOKEN}|stored-secret|repo-plain|repo-scoped`));
+    }
+    // pushのURLに当たるextraheaderは空（repoの設定のより細かいURLの値が残らない）。askPassも空。
+    const header = gitIn(repo, env, ['config', '--get-urlmatch', 'http.extraheader', PUSH_URL]);
+    assert.equal(header.stdout.trim(), '', header.stdout);
+    assert.equal(gitIn(repo, env, ['config', 'core.askPass']).stdout.trim(), '');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 127.0.0.1の合成のサーバー。すべての要求に、Basic認証を求める401を返し、Authorizationのheaderを記録する。
+async function withAuthServer(fn: (url: string, seen: string[]) => Promise<void>): Promise<void> {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(req.headers.authorization ?? '');
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="synthetic"', 'Content-Type': 'text/plain' });
+    res.end('synthetic');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    assert.ok(address !== null && typeof address === 'object');
+    await fn(`http://127.0.0.1:${address.port}/doc-gif/kurashi-ledger.git`, seen);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+function gitAsync(env: Record<string, string>, args: string[], cwd: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const child = spawn('git', args, { cwd, env, stdio: 'ignore', timeout: 20_000 });
+    child.once('exit', (code) => resolve(code));
+    child.once('error', () => resolve(null));
+  });
+}
+
+test('子の環境の実際のgitは、利用者の.netrcの資格情報を送らない（127.0.0.1の合成のサーバー。親の環境では送ることを対照にする）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
+  try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
+    const netrc = 'machine 127.0.0.1 login owner-login password owner-netrc-secret\n';
+    writeFileSync(join(home, '.netrc'), netrc, { mode: 0o600 });
+    writeFileSync(join(home, '_netrc'), netrc, { mode: 0o600 });
+    const parent = { PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home };
+    const secretHeader = `Basic ${Buffer.from('owner-login:owner-netrc-secret').toString('base64')}`;
+    // 対照: 親の環境（HOMEが利用者のホーム）のgitは、.netrcの資格情報を送る（libcurlがhelperより前に.netrcを読む）。
+    const plain: Record<string, string> = { ...parent, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: join(home, 'none') };
+    await withAuthServer(async (url, seen) => {
+      await gitAsync(plain, ['ls-remote', url], dir);
+      assert.ok(seen.includes(secretHeader), `対照で.netrcの資格情報が送られていない（このgitは.netrcを読まない？）: ${seen.length}件`);
+    });
+    // 子の環境では、HOMEを一時のディレクトリにするので、利用者の.netrcを読まない。
+    const configDir = join(dir, 'gh-config');
+    mkdirSync(configDir);
+    const env = childEnvironment(parent, TOKEN, configDir);
+    await withAuthServer(async (url, seen) => {
+      const code = await gitAsync(env, ['ls-remote', url], dir);
+      assert.notEqual(code, 0);
+      assert.ok(seen.length > 0, 'サーバーに要求が届いていない');
+      assert.ok(!seen.includes(secretHeader), '.netrcの資格情報が送られた');
+      assert.ok(seen.every((h) => !h.includes(Buffer.from('owner-netrc-secret').toString('base64').slice(0, 12))));
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -505,6 +647,7 @@ test('成功すると、確認のあとでだけ子を起動し、トークン�
   const h = harness([{ status: 201, body: grantedBody('review') }, LISTED, REVOKED], {}, { kind: 'exited', code: 7, signal: null });
   assert.equal(await run(ARGS, h.deps), 7);
   assert.deepEqual(h.events, [
+    'resolve gh',
     `POST /app/installations/${INSTALLATION_ID}/access_tokens`,
     'GET /installation/repositories?per_page=100',
     'mkdir',
@@ -516,7 +659,10 @@ test('成功すると、確認のあとでだけ子を起動し、トークン�
   assert.equal(h.usernameCalls(), 1);
   const child = h.children[0];
   assert.ok(child !== undefined);
-  assert.deepEqual(child.command, ['gh', 'pr', 'view', '1']);
+  // コマンドは発行の前に絶対パスへ解決してから実行する。
+  assert.deepEqual(child.command, ['/synthetic/bin/gh', 'pr', 'view', '1']);
+  assert.equal(h.registered(), 1);
+  assert.equal(h.unregistered(), 1, '失効のあとでシグナルの受け取りを解除していない');
   assert.equal(child.stdin, 'inherit');
   assert.equal(child.env['GH_TOKEN'], TOKEN);
   assert.equal(child.env['GH_CONFIG_DIR'], CONFIG_DIR);
@@ -750,6 +896,7 @@ test('発行したトークンで触れるrepoがこのrepoの1件だと確か�
     assert.match(h.err.join(''), /範囲が要求と違う.*失効させた/);
     assertNoSecrets(h.err.join(''));
     assert.deepEqual(h.events, [
+      'resolve gh',
       `POST /app/installations/${INSTALLATION_ID}/access_tokens`,
       'GET /installation/repositories?per_page=100',
       'DELETE /installation/token',
@@ -784,6 +931,7 @@ test('statelessの形のトークンでも、範囲を確かめてから子を�
   const h = harness([{ status: 201, body: grantedBody('review', {}, STATELESS_TOKEN) }, LISTED, REVOKED]);
   assert.equal(await run(ARGS, h.deps), 0);
   assert.deepEqual(h.events, [
+    'resolve gh',
     `POST /app/installations/${INSTALLATION_ID}/access_tokens`,
     'GET /installation/repositories?per_page=100',
     'mkdir',
@@ -868,8 +1016,221 @@ test('実際の子プロセス: シェルを通さずに起動し、渡した環
     `  && process.env.GH_CONFIG_DIR === ${JSON.stringify(CONFIG_DIR)} && process.argv[1] === 'a b;$(x)';`,
     'process.exit(ok ? 3 : 4);',
   ].join('\n');
-  assert.deepEqual(await spawnChild([process.execPath, '-e', source, 'a b;$(x)'], env, 'ignore'), { kind: 'exited', code: 3, signal: null });
-  assert.deepEqual(await spawnChild(['kl-app-token-no-such-command-0'], env, 'ignore'), { kind: 'failed', code: 'ENOENT' });
+  assert.deepEqual(await spawnChild([process.execPath, '-e', source, 'a b;$(x)'], env, 'ignore').result, { kind: 'exited', code: 3, signal: null });
+  assert.deepEqual(await spawnChild(['kl-app-token-no-such-command-0'], env, 'ignore').result, { kind: 'failed', code: 'ENOENT' });
+});
+
+test('コマンドは発行の前に絶対パスへ解決し、見つからなければ発行せずに127で終える。相対パス・PATHの相対の項目は使わない', async () => {
+  const h = harness([]);
+  assert.equal(await run(['--agent', 'codex', '--purpose', 'review', ...ID_ARGS, '--', 'no-such-command'], h.deps), EXIT_NOT_FOUND);
+  assert.deepEqual(h.events, ['resolve no-such-command']);
+  assert.deepEqual(h.keychainCalls, []);
+  assert.deepEqual(h.calls, []);
+  assert.match(h.err.join(''), /トークンは発行していない/);
+  const exists = new Set(['/abs/bin/gh', '/usr/bin/git', 'C:\\Tools\\gh.exe', 'C:\\Tools\\git.cmd']);
+  const isFile = (path: string) => exists.has(path);
+  assert.equal(resolveCommand('gh', { PATH: ['', '.', 'rel/bin', '/abs/bin'].join(':') }, 'linux', isFile), '/abs/bin/gh');
+  assert.equal(resolveCommand('gh', { PATH: '.:rel' }, 'linux', () => true), null);
+  assert.equal(resolveCommand('./gh', { PATH: '/abs/bin' }, 'linux', () => true), null);
+  assert.equal(resolveCommand('bin/gh', { PATH: '/abs/bin' }, 'linux', () => true), null);
+  assert.equal(resolveCommand('/usr/bin/git', {}, 'darwin', isFile), '/usr/bin/git');
+  assert.equal(resolveCommand('/usr/bin/nothing', {}, 'darwin', isFile), null);
+  assert.equal(resolveCommand('gh', { Path: 'C:\\Tools' }, 'win32', isFile), 'C:\\Tools\\gh.exe');
+  // Windowsでは.cmd・.batを探さない（シェルなしで実行できない）。
+  assert.equal(resolveCommand('git', { Path: 'C:\\Tools' }, 'win32', isFile), null);
+  // 実際のファイルで: nodeを、PATHから絶対パスに解決できる。
+  const nodeName = process.platform === 'win32' ? 'node' : basename(process.execPath);
+  const real = resolveCommand(nodeName, { PATH: dirname(process.execPath), Path: dirname(process.execPath) }, process.platform, (path) => isExecutableFile(path, process.platform));
+  assert.ok(real !== null && isAbsolute(real), String(real));
+});
+
+test('発行から失効までにシグナルを受けたら、子に転送し、子の終了後に失効させて128+番号で終える', async () => {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    let killChild: ((s: NodeJS.Signals) => void) | undefined;
+    const h = harness([{ status: 201, body: grantedBody('review') }, LISTED, REVOKED], {}, (kill) => {
+      killChild = kill;
+      return new Promise<ChildResult>((resolve) => {
+        setTimeout(() => {
+          h.fire(signal);
+          resolve({ kind: 'exited', code: null, signal });
+        }, 5);
+      });
+    });
+    const code = await run(ARGS, h.deps);
+    assert.ok(killChild !== undefined);
+    assert.equal(code, signal === 'SIGINT' ? 130 : 143);
+    assert.deepEqual(h.killed, [signal], 'SIGINTも子へ転送する');
+    assert.deepEqual(h.events.slice(-5), ['child', `signal ${signal}`, `kill ${signal}`, 'rmdir', 'DELETE /installation/token']);
+    assert.equal(h.unregistered(), 1);
+  }
+});
+
+test('確認の途中でシグナルを受けたら、確認の要求を中断し、子を起動せず、トークンを失効させて128+番号で終える', async () => {
+  let fire: ((s: NodeJS.Signals) => void) | undefined;
+  const hanging: Reply = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      setTimeout(() => fire?.('SIGTERM'), 5);
+    });
+  const h = harness([{ status: 201, body: grantedBody('review') }, hanging, REVOKED]);
+  fire = h.fire;
+  assert.equal(await run(ARGS, h.deps), 143);
+  assert.deepEqual(h.children, []);
+  assert.deepEqual(h.events, [
+    'resolve gh',
+    `POST /app/installations/${INSTALLATION_ID}/access_tokens`,
+    'GET /installation/repositories?per_page=100',
+    'signal SIGTERM',
+    'DELETE /installation/token',
+  ]);
+  assert.match(h.err.join(''), /SIGTERM/);
+  assertNoSecrets(h.err.join(''));
+  // 確認が終わったあと、子を起動する前に受けた場合も、子を起動せずに失効させる。
+  const late = harness([{ status: 201, body: grantedBody('review') }, LISTED, REVOKED], {
+    makeConfigDir: () => {
+      throw new Error('呼ばれないはず');
+    },
+  });
+  const originalFetch = late.deps.fetch;
+  const deps: Deps = {
+    ...late.deps,
+    fetch: async (url, init) => {
+      const r = await originalFetch(url, init);
+      if (url.includes('/installation/repositories')) late.fire('SIGINT');
+      return r;
+    },
+  };
+  assert.equal(await run(ARGS, deps), 130);
+  assert.deepEqual(late.children, []);
+  assert.equal(late.events.at(-1), 'DELETE /installation/token');
+});
+
+// 実際のプロセスとシグナルで確かめるための、合成のharness（ネットワークとキーチェーンを使わない。fetchは合成）。
+// mode=child: 子を起動し、子がシグナルを受けたら印のファイルを作って終わる。mode=verify: 確認の要求で待ち、中断されたら失敗する。
+function signalHarnessSource(dir: string, mode: 'child' | 'verify'): string {
+  const lib = pathToFileURL(join(import.meta.dirname, 'lib', 'github-app-token.ts')).href;
+  const childSource = [
+    "const fs = require('node:fs');",
+    `const dir = ${JSON.stringify(dir)};`,
+    "for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { fs.writeFileSync(require('node:path').join(dir, 'child-got-' + s), ''); process.exit(0); });",
+    "fs.writeFileSync(require('node:path').join(dir, 'child-pid'), String(process.pid));",
+    "fs.writeFileSync(require('node:path').join(dir, 'child-started'), '');",
+    'setInterval(() => undefined, 1000);',
+  ].join('\n');
+  return [
+    "const { generateKeyPairSync } = await import('node:crypto');",
+    "const { mkdtempSync, rmSync } = await import('node:fs');",
+    "const { tmpdir } = await import('node:os');",
+    "const { join } = await import('node:path');",
+    `const m = await import(${JSON.stringify(lib)});`,
+    "const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();",
+    `const token = ${JSON.stringify(TOKEN)};`,
+    `const granted = ${JSON.stringify(grantedBody('review'))};`,
+    `const listed = ${JSON.stringify(LISTED.body)};`,
+    `const mode = ${JSON.stringify(mode)};`,
+    'const fetch = async (url, init) => {',
+    "  if (init.method === 'POST') return { status: 201, text: async () => granted };",
+    "  if (init.method === 'DELETE') { process.stdout.write('REVOKED\\n'); return { status: 204, text: async () => '' }; }",
+    "  if (mode === 'child') return { status: 200, text: async () => listed };",
+    "  process.stdout.write('WAITING\\n');",
+    "  return new Promise((_r, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));",
+    '};',
+    // 合成のfetchは待つ間にイベントループを保たない（実際の通信は保つ）ので、終わるまで保つ。
+    'const keepAlive = setInterval(() => undefined, 1000);',
+    'const code = await m.run(',
+    `  ['--agent', 'codex', '--purpose', 'review', '--app-id', '1', '--installation-id', '2', '--key-stdin', '--', process.execPath, '-e', ${JSON.stringify(childSource)}],`,
+    '  {',
+    '    env: process.env, platform: process.platform, uid: process.getuid(), username: () => "u",',
+    '    nowSeconds: () => Math.floor(Date.now() / 1000), fetch,',
+    "    readKeychain: async () => { throw new Error('unused'); }, readKeyFile: () => { throw new Error('unused'); },",
+    '    readStdin: async () => pem,',
+    '    resolveCommand: (p) => m.resolveCommand(p, process.env, process.platform, (x) => m.isExecutableFile(x, process.platform)),',
+    "    makeConfigDir: () => mkdtempSync(join(tmpdir(), 'kl-gh-config-')),",
+    '    removeConfigDir: (p) => rmSync(p, { recursive: true, force: true }),',
+    '    runChild: m.spawnChild, onSignals: m.onProcessSignals,',
+    '    stderr: (t) => process.stderr.write(t),',
+    '  },',
+    ');',
+    'clearInterval(keepAlive);',
+    'process.exit(code);',
+  ].join('\n');
+}
+
+function runHarness(dir: string, mode: 'child' | 'verify', signal: NodeJS.Signals, ready: () => boolean): Promise<{ code: number | null; out: string; err: string }> {
+  return new Promise((resolve, reject) => {
+    const env: NodeJS.ProcessEnv = {};
+    for (const [k, v] of Object.entries(process.env)) if (!/^(NODE_|KL_GITHUB_APP_)/i.test(k)) env[k] = v;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', signalHarnessSource(dir, mode)], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += String(d)));
+    child.stderr.on('data', (d) => (err += String(d)));
+    // 時間切れのときは、harnessと、その子（転送されなければ残る）を止める。
+    const deadline = setTimeout(() => {
+      child.kill('SIGKILL');
+      try {
+        process.kill(Number(readFileSync(join(dir, 'child-pid'), 'utf8')), 'SIGKILL');
+      } catch {
+        // 子がない、またはすでに終わっている。
+      }
+      reject(new Error(`時間切れ: ${out} ${err}`));
+    }, 30_000);
+    const poll = setInterval(() => {
+      if (ready() || out.includes('WAITING')) {
+        clearInterval(poll);
+        child.kill(signal);
+      }
+    }, 20);
+    child.once('exit', (code) => {
+      clearTimeout(deadline);
+      clearInterval(poll);
+      resolve({ code, out, err });
+    });
+  });
+}
+
+test('実際のプロセスとシグナルで: 子の実行中のSIGINT・SIGTERMを子へ転送し、子の終了後に失効させて128+番号で終える', { skip: posixSignalsOnly }, async () => {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
+    try {
+      const r = await runHarness(dir, 'child', signal, () => existsSync(join(dir, 'child-started')));
+      assert.equal(r.code, signal === 'SIGINT' ? 130 : 143, r.err);
+      // harnessのプロセスだけに送ったので、子が受けたのは転送されたシグナル。
+      assert.ok(existsSync(join(dir, `child-got-${signal}`)), `子が${signal}を受けていない`);
+      assert.match(r.out, /REVOKED/);
+      assertNoSecrets(r.out + r.err);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  // 確認の途中のSIGTERM: 確認の要求を中断し、子を起動せず、失効させて143で終える。
+  const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
+  try {
+    const r = await runHarness(dir, 'verify', 'SIGTERM', () => false);
+    assert.equal(r.code, 143, r.err);
+    assert.match(r.out, /WAITING[\s\S]*REVOKED/);
+    assert.ok(!existsSync(join(dir, 'child-started')), '子を起動した');
+    assertNoSecrets(r.out + r.err);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('形の検査に通らないトークンも、ヘッダに入れて安全な値なら失効を試み、失効の401はすでに無効として扱う', async () => {
+  const quoted = `${TOKEN}"`;
+  const safe = harness([{ status: 201, body: grantedBody('review', {}, quoted) }, REVOKED]);
+  assert.equal(await run(ARGS, safe.deps), EXIT_OWN_FAILURE);
+  assert.equal(safe.calls[1]?.init.method, 'DELETE');
+  assert.equal(safe.calls[1]?.init.headers['Authorization'], `Bearer ${quoted}`);
+  assert.match(safe.err.join(''), /形式が違う.*失効させた/);
+  assertNoSecrets(safe.err.join(''), [quoted]);
+  const unsafe = harness([{ status: 201, body: grantedBody('review', {}, `${TOKEN} x`) }]);
+  assert.equal(await run(ARGS, unsafe.deps), EXIT_OWN_FAILURE);
+  assert.equal(unsafe.calls.length, 1, 'ヘッダに入れられない値で失効の要求を送った');
+  assert.match(unsafe.err.join(''), /失効を試みていない/);
+  const gone = harness([{ status: 201, body: grantedBody('review') }, LISTED, { status: 401, body: '{"message":"Bad credentials"}' }]);
+  assert.equal(await run(ARGS, gone.deps), 0);
+  assert.equal(gone.err.join(''), '');
 });
 
 test('スクリプトを実行しても、引数の誤りと鍵ファイルの拒否では、何も出力せず子を起動せずネットワークに出ない', () => {
