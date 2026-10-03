@@ -129,6 +129,21 @@
       "description": "PR25-D002（Codex 5399937854、Copilot 4172441695。既存のPR10-R004と同じ原因）: docs/github-agent-operations.mdが、製品の試験はまだないと書いたまま。",
       "state": "resolved",
       "resolution": "同じ資料の記述を「製品の試験はHTTPの境界（T26）から始まった」とする追記の形で直す（T06のPR #28と競合したときに解きやすいよう、T26の分を付け足す書き方にする）。ほかの入口もrepo全体で検索して照合する。"
+    },
+    {
+      "description": "PR25-R001の継続（Codex 5400125735、Copilot 4172657940）。3回目の指摘なので、docs/pr-review-loop.mdの止めどころに従い、局所の修正の前に契約を見直した。原因: 「処理の完了」を、middlewareの中で起きる出来事（end・next・応答のclose）から、そのつど追跡のPromiseを決着させる形で定めていた。追跡のPromiseは一度決着すると戻せないので、呼出しの途中（同期）にendやnextが起きると、まだ返り値（Promiseかどうか）が分からないうちに完了が確定し、そのあとの非同期の処理とrejectを取りこぼす。",
+      "state": "resolved",
+      "resolution": "契約を、サーバーが所有する1つの追跡のPromiseについて、次のように定める（ADR-0009の6・7に同じ文で書く）。(1) middlewareの呼出しが戻るまでは、どの出来事でも完了を確定しない。同期の例外は失敗として確定する。(2) 返り値がPromise（thenを持つ値）なら、完了はそのPromiseの決着だけで決まる（resolveで完了、rejectで失敗。end・nextの有無や時点は関係しない）。(3) 返り値がPromiseでなければ、完了は、呼出しの途中または後のnext()の呼出し、またはres.end()の呼出しのうち、最初のもの（呼出しの途中に起きていれば、戻った直後に確定する）。(4) 応答・接続のclose（クライアントの途中切断）は、どの場合も完了ではない。(5) 失敗（同期の例外・reject）は、応答をまだ返していなければ500にし、返していれば接続を閉じ、記録する。closeは、すべての追跡のPromiseの決着を待つ。実装は、出来事を記録するだけの状態（returned・isPromise・signaled）と、それを判定する1つの関数にまとめ、出来事のたびにPromiseを決着させない。回帰試験: 同期のend→未完了のPromise、同期のnext→未完了のPromise、同期のend→あとでreject、をそれぞれ、closeが解放の前には返らず、解放（決着）のあとに完了することで確かめる。Promiseを返さないend・next、途中切断、API、upgradeの既存の試験も保つ。"
+    },
+    {
+      "description": "Copilot 4172657974: 拒否したupgradeのソケットはend()するだけで追跡しないので、相手が書込み側を閉じないと半分閉じたソケットが残り、closeが返ったあとも接続が残る（closeAllConnectionsはupgradeのソケットを閉じない）。",
+      "state": "resolved",
+      "resolution": "upgradeの要求のソケットは、受け付けるか拒否するかを決める前にすべて追跡に入れ、ソケットのcloseで外す。拒否の応答はend()で返し、終了の手順ではまだ残るものをすべて壊す。試験: 書込み側を閉じない相手（allowHalfOpen）の拒否したupgradeを残したまま、closeが返り、そのソケットが閉じること。"
+    },
+    {
+      "description": "Copilot 4172658012: 起動の識別子のmetaの重複の判定で、文字参照の解き方がブラウザと違う。セミコロンのない数値の文字参照（kurashi&#45ledger-launch-id）を解かないので、ブラウザでは同名のmetaなのに重複と判定せず、DOMに2つできる。",
+      "state": "resolved",
+      "resolution": "属性の値の文字参照を、HTMLの仕様（属性の値の中の規則）と同じに解く: 数値の参照（10進・16進、セミコロンは省略できる。0・範囲外・サロゲートはU+FFFD、0x80〜0x9Fはwindows-1252の対応）と、名前の参照のうち判定に関わりうるもの（amp・lt・gt・quot・aposと、ハイフンに似たdash・hyphen・minus）。名前の参照でセミコロンのないもの（amp・lt・gt・quotの古い形）は、あとに英数字か=が続かないときだけ解く。解いたあとも&を含むmetaのnameは、ブラウザでの値を確かめられないので、配信しない側に倒す。単体試験に加え、ブラウザでsetContentした同じHTMLのDOMの同名のmetaの数と、サーバーの判定（重複として配信しない／配信する）が一致することをe2eで確かめる。"
     }
   ],
   "assessments": [
