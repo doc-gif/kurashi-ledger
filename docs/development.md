@@ -61,7 +61,7 @@ CIは変えない。固定したSHAの`actions/setup-node`・`actions/setup-pyth
 
 ### Windows
 
-Windowsでは、ADR-0002のとおり公式のインストーラを勧める。Node.jsは`mise.toml`と同じ版の`.msi`を入れ、Pythonはpython.orgのインストーラで3.11以上を入れて`py -3.11`で動かす（[CLI手順](../tools/review_guard/README.md)）。公式のインストーラで入れたNode.jsはCIでは確かめていない（下の「CI」）。
+Windowsでは、ADR-0002のとおり公式のインストーラを勧める。Node.jsは`mise.toml`と同じ版の`.msi`を入れ、Pythonはpython.orgのインストーラで3.11以上を入れ、入れたマイナーを指定したランチャー（`py -3.11`、3.13を入れたなら`py -3.13`）で動かす。先にそのコマンドの`--version`で3.11以上であることを確かめてから、[CLI手順](../tools/review_guard/README.md)の`python3`をそのコマンドに読み替える。公式のインストーラで入れたNode.jsはCIでは確かめていない（下の「CI」）。
 
 miseもWindowsに対応している（`winget install jdx.mise`）。ただし、PowerShellの`mise activate pwsh`はプロファイル（スクリプト）から読み込む必要があり、このrepoでは実行ポリシーを変えないので使わない。代わりにshimのディレクトリ（`%LOCALAPPDATA%\mise\shims`）を利用者のPATHに加える方法があるが、shimは`node.exe`・`npm.exe`等の実行ファイルで、この資料の`npm.cmd`の指示とどう組み合わさるかを含め、このrepoでは確かめていない（CIでも確かめていない）。使う場合は、`mise install`のあと`node -v`・`npm.cmd -v`（使えなければ`npm -v`）・`python --version`で版を確かめる。
 
