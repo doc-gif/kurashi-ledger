@@ -1,0 +1,9 @@
+# 開発ツールの正確な版（mise、https://mise.jdx.dev）。手順と版を選んだ理由は docs/development.md の「Node.jsの版」と「miseで版をそろえる」。
+# - 対応する範囲の正本は package.json の devEngines・engines（>=24.15.0 <25。npmが検査する）。ここには範囲の中の版だけを書く。
+# - Pythonはレビュー運用ツール（tools/review_guard、3.11以上）用で、製品のランタイムではない。
+# - [tools] の版の文字列だけを書く（env・tasks・settings等を足すと、worktreeごとに mise trust が要るようになる）。
+# - 個人の上書きは mise.local.toml 等に書き、commitしない。
+
+[tools]
+node = "24.21.0"
+python = "3.11.17"
