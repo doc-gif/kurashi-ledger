@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "base_sha": "4a8667ba7dfa5b7bd55625bb7ea2bed96bfdc126",
+  "task_id": "OPS-LEDGER-PR10-PR12",
+  "planned_paths": [
+    ".review/findings.json"
+  ],
+  "conflicts": [
+    {
+      "description": "CodexがPR #10・#12のR番号を連番で採番しており、Copilotだけが出した原因には採番した担当がいない。同じ番号帯を使うと、Codexの今後の採番と衝突する。",
+      "state": "resolved",
+      "resolution": "PR #14と同じ約束にする。CodexのIDはそのまま使い、Copilotだけの原因はPR10-R101・PR12-R101以降の番号帯を使う。規約は書式と同じ原因の集約だけを定めるので、約束はPR本文に書き、規約文書は変更しない。"
+    },
+    {
+      "description": "PR #12は作業の開始時にOpenで、取得の後にも新しいレビューが付きうる。その後、PR #12は4a8667bでマージされた。台帳は解消状態の正本ではない。",
+      "state": "resolved",
+      "resolution": "最初の取得（2026-10-03T01:18Z、PR #12のhead b6447f4）のあと、引継ぎの直前に全ページを取り直した。新しいのはCodexのaccepted（review 5398309457、追加の指摘なし）だけで、PR #12はそのheadのままマージされたので、取得は完了とする。acceptedは解消の確認で原因の証拠ではないため、出典には加えない。台帳には解消状態・対応commit・所有者判断の記録（T04-VISUAL-ACCEPTANCE、T02-VALIDATION-DEFER）を書かない。"
+    },
+    {
+      "description": "条件の一覧（invariants.json）には、UIの部品の状態・フォーカス・読み上げ・デザインと実装の対応を直接扱う条件がない。",
+      "state": "resolved",
+      "resolution": "条件の一覧は変えない（方針の変更は別の提案）。design/**とsrc/ui/**の変更で選ばれるINV-RECORDSに、PR #10の部品の状態の原因を登録し、後続のT08の計画で履歴に出るようにする。不明・0・空欄の値の状態と結び付く原因であることを教訓に書く。状態資料の整合はINV-TASKS、導入記録・検証はINV-RELEASE、公開検査はINV-PRIVACY、リンクをたどる削除はINV-ROOTに登録する。"
+    },
+    {
+      "description": "PR #10・#12のCopilot指摘には、既存の台帳の原因（PR2-R003の依存の順序、PR2-R008の入口の整合、PR11-R108の正本の手書きの繰り返し）と同じものがある。",
+      "state": "resolved",
+      "resolution": "triageとレビュー側の意味の照合の方針に従い、新しいIDを作らず既存の項目へ出典を足し、必要なら教訓に1文を追記する。triageは原因キーの一致だけを見るので、意味の照合の判断はPR本文に列挙して別担当のレビューに委ねる。"
+    },
+    {
+      "description": "mainがPR #12（T02）の統合で4a8667bへ進んだ。AGENTS.mdに、commitの前に`npm run check:public -- --staged`を実行する規則が加わった。作業環境のNode.js 24.14.0では、devEnginesの検査でnpmのスクリプトが止まる（docs/development.mdの既知の制約）。",
+      "state": "resolved",
+      "resolution": "履歴を書き換えずにmainをmergeする。新しいbaseの条件・台帳は8f0e492と同じで、選ばれる条件・シナリオ・contextも変わらないため、base_shaだけを更新する。公開検査は依存のないスクリプトなので、npmを通さず`node scripts/check-public.ts --staged`で各commitの前に実行し、版の制約と実行方法を引継ぎに書く（固定版での確認はT05）。"
+    },
+    {
+      "description": "CodexのPR16-R001（review 5398413357）とCopilot（discussion_r4171162468）: PR12-R104の教訓「対象とその親をlstatで確かめ」では、root/link/parent/recordのように深い祖先がリンクの場合を見逃し、教訓を再利用すると境界外の変更を防げない。",
+      "state": "resolved",
+      "resolution": "PR12-R104の教訓を、信頼した実体のルートから対象までの経路のすべての要素を確かめる（または解決後の実体が許可した範囲の中にあることを確かめる）条件へ直し、対象と直近の親だけでは足りないことも書く。ID・原因キーと既存の出典は保ち、教訓の更新の根拠になった公開の指摘を出典に追記する（PR16-R002で是正）。T02の実装が満たすことや、確認と操作の間の競合の防止は台帳で保証しない。深い祖先がリンクの反例を静的に照合し、ほかの教訓にも対象・親だけの経路の検査がないかを確かめ、あれば同じく直す。"
+    },
+    {
+      "description": "CodexのPR16-R002（review 5398510796）とCopilot（discussion_r4171251598）: PR12-R104の教訓を直した根拠（PR #16のreview 5398413357とdiscussion_r4171162468）が出典になく、台帳から変更の理由を追えない。計画も「出典はPR #10・#12だけ」「出典は変えない」としており、同じ原因の新しい証拠を既存IDへ出典として追記する規約（docs/review-prevention.md）と整合しない。",
+      "state": "resolved",
+      "resolution": "PR12-R104のID・原因キー・既存のPR #12の出典を保ち、上の2件を出典に追加する。計画の出典の範囲を「PR #10・#12の指摘と、既存の教訓を更新した根拠になった公開の指摘」に改める。accepted等の解消状態や所有者の私的な指示は台帳に加えない。台帳のほかの項目も、mainの履歴から教訓が変わったcommitを洗い出し、根拠が出典にない同じ漏れを確かめる。PR #14でPR11-R006の教訓を直した根拠（PR #14のdiscussion_r4170901342）が出典にないため、同じく追加する。PR16-R002自体の原因（台帳の更新の根拠の漏れ）を新しい項目として登録するかは本PRの範囲外とし、引継ぎに残す。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "台帳に加えるのは、PR #10・#12の公開レビュー・コメントのURLと、既存の教訓を更新した根拠になった公開の指摘のURL（PR #14・#16）、一般化した原因キー、1行の教訓だけ。Figmaのファイルの所在、実際の給与・勤務先・氏名、個人のパス、秘密は書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分を目視し、追加した出典がPR #10・#12の指摘と、既存の教訓を更新した根拠になったPR #14・#16の公開の指摘のURLだけであることと、金額・個人のパス・トークン・メールアドレス・Figmaのファイルの所在の形の文字列がないことを機械的に確認する。",
+          "expected": "追加した出典はPR #10・#12と、教訓を更新した根拠のPR #14・#16の公開URLだけで、実データ・秘密・個人のパス・非公開のFigmaの所在は0件。外部サービスへの送信はない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "同じ原因は1つのIDに集約し、CodexのIDを再採番しない。PR #10・#12をまたいで同じ原因なら、先に採番されたIDへ寄せる。台帳は原因と教訓の索引で、解消状態を持たない。検査器・条件・計画の書式は変えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "PR #10・#12の全ページのレビュー・inline・コメントを取得し、本文のrole: codex-reviewerでCodexを識別する。Copilotのinline（返信を除く）とoverviewのPreviously missedを全件抽出し、overviewが参照するdiscussionがinlineに含まれることと、各指摘がちょうど1つのIDに対応することをscriptで確かめる。登録する全候補をguard.py triageへ1回で入力し、既存の原因キーとの一致とバッチ内の重複を確認する。引継ぎの直前に全ページを取り直す。 mainの履歴とこのPRの差分から教訓が変わった項目を洗い出し、その根拠の公開の指摘が出典にあることを確かめる。",
+          "expected": "CodexのPR10-R001〜R004、PR12-R001〜R002は同じIDで登録される。Copilotの指摘は全件がいずれか1つのIDに対応する。triageは既存キーに一致する候補だけupdate-existingを返し、バッチの重複はない。validateが成功する。 教訓を更新した項目は、更新の根拠を出典に持つ。"
+        },
+        {
+          "id": "trust",
+          "method": "差分が.review/findings.jsonと本計画だけであることを三点diffで確かめ、base側の検査器でguard.py checkとci.pyを実行する。教訓に解消状態・対応commit・accepted・所有者判断を書いていないことを目視する。 PR12-R104の教訓を、深い祖先がリンク（root/link/parent/record）の反例で静的に照合し、ほかの教訓にも対象・親だけを確かめる経路の検査がないことを確かめる。",
+          "expected": "条件・検査器・試験は変わらず、ci.pyはpolicy_changesなし・ledger_changed=trueを報告する。checkのmetadata-completeは記入の充足だけを示し、台帳の内容はCodexの独立レビューを受ける。 反例でも教訓の条件に従えば境界外の変更を止められ、対象・親だけで足りると読める教訓は残らない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "共有資源の原因台帳を、ほかのopen PRと同時に編集しない。PR #12のbranch、作業規約、状態資料、タスク台帳は変更しない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "作業開始時と引継ぎの直前に、open PRの変更ファイルを全ページ取得し、.review/findings.jsonを変更するPRがないことを確認する。PR #12のbranchへpushしていないことを確認する。",
+          "expected": "台帳を同時に変更するPRはなく、PR #12のhead・branchは本作業で変わらない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "IDの書式・同じ原因の集約・triageの手順を、AGENTS.md、docs/review-prevention.md、tools/review_guard/README.md、docs/pr-review-loop.mdと照合する。READMEの更新の要否を確認する。",
+          "expected": "入口の記述と矛盾しない。使い方・セットアップ・運用規則は変わらないので、ルートとツールのREADMEは更新不要。R101以降の番号帯はPR本文に書き、規約にはしない。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        }
+      ]
+    }
+  }
+}
