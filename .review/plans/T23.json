@@ -15,6 +15,7 @@
     "tools/review_guard/README.md",
     "tools/review_guard/github_source.py",
     "tools/review_guard/patrol.py",
+    "tools/review_guard/tests/patrol_fixtures.py",
     "tools/review_guard/tests/test_github_source.py",
     "tools/review_guard/tests/test_patrol.py"
   ],
