@@ -21,13 +21,8 @@
       "checks": [
         {
           "id": "public",
-          "method": "Inspect every public diff and run the staged publication checker. Trace webhook/AI credential boundaries against PR42-R001/R006.",
-          "expected": "No credentials/personal paths; scoped identity and failed/unknown authorization deny execution. PR content never becomes trusted startup code."
-        },
-        {
-          "id": "credential-isolation",
-          "method": "Trace dispatch-read batch token with empty gh config, one receive App, identity-bound review/fix/notification brokers, worker result provenance and OS/tool isolation. Review PR42-R001/R004/R006 across all routes.",
-          "expected": "Missing token stops before gh; no administrator/other-App fallback. Reviewer output cannot select keys or authors. Worker tools cannot read keychains/credentials/policy/DB or use network; unsupported isolation denies launch. Live CLI and OS proofs remain implementation/rollout tests."
+          "method": "Inspect every public diff and run the staged publication checker. Trace webhook/AI credential boundaries against PR42-R001/R006. Trace dispatch-read batch token with empty gh config, one receive App, identity-bound review/fix/notification brokers, worker result provenance and OS/tool isolation. Review PR42-R001/R004/R006 across all routes.",
+          "expected": "No credentials/personal paths; scoped identity and failed/unknown authorization deny execution. PR content never becomes trusted startup code. Missing token stops before gh; no administrator/other-App fallback. Reviewer output cannot select keys or authors. Worker tools cannot read keychains/credentials/policy/DB or use network; unsupported isolation denies launch. Live CLI and OS proofs remain implementation/rollout tests."
         }
       ]
     },
@@ -43,13 +38,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "Read README link, design status, Issue45 and current PR protocol together.",
-          "expected": "Design remains proposed; existing readiness/merge rules apply to this PR; only final implementation PR closes Issue45; no paused PR resumes."
-        },
-        {
-          "id": "coexistence",
-          "method": "Compare off/shadow/active readiness, acceptance, Copilot/faultfinding, notification and T23/T24 ownership; keep canonical migration an explicit activation prerequisite.",
-          "expected": "Existing handoff/COMMENT acceptance works unchanged off/shadow; active native protocol never overrides main via a prompt. No double notifier or automatic resumption/activation. O1-O3 are deferred deployment decisions, not design acceptance gates."
+          "method": "Read README link, design status, Issue45 and current PR protocol together. Compare off/shadow/active readiness, acceptance, Copilot/faultfinding, notification and T23/T24 ownership; keep canonical migration an explicit activation prerequisite.",
+          "expected": "Design remains proposed; existing readiness/merge rules apply to this PR; only final implementation PR closes Issue45; no paused PR resumes. Existing handoff/COMMENT acceptance works unchanged off/shadow; active native protocol never overrides main via a prompt. No double notifier or automatic resumption/activation. O1-O3 are deferred deployment decisions, not design acceptance gates."
         }
       ]
     },
@@ -60,28 +50,13 @@
       "checks": [
         {
           "id": "duplicates",
-          "method": "Trace duplicate/out-of-order events, process crash, uncertain launch/post, generation changes, global capacity, pause and rollback through state model and acceptance matrix.",
-          "expected": "No live worker stolen by timeout; no auto-retry of uncertain side effect; no self-post loop; stable finding IDs and regressions remain visible."
+          "method": "Trace duplicate/out-of-order events, process crash, uncertain launch/post, generation changes, global capacity, pause and rollback through state model and acceptance matrix. PR46-D005-D009: trace identity/run/result-hash binding, daemon singleton, per-PR lease across kinds/generations, separate run supervisor/process group, crash reconnect, unknown POST, notification dedup and ID-independent quotas.",
+          "expected": "No live worker stolen by timeout; no auto-retry of uncertain side effect; no self-post loop; stable finding IDs and regressions remain visible. No self/push approval, stale/wrong-identity result, second live job or uncertain re-post. No conversational resume. Auto-fix default off; maximum 2 fixes per owner authorization and 6 AI review/faultfinding starts in rolling 24h, persisted before launch. Limits pause for owner; notices never start workers."
         },
         {
           "id": "trust",
-          "method": "Trace human/AI readiness and approval, push/base invalidation, forged events, failed pagination and unsafe worker startup.",
-          "expected": "Standard human operations suffice; native approval is bound to verified current pair/actor; fail closed on unknown evidence; broker posts only independently validated results and has no autonomous merge authority."
-        },
-        {
-          "id": "actor-and-ready",
-          "method": "PR46-D001/D002: enumerate operation authorization, authenticated event actor, current main-tip ancestor proof, server event/history ordering, immutable consumed IDs, initial non-Draft creation and reconcile recovery. Test replay after pause/TTL, wrong Ready actor and incomplete history.",
-          "expected": "Only implementer/owner may establish Ready; only owner resumes. No payload or author-controlled commit date proves freshness; unknown exact-pair binding requires new standard Ready. Consumed IDs survive payload deletion."
-        },
-        {
-          "id": "run-and-loop",
-          "method": "PR46-D005-D009: trace identity/run/result-hash binding, daemon singleton, per-PR lease across kinds/generations, separate run supervisor/process group, crash reconnect, unknown POST, notification dedup and ID-independent quotas.",
-          "expected": "No self/push approval, stale/wrong-identity result, second live job or uncertain re-post. No conversational resume. Auto-fix default off; maximum 2 fixes per owner authorization and 6 AI review/faultfinding starts in rolling 24h, persisted before launch. Limits pause for owner; notices never start workers."
-        },
-        {
-          "id": "implementation-acceptance",
-          "method": "Carry PR46-I001-I007 into implementation acceptance: CLI/version/schema/auth, SQLite, HTTP/delivery, pagination/rate/shadow latency, retarget/test-merge, all nine counterexamples, trusted-version self-change boundary.",
-          "expected": "Fake/synthetic and actual runtime evidence remain distinct. Code locations and CI job are planned before implementation. Default-off infrastructure may complete without deployment; actual CLI/webhook/host isolation and O1-O3 remain explicit rollout checklist items when unavailable."
+          "method": "Trace human/AI readiness and approval, push/base invalidation, forged events, failed pagination and unsafe worker startup. PR46-D001/D002: enumerate operation authorization, authenticated event actor, current main-tip ancestor proof, server event/history ordering, immutable consumed IDs, initial non-Draft creation and reconcile recovery. Test replay after pause/TTL, wrong Ready actor and incomplete history. Carry PR46-I001-I007 into implementation acceptance: CLI/version/schema/auth, SQLite, HTTP/delivery, pagination/rate/shadow latency, retarget/test-merge, all nine counterexamples, trusted-version self-change boundary.",
+          "expected": "Standard human operations suffice; native approval is bound to verified current pair/actor; fail closed on unknown evidence; broker posts only independently validated results and has no autonomous merge authority. Only implementer/owner may establish Ready; only owner resumes. No payload or author-controlled commit date proves freshness; unknown exact-pair binding requires new standard Ready. Consumed IDs survive payload deletion. Fake/synthetic and actual runtime evidence remain distinct. Code locations and CI job are planned before implementation. Default-off infrastructure may complete without deployment; actual CLI/webhook/host isolation and O1-O3 remain explicit rollout checklist items when unavailable."
         }
       ]
     }
