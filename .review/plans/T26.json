@@ -149,6 +149,16 @@
       "description": "Copilot 5400364350のr4172835301: 通常のHTTPの要求は、要求の対象が/で始まらない形（absolute-form等）を拒否するが、upgradeの経路は確かめずに開発時の口へ渡す。",
       "state": "resolved",
       "resolution": "要求の対象の形の検査を、request-checks.tsの1つの関数（origin-formだけを通す）にし、通常のHTTPの要求（静的配信・API・開発時のmiddleware）とupgradeの両方で、処理へ渡す前に使う。回帰試験: upgradeのabsolute-form・authority-form・asterisk-formが、有効なOriginとcookieがあっても拒否され、開発時の口が呼ばれないこと。通常のHTTPのAPI・開発時のmiddlewareのabsolute-formとasterisk-formも拒否されること。"
+    },
+    {
+      "description": "PR25-R005の継続（Codex 5400494621、Copilot 4172925962）。同じ原因の繰返しなので、各操作と開いたハンドル・同一性の結び付きを計画で見直した。問題: ファイル自身を、開いたあと・権限の変更の前に別の通常のファイルに差し替えると、ディレクトリのdev・inoは変わらないので、パスで権限を変える処理（POSIXのchmod -Nとchmod、WindowsのACLの設定）が差し替え先を変えてしまい、そのあとで初めて別物と分かる。",
+      "state": "resolved",
+      "resolution": "操作ごとの結び付きを次のとおりにする（ADR-0009の3・4に同じ表で書く）。作成: O_CREAT|O_EXCL（POSIXはO_NOFOLLOW）で開いたハンドルを、以後の基準にする（dev・inoをハンドルから取る）。権限の変更: POSIXは開いたハンドルにfchmod(0600)するだけで、パスによる変更をしない。macOSの拡張ACLは、確かめた本人専用のディレクトリ（ほかのユーザーへのallowのエントリがない）の中で作るので、新しいファイルが継承しうるのはdenyと本人へのallowだけで、chmod -Nは要らない（パスで読んで確かめるだけ）。WindowsはNode.jsからハンドルにACLを設定できないので、パスで設定する直前に、パスのファイルが開いたハンドルと同じもの（dev・ino）であることを確かめ、違えば変更せずに止める（確かめてから設定するまでの短い間の、同じユーザー・管理者による差し替えは、ADR-0003の「この境界で守らないもの」と同じく保証しない。ADRとコメントにこの限界を書く）。確認: 権限を変えたあとで、パスのファイルが同じものであることと、本人だけの権限を、読むだけの操作で確かめる。書込み: 開いたハンドルにだけ書く（確認に通るまで書かない）。削除: 経路とファイルのdev・inoが同じときだけunlinkする（既存）。試験: openedの段階でファイル自身を別の通常のファイル（POSIXはモード0644、Windowsはほかの人の読取りを許すACE）に差し替えると、作成が失敗し、差し替え先の内容と権限が変わらず、どこにもトークンが書かれないこと。"
+    },
+    {
+      "description": "PR25-R008（Codex 5400494621。Copilot 5400480606のPreviously missed）: upgradeを拒否する生の応答が、すべての応答に付けるヘッダ（CSP・no-store等）と拒否の理由の出口を通らない。",
+      "state": "resolved",
+      "resolution": "応答に付けるヘッダの定義を、response-headers.tsの1か所（名前と値の一覧を返す関数）にし、通常のHTTPの出口（writeHead）とupgradeの生の拒否の応答の両方がそれを使う。生の応答にも拒否の理由（X-Kurashi-Ledger-Reason）を付ける。試験: Host・request-target・Origin・cookie・開発時の口なし（404）の各拒否で、生の応答のヘッダに必須のヘッダと理由が付き、Access-Control-*がないこと。"
     }
   ],
   "assessments": [
