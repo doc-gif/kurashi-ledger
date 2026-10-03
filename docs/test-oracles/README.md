@@ -157,7 +157,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | `seqForTime` | 時点から連番への対応 | `{ seq }`（`N+k`） |
 | `runClosure` | 入力の要求と仮定の参照から決まる必要な閉包 | `{ records, allocations（usageAtRun）, decisions（premiseAtRun） }` |
 | `runInputChange` | runのあとの変化（入力が変わった） | `{ added?, removed?, versionChanged? }`（書いたものだけ検査） |
-| `runScopeChanged`、`runChain` | 範囲の雇用先の変化、runの履歴の鎖 | `{ changed }`、`{ chain }`（最初のrunから） |
+| `runScopeChanged`、`runChain` | 範囲の雇用先の変化、runの履歴の鎖 | `{ changed }`、`{ chain }`（最初のrunからこのrunまで。目的が決まった最初のrunは1要素。目的が決まらないrun（scope・referencePointがunknown、jurisdictionがknownでない）はどの鎖にも入らないので空の並び） |
 | `requiredAdoptions` | 年間の値の要求から決まる採用の写しの必要な集合 | `{ adoptions }`（AdoptionSnapshotの形。`adoptedRef`は`Fact<Ref>`で、年間資料を採用したら`known`・整数の版・`line` `whole`、ほかの選択では`not-applicable`。`coverage`も選択で決まる） |
 | `roundingStep`、`roundingValidation` | 丸めの計算、丸めの記録の形 | `{ after }`、`{ valid, reason? }`（`reason`はその形が示す欠陥。ほかの欠陥が同時に見つかってもよい） |
 | `includedPayersPrompt` | 「前職分を含むかの確認」の表示 | `{ shown }` |
@@ -166,7 +166,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ### runの射影
 
-計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。状態は入力と矛盾させない（計算結果の2。必要な入力が足りなければ`incomplete`）。台帳の検査は、`computed`・`provisional`のrunについて、要求（`requests`の要素）ごとに、その要求の範囲・日付の軸・支払者（口座）に当たる固定した記録（`inputsRecords`のうち、取消しておらず、差し替えの系列の現在の記録であるもの）の、その要求の項目だけが分かっていることを確かめる。差し替えの系列はrunに固定した版だけでたどり、取消した中間の記録は通り過ぎる（A ← B ← CでBだけを取消せばCが現在の記録、BとCを取消せばAが現在の記録に戻る。記録の型の10）。系列の橋の記録を固定していなければ、たどれないので不足とする。要求どうしの項目や対象の記録は混ぜない（9月の所得税と10月の総支給額を別々に要求するrunは、9月の総支給額・10月の所得税が分からなくても`computed`になれる。EX-04a-a6）。日付の軸の日付が分からない記録は、その要求の範囲から外せないので不足とみなす。判断するのは、対象を固定した記録だけで決められる要求（`payslip-item`・`deposit-amount`）だけで、帰属・採用・実績化・正式通知の類を導く要求（`payslip-by-income-year`・`annual-value`・`forecast-remaining`・`notice-determination`）の不足は、この検査では判断しない（必要な集合を導く実装、T11・T15で判断する）。
+計算runの全体の形（`inputs.requests`の一覧、`results`のキー、丸めの手順）は計算器の版ごとにT15以降で決まるので、台帳の`saveRun`は、目的（計算器の識別子・年・地域・手続・基準の時点・範囲）と鎖の判定に使う項目、状態、入力の段階と、場面に必要なときだけ`requests`・`inputsRecords`・`explanationRefs`を持つ射影にする。`calculatorAllowsPayers`は、計算器の版が利用者の選ぶ支払者の範囲を許すかを表す。計算器（`calc-fixture-*`）は架空。状態は入力と矛盾させない（計算結果の2。必要な入力が足りなければ`incomplete`）。台帳の検査は、`computed`・`provisional`のrunについて、要求（`requests`の要素）ごとに、その要求の範囲・日付の軸・支払者（口座）に当たる固定した記録（`inputsRecords`のうち、取消しておらず、差し替えの系列の現在の記録であるもの）の、その要求の項目だけが分かっていることを確かめる。差し替えの系列はrunに固定した版だけでたどり、取消した中間の記録は通り過ぎる（A ← B ← CでBだけを取消せばCが現在の記録、BとCを取消せばAが現在の記録に戻る。記録の型の10）。差し替えの識別の次元も固定した版と正規のIDで比べ、整っていない系列（未確定の次元を持つ未確認の系列、固定していない橋の記録をはさむ系列等）の記録は、系列全体を不足とする（TC-04-bのように明細の種類が分からない差し替えを含む系列）。要求どうしの項目や対象の記録は混ぜない（9月の所得税と10月の総支給額を別々に要求するrunは、9月の総支給額・10月の所得税が分からなくても`computed`になれる。EX-04a-a6）。日付の軸の日付が分からない記録は、その要求の範囲から外せないので不足とみなす。判断するのは、対象を固定した記録だけで決められる要求（`payslip-item`・`deposit-amount`）だけで、帰属・採用・実績化・正式通知の類を導く要求（`payslip-by-income-year`・`annual-value`・`forecast-remaining`・`notice-determination`）の不足は、この検査では判断しない（必要な集合を導く実装、T11・T15で判断する）。
 
 ## 制度のケース
 
@@ -194,10 +194,10 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ## 台帳の検査
 
-`node --test tests/fixtures/ledger/ledger.test.ts`で実行する（`package.json`は変えていない。T05のCIが統合されると、`npm test`の`tests/**/*.test.ts`にも含まれる）。確かめること:
+`npm test`（`tests/**/*.test.ts`）に含まれ、CI（T05）がmacOS・Windows・Linuxで実行する。単独では`node --test tests/fixtures/ledger/ledger.test.ts`で実行できる。確かめること:
 
 - ファイルの形、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
-- 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。二重登録の取消の残す方（`duplicateOf`）が、取消しておらず差し替えの系列の現在の記録であること。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
+- 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。二重登録の取消の残す方（`duplicateOf`）が、取消しておらず、整った差し替えの系列の現在の記録であること（未確認の系列の記録は残す方にできない）。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
 - 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、集計の要求のscopeが許す次元（`forecast-remaining`で口座を許すのは`deposit-amount`だけ。拒否を期待する検査は`{ error: rejected-request }`で書ける）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形、採用の写しの形等。期待の中の並びのobjectでない要素は、位置を示して問題にする。
 - 照合配分が行を指す参照は、その項目が指せる種類の行に実在すること（給与明細は支給の行`otherEarnings`だけで、控除の行は指せない。予測は見込みの行）。

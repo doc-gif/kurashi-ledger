@@ -865,10 +865,11 @@
           "checkId": "c03",
           "afterOp": "end",
           "query": {"kind": "runChain", "run": "run_406"},
-          "expect": {"chain": ["run_406"]},
-          "reason": "範囲がunknownのrunは入力の要求が決まらないので、unsupported・not-fixedの最小の形で保存し、目的が決まらないので鎖の先頭にも途中にもならない。計算器の版が許さない範囲（all-payersだけの計算器でpayers）のrun_407は保存しない。",
+          "expect": {"chain": []},
+          "reason": "範囲がunknownのrunは入力の要求が決まらないので、unsupported・not-fixedの最小の形で保存し、目的が決まらないので鎖の先頭にも途中にもならず、どの鎖にも入らない（空の並び。目的が決まった最初のrunの1要素の鎖とは違う）。計算器の版が許さない範囲（all-payersだけの計算器でpayers）のrun_407は保存しない。",
           "cites": [
             {"doc": "calculation-results.md", "section": "3", "quote": "target.scopeがunknownのrunは目的が決まらないので、鎖の先頭にも途中にもならず"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "scopeがunknownのrunは、どの鎖にも入らない"},
             {"doc": "calculation-results.md", "section": "1", "quote": "許さない範囲のscopeを持つrunは保存しない"}
           ]
         }

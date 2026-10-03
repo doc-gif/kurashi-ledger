@@ -19,7 +19,7 @@ Product tests are not implemented yet. T02 added tests for the development tooli
 13. UI rearrangement does not affect domain calculations.
 14. Backups restore records, evidence, relationships and history in a clean environment.
 
-T03 turned the contract examples (docs/contracts/examples.md) and these cases into a synthetic fixture ledger with expected results derived from the contract text, not from an implementation: `tests/fixtures/ledger/` (fixtures and the ledger check `ledger.test.ts`, run with `node --test tests/fixtures/ledger/ledger.test.ts`) and docs/test-oracles/README.md (how to read and use it, and open questions). Regime cases there must state the year, jurisdiction, primary sources and rounding before they can be approved.
+T03 turned the contract examples (docs/contracts/examples.md) and these cases into a synthetic fixture ledger with expected results derived from the contract text, not from an implementation: `tests/fixtures/ledger/` (fixtures and the ledger check `ledger.test.ts`, which runs as part of `npm test` and in CI) and docs/test-oracles/README.md (how to read and use it, and open questions). Regime cases there must state the year, jurisdiction, primary sources and rounding before they can be approved.
 
 ## Rules
 
