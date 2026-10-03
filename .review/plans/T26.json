@@ -56,7 +56,7 @@
     {
       "description": "ADR-0006の1「権限」は、Windowsの本人だけに許可するACLの判定の詳細をT07で決め、ADR-0003の一時ファイルと同じ基準にするとする。T26はT07より先に、一時ファイルと渡されたディレクトリのACLを判定する必要がある。",
       "state": "resolved",
-      "resolution": "T26で、一時ファイル（ADR-0003）についての判定の基準を決めてADR-0009に書く: 所有者が実行中のユーザーのSID、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）は実行中のユーザーのSIDだけ、Allow・Deny以外の種類のエントリは拒否。判定はロケールに依存しないSDDLとSIDで行う（Windows PowerShell 5.1の.NETのAPIを、パスを環境変数で渡して呼ぶ）。T07は同じ基準を使い、変える場合はADR-0009と両方の試験を同じPRで直す。"
+      "resolution": "T26で、一時ファイル（ADR-0003）についての判定の基準を決めてADR-0009に書く: 所有者が実行中のユーザーのSID、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）は実行中のユーザーのSIDだけ、Allow・Deny以外の種類のエントリは拒否。判定はロケールに依存しないSIDで行う（Windows PowerShell 5.1の.NETのAPIを、パスを環境変数で渡して呼び、セキュリティ記述子の2進の形から所有者とDACLのエントリのSIDを取り出す。SDDLの文字列は組込みのAdministrator等を別名（LA等）で書くので使わない。CIのWindowsのrunnerは組込みのAdministratorで動き、b56367dの試験で所有者が別名LAになって判定できなかった）。本人だけにするときは、所有者も実行中のユーザーにする（管理者の権限で作ったものの所有者がAdministratorsになることがあるため）。T07は同じ基準を使い、変える場合はADR-0009と両方の試験を同じPRで直す。"
     },
     {
       "description": "台帳のT26は、ADR-0002の起動と終了（Ctrl+C）を求める。Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（process.killは強制終了になる）ので、Windowsでは実際のCtrl+Cでの終了を試験できない（T02・T05と同じ制約）。",
