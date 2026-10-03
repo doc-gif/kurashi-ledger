@@ -315,6 +315,13 @@ export function startInNewConsole(
     }
   });
   child.stderr?.setEncoding('utf8').on('data', (data: string) => (helperStderr += data));
+  // 補助そのものが止まった場合（PowerShellの起動やコンパイルで止まる等）にも、試験が終わるようにする。
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const watchdog = setTimeout(() => {
+    helperStderr += `\n補助が${timeoutMs + 60_000}ms以内に終わらなかったので終わらせた。`;
+    child.kill();
+  }, timeoutMs + 60_000);
+  watchdog.unref();
   const closed = new Promise<number | null>((resolve) => {
     child.once('error', (error) => {
       helperStderr += `\n${error.message}`;
@@ -322,6 +329,7 @@ export function startInNewConsole(
     });
     child.once('close', (code) => resolve(code));
   }).then((code) => {
+    clearTimeout(watchdog);
     finished = new Error(`コンソールの補助が終わった（終了コード ${String(code)}）。${describe()}`);
     for (const waiter of waiters.splice(0)) waiter.reject(finished);
     return code;
