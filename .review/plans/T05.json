@@ -9,6 +9,8 @@
     "AGENTS.md",
     "README.md",
     "SECURITY.md",
+    "docs/adr/0008-install-record.md",
+    "docs/adr/README.md",
     "docs/development.md",
     "docs/github-agent-operations.md",
     "docs/implementation-plan.md",
@@ -28,6 +30,8 @@
     "scripts/check-test-skips.ts",
     "scripts/install-record.test.ts",
     "scripts/lib/test-skips.ts",
+    "scripts/setup-lock.test.ts",
+    "scripts/setup.test.ts",
     "scripts/test-skips.test.ts",
     "tools/review_guard/README.md"
   ],
@@ -46,6 +50,21 @@
       "description": "docs/development.mdは、skipの件数と一覧の正本を「環境によって飛ばす試験」の表とし、件数を書き写さないとしている（PR11-R108の教訓）。CIでOSごとのskipを照合するには、期待する件数が機械で読める必要がある。",
       "state": "resolved",
       "resolution": "CIの照合（scripts/check-test-skips.ts）は、別の一覧を持たず、その表（各行のファイル名と「N件」）と件数の文を直接読み、両者の合計が一致することも確かめる。表の書き方を変えると照合が失敗して気づける。"
+    },
+    {
+      "description": "PR18-R001（Codexのレビュー5398510953、Copilotの指摘4171254480と同じ原因）: skipの照合がファイルごとの件数だけを比べるので、同じファイルの中で許した試験が実行され、別の試験が代わりにskipされても通る。台帳のT05の「想定外skipが成功に見えない」を満たさない。",
+      "state": "resolved",
+      "resolution": "docs/development.mdの表を正本のまま、各行に許す試験の名前を「」で書き（ファイル・件数・名前）、照合はファイルごとの名前の集合を過不足なく比べる。件数は名前の数と、表の下の件数の文の合計とも照合する。理由は期待値に含めない（理由の文字列の正本は試験のファイルで、表は理由を文章で説明する）。代わりに、skipごとに理由の文字列があること（既定のSKIPでないこと）を確かめて記録し、理由の妥当性はレビューで表と読み合わせる。同じファイルの中のすり替えを拒む回帰試験を加える。docsの表の名前が、そのファイルの中でskipの指定を持つ試験の名前であることも試験で確かめる。"
+    },
+    {
+      "description": "台帳のT05の受入条件は、Windowsの実機でのCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの手での確認を含むが、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達）で、これらをT05から外して別のIssueにすることになった。",
+      "state": "resolved",
+      "resolution": "Issue #19を作り、手順・期待する結果・記録の様式・経緯（T02→T05→#19）をそこに一度だけ書く。#19はどのタスクにも依存せず、T26・T28をブロックしない。台帳のT05、docs/development.md、ADR一覧のT05行、ADR-0008、T02の試験のskipの理由・注記、状態資料、Copilotの指示は、#19を参照する形に直し、手順を書き写さない。T05の受入はCIでのskipの照合（Windowsで表の試験だけが飛ばされること）までとし、PR #18は#17を閉じる。"
+    },
+    {
+      "description": "docs/adr/README.mdは、状態欄が「Proposed（このPRがmainに統合された時点でAcceptedとみなす）」のADRは、次にそのADRを変更するPRで状態欄も直すとしている。ADR-0008（T02でmainに統合済み）の手での確認の担当の記載を#19へ直すと、この規則に当たる。",
+      "state": "resolved",
+      "resolution": "ADR-0008の状態欄を、ADR-0002と同じ書き方でAccepted（T02のPR #12でmainに統合。T05のPR #18で状態欄を直した）にし、ADR一覧の0008の行もAcceptedにする。決定の本文は変えない（手での確認の担当の参照だけを直す）。"
     }
   ],
   "assessments": [
@@ -69,7 +88,7 @@
     {
       "id": "INV-LOCK",
       "disposition": "not-applicable",
-      "reason": "T05はデータルートとそのlock（ADR-0006のG3）を扱わない（T07・T09）。CIの`npm run setup`が使うのは、worktreeの直下の作業中の印`.kurashi-ledger-setup.lock`（ADR-0008）で、データルートのlockとは別。CIのrunnerは毎回新しいcheckoutで、印や記録を引き継がない。Windowsの実機でのCtrl+C・Ctrl+Break・印を消せないときの確認（T05の受入条件）も、この作業中の印についての確認で、データルートのlockの設計を変えない。",
+      "reason": "T05はデータルートとそのlock（ADR-0006のG3）を扱わない（T07・T09）。CIの`npm run setup`が使うのは、worktreeの直下の作業中の印`.kurashi-ledger-setup.lock`（ADR-0008）で、データルートのlockとは別。CIのrunnerは毎回新しいcheckoutで、印や記録を引き継がない。Windowsの実機でのCtrl+C・Ctrl+Break・印を消せないときの確認は、2026-10-03の所有者決定でT05から外してIssue #19にした。どれも作業中の印についての確認で、データルートのlockの設計を変えない。",
       "checks": [
         {
           "id": "identity",
@@ -78,8 +97,8 @@
         },
         {
           "id": "recovery",
-          "method": "Windowsの手での確認の手順（docs/development.md）が、ADR-0008の「中断」（130・149、印と記録が残らない、印を消せないときの表示と消し方）と同じ期待結果を書いていることを読み合わせる。",
-          "expected": "手順と期待結果はADR-0008と一致し、データルートのlockには触れない。実施結果は手で記録し、CIで確かめたとは書かない。"
+          "method": "Issue #19の手順と期待する結果が、ADR-0008の「中断」（130・149、印と記録が残らない、印を消せないときの表示と消し方）と同じであることを読み合わせる。docs/development.mdと台帳・ADRが手順を書き写さず#19を参照していることを確かめる。",
+          "expected": "#19の手順と期待する結果はADR-0008と一致し、データルートのlockには触れない。実施結果は#19に手で記録し、CIで確かめたとは書かない。"
         }
       ]
     },
@@ -115,7 +134,7 @@
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。 最初のCI（run 37087512129）で、WindowsだけT02のscripts/install-record.test.tsの21件が失敗した。原因は試験の合成の環境で、照合に渡す実行環境はdarwinに固定しているのに、.binの実行ファイルのリンクを実際のOS（Windows）に合わせて.cmdのshimだけにしていたこと（darwinの照合は拡張子のない名前を見る）。製品のコード（scripts/lib/install-record.ts）は正しく、実際のnpmを使うscripts/setup.test.tsと、CIの`npm run setup`・`check:install`はWindowsで通った。試験の合成のnpmを、Windowsの実際のnpm（cmd-shim）と同じく、拡張子のないshim（通常のファイル）と.cmdのshimを置く形に直す。照合の判定や期待結果は変えない（.cmdだけのときにwin32の実行環境で通ることは、既存の試験が全OSで確かめている）。",
+      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。 最初のCI（run 37087512129）で、WindowsだけT02のscripts/install-record.test.tsの21件が失敗した。原因は試験の合成の環境で、照合に渡す実行環境はdarwinに固定しているのに、.binの実行ファイルのリンクを実際のOS（Windows）に合わせて.cmdのshimだけにしていたこと（darwinの照合は拡張子のない名前を見る）。製品のコード（scripts/lib/install-record.ts）は正しく、実際のnpmを使うscripts/setup.test.tsと、CIの`npm run setup`・`check:install`はWindowsで通った。試験の合成のnpmを、Windowsの実際のnpm（cmd-shim）と同じく、拡張子のないshim（通常のファイル）と.cmdのshimを置く形に直す。照合の判定や期待結果は変えない（.cmdだけのときにwin32の実行環境で通ることは、既存の試験が全OSで確かめている）。 T02の試験（setup-lock・setup・install-record）のskipの理由の文字列と注記は、手での確認の参照先をT05から#19へ直すだけで、skipの条件・試験の中身は変えない。",
       "checks": [
         {
           "id": "update",
@@ -132,11 +151,11 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "CIの合格を承認・マージ条件の充足として扱わない。CIはコメント・レビュー・ラベル・マージを行わず、権限はcontents: readだけで、pull_request（pull_request_targetやworkflow_runではない）で動く。計画の検査は、テンプレートのとおりbaseのcheckoutの検査器（changed_paths.py・ci.py）を`python3 -E -s`で実行し、PRのコードを実行しない（1つのPRに変更した計画が1つ、名前とtask_idの一致、古いbaseの拒否はbaseの検査器が行う。PR4-R014・PR4-R018）。workflow自体をPRで変えられるので、CIの合格は迂回を防がない（PR4-R001）。このことと、CIの合格が独立レビューの代わりにならないことを、AGENTS・review-prevention・READMEの入口に書く。原因台帳（.review/findings.json）と条件（.review/invariants.json）は変えない。",
+      "reason": "CIの合格を承認・マージ条件の充足として扱わない。CIはコメント・レビュー・ラベル・マージを行わず、権限はcontents: readだけで、pull_request（pull_request_targetやworkflow_runではない）で動く。計画の検査は、テンプレートのとおりbaseのcheckoutの検査器（changed_paths.py・ci.py）を`python3 -E -s`で実行し、PRのコードを実行しない（1つのPRに変更した計画が1つ、名前とtask_idの一致、古いbaseの拒否はbaseの検査器が行う。PR4-R014・PR4-R018）。workflow自体をPRで変えられるので、CIの合格は迂回を防がない（PR4-R001）。このことと、CIの合格が独立レビューの代わりにならないことを、AGENTS・review-prevention・READMEの入口に書く。原因台帳（.review/findings.json）と条件（.review/invariants.json）は変えない。 PR18-R001への対応として、skipの照合を件数からファイルごとの試験の名前の集合へ強める。2026-10-03の所有者決定（実装側のチャットで、調整係が伝達）: 必須のstatus checkは`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする。どちらもrepo設定なので、このPRでは変えず、T05のマージ後に実装側のmainのセッションが適用する（PR本文に記録）。計画の検査（review plan）をQuality gateに含める設計は承認された。",
       "checks": [
         {
           "id": "duplicates",
-          "method": "ci.ymlに、GitHubへのコメント・レビュー・statusの投稿や書込みの権限がないことを読む。.review/findings.jsonとinvariants.jsonが差分にないことを確かめる。引継ぎでは既存の指摘IDを使う。",
+          "method": "ci.ymlに、GitHubへのコメント・レビュー・statusの投稿や書込みの権限がないことを読む。.review/findings.jsonとinvariants.jsonが差分にないことを確かめる。引継ぎでは既存の指摘IDを使う。 PR18-R001とCopilotの指摘4171254480は同じ原因として1つのIDで扱い、修正のcommitと検証を引継ぎに書く。Copilotのthreadは自分でresolveしない。",
           "expected": "CIは投稿をしないので、同じheadへの重複投稿は起きない。原因台帳は変わらない。"
         },
         {
@@ -188,7 +207,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。Windowsの実機での手の確認はこの担当では行えないので、Issue #17を閉じずに残し、手順と記録の様式を文書に置く。",
+      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。Windowsの実機での手の確認はこの担当では行えないので、Issue #17を閉じずに残し、手順と記録の様式を文書に置く。 2026-10-03の所有者決定でWindowsの実機の3つの確認をIssue #19へ分けた。#19は依存のない独立したIssueで、T26・T28をブロックしない。PR #18は#17を閉じる。",
       "checks": [
         {
           "id": "dependencies",
@@ -197,7 +216,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "「CIはまだない」「テンプレートは未稼働」「Product CI is not yet implemented」等の記述をrepo全体で検索し、同じPRで直す。AGENTS・README・状態資料・Copilotの指示・PRテンプレートで、CIの合格がレビューやマージの条件の代わりにならないこと、マージの条件が変わらないことを読み合わせる。",
+          "method": "「CIはまだない」「テンプレートは未稼働」「Product CI is not yet implemented」等の記述をrepo全体で検索し、同じPRで直す。AGENTS・README・状態資料・Copilotの指示・PRテンプレートで、CIの合格がレビューやマージの条件の代わりにならないこと、マージの条件が変わらないことを読み合わせる。 「T05の受入条件で手で確かめる」等の記述をrepo全体で検索し、#19を参照する形に直したことを確かめる（.review/plans/T02.json等の過去の計画は、その時点の記録として変えない）。",
           "expected": "入口がすべて「CIはある。合格は独立レビュー・所有者の判断の代わりにならない」と同じことを書く。マージの条件と担当は変えない。"
         }
       ]
