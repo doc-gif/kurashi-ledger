@@ -3,8 +3,10 @@
   "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
   "task_id": "OPS-github-app-reviewer",
   "planned_paths": [
+    ".review/findings.json",
     "README.md",
     "SECURITY.md",
+    "docs/development.md",
     "docs/external-worker.md",
     "docs/github-agent-operations.md",
     "docs/github-apps.md",
@@ -40,6 +42,11 @@
       "description": "Copilotのレビュー（9906a6b、PR42の3件）をまとめて読んだ。(a) 応答にrepositoriesがないとrepository_selectionだけで成功にし、トークンを出力する（範囲の確認が欠ける）。(b) ClaudeのAppの作成状況が、SECURITY.md（作成済みと読める）・docs/github-apps.md（残作業）・docs/project-status.md（Codexだけ作成済み）で食い違う。(c) 入口のコメントの例が、実装していない--roleを使う。",
       "state": "resolved",
       "resolution": "全体の方針: 3件とも設計の段階で直す（後のタスクへ回すものはない）。互いに、また以前の決定（--agent/--purpose、最小権限、秘密を出さない）と衝突しない。(a) 範囲の確認を『確認できなければ失敗』に統一する: 発行の応答にrepositoriesがない、またはkurashi-ledgerの1件でなければ、トークンを失効させて終了コード1。さらに、発行したトークンでGET /installation/repositoriesを呼び、total_countが1でその1件がkurashi-ledgerであることを確かめ、違う・確かめられない（HTTPの失敗・通信の失敗・JSONでない）場合も失効させて1。どの失敗でも標準出力に何も出さない。経路ごとに試験する。GitHubが応答にrepositoriesを含めない場合は安全側に失敗するので、確かめていないことに書く。(b) 事実（2026-10-03に所有者が2つのAppを同じ権限・Administrationなし・このrepoだけにインストールで作成し、鍵を2つのserviceでキーチェーンに登録した。CodexのAppの権限を広げて承認し直した）に合わせ、docs/github-apps.md・docs/project-status.md・SECURITY.md・Issue #41を同じ現在形にする。IDは書かない。PR #40と重なる文書の変更は最小にする。(c) 入口のコメントの例を--agent/--purposeにする。base_shaを1d513e7（PR #31のmiseの取り込み）に更新した。miseは版の管理で、このPRの範囲・方針に影響しない。"
+    },
+    {
+      "description": "事前の独立レッドチーム（08c9b6c）の指摘 PR42-R004〜R007（記録: https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029）。中心は、トークンの発行の失敗時にghがdoc-gif（管理者）の資格情報へ黙って戻る型（R004）、rulesetの提案の前提の書き漏れと迂回試験の安全（R005）、PRのcheckoutからスクリプトを実行する危険と限界の書き漏れ（R006）、細かい堅牢化と記載の不一致（R007）。",
+      "state": "resolved",
+      "resolution": "全体の方針: 『Appの身元で行うつもりの操作は、Appのトークンが確かにあるときだけ行い、なければ止まる。行ったあとで身元を確かめる』に統一する。(R004) 文書の型を1つの正本（set -eu、GITHUB_TOKEN等をunset、代入とexportを分け空なら止める、空のGH_CONFIG_DIR、終了時にトークンを失効）にし、ほかの節はそれを参照する。入口のコメントとUSAGEの例も同じにする。レビューの投稿のあとに.user.loginが期待するbotかを確かめる。実際の鍵での確認はGET /installation/repositories（インストールのトークンでなければ失敗する）にし、用途ごとに権限の外の書込みが403で拒まれることを、無効なbodyで副作用なしに確かめる。子プロセスに渡す形（所有者の確認待ち）は実装しないが、発行（mintToken）と出力（run）を分けて加えられる構造にする。pushは、HTTPSのURL・空のhelper・GIT_CONFIG_GLOBAL=/dev/null・GIT_CONFIG_NOSYSTEM=1・GIT_SSH_COMMAND=falseで、doc-gifのSSHや保存済みの資格情報へ戻らないようにする。(R005) 主張を前提付きにし、doc-gifで作ったPRを同じAIのAppが承認できてしまう場合を迂回試験に加え、緩和策（AIのworktreeのpushurl等）を所有者の選択肢として書く。迂回試験はruleset-test/*のbranchだけで行い、mainへマージせず、rulesetのPATCHは同じ値で行う。削除の制限と強制pushの禁止を提案と試験に加える（mainへの適用は所有者の確認待ち）。(R006) 全入口に『PRのcheckoutから実行しない。レビュー済みのmainのSHAから、repoの外へ取り出した写しで実行する』を書き、限界に同じユーザーのコードが鍵を読めることと、スクリプトと権限の表の変更は独立レビューが要ることを書く。別のmacOSユーザーやキーチェーンのパスワードの要求は所有者の確認待ち。(R007) 安く直せるものはこのPRで直す: fetchのredirect: 'error'、標準入力の時間の上限とTTY・大きさの検査（中核へ移して試験する）、鍵ファイルのO_NONBLOCK（FIFOで止まらない）、userInfoの遅延評価、キーチェーンの時間切れとmaxBufferの扱い、権限の照合をObject.hasOwnにする、試験の追加、文書の記載。後へ回すもの: JWTでのGET /appによるslugの照合（理由: Appの設定を増やす。投稿後のloginの確認で身元の取り違えは見つけられる）、公開検査のbase64のPEM・JWTの検出（理由: 検査器の変更は別の担当・別のPR。文書に限界を書く）、AGENTS.mdからの参照（理由: PR #40がAGENTS.mdを書き直している。マージ後に行う）。Copilotの利用枠切れは所有者の暫定規則（Codexのacceptedとレッドチームの指摘なしで代える）に従い、PRに記録した。"
     }
   ],
   "assessments": [
@@ -63,11 +70,11 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "秘密鍵・JWT・トークンを公開物・ログ・エラーに出さない。AppのID・Installation ID・鍵はrepoに置かず、実行時の環境変数・引数・キーチェーンから渡す。試験は試験の中で生成したRSA鍵と番兵の値だけを使い、実際のキーチェーンとネットワークを使わない。この担当は実際のキーチェーンの項目を読まず、実際のAppを呼ばない。",
+      "reason": "秘密鍵・JWT・トークンを公開物・ログ・エラーに出さない。AppのID・Installation ID・鍵はrepoに置かず、実行時の環境変数・引数・キーチェーンから渡す。試験は試験の中で生成したRSA鍵と番兵の値だけを使い、実際のキーチェーンとネットワークを使わない。この担当は実際のキーチェーンの項目を読まず、実際のAppを呼ばない。 スクリプトはPRのcheckoutから実行せず、レビュー済みのmainのSHAからrepoの外へ取り出した写しで実行する（PR42-R006）。",
       "checks": [
         {
           "id": "public",
-          "method": "node scripts/check-public.ts --staged を各commitの前に実行し終了コードを確かめる。差分を読み、ID・鍵・トークン・個人のパスがないことを確かめる。試験で、HTTPの失敗・通信の失敗・GitHubのメッセージへの秘密の混入・鍵の不正・キーチェーンの失敗・権限の不一致の各経路で、標準エラーと標準出力に鍵（PEMの本文）・JWT・トークンの番兵が出ないことを確かめる。成功時の標準出力がトークンと改行だけであることも確かめる。 発行の応答のrepositoriesの欠落・不一致と、GET /installation/repositoriesでの不一致・HTTPの失敗・通信の失敗の各経路で、トークンを失効させ、標準出力に何も出さないことを試験する。",
+          "method": "node scripts/check-public.ts --staged を各commitの前に実行し終了コードを確かめる。差分を読み、ID・鍵・トークン・個人のパスがないことを確かめる。試験で、HTTPの失敗・通信の失敗・GitHubのメッセージへの秘密の混入・鍵の不正・キーチェーンの失敗・権限の不一致の各経路で、標準エラーと標準出力に鍵（PEMの本文）・JWT・トークンの番兵が出ないことを確かめる。成功時の標準出力がトークンと改行だけであることも確かめる。 発行の応答のrepositoriesの欠落・不一致と、GET /installation/repositoriesでの不一致・HTTPの失敗・通信の失敗の各経路で、トークンを失効させ、標準出力に何も出さないことを試験する。 追加の試験: redirect: 'error'がすべての要求に付くこと、標準入力のTTYの拒否・16KiBの上限・時間切れ、実際のsymlink・FIFO（POSIX）・ディレクトリの鍵ファイルの拒否、失効の要求の例外、キーチェーンの時間切れとmaxBuffer、implementの権限の過不足・null・__proto__。",
           "expected": "公開検査が0で終わる。全経路で番兵が出力に現れず、成功時の標準出力はトークンの1行だけ。文書の例はプレースホルダだけ。"
         }
       ]
@@ -75,7 +82,7 @@
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "scripts/に開発用のスクリプトを加えるが、依存・lockfile・Node.jsの版・CI・配信物を変えない。Node.jsの組込み（node:crypto・fetch・node:child_process）だけを使う。npm scriptは加えない（npm runは標準出力に見出しを出し、$(...)でトークンに混ざるため）。",
+      "reason": "scripts/に開発用のスクリプトを加えるが、依存・lockfile・Node.jsの版・CI・配信物を変えない。Node.jsの組込み（node:crypto・fetch・node:child_process）だけを使う。npm scriptは加えない（npm runは標準出力に見出しを出し、$(...)でトークンに混ざるため）。 試験のskip（FIFOとファイルのsymlinkはWindowsで作れない）を加える場合は、docs/development.mdのskipの表と件数を同じPRで直す。",
       "checks": [
         {
           "id": "update",
@@ -92,7 +99,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "レビュー記録の書式（<!-- kurashi-ledger:review:v1 -->、role、decision）と指摘IDの規則を変えない。Appで投稿しても、承認はレビューしたheadに対してだけ行い、CIの合格やAIの自己申告を独立承認と称さない。rulesetは提案に留め、設定は所有者の確認待ち。",
+      "reason": "レビュー記録の書式（<!-- kurashi-ledger:review:v1 -->、role、decision）と指摘IDの規則を変えない。Appで投稿しても、承認はレビューしたheadに対してだけ行い、CIの合格やAIの自己申告を独立承認と称さない。rulesetは提案に留め、設定は所有者の確認待ち。 失敗したトークンの発行のあとで、ghやgitが所有者の資格情報に戻って投稿・pushしないこと（PR42-R004）を、文書の唯一の型と、投稿後の身元の確認で守る。",
       "checks": [
         {
           "id": "duplicates",
@@ -101,8 +108,8 @@
         },
         {
           "id": "trust",
-          "method": "文書で、APPROVEはcommit_idにレビューしたheadを指定してAPIで送り応答のcommit_idを確かめる手順か、roleのAIと投稿したAppのAIの一致を求めるか、AIが自分の実装・pushしたPRを承認しないと書いたか、rulesetの『承認1件＋最新のpushの承認』で承認者がもう一方のAIのAppか所有者に限られる理由、rulesetが未設定の間はAppの承認も強制ではないこと、同じmacOSユーザーなので強い隔離ではないこと、Appの承認が必須の承認に数えられるか等の未確認の項目を列挙したかを読み合わせる。",
-          "expected": "承認の取り違え（別のheadの承認、作者による自己承認、設定前の強制ゲート扱い）を許す記述がない。限界と未検証の項目が列挙されている。"
+          "method": "文書で、APPROVEはcommit_idにレビューしたheadを指定してAPIで送り応答のcommit_idを確かめる手順か、roleのAIと投稿したAppのAIの一致を求めるか、AIが自分の実装・pushしたPRを承認しないと書いたか、rulesetの『承認1件＋最新のpushの承認』で承認者がもう一方のAIのAppか所有者に限られる理由、rulesetが未設定の間はAppの承認も強制ではないこと、同じmacOSユーザーなので強い隔離ではないこと、Appの承認が必須の承認に数えられるか等の未確認の項目を列挙したかを読み合わせる。 さらに、docs/github-apps.md・入口のコメント・USAGEのすべての例が正本の型（set -eu、unset、空なら止める、空のGH_CONFIG_DIR）に従うかをgrepで照合する。レビューの投稿の例が.user.loginを確かめるか、rulesetの主張がAIのpush・PRの作成がAppで行われる前提付きか、迂回試験がruleset-test/*だけで行いmainへマージせず実際のrulesetを変えないかを読み合わせる。",
+          "expected": "承認の取り違え（別のheadの承認、作者による自己承認、設定前の強制ゲート扱い）を許す記述がない。限界と未検証の項目が列挙されている。 トークンがないまま管理者の資格情報で投稿・pushする手順が文書に残っていない。"
         }
       ]
     },
