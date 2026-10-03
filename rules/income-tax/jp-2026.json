@@ -312,6 +312,38 @@
         "general": 130000,
         "elderly": 160000
       }
+    ],
+    "eligibility": [
+      {
+        "input": "legalSpouse",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "控除対象配偶者となる人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "同(4)"
+        }
+      }
     ]
   },
   "spouseSpecialDeduction": {
@@ -411,7 +443,60 @@
           10000
         ]
       }
-    ]
+    ],
+    "eligibility": [
+      {
+        "input": "legalSpouse",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "配偶者特別控除を受けるための要件(2)イ"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(2)ロ"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(2)ハ"
+        }
+      },
+      {
+        "input": "spouseClaimsSpecialDeduction",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(3)（配偶者が配偶者特別控除を適用していない）"
+        }
+      },
+      {
+        "input": "spouseWithheldWithSourceDeductionSpouse",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(4)(5)（配偶者が源泉控除対象配偶者がある居住者として源泉徴収されていない）"
+        }
+      }
+    ],
+    "excludedIfSpouseDeduction": true
   },
   "dependentDeduction": {
     "description": "扶養控除。扶養親族（その年12月31日（年の中途で死亡・出国する場合はその時）の現況で、配偶者以外の親族等で生計を一にし、合計所得金額が62万円以下）のうち、12月31日現在の年齢が16歳以上の控除対象扶養親族。特定扶養親族は19歳以上23歳未満、老人扶養親族は70歳以上。生年月日の範囲は資料の表のとおり（年齢は誕生日の前日に加わるので、1月1日生まれはその前の年の範囲に入る）。非居住者である扶養親族の要件は範囲外。",
@@ -452,18 +537,117 @@
         "bornOnOrBefore": "1957-01-01",
         "amount": 580000
       }
+    ],
+    "eligibility": [
+      {
+        "input": "relationship",
+        "allowed": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly"
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "扶養親族に該当する人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "同(4)"
+        }
+      }
     ]
   },
   "specificRelativeDeduction": {
-    "description": "特定親族特別控除。12月31日の現況で、生計を一にする年齢19歳以上23歳未満の親族等で、控除対象扶養親族に該当せず、合計所得金額が62万円超123万円以下。",
+    "description": "特定親族特別控除。12月31日の現況で、生計を一にする年齢19歳以上23歳未満の親族等で、控除対象扶養親族に該当せず、合計所得金額が62万円超123万円以下。年齢はageDeterminationDate（12月31日）現在で、生年月日の範囲はbornFrom〜bornTo。控除対象扶養親族に当たる人には適用しない（excludedIfDependent）。",
     "source": {
       "ref": "nta-nencho2026-rates",
       "location": "56ページ〔参考〕令和8年分の特定親族特別控除額の表"
     },
-    "crossCheckSource": {
-      "ref": "nta-ta-1177",
-      "location": "特定親族特別控除の金額・特定親族に該当する人の範囲"
-    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-ta-1177",
+        "location": "特定親族特別控除の金額・特定親族に該当する人の範囲"
+      },
+      {
+        "ref": "nta-nencho2026-rates",
+        "location": "56ページ 扶養控除額等の表の特定扶養親族の生年月日の範囲（同じ19歳以上23歳未満）"
+      }
+    ],
+    "ageDeterminationDate": "2026-12-31",
+    "ageMin": 19,
+    "ageBelow": 23,
+    "bornFrom": "2004-01-02",
+    "bornTo": "2008-01-01",
+    "excludedIfDependent": true,
+    "eligibility": [
+      {
+        "input": "relationship",
+        "allowed": [
+          "relative",
+          "foster-child"
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "特定親族に該当する人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(4)"
+        }
+      },
+      {
+        "input": "claimsSpecificRelativeDeductionItself",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(7)"
+        }
+      },
+      {
+        "input": "sourceDeductionRelativeWithheld",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(8)(9)（源泉控除対象親族として源泉徴収されていない）"
+        }
+      }
+    ],
     "brackets": [
       {
         "totalIncomeOver": 620000,

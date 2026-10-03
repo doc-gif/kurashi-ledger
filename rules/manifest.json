@@ -351,6 +351,7 @@
       "id": "jp-income-tax-salary-2025",
       "version": "1",
       "status": "draft",
+      "approval": "未確認",
       "regime": "income-tax",
       "kind": "calculation",
       "title": "所得税（給与所得だけの居住者の年税額）令和7年分",
@@ -405,13 +406,83 @@
         "nta-shinkoku2025-reconstruction",
         "nta-shinkoku2025-balance",
         "egov-tsusoku",
-        "nta-hotei2025-scope"
+        "nta-hotei2025-scope",
+        "nta-hotei2025-payment"
+      ],
+      "unsupportedInputs": [
+        {
+          "path": "residency",
+          "allowed": [
+            "resident"
+          ],
+          "reason": "非居住者は範囲外"
+        },
+        {
+          "path": "incomeSources",
+          "allowed": [
+            "salary-only"
+          ],
+          "reason": "給与所得以外の所得は範囲外"
+        },
+        {
+          "path": "taxCredits",
+          "allowed": [
+            0
+          ],
+          "reason": "住宅借入金等特別控除等の税額控除は範囲外"
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "allowed": [
+            "none"
+          ],
+          "reason": "年の中途の死亡・出国では、家族の判定の時点が死亡・出国の時になる（タックスアンサーNo.1180・1177）。この版は12月31日の現況だけを扱う"
+        },
+        {
+          "path": "returnKind",
+          "allowed": [
+            "regular"
+          ],
+          "procedures": [
+            "tax-return"
+          ],
+          "reason": "準確定申告（死亡・出国）は範囲外"
+        },
+        {
+          "path": "spouse.livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した配偶者の判定の時点は確かめていない"
+        },
+        {
+          "path": "relatives[].livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した親族の判定の時点は確かめていない"
+        },
+        {
+          "path": "spouse.resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である配偶者の要件は範囲外"
+        },
+        {
+          "path": "relatives[].resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        }
       ]
     },
     {
       "id": "jp-income-tax-salary-2026",
       "version": "1",
       "status": "draft",
+      "approval": "未確認",
       "regime": "income-tax",
       "kind": "calculation",
       "title": "所得税（給与所得だけの居住者の年税額）令和8年分",
@@ -469,14 +540,84 @@
         "nta-shinkoku2025-balance",
         "egov-tsusoku",
         "nta-hotei2025-scope"
+      ],
+      "unsupportedInputs": [
+        {
+          "path": "residency",
+          "allowed": [
+            "resident"
+          ],
+          "reason": "非居住者は範囲外"
+        },
+        {
+          "path": "incomeSources",
+          "allowed": [
+            "salary-only"
+          ],
+          "reason": "給与所得以外の所得は範囲外"
+        },
+        {
+          "path": "taxCredits",
+          "allowed": [
+            0
+          ],
+          "reason": "住宅借入金等特別控除等の税額控除は範囲外"
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "allowed": [
+            "none"
+          ],
+          "reason": "年の中途の死亡・出国では、家族の判定の時点が死亡・出国の時になる（タックスアンサーNo.1180・1177）。この版は12月31日の現況だけを扱う"
+        },
+        {
+          "path": "returnKind",
+          "allowed": [
+            "regular"
+          ],
+          "procedures": [
+            "tax-return"
+          ],
+          "reason": "準確定申告（死亡・出国）は範囲外"
+        },
+        {
+          "path": "spouse.livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した配偶者の判定の時点は確かめていない"
+        },
+        {
+          "path": "relatives[].livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した親族の判定の時点は確かめていない"
+        },
+        {
+          "path": "spouse.resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である配偶者の要件は範囲外"
+        },
+        {
+          "path": "relatives[].resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        }
       ]
     },
     {
       "id": "jp-salary-income-year",
       "version": "1",
       "status": "draft",
+      "approval": "未確認",
       "regime": "income-tax",
       "kind": "attribution",
+      "autoApply": false,
       "title": "給与の所得の年への帰属（支給日の定めによる）",
       "spec": "docs/rules/salary-income-year.md",
       "data": "rules/salary-income-year/v1.json",
@@ -511,6 +652,7 @@
       "id": "jp-withholding-slip-mapping",
       "version": "1",
       "status": "draft",
+      "approval": "未確認",
       "regime": "income-tax",
       "kind": "comparison-mapping",
       "title": "給与所得の源泉徴収票と給与明細の比較の対応表",
@@ -555,6 +697,14 @@
       "regime": "income-tax",
       "procedure": "tax-return",
       "reason": "令和7年分は2025-12-01より前、令和8年分は2026-12-01より前に提出する準確定申告は、改正前の規則を使う。未対応（unsupported）。令和7年分・令和8年分以外の年分も未対応。"
+    },
+    {
+      "regime": "income-tax",
+      "reason": "給与の所得の年への帰属の自動適用（jp-salary-income-yearはautoApplyがfalse）。契約版1.0の給与明細では、支給日と別の時期に帰属する給与（支給日の定めがない給与、利益を基礎とする役員賞与等）を見分けられないため。帰属は年間資料と利用者の指定だけで決まる（契約の照合の規則の8）。見分ける項目を足す契約の変更は所有者の判断待ち。"
+    },
+    {
+      "regime": "income-tax",
+      "reason": "年の中途で死亡・出国した本人（準確定申告を含む）、年の中途で死亡した家族、非居住者の家族。計算の規則のunsupportedInputsに当たる入力のrunはunsupported。"
     },
     {
       "regime": "resident-tax",

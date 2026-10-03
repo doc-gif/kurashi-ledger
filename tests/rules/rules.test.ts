@@ -358,20 +358,99 @@ function checkIncomeTaxData(data: Obj, where: string, problems: Problems): void 
   const dep = obj(data["dependentDeduction"]);
   const ref = dep["ageDeterminationDate"];
   if (isLocalDate(ref)) {
-    arr(dep["categories"]).forEach((c, i) => {
-      const o = obj(c);
-      const w = `${where} dependentDeduction.categories[${i}]`;
-      const min = Number(o["ageMin"]);
-      if (isLocalDate(o["bornOnOrBefore"])) {
-        if (ageOn(o["bornOnOrBefore"], ref) < min || ageOn(shiftDay(o["bornOnOrBefore"], 1), ref) >= min) problems.add(w, "生年月日の範囲と年齢の下限が合わない");
-      }
-      if (isLocalDate(o["bornFrom"]) && isLocalDate(o["bornTo"])) {
-        const below = Number(o["ageBelow"]);
-        if (ageOn(o["bornTo"], ref) < min || ageOn(shiftDay(o["bornTo"], 1), ref) >= min) problems.add(w, "生年月日の範囲の終わりと年齢の下限が合わない");
-        if (ageOn(o["bornFrom"], ref) >= below || ageOn(shiftDay(o["bornFrom"], -1), ref) < below) problems.add(w, "生年月日の範囲の始まりと年齢の上限が合わない");
-      }
-    });
+    arr(dep["categories"]).forEach((c, i) => checkAgeRange(obj(c), ref, `${where} dependentDeduction.categories[${i}]`, problems));
   } else problems.add(where, "dependentDeduction.ageDeterminationDateがない");
+  // 特定親族特別控除の年齢（19歳以上23歳未満）と判定日を制度データから読めること（PR29-R004）。
+  const sr = obj(data["specificRelativeDeduction"]);
+  if (!isLocalDate(sr["ageDeterminationDate"]) || sr["ageDeterminationDate"] !== ref || !isInt(sr["ageMin"]) || !isInt(sr["ageBelow"]) || !isLocalDate(sr["bornFrom"]) || !isLocalDate(sr["bornTo"]) || sr["excludedIfDependent"] !== true) {
+    problems.add(`${where} specificRelativeDeduction`, "年齢の範囲（ageDeterminationDate・ageMin・ageBelow・bornFrom・bornTo）と、扶養控除と重ねないこと（excludedIfDependent）がない");
+  } else checkAgeRange(sr, sr["ageDeterminationDate"], `${where} specificRelativeDeduction`, problems);
+  for (const k of ["spouseDeduction", "spouseSpecialDeduction", "dependentDeduction", "specificRelativeDeduction"]) {
+    const el = obj(data[k])["eligibility"];
+    if (!Array.isArray(el) || el.length === 0) problems.add(`${where} ${k}`, "適用要件（eligibility）がない（所得・年齢だけで控除しない。PR29-R006）");
+    arr(el).forEach((e, i) => {
+      const o = obj(e);
+      if (!nonEmpty(o["input"]) || !Array.isArray(o["allowed"]) || o["allowed"].length === 0 || !isObj(o["source"])) problems.add(`${where} ${k}.eligibility[${i}]`, "{ input, allowed（1件以上）, source }");
+    });
+  }
+}
+
+function checkAgeRange(o: Obj, ref: string, w: string, problems: Problems): void {
+  const min = Number(o["ageMin"]);
+  if (isLocalDate(o["bornOnOrBefore"])) {
+    if (ageOn(o["bornOnOrBefore"], ref) < min || ageOn(shiftDay(o["bornOnOrBefore"], 1), ref) >= min) problems.add(w, "生年月日の範囲と年齢の下限が合わない");
+  }
+  if (isLocalDate(o["bornFrom"]) && isLocalDate(o["bornTo"])) {
+    const below = Number(o["ageBelow"]);
+    if (ageOn(o["bornTo"], ref) < min || ageOn(shiftDay(o["bornTo"], 1), ref) >= min) problems.add(w, "生年月日の範囲の終わりと年齢の下限が合わない");
+    if (ageOn(o["bornFrom"], ref) >= below || ageOn(shiftDay(o["bornFrom"], -1), ref) < below) problems.add(w, "生年月日の範囲の始まりと年齢の上限が合わない");
+  }
+}
+
+// 家族の入力が持つべき項目（制度データの適用要件の入力と、判定に使う値）。
+function familyFields(data: Obj): { spouse: Map<string, unknown[]>; relative: Map<string, unknown[]> } {
+  const collect = (keys: string[]): Map<string, unknown[]> => {
+    const out = new Map<string, unknown[]>();
+    for (const k of keys) for (const e of arr(obj(data[k])["eligibility"])) out.set(String(obj(e)["input"]), arr(obj(e)["allowed"]));
+    return out;
+  };
+  return { spouse: collect(["spouseDeduction", "spouseSpecialDeduction"]), relative: collect(["dependentDeduction", "specificRelativeDeduction"]) };
+}
+
+// 入力の値をパス（"a.b"、"list[].x"）で取り出す。途中がnull・ないなら値なし。
+function valuesAt(input: unknown, path: string): unknown[] {
+  let cur: unknown[] = [input];
+  for (const part of path.split(".")) {
+    const isList = part.endsWith("[]");
+    const key = isList ? part.slice(0, -2) : part;
+    const next: unknown[] = [];
+    for (const v of cur) {
+      if (!isObj(v) || !(key in v)) continue;
+      const x = v[key];
+      if (isList) next.push(...arr(x));
+      else if (x !== null) next.push(x);
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+// 規則のunsupportedInputsに当たるか（「unknown」は未対応ではなく不足として別に扱う）。
+function inputUnsupported(rs: Obj, input: unknown, procedure: unknown): { violates: string[]; unknown: string[] } {
+  const violates: string[] = [];
+  const unknown: string[] = [];
+  for (const u of arr(rs["unsupportedInputs"])) {
+    const o = obj(u);
+    if (Array.isArray(o["procedures"]) && !o["procedures"].includes(procedure)) continue;
+    const allowed = arr(o["allowed"]);
+    for (const v of valuesAt(input, String(o["path"]))) {
+      if (v === "unknown") unknown.push(String(o["path"]));
+      else if (!allowed.includes(v)) violates.push(String(o["path"]));
+    }
+  }
+  return { violates, unknown };
+}
+
+const REVIEW_RECORD = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)#(pullrequestreview|issuecomment)-[1-9][0-9]*$/;
+const PULL_REQUEST = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)$/;
+
+// 規則の承認の証跡（docs/rules/README.mdの「状態と承認」。正本はmanifestのapproval。PR29-R003）。
+function checkApproval(rs: Obj, w: string, problems: Problems): void {
+  const a = rs["approval"];
+  if (rs["status"] !== "approved") {
+    if (a !== REGIME_PLACEHOLDER) problems.add(w, "draftの規則のapprovalは「未確認」");
+    return;
+  }
+  if (!isObj(a)) {
+    problems.add(w, "approvedの規則には承認の証跡（approval: { reviewRecord, reviewedHead, approvalPullRequest }）が要る");
+    return;
+  }
+  const review = REVIEW_RECORD.exec(String(a["reviewRecord"]));
+  const pr = PULL_REQUEST.exec(String(a["approvalPullRequest"]));
+  if (review === null) problems.add(w, "approval.reviewRecordは、このrepoのPRのレビューかコメントのURL");
+  if (typeof a["reviewedHead"] !== "string" || !/^[0-9a-f]{40}$/.test(a["reviewedHead"])) problems.add(w, "approval.reviewedHeadは40文字のcommit SHA");
+  if (pr === null) problems.add(w, "approval.approvalPullRequestは、approvedにしたPRのURL");
+  else if (review !== null && review[1] === pr[1]) problems.add(w, "approvedにする変更は、内容をレビューしたPRとは別のPRで行う");
 }
 
 function checkDataRounding(data: Obj, where: string, problems: Problems): Set<string> {
@@ -390,6 +469,22 @@ function checkDataRounding(data: Obj, where: string, problems: Problems): Set<st
     keys.add(key);
   });
   return keys;
+}
+
+// 帰属の規則（docs/rules/salary-income-year.md）。自動で当てはめない版では、規則の根拠で年を決める例がないこと（PR29-R001）。
+function checkAttribution(rs: Obj, data: Obj, where: string, problems: Problems): void {
+  const auto = rs["autoApply"];
+  if (typeof auto !== "boolean" || data["autoApply"] !== auto || obj(data["rule"])["autoApply"] !== auto) problems.add(where, "autoApplyがmanifest・制度データ・ruleで同じ真偽値ではない");
+  const examples = arr(data["examples"]);
+  if (examples.length === 0) problems.add(where, "帰属の例（examples）がない");
+  examples.forEach((e, i) => {
+    const x = obj(obj(e)["expected"]);
+    const w = `${where} examples[${i}]`;
+    const state = x["attribution"];
+    if (!["undetermined", "determined", "conflict"].includes(String(state))) problems.add(w, "attributionはundetermined・determined・conflict");
+    if (state === "determined" ? !isCalendarYear(x["incomeYear"]) || arr(x["bases"]).length === 0 : x["incomeYear"] !== "unknown") problems.add(w, "determinedは年と根拠、それ以外の年はunknown");
+    if (auto === false && arr(x["bases"]).includes("rule")) problems.add(w, "自動で当てはめない規則の根拠（rule）で年を決めている");
+  });
 }
 
 // ---- 全体
@@ -457,6 +552,9 @@ export function validateRules(input: RulesInput): string[] {
     const data = obj(input.dataFiles.get(String(rs["data"])));
     const dw = `${String(rs["data"])}`;
     if (data["ruleSetId"] !== id || data["version"] !== version || data["status"] !== rs["status"]) problems.add(dw, "ruleSetId・version・statusがmanifestと違う");
+    if ("approval" in data) problems.add(dw, "承認の証跡はmanifestのapprovalだけに書く（制度データに写さない）");
+    checkApproval(rs, `${w} ${key}`, problems);
+    if (rs["kind"] === "attribution") checkAttribution(rs, data, dw, problems);
     const refs: { ref: unknown; location: unknown; path: string }[] = [];
     collectSourceRefs(data, "", refs);
     for (const ref of refs) {
@@ -517,14 +615,35 @@ export function validateRules(input: RulesInput): string[] {
       return;
     }
     const target = obj(o["target"]);
+    const caseInput = o["input"];
+    const unsup = inputUnsupported(entry.rs, caseInput, target["procedure"]);
     if (status === "unsupported") {
-      const coveredBy = entries.filter(([, e]) => e.rs["regime"] === o["regime"] && e.rs["kind"] === "calculation" && targetCovered(target, e.applies)).map(([k]) => k);
-      if (coveredBy.length > 0) problems.add(w, `unsupportedのケースのtargetに当たる規則がある: ${coveredBy.join("・")}`);
+      const coveredBy = entries.filter(([, e]) => e.rs["regime"] === o["regime"] && e.rs["kind"] === "calculation" && targetCovered(target, e.applies) && inputUnsupported(e.rs, caseInput, target["procedure"]).violates.length === 0).map(([k]) => k);
+      if (coveredBy.length > 0) problems.add(w, `unsupportedのケースのtargetに当たり、入力も未対応の条件（unsupportedInputs）に当たらない規則がある: ${coveredBy.join("・")}`);
       if (arr(expected["results"]).some((r) => obj(obj(r)["value"])["state"] !== "unknown")) problems.add(w, "unsupportedの結果の値はすべてunknown");
       if (arr(o["rounding"]).length > 0) problems.add(w, "unsupportedのケースは丸めの手順を持たない");
       return;
     }
     if (!targetCovered(target, entry.applies)) problems.add(w, "targetが規則の適用の範囲（applies）に当たらない");
+    if (unsup.violates.length > 0) problems.add(w, `入力が規則の未対応の条件に当たるのに${String(status)}: ${unsup.violates.join("・")}`);
+    const unknownInputs = [...unsup.unknown];
+    if (entry.rs["regime"] === "income-tax" && entry.rs["kind"] === "calculation") {
+      const fields = familyFields(obj(input.dataFiles.get(String(entry.rs["data"]))));
+      const ci = obj(caseInput);
+      const people: [string, unknown, Map<string, unknown[]>][] = [];
+      if (ci["spouse"] !== null) people.push(["spouse", ci["spouse"], fields.spouse]);
+      arr(ci["relatives"]).forEach((r, i) => people.push([`relatives[${i}]`, r, fields.relative]));
+      for (const [name, person, required] of people) {
+        const po = obj(person);
+        for (const k of ["birthDate", "totalIncome", "livingAtYearEnd", "resident", ...required.keys()]) {
+          if (!(k in po)) problems.add(w, `input.${name}に${k}がない（家族の控除の適用要件と判定に使う入力。PR29-R006）`);
+          else if (po[k] === "unknown") unknownInputs.push(`${name}.${k}`);
+        }
+      }
+    }
+    if ((status === "computed" || status === "provisional") && unknownInputs.length > 0) problems.add(w, `分からない入力があるのに${String(status)}: ${unknownInputs.join("・")}`);
+    if (status === "incomplete" && !arr(expected["results"]).some((r) => obj(obj(r)["value"])["state"] === "unknown")) problems.add(w, "incompleteなのに、unknownの結果がない");
+    if (o["status"] === "approved" && obj(o["derivation"])["reviewedBy"] !== obj(entry.rs["approval"])["reviewRecord"]) problems.add(w, "approvedのケースのreviewedByが、規則の承認の証跡（approval.reviewRecord）と違う");
     const values = new Map<string, unknown>();
     for (const r of arr(expected["results"])) {
       const ro = obj(r);
@@ -695,7 +814,7 @@ test("検査の自己確認: 規則の適用の範囲の重なりと、制度の
     ["ケースの規則がない", (c) => (caseOf(c.cases, "REG-02")["ruleSet"] = { id: "jp-income-tax-salary-2026", version: "2" }), "manifestにない"],
     ["draftの規則でapprovedのケース", (c) => (caseOf(c.cases, "REG-02")["status"] = "approved"), "承認済み"],
     ["targetが規則の範囲の外", (c) => (obj(caseOf(c.cases, "REG-02")["target"])["referencePoint"] = { kind: "date", date: "2026-11-30" }), "適用の範囲"],
-    ["unsupportedのケースに当たる規則がある", (c) => (obj(caseOf(c.cases, "REG-15")["target"])["referencePoint"] = { kind: "date", date: "2026-12-01" }), "当たる規則がある"],
+    ["unsupportedのケースに当たる規則がある", (c) => (obj(caseOf(c.cases, "REG-15")["target"])["referencePoint"] = { kind: "date", date: "2026-12-01" }), "入力も未対応の条件"],
     ["丸め直した値と違う", (c) => ((caseOf(c.cases, "REG-02")["rounding"] as Obj[])[1]!["after"] = "73400"), "丸め直した値"],
     ["最後の丸めと値が違う", (c) => (obj(((obj(caseOf(c.cases, "REG-03")["expected"])["results"] as Obj[]).find((r) => r["key"] === "reconstruction-tax"))!["value"])["value"] = 1781), "最後の丸め"],
     ["制度データにない丸め", (c) => ((caseOf(c.cases, "REG-02")["rounding"] as Obj[])[0]!["unit"] = "100"), "制度データのroundingにない"],
@@ -706,6 +825,59 @@ test("検査の自己確認: 規則の適用の範囲の重なりと、制度の
     const p = mutated(change);
     assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
   }
+});
+
+test("検査の自己確認: 入力による未対応、家族の控除の適用要件、特定親族の年齢、帰属の例、承認の証跡の誤りを見つける（PR29-R001〜R006）", () => {
+  type C = { manifest: Obj; data: Map<string, Obj>; cases: Obj[] };
+  const input = (c: C, id: string): Obj => obj(caseOf(c.cases, id)["input"]);
+  const approved = (c: C, approval: unknown): void => {
+    const rs = ruleSetOf(c.manifest, "jp-income-tax-salary-2026");
+    rs["status"] = "approved";
+    rs["approval"] = approval;
+    c.data.get("rules/income-tax/jp-2026.json")!["status"] = "approved";
+  };
+  const goodApproval = { reviewRecord: "https://github.com/doc-gif/kurashi-ledger/pull/29#pullrequestreview-1", reviewedHead: "0".repeat(40), approvalPullRequest: "https://github.com/doc-gif/kurashi-ledger/pull/30" };
+  const checks: [string, (c: C) => void, string][] = [
+    ["入力による未対応の例が、未対応の条件に当たらない", (c) => (input(c, "REG-21")["taxpayerEvent"] = { kind: "none" }) && (input(c, "REG-21")["returnKind"] = "regular"), "入力も未対応の条件"],
+    ["計算するケースの入力が未対応の条件に当たる", (c) => (input(c, "REG-02")["taxpayerEvent"] = { kind: "death", date: "2026-12-05" }), "未対応の条件に当たるのに"],
+    ["家族が年の中途で死亡したのに計算する", (c) => (obj(arr(input(c, "REG-11")["relatives"])[0])["livingAtYearEnd"] = false), "未対応の条件に当たるのに"],
+    ["家族の適用要件の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["businessFamilyEmployee"], "businessFamilyEmployeeがない"],
+    ["分からない適用要件で計算する", (c) => (obj(input(c, "REG-11")["spouse"])["sameHousehold"] = "unknown"), "分からない入力があるのにcomputed"],
+    ["incompleteなのに結果がすべて分かる", (c) => (obj(caseOf(c.cases, "REG-02")["expected"])["status"] = "incomplete"), "unknownの結果がない"],
+    ["特定親族の生年月日の範囲", (c) => (obj(c.data.get("rules/income-tax/jp-2025.json")?.["specificRelativeDeduction"])["bornFrom"] = "2003-01-01"), "年齢の上限"],
+    ["特定親族の年齢の範囲がない", (c) => delete obj(c.data.get("rules/income-tax/jp-2026.json")?.["specificRelativeDeduction"])["ageBelow"], "年齢の範囲"],
+    ["適用要件がない", (c) => delete obj(c.data.get("rules/income-tax/jp-2026.json")?.["dependentDeduction"])["eligibility"], "適用要件（eligibility）がない"],
+    ["自動で当てはめない帰属の例が規則の根拠で年を決める", (c) => (obj(obj(arr(c.data.get("rules/salary-income-year/v1.json")?.["examples"])[2])["expected"])["bases"] = ["rule"]), "自動で当てはめない"],
+    ["autoApplyがmanifestと制度データで違う", (c) => (c.data.get("rules/salary-income-year/v1.json")!["autoApply"] = true), "autoApply"],
+    ["approvedの規則に承認の証跡がない", (c) => approved(c, "未確認"), "承認の証跡"],
+    ["承認の証跡のURLが違う", (c) => approved(c, { ...goodApproval, reviewRecord: "https://example.com/x" }), "reviewRecord"],
+    ["承認の証跡のheadがSHAでない", (c) => approved(c, { ...goodApproval, reviewedHead: "abc" }), "reviewedHead"],
+    ["レビューしたPRと同じPRでapprovedにする", (c) => approved(c, { ...goodApproval, approvalPullRequest: "https://github.com/doc-gif/kurashi-ledger/pull/29" }), "別のPR"],
+    ["draftの規則に承認の証跡がある", (c) => (ruleSetOf(c.manifest, "jp-income-tax-salary-2025")["approval"] = goodApproval), "draftの規則のapproval"],
+    ["制度データに承認の証跡を写す", (c) => (c.data.get("rules/income-tax/jp-2025.json")!["approval"] = "未確認"), "manifestのapprovalだけ"],
+    [
+      "approvedのケースの確かめた担当が承認の証跡と違う",
+      (c) => {
+        approved(c, goodApproval);
+        const k = caseOf(c.cases, "REG-02");
+        k["status"] = "approved";
+        obj(k["derivation"])["reviewedBy"] = "https://github.com/doc-gif/kurashi-ledger/pull/29#pullrequestreview-2";
+      },
+      "approval.reviewRecord）と違う",
+    ],
+  ];
+  for (const [name, change, word] of checks) {
+    const p = mutated(change);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+  // 正しい承認の証跡なら、approvedの規則とケースは通る。
+  const ok = mutated((c) => {
+    approved(c, goodApproval);
+    const k = caseOf(c.cases, "REG-02");
+    k["status"] = "approved";
+    obj(k["derivation"])["reviewedBy"] = goodApproval.reviewRecord;
+  });
+  assert.deepEqual(ok.filter((x) => x.includes("REG-02") || x.includes("approval")), []);
 });
 
 test("制度のケースの雛形の値は、規則の検査でも「未確認」のまま扱う", () => {

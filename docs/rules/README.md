@@ -22,7 +22,7 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 | 制度 | 仕様 | 状態 |
 | --- | --- | --- |
 | 所得税（給与所得だけの居住者の年税額: 年末調整・確定申告、令和7年分・令和8年分） | [income-tax.md](income-tax.md) | draft（レビュー待ち） |
-| 給与の所得の年への帰属（T01が委ねた規則） | [salary-income-year.md](salary-income-year.md) | draft（レビュー待ち） |
+| 給与の所得の年への帰属（T01が委ねた規則） | [salary-income-year.md](salary-income-year.md) | draft（レビュー待ち）。自動の帰属は未対応（`autoApply`が`false`。契約の変更は所有者の判断待ち） |
 | 源泉徴収票と明細の比較の対応表（T01が委ねた規則） | [withholding-slip-mapping.md](withholding-slip-mapping.md) | draft（レビュー待ち） |
 | 所得税の給与の支払ごとの源泉徴収 | なし | 未対応 |
 | 住民税、ふるさと納税 | なし（T14のPR B） | 未対応 |
@@ -43,6 +43,9 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 | `spec`・`data` | 仕様の文書と制度データのファイル |
 | `applies` | 適用の範囲。地域（`jurisdiction`）、対象の年・年度（`year`）、計算の規則なら手続（`procedure`）と基準の時点（`referencePoint`）。計算runの`target`がこのどれかに当たるときだけ、この規則を選ぶ（下の「規則の選び方」） |
 | `sources` | 一次資料のid（manifestの`sources`）。制度データの各値の`source`もこのidを指す |
+| `approval` | 承認の証跡の正本（下の「状態と承認」）。`draft`は「未確認」 |
+| `unsupportedInputs`（計算の規則） | 範囲外の入力の条件（`path`の値が`allowed`にない入力）。当たる入力のrunは、`applies`に当たっても`unsupported`。値が`unknown`なら未対応ではなく不足（`incomplete`） |
+| `autoApply`（帰属の規則） | 規則の根拠で自動に年を決めるか。`false`なら、規則は帰属の根拠を作らない |
 
 一次資料（manifestの`sources`の要素）は、`title`・`publisher`・`url`（https）・`primary`・`documentUpdatedOn`（資料の更新日）・`documentDateBasis`・`retrievedOn`（取得日）を持つ。
 
@@ -55,7 +58,8 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 ## 状態と承認
 
 - `draft`の規則と制度のケースは、一次資料から書いたが、まだ別の担当が確かめていないもの。計算器・照合の承認済みの規則として使わない（契約の「規則がまだないとき」のまま。T11の比較は`rule-pending`、帰属は`undetermined`、計算runは`unsupported`）。
-- **承認:** 実装していない別の担当が、PRのレビューで一次資料と期待値を確かめ（`decision: accepted`）、そのPRがmainに統合されたあと、規則と制度のケースの`status`を`approved`にする変更を、レビュー記録（PRとレビューのコメント）を`reviewedBy`に書いて行う。この変更も別の担当のレビューを受ける。実装担当が自分で`approved`にしない。
+- **承認:** 実装していない別の担当が、PRのレビューで一次資料と期待値を確かめ（`decision: accepted`）、そのPRがmainに統合されたあと、**別のPR**で、manifestの規則の`status`を`approved`にし、`approval`に証跡を書く。この別のPRも、実装していない別の担当の独立したレビューを受ける。内容のPRの`accepted`を、あとの承認のcommitの承認とはみなさない。実装担当が自分で`approved`にしない。
+- **承認の証跡（正本はmanifestの`approval`）:** `{ reviewRecord, reviewedHead, approvalPullRequest }`。`reviewRecord`は内容を確かめたレビュー（またはレビューの記録のコメント）のURL（`https://github.com/doc-gif/kurashi-ledger/pull/<番号>#pullrequestreview-<id>`か`#issuecomment-<id>`）、`reviewedHead`はそのレビューが対象にしたheadの40文字のSHA、`approvalPullRequest`は`approved`にしたPRのURL（`reviewRecord`のPRとは別）。`draft`の規則の`approval`は「未確認」。制度データには証跡を写さず、`status`だけを写す（manifestと同じことを検査する）。`approved`の制度のケースの`derivation.reviewedBy`は、その規則の`approval.reviewRecord`と同じURL。検査が、空・「未確認」・形の違う証跡と、写しの食い違いを拒否する。
 - 承認した規則の版の値は書き換えない。誤りや制度の改正は、新しい版（`version`）を足して扱う。過去の計算runは、そのrunの`ruleSet`の版で読めるように、古い版を残す（[計算結果](../contracts/calculation-results.md)の3）。
 - 制度のケースは、`approved`の規則だけを使うときに`approved`にできる（検査が確かめる）。
 
@@ -90,7 +94,7 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 
 [計算結果](../contracts/calculation-results.md)の1の「手続と基準の時点」のとおり、規則は年・年度だけで選ばず、`target`の地域・年（年度）・手続・基準の時点で選ぶ。
 
-1. `target.jurisdiction`・`target.year`・`target.procedure`が、manifestのある規則の`applies`の要素と一致し、`referencePoint`がその要素の範囲（`from`以後、`to`があれば`to`より前）にあれば、その規則を選ぶ。別の規則（`id`）どうしの範囲は重ねない（検査が確かめる）ので、当たる規則は高々1つ。同じ規則に版が2つ以上あれば、承認済みの最も新しい版を選び、使った版をrunの`ruleSet`に残す（古い版は過去のrunのために残す）。
+1. `target.jurisdiction`・`target.year`・`target.procedure`が、manifestのある規則の`applies`の要素と一致し、`referencePoint`がその要素の範囲（`from`以後、`to`があれば`to`より前）にあれば、その規則を選ぶ。選んだ規則の`unsupportedInputs`に当たる入力なら、結果の状態は`unsupported`。別の規則（`id`）どうしの範囲は重ねない（検査が確かめる）ので、当たる規則は高々1つ。同じ規則に版が2つ以上あれば、承認済みの最も新しい版を選び、使った版をrunの`ruleSet`に残す（古い版は過去のrunのために残す）。
 2. 当たる規則がない（未対応の手続・年・地域、施行日前の基準の時点等）、`jurisdiction`が`known`でない、`referencePoint`が`unknown`なら、結果の状態は`unsupported`（契約の2）。
 3. `status`が`draft`の規則は、承認されるまで選ばない（`unsupported`のまま）。制度のケースは`draft`の規則で書き、承認と同時に使える。
 
@@ -100,7 +104,7 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 
 | 契約が委ねた事項 | 答え |
 | --- | --- |
-| 所得の年への帰属の規則（[照合の規則](../contracts/reconciliation.md)の8） | [salary-income-year.md](salary-income-year.md)。帰属の候補の年の表の次元（支払予定日）だけを使い、契約を変えない。行ごとの帰属は不要（理由は同資料） |
+| 所得の年への帰属の規則（[照合の規則](../contracts/reconciliation.md)の8） | [salary-income-year.md](salary-income-year.md)。根拠は所基通36-9（支給日の定めによる）。契約版1.0の明細では範囲外の給与を見分けられないので、自動の帰属は未対応（支払予定日の年は表示の候補だけ）。見分ける項目等の契約の変更は所有者の判断待ち。行ごとの帰属は不要（理由は同資料） |
 | 年間資料と明細の比較の対応表（同5） | [withholding-slip-mapping.md](withholding-slip-mapping.md)。対応表にない項目は契約どおり`rule-pending` |
 | 各項目の制度上の意味（[記録の型](../contracts/records.md)の6の「前職分がどの項目に含まれるか」等） | [withholding-slip-mapping.md](withholding-slip-mapping.md)の各項目の「意味」 |
 | 地域の符号の体系（計算結果の1の`Target`） | 上の「地域の符号」 |

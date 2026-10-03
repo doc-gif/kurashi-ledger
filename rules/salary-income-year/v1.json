@@ -6,17 +6,24 @@
   "note": "給与の所得の年への帰属の規則。意味・範囲・契約との対応はdocs/rules/salary-income-year.md。",
   "basis": {
     "description": "給与所得の収入金額の収入すべき時期は、契約・慣習等で支給日が定められている給与等はその支給日、支給日が定められていないものは支給を受けた日。給与規程の改訂が既往にさかのぼって実施された新旧給与の差額は、支給日が定められていればその支給日、定められていなければ改訂の効力が生じた日。役員賞与のうち利益を基礎として支給金額が定められるものは決議等の日、認定賞与は別の時期。",
-    "source": { "ref": "nta-ta-2509", "location": "一般の給与・役員に対する賞与・給与規程の改訂（ベースアップ）に伴う新旧給与の差額の支給・いわゆる認定賞与とされる給与等（根拠法令等: 所法36、所基通36-9）" },
-    "crossCheckSource": { "ref": "nta-2025tsukin-qa", "location": "Q3（「支払われるべき」日の判定の、所基通36-9と同じ区分）" }
+    "source": {
+      "ref": "nta-ta-2509",
+      "location": "一般の給与・役員に対する賞与・給与規程の改訂（ベースアップ）に伴う新旧給与の差額の支給・いわゆる認定賞与とされる給与等（根拠法令等: 所法36、所基通36-9）"
+    },
+    "crossCheckSource": {
+      "ref": "nta-2025tsukin-qa",
+      "location": "Q3（「支払われるべき」日の判定の、所基通36-9と同じ区分）"
+    }
   },
   "rule": {
-    "input": "payslip.scheduledPayDate",
-    "assumption": "給与明細に書かれた支給日（scheduledPayDate）を、契約・慣習等で定められた支給日として扱う。",
-    "result": "scheduledPayDateがknownなら、その日の暦年を所得の年とする。",
-    "notApplied": [
-      { "case": "scheduledPayDateがunknown・not-stated", "result": "規則を当てはめない（帰属の根拠にならない）。入金日・勤務期間・対象の表示で補わない。" },
-      { "case": "対象年が規則のappliesにない（令和7年・令和8年以外の暦年）", "result": "規則を当てはめない。" }
-    ],
+    "autoApply": false,
+    "result": "規則の根拠で所得の年を決めない（契約の照合の規則の8の「規則」の根拠を作らない）。帰属は年間資料（annual-coverage）と利用者の指定（tax-year-assertion）だけで決まり、どちらもなければundetermined。",
+    "reason": "所基通36-9では、支給日の定めがない給与（支給を受けた日）、支給日の定めがない遡及差額（改訂の効力が生じた日）、利益を基礎とする役員賞与（決議等の日）、認定賞与が、支給日と別の時期になる。契約版1.0の給与明細には、これらを見分ける項目も、規則の対象外と記録する手段もないので、支払予定日の年を規則の年にすると、利用者の指定がない限り誤った年が黙って使われる。",
+    "displayedCandidate": {
+      "input": "payslip.scheduledPayDate",
+      "value": "scheduledPayDateがknownなら、その暦年",
+      "use": "利用者が所得の年を指定する（tax-year-assertion）ときに、通常の給与（契約・慣習等で支給日が定められた給与）の所得の年の候補として表示するだけ。帰属の根拠にも、集計の範囲の絞り込みにも使わない。範囲外の給与の時期（決議の日等）がありうることを併せて示す。"
+    },
     "outOfScope": [
       "支給日の定めがない給与等（支給を受けた日による）",
       "遡及差額のうち支給日の定めがないもの（改訂の効力が生じた日による）",
@@ -24,6 +31,65 @@
       "いわゆる認定賞与",
       "経済的利益（現物給与）"
     ],
-    "outOfScopeHandling": "契約版1.0の明細には、これらを見分ける項目がない。これらの明細も支給日から年を導くので、実際の時期と違う場合は、利用者の指定（tax-year-assertion）と食い違ってconflictになる（黙って違う年に数えない）。conflictを規則の側で外す手段は契約にない（docs/rules/salary-income-year.mdの「契約への候補」）。"
-  }
+    "contractCandidate": "給与明細に「支給日の定めの種類」（契約・慣習等で定められた支給日か、ほかの時期か）を記録する項目を足し、定められた支給日の給与だけにこの規則を自動で当てはめる契約の変更。所有者の判断待ち（決まるまでautoApplyはfalse）。"
+  },
+  "autoApply": false,
+  "examples": [
+    {
+      "id": "SIY-1",
+      "title": "年をまたぐ範囲外の給与（利益を基礎とする役員賞与）で、利用者の指定がない",
+      "payslip": {
+        "paymentKind": "bonus",
+        "scheduledPayDate": "2026-01-09",
+        "workPeriod": "not-stated"
+      },
+      "facts": "賞与の額は2025-12-20の決議で定まった（明細からは分からない。所基通36-9では2025年の収入）。年間資料との結び付けも利用者の指定もない。",
+      "expected": {
+        "attribution": "undetermined",
+        "incomeYear": "unknown",
+        "candidateYears": "all",
+        "displayedCandidate": 2026,
+        "note": "規則の根拠では2026年に決めない（決めると正しい2025年と違う年に黙って数える）。勤務期間がnot-statedなので、候補の年は契約の表のとおりすべての年。表示の候補の2026年は、利用者が確かめるための表示だけ。"
+      }
+    },
+    {
+      "id": "SIY-2",
+      "title": "通常の給与で、支払予定日と入金日の年が違い、利用者の指定がない",
+      "payslip": {
+        "paymentKind": "salary",
+        "scheduledPayDate": "2026-12-25",
+        "workPeriod": "2026-11-21〜2026-12-20"
+      },
+      "facts": "入金日2027-01-05の入金と確定済みのtransfer-to-depositで結んでいる。年間資料との結び付けも利用者の指定もない。",
+      "expected": {
+        "attribution": "undetermined",
+        "incomeYear": "unknown",
+        "candidateYears": [
+          2026,
+          2027
+        ],
+        "displayedCandidate": 2026,
+        "note": "候補の年は契約の表のとおり、支払予定日・勤務期間の2026年と入金日の2027年。規則の根拠を作らないので、2026年・2027年の所得の年の集計はどちらもincomplete。"
+      }
+    },
+    {
+      "id": "SIY-3",
+      "title": "SIY-2に利用者が2026年を指定した",
+      "payslip": {
+        "paymentKind": "salary",
+        "scheduledPayDate": "2026-12-25",
+        "workPeriod": "2026-11-21〜2026-12-20"
+      },
+      "facts": "SIY-2に、有効なtax-year-assertion（2026年）を加えた。",
+      "expected": {
+        "attribution": "determined",
+        "incomeYear": 2026,
+        "bases": [
+          "user-assertion"
+        ],
+        "displayedCandidate": 2026,
+        "note": "根拠は利用者の指定だけ（規則の根拠は含まない）。"
+      }
+    }
+  ]
 }

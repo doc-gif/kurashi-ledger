@@ -183,7 +183,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
   - 入力`input`（空でないobject）と期待値`expected`（`{ results: [{ key, valueType: yen・decimal, value: Fact }] }`、1件以上）。
   - 導き方`derivation`（`method`と、2つ目の独立した導き方`crossCheck`と、確かめた担当`reviewedBy`が空でなく、`independentOfImplementation: true`。`reviewedBy`の「未確認」は`draft`だけに許す）。
 - 値を入れるのはT14（一次資料で確かめ、承認したものだけ）。年・地域・原典・丸めのどれかが欠けたケースは`approved`にできない。
-- T14の規則の検査（`tests/rules/rules.test.ts`）が、`placeholder`でないケースについてさらに確かめること: `ruleSet`が`rules/manifest.json`の規則の版に実在し、制度が同じこと（`approved`のケースは`approved`の規則だけ）、`sources`がmanifestの一次資料と同じ値で、その規則の資料であること、`expected.status`（`computed`・`provisional`・`incomplete`・`unsupported`。計算runの結果の状態の期待）、`unsupported`以外は`target`が規則の適用の範囲に当たり、`unsupported`は当たる規則がなく結果がすべて`unknown`であること、丸めの手順の`before`・`after`が計算し直せて（計算結果の1の4つの丸め方）、同じ項目の手順がつながり、最後の`after`が期待値と同じで、制度データの丸め（項目・方法・単位）にあること。期待値の導き方と承認の手順は[制度の規則](../rules/README.md)の「期待値の導き方」「状態と承認」。
+- T14の規則の検査（`tests/rules/rules.test.ts`）が、`placeholder`でないケースについてさらに確かめること: `ruleSet`が`rules/manifest.json`の規則の版に実在し、制度が同じこと（`approved`のケースは`approved`の規則だけ）、`sources`がmanifestの一次資料と同じ値で、その規則の資料であること、`expected.status`（`computed`・`provisional`・`incomplete`・`unsupported`。計算runの結果の状態の期待）、`unsupported`以外は`target`が規則の適用の範囲に当たり、入力が規則の未対応の条件（`unsupportedInputs`）に当たらず、`computed`・`provisional`は分からない入力（家族の適用要件・未対応の条件の値の`unknown`）を持たず、`incomplete`は`unknown`の結果を持つこと、`unsupported`は、当たる規則がないか入力が未対応の条件に当たり、結果がすべて`unknown`であること、家族の入力が制度データの適用要件（`eligibility`）の項目をすべて持つこと、`approved`のケースの`reviewedBy`が規則の承認の証跡と同じこと、丸めの手順の`before`・`after`が計算し直せて（計算結果の1の4つの丸め方）、同じ項目の手順がつながり、最後の`after`が期待値と同じで、制度データの丸め（項目・方法・単位）にあること。期待値の導き方と承認の手順は[制度の規則](../rules/README.md)の「期待値の導き方」「状態と承認」。
 
 ## 後続タスクの使い方
 
