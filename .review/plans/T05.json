@@ -61,7 +61,7 @@
       "resolution": "docs/development.mdの表を正本のまま、各行に許す試験の名前を「」で書き（ファイル・件数・名前）、照合はファイルごとの名前の集合を過不足なく比べる。件数は名前の数と、表の下の件数の文の合計とも照合する。理由は期待値に含めない（理由の文字列の正本は試験のファイルで、表は理由を文章で説明する）。代わりに、skipごとに理由の文字列があること（既定のSKIPでないこと）を確かめて記録し、理由の妥当性はレビューで表と読み合わせる。同じファイルの中のすり替えを拒む回帰試験を加える。docsの表の名前が、そのファイルの中でskipの指定を持つ試験の名前であることも試験で確かめる。"
     },
     {
-      "description": "台帳のT05の受入条件は、Windowsの実機でのCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの手での確認を含むが、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達）で、これらをT05から外して別のIssueにすることになった。",
+      "description": "台帳のT05の受入条件は、Windowsの実機でのCtrl+C（130）・Ctrl+Break（149）・印を消せないときのCtrl+Cの手での確認を含むが、2026-10-03の所有者決定（実装側のチャットで所有者が答え、調整係が伝達。所有者本人がPR #18のCodexの記録5965890988で直接確認した）で、これらをT05から外して別のIssueにすることになった。",
       "state": "resolved",
       "resolution": "Issue #19を作り、手順・期待する結果・記録の様式・経緯（T02→T05→#19）をそこに一度だけ書く。#19はどのタスクにも依存せず、T26・T28をブロックしない。台帳のT05、docs/development.md、ADR一覧のT05行、ADR-0008、T02の試験のskipの理由・注記、状態資料、Copilotの指示は、#19を参照する形に直し、手順を書き写さない。T05の受入はCIでのskipの照合（Windowsで表の試験だけが飛ばされること）までとし、PR #18は#17を閉じる。"
     },
@@ -81,9 +81,14 @@
       "resolution": "照合で、表に書いた試験の名前（どの環境の行のものも）とskipした試験の名前が、その実行の結果の行（✔・✖・﹣・⚠。要約より前の本文）にちょうど1回だけ現れることを確かめ、2回以上なら失敗にする（同じ名前の試験の間のすり替えを、名前で見分けられないため）。表の名前は、試験のファイルの中にも1回だけ現れることを、docsの表の試験で確かめる。同じファイルの同じ名前のすり替えの回帰試験を加える。Playwrightの照合は、名前で突き合わせず、試験ごと（TestCaseとproject）に分類し、skipを1件も許さないので、同じ穴はない。node:testのレポーターの出来事（file・line・column）で突き合わせる方法は、npm testのコマンドを変える必要があり、一意性の確認で足りるので採らない。"
     },
     {
-      "description": "Copilot 4171461460: docs/review-prevention.mdだけが、必須のcheck・rulesetの設定を「T23で状態検査と合わせて扱う」としていて、状態資料とdocs/development.mdの現行方針（T05のマージ後にQuality gateを必須のstatus checkにし、最新のbaseを求める設定を有効にする。所有者本人の確認はPR18-O001で待っている）と食い違う。tools/review_guard/README.mdも「T05/T23で…必須レビュー／ruleset等を設計・設定」と、時期を分けていない。",
+      "description": "Copilot 4171461460: docs/review-prevention.mdだけが、必須のcheck・rulesetの設定を「T23で状態検査と合わせて扱う」としていて、状態資料とdocs/development.mdの現行方針（T05のマージ後にQuality gateを必須のstatus checkにし、最新のbaseを求める設定を有効にする。この時点では所有者本人の確認はPR18-O001で待っていた。のちにPR #18のCodexの記録5965890988で確認済み）と食い違う。tools/review_guard/README.mdも「T05/T23で…必須レビュー／ruleset等を設計・設定」と、時期を分けていない。",
       "state": "resolved",
-      "resolution": "必須のstatus check（Quality gateだけ）と「Require branches to be up to date before merging」の適用はT05のマージ後（実装側が設定。所有者本人の確認待ち）と書き、workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と迂回試験はT23に残すと分けて書く。review-prevention.md・tools/review_guard/README.md・docs/development.md・状態資料で同じ書き方にし、T23に残す内容を台帳のT23にも書く（PR2-R003の教訓: 後続へ残す判断は台帳に書く）。"
+      "resolution": "必須のstatus check（Quality gateだけ）と「Require branches to be up to date before merging」の適用はT05のマージ後（実装側が設定。所有者本人の確認: PR #18のCodexの記録5965890988）と書き、workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と迂回試験はT23に残すと分けて書く。review-prevention.md・tools/review_guard/README.md・docs/development.md・状態資料で同じ書き方にし、T23に残す内容を台帳のT23にも書く（PR2-R003の教訓: 後続へ残す判断は台帳に書く）。"
+    },
+    {
+      "description": "PR18-O001（Codexのレビュー5398640257・5398804163・5399119092、Copilot 4171773364）: 必須のstatus checkをQuality gateだけにする、最新のbaseを求める設定を有効にする、計画の検査をQuality gateに含める、Windowsの実機の3つの確認をT05から#19へ移してT26・T28を止めない、の4点は、実装側のチャットからの伝達だけで、所有者本人の直接の確認がなかった。PR本文・計画・状態資料・台帳・開発環境の資料に「所有者本人の確認待ち」と書いていた。",
+      "state": "resolved",
+      "resolution": "所有者本人が、2026-10-03にCodexのチャットで4点を直接確認した（PR #18のCodexの記録5965890988、owner_confirmation: received-directly-in-codex-chat）。決定の内容は変えず、「確認待ち」の注記をこの確認済みの決定に合わせ、根拠を「PR #18のCodexの記録5965890988」と書く。Windowsの実機の3つの確認の実施は未完了のまま#19に残る。必須のcheckと最新のbaseを求める設定は、T05のマージ後に実装側が設定する（このPRではrepo設定を変えない）。"
     }
   ],
   "assessments": [
@@ -170,7 +175,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "CIの合格を承認・マージ条件の充足として扱わない。CIはコメント・レビュー・ラベル・マージを行わず、権限はcontents: readだけで、pull_request（pull_request_targetやworkflow_runではない）で動く。計画の検査は、テンプレートのとおりbaseのcheckoutの検査器（changed_paths.py・ci.py）を`python3 -E -s`で実行し、PRのコードを実行しない（1つのPRに変更した計画が1つ、名前とtask_idの一致、古いbaseの拒否はbaseの検査器が行う。PR4-R014・PR4-R018）。workflow自体をPRで変えられるので、CIの合格は迂回を防がない（PR4-R001）。このことと、CIの合格が独立レビューの代わりにならないことを、AGENTS・review-prevention・READMEの入口に書く。原因台帳（.review/findings.json）と条件（.review/invariants.json）は変えない。 PR18-R001への対応として、skipの照合を件数からファイルごとの試験の名前の集合へ強める。2026-10-03の所有者決定（実装側のチャットで、調整係が伝達）: 必須のstatus checkは`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする。どちらもrepo設定なので、このPRでは変えず、T05のマージ後に実装側のmainのセッションが適用する（PR本文に記録）。計画の検査（review plan）をQuality gateに含める設計は承認された。 Copilot 4171461440（PR18-R001の再発）への対応として、skipの照合で、表とskipの試験の名前が実行の結果の中で一意であることを確かめる。必須のstatus checkの適用時期（T05のマージ後）と、独立レビューを必須にする保護と迂回試験（T23）を分けて書く（Copilot 4171461460）。 base 55333d3で出典が加わったPR11-R112（計画の確認方法と期待結果を、実際の差分と後から加えた方針に合わせる）に照らして、各回の修正（PR18-R001・R002、Windowsの確認の#19への分離、必須のcheckの時期）で確認方法と期待結果を更新してきたことを読み直した。照合の回帰試験の設定（e2e/reporter-fixtures/、retries・globalTimeoutを場合ごとに変える）は、npm testの中の試験だけが使い、npm run test:browserの設定（playwright.config.ts。retriesは0）には含まれないことをINV-HTTPの確認に加える。",
+      "reason": "CIの合格を承認・マージ条件の充足として扱わない。CIはコメント・レビュー・ラベル・マージを行わず、権限はcontents: readだけで、pull_request（pull_request_targetやworkflow_runではない）で動く。計画の検査は、テンプレートのとおりbaseのcheckoutの検査器（changed_paths.py・ci.py）を`python3 -E -s`で実行し、PRのコードを実行しない（1つのPRに変更した計画が1つ、名前とtask_idの一致、古いbaseの拒否はbaseの検査器が行う。PR4-R014・PR4-R018）。workflow自体をPRで変えられるので、CIの合格は迂回を防がない（PR4-R001）。このことと、CIの合格が独立レビューの代わりにならないことを、AGENTS・review-prevention・READMEの入口に書く。原因台帳（.review/findings.json）と条件（.review/invariants.json）は変えない。 PR18-R001への対応として、skipの照合を件数からファイルごとの試験の名前の集合へ強める。2026-10-03の所有者決定（実装側のチャットで所有者が答え、調整係が伝達。所有者本人がPR #18のCodexの記録5965890988で直接確認した。PR18-O001は解決）: 必須のstatus checkは`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする。どちらもrepo設定なので、このPRでは変えず、T05のマージ後に実装側のmainのセッションが適用する（PR本文に記録）。計画の検査（review plan）をQuality gateに含める設計は承認された。 Copilot 4171461440（PR18-R001の再発）への対応として、skipの照合で、表とskipの試験の名前が実行の結果の中で一意であることを確かめる。必須のstatus checkの適用時期（T05のマージ後）と、独立レビューを必須にする保護と迂回試験（T23）を分けて書く（Copilot 4171461460）。 base 55333d3で出典が加わったPR11-R112（計画の確認方法と期待結果を、実際の差分と後から加えた方針に合わせる）に照らして、各回の修正（PR18-R001・R002、Windowsの確認の#19への分離、必須のcheckの時期）で確認方法と期待結果を更新してきたことを読み直した。照合の回帰試験の設定（e2e/reporter-fixtures/、retries・globalTimeoutを場合ごとに変える）は、npm testの中の試験だけが使い、npm run test:browserの設定（playwright.config.ts。retriesは0）には含まれないことをINV-HTTPの確認に加える。",
       "checks": [
         {
           "id": "duplicates",
@@ -226,7 +231,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。完了の条件: Windowsの実機の3つの確認は、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達。所有者本人の確認はPR18-O001で依頼中）でT05の受入から外し、Issue #19（依存のない独立したIssueで、T26・T28をブロックしない）で行う。T05の受入はCIでの照合までで、PR #18は#17を閉じる（Closes #17）。 base aa38a32（PR #16）で更新されたPR2-R003（後続へ残す判断は、依存・決める担当・受入条件を台帳に書く）は、Windowsの実機の確認を#19（依存なし、T26・T28をブロックしない）として台帳のT05に書いた形で守る。PR2-R008（成果物のディレクトリのREADME等の運用手順も入口として照合）とPR10-R004（状態資料をまとめて更新）は、tools/review_guard/README.md・状態資料・台帳・ADR一覧を同じPRで直した形で守る。 base 105332e（T01のPR #11）を取り込んだ。T01の変更（docs/contracts/、READMEの1行、台帳のT01・T17、T01の計画）とT05の変更は衝突しなかった。状態資料のT01の記載（統合済み、#8は完了）を、T05で直している行と合わせて更新する。台帳のT23に、T05から残す内容（workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と迂回試験）を書く。",
+      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。完了の条件: Windowsの実機の3つの確認は、2026-10-03の所有者決定（実装側のチャットで所有者が答え、調整係が伝達。所有者本人がPR #18のCodexの記録5965890988で直接確認した）でT05の受入から外し、Issue #19（依存のない独立したIssueで、T26・T28をブロックしない）で行う。T05の受入はCIでの照合までで、PR #18は#17を閉じる（Closes #17）。 base aa38a32（PR #16）で更新されたPR2-R003（後続へ残す判断は、依存・決める担当・受入条件を台帳に書く）は、Windowsの実機の確認を#19（依存なし、T26・T28をブロックしない）として台帳のT05に書いた形で守る。PR2-R008（成果物のディレクトリのREADME等の運用手順も入口として照合）とPR10-R004（状態資料をまとめて更新）は、tools/review_guard/README.md・状態資料・台帳・ADR一覧を同じPRで直した形で守る。 base 105332e（T01のPR #11）を取り込んだ。T01の変更（docs/contracts/、READMEの1行、台帳のT01・T17、T01の計画）とT05の変更は衝突しなかった。状態資料のT01の記載（統合済み、#8は完了）を、T05で直している行と合わせて更新する。台帳のT23に、T05から残す内容（workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と迂回試験）を書く。",
       "checks": [
         {
           "id": "dependencies",
