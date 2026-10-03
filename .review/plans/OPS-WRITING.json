@@ -72,7 +72,7 @@
       "checks": [
         {
           "id": "duplicates",
-          "method": "Cross-check every finding and past causes PR4-R002, PR11-R112 and PR10-R004 against canonical sources and both templates. Inspect the T23 parser headings without executing another PR.",
+          "method": "Cross-check every finding and past causes PR2-R008, PR11-R112 and PR10-R004 against canonical sources and both templates. Inspect the T23 parser headings without executing another PR.",
           "expected": "All markers/roles/SHA/plan fields and six handoff headings remain; one cause retains one ID, new regressions are not suppressed, and each fix first checks whole-design compatibility and independent expected outcomes."
         },
         {
