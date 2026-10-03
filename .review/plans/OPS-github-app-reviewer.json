@@ -68,6 +68,11 @@
       "description": "PR #40（OPS-WRITING）が6c98de7でmainに入り、AI向けの規約を集約した（AGENTS.mdを英語の短い入口にし、マージ条件の正本を docs/github-agent-operations.md#merge-conditions に置き、Copilotの利用枠不足の暫定条件をそこに書き、external-worker.mdを英語にし、project-status.mdを表にした）。#42はexternal-worker.mdとproject-status.mdで競合した。",
       "state": "resolved",
       "resolution": "mainをmergeで取り込み、#40の構造と正本を優先した。external-worker.mdは#40の版に、英語の短い節（GitHub identity）だけを加えた。project-status.mdは#40の表に1行（AIのGitHub App）だけを加えた。pr-review-loop.mdとgithub-agent-operations.mdの#42の追記は、#40の短い書き方に合わせて縮め、詳しい規則は docs/github-apps.md へのリンクにした。マージ条件とCopilotの暫定条件は、#42では書き直さず、正本（#merge-conditions）へのリンクにした（docs/github-apps.md のレビューの節）。#40の完了で、後へ回していたAGENTS.mdからの参照を加えた（英語の2文。AppはAIの身元、写しから実行、ほかのAIの鍵を読まない、自分のPRを承認しない）。開いているPRとの重なりを確かめ直した: #38（T23）・#37・#36・#33・#29・#28・#25が、implementation-tasks.md・project-status.md・development.md・AGENTS.md・github-agent-operations.md・findings.jsonを変える。#42の変更はどれも短い追記で、後でマージする側が照合する。#44（計画の表）は計画の書式を版2にする予定で、このPRの計画は、#44の検査器でも通るよう、版1のまま boundaries と variant_analysis を加えた。"
+    },
+    {
+      "description": "事前の独立レッドチームの確認（2d34c5e、記録: https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970916204）: P2-1 curl 8.16.0以降のlibcurlは環境変数NETRCをHOMEより前に読むので、親のNETRCが残ると所有者の資格情報が使われうる。P3: 文書の参照先・401の言い方・信頼した写しの手順。後へ回す候補: P3-4、P3-5、P3-7。",
+      "state": "resolved",
+      "resolution": "方針は変えない（子のghとgitは、Appのトークン以外の資格情報を指す設定・変数を受け継がない）。NETRCをREMOVED_ENVに加える（存在しないパスに置き換えない。Windowsのcurlは、その場合に_netrcへ戻るため、外すほうが安全）。資格情報を指しうる環境変数を洗い出してvariant_analysisに書いた。P3-1〜P3-3と、信頼した写しの手順（`|| exit 1`、WindowsのPowerShell・cmdでのNODE_OPTIONSの外し方）を直す。P3-4は小さいので今回行う: 発行の要求（POST）はシグナルで中断せず15秒の上限だけにし、受け取ったトークンは失効させる（中断すると、発行済みのトークンを受け取れず失効できないため）。後へ回す: P3-5（Windowsでは、子も同じコンソールのCtrl+C・Ctrl+Breakを受けるので転送しない案。Windowsの実機での確認と一緒に扱う。いまは未確認として列挙済み）、P3-7（PRのcheckoutの中にあるPATHの絶対パスの項目。カレントディレクトリの案内と限界の節で扱っており、コードで判定するにはcheckoutの場所の一覧が要る）。"
     }
   ],
   "assessments": [
@@ -640,6 +645,10 @@
         {
           "location": "投稿・push・PRの作成のあとの身元",
           "result": "文書の手順で.user.login・activityのactor・PRのauthorを確かめる"
+        },
+        {
+          "location": "資格情報を指しうる環境変数（親から子へ）",
+          "result": "gh: GH_TOKEN・GITHUB_TOKEN・GH_ENTERPRISE_TOKEN・GITHUB_ENTERPRISE_TOKEN・GH_HOST・GH_CONFIG_DIR（外して、子のものを設定）。git: GIT_ASKPASS・SSH_ASKPASS・GIT_SSH・GIT_SSH_COMMAND・GIT_CONFIG*（GIT_CONFIG_GLOBAL・GIT_CONFIG_SYSTEM・GIT_CONFIG_PARAMETERS・GIT_CONFIG_COUNT/KEY/VALUE）・GIT_TERMINAL_PROMPT・GCM_*（外して、子のものを設定）。libcurl: NETRC（外す。curl 8.16.0以降はHOMEより前に読む）、HOME（子の空の一時のディレクトリ）。USERPROFILE（WindowsのcurlはHOMEがあればHOMEを使うので、HOMEを設定した子では使われない。変えない）。XDG_CONFIG_HOME（gitはGIT_CONFIG_GLOBALがあれば読まない、ghはGH_CONFIG_DIRがあれば読まない。変えない）。CURL_HOME・CURL_CA_BUNDLE等（curlのコマンドだけが読み、libcurlは資格情報に使わない。変えない）。試験: 子の環境のdeepEqualで外れること、127.0.0.1の試験で親にNETRCを置いても送られないこと"
         }
       ]
     },
