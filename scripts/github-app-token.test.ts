@@ -987,17 +987,28 @@ test('発行したトークンは得た直後から既知の秘密として伏�
   }
 });
 
-test('文書と入口の例は、トークンをシェルの変数で受ける形（失敗時に保存済みの資格情報へ戻る）を使わない', () => {
+test('文書と入口の例は、トークンをシェルの変数で受ける形（失敗時に保存済みの資格情報へ戻る）を使わず、信頼した写しと ` -- ` で子に渡す', () => {
   const root = join(import.meta.dirname, '..');
-  for (const file of ['docs/github-apps.md', 'docs/pr-review-loop.md', 'docs/external-worker.md', 'SECURITY.md', 'scripts/github-app-token.ts', 'scripts/lib/github-app-token.ts']) {
+  const files = ['docs/github-apps.md', 'docs/pr-review-loop.md', 'docs/external-worker.md', 'docs/github-agent-operations.md', 'AGENTS.md', 'SECURITY.md', 'scripts/github-app-token.ts', 'scripts/lib/github-app-token.ts'];
+  // 使わない理由を説明する背景の1行だけを除く（その行は、例ではなく「使わない」と書いた説明）。
+  const background = 'トークンを標準出力に出して`GH_TOKEN="$(…)"`で受ける形は';
+  let examples = 0;
+  for (const file of files) {
     const text = readFileSync(join(root, file), 'utf8');
     for (const line of text.split(/\r?\n/)) {
-      // 例のコードとして $(node …github-app-token…) や GH_TOKEN=… を書かない（使わない理由の説明の行は除く）。
-      if (/使わない|PR42-R004/.test(line)) continue;
-      assert.doesNotMatch(line, /\$\(\s*node[^)]*github-app-token/, `${file}: ${line.slice(0, 80)}`);
+      if (line.includes(background)) continue;
+      assert.doesNotMatch(line, /\$\(\s*(?:env\s[^)]*)?node[^)]*github-app-token/, `${file}: ${line.slice(0, 80)}`);
       assert.doesNotMatch(line, /\bGH_TOKEN="?\$/, `${file}: ${line.slice(0, 80)}`);
+      // 実行の例（文書の中の --agent を渡す行）は、NODE_OPTIONSを外し、信頼した写しのパスから実行し、` -- `でコマンドを渡す。
+      if (file.startsWith('docs/') && /github-app-token\.ts" --agent /.test(line)) {
+        examples++;
+        assert.match(line, /^env -u NODE_OPTIONS node "\$KL_APP_TOKEN_DIR\/github-app-token\.ts" --agent (codex|claude|<codex\|claude>) --purpose \S+ (?:.* )?-- \S/, `${file}: ${line.slice(0, 100)}`);
+      }
     }
   }
+  assert.ok(examples >= 10, `実行の例が少ない（${examples}件）。検査が例を見つけられていない`);
+  const background_count = readFileSync(join(root, 'docs/github-apps.md'), 'utf8').split(background).length - 1;
+  assert.equal(background_count, 1, '除外する背景の行は1つだけ');
 });
 
 test('出力を伏せる処理は、長い英数字の並びと既知の秘密を伏せ、serviceの名前等は残す', () => {

@@ -661,9 +661,10 @@
       "id": "PR42-R004",
       "invariant_id": "INV-REVIEW",
       "cause_key": "credential-fallback-on-mint-failure",
-      "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。",
+      "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。 子プロセスに渡す場合も、ghとgitが読む保存済みの資格情報（.netrc、利用者・repoの設定のhelperやheader）を打ち消す。",
       "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029",
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565"
       ]
     },
     {

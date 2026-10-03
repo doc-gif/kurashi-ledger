@@ -54,7 +54,7 @@ README: <更新したREADMEと内容、または「更新不要」と理由（AG
 
 実装者とGitHubアカウントが同じ場合はCOMMENTとして記録する。自分で作成した変更を独立レビュー済みと扱わない。投稿直前にhead/baseとworker状態を再取得し、途中で変わった場合は完了レビューを投稿しない。
 
-AIごとのGitHub App（[AIのGitHub App](github-apps.md)）で投稿する場合も、本文は下の書式のまま、自分のAIのAppの`--purpose review`のトークンで投稿する。トークンのスクリプトはPRのcheckoutから実行せず、レビュー済みのmainのSHAから取り出した写しで実行する。投稿のあとで、投稿者が自分のAppのbotであることを確かめる。`decision: accepted`はレビューしたheadのSHAを`commit_id`に指定した`APPROVE`、`changes-requested`は`REQUEST_CHANGES`（または`COMMENT`）、`needs-owner`は`COMMENT`にする。レビューしたhead以外を承認しない。`role`のAIと投稿したAppのAIは一致させる。AIは、自分が実装したPRや、自分がpushしたPRを承認しない。Appの承認も、rulesetを設定するまでは（所有者の確認待ち）マージの必須条件ではない。
+自分のAIのGitHub Appで投稿するときも、本文は下の書式のまま。`accepted`はレビューしたheadを`commit_id`に指定した`APPROVE`にし、投稿者が自分のAppのbotであることを確かめる。自分が実装・pushしたPRは承認しない。手順と、PRのcheckoutからスクリプトを実行しない規則は[AIのGitHub App](github-apps.md)の「レビューの投稿」。
 
 ```text
 <!-- kurashi-ledger:review:v1 -->
@@ -71,7 +71,7 @@ PR<N>-R001: <箇所・問題・影響・直してほしい条件>
 PR<N>-R002: <同上>
 ```
 
-新規指摘にはPR番号付きIDを付ける。既存のR-001等はそのPR番号と組み合わせてPR<N>-R001へ対応付け、再採番しない。role: reviewer（旧表記）もcodex-reviewer / claude-reviewerと同じ役割として読み、重複投稿しない。agent_idは協調用の表示で本人確認の証明ではない（Appで投稿したレビューは、投稿者のbotのloginでAIを確かめられる）。同じ指摘は修正後も同じIDで追跡する。decisionと指摘IDは運用記録であり、COMMENTでの記録はGitHubの正式Approveに相当するものではない（Appの`APPROVE`はGitHubの承認だが、rulesetを設定するまでは強制されない）。acceptedにも対象SHAと検証の限界を記載する。
+新規指摘にはPR番号付きIDを付ける。既存のR-001等はそのPR番号と組み合わせてPR<N>-R001へ対応付け、再採番しない。role: reviewer（旧表記）もcodex-reviewer / claude-reviewerと同じ役割として読み、重複投稿しない。agent_idは協調用の表示で本人確認の証明ではない。同じ指摘は修正後も同じIDで追跡する。decisionと指摘IDは運用記録であり、GitHubの正式Approveに相当するものではない。acceptedにも対象SHAと検証の限界を記載する。
 
 ## 4. 実装側の次の巡回
 
