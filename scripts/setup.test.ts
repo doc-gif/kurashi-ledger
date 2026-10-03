@@ -419,9 +419,10 @@ test('node_modulesがリポジトリの外へのリンクなら、setup・check:
 // （tests/support/windows-console.ts）。
 // Windowsのnpmは、Ctrl+Cを受けるとスクリプトのシェル（cmd.exe）を強制終了して自分も終わる（@npmcli/run-script）ので、
 // npm runの終了コードはsetupのものにならず、setupの片付けより先に戻ることがある（CIで1、残りのプロセス3を観測）。
-// この扱いは所有者の判断待ちなので、その値を期待値に固定しない。コンソールのすべてのプロセスが終わるのを待ってから
-// 確かめ、npm runの終了コードは0でないことを確かめ、観測した終了コードと、npmが終わったときに残っていたプロセスの数を
-// diagnosticに出す。setup自身の終了コード（130・149）は、setupを直接起動する scripts/setup-lock.test.ts で確かめる。
+// 2026-10-03の所有者決定で、これをnpmの仕様として受け入れ、npm run経由の終了コードは0以外であればよいとした
+// （保証の対象は、setup自身の130・149と、全プロセスの終了後に記録と印が残らないこと）。そこで、コンソールのすべての
+// プロセスが終わるのを待ってから確かめ、npm runの終了コードは0以外であることを確かめ、観測した終了コードと、npmが
+// 終わったときに残っていたプロセスの数をdiagnosticに出す。setup自身の終了コード（130・149）は、setupを直接起動する scripts/setup-lock.test.ts で確かめる。
 // 強制終了で印が残る場合も scripts/setup-lock.test.ts が全OSで確かめる。
 
 type NpmStop = {
