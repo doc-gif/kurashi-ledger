@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
   "task_id": "ISSUE19",
   "planned_paths": [
     ".github/workflows/ci.yml",
@@ -29,6 +29,11 @@
       "description": "GitHubのWindowsのrunnerは管理者で動くので、管理者でないユーザーでの動き（symlinkを作れないときの弱めた確認、T26の本人だけのACL）は、CIでは確かめられていなかった。",
       "state": "resolved",
       "resolution": "Windowsで一時の一般のローカルユーザーを作り、そのユーザーとしてログオンして（Start-Process -Credential。タスク スケジューラはS4Uの登録が拒否され、パスワードのタスクは起動されなかったので使わない）npm testと同じ試験を実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
+    },
+    {
+      "description": "PR33-R001（Codexのレビュー5400986412、head deb35fb）: 実際のnpm（npm-cli.js run setup、cmd.exeを含む）を通す試験は通常のCtrl+Cだけで、#19の条件2（Ctrl+Break）と条件3（印を消せないCtrl+C）はsetupの直接起動と合成のnpmだけで確かめていた。通常のCtrl+Cでsetup自身（130）とnpm経由（1、子が残る）の差が観測されたので、直接起動の結果を残る2条件の代わりにできない。",
+      "state": "resolved",
+      "resolution": "scripts/setup.test.tsで、実際のnpm run setupを止める試験を共通の手順にし、Ctrl+Break（POSIXは同じ位置づけのプロセスグループへのSIGTERM）と、印を消せないときのCtrl+C（POSIXは書込み禁止、Windowsは削除の共有を許さずに開いたまま。rootでは飛ばす）を加える。どれも、コンソール（POSIXはプロセスグループ）のすべてのプロセスが終わるのを待ってから、setupの表示（受けたシグナル、印を消せないときは印が残ったことと消し方）、記録・印の有無、check:install、次のsetup（印を消したあと）とその後のcheck:installを確かめる。npm runの終了コードは、POSIXは128+番号かシグナル、Windowsは0でないことを確かめ、観測した終了コードとnpmが終わった時点で残っていたプロセスの数をdiagnosticに出す（Windowsの終了コード1と残るプロセスの扱いは所有者の判断待ちなので、その値を期待値として固定しない）。setup自身の130・149の厳密な試験（setup-lock.test.ts）は維持する。管理者と一般のユーザーの両方のCIで実行される。setupの動きは変えない。"
     }
   ],
   "assessments": [
