@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
   "task_id": "T26",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -189,6 +189,16 @@
       "description": "PR25-R009（Codex 5400802594、Copilot 5400795643のPreviously missed）: Node.jsのHTTPの解析器が要求を拒否すると（重複したContent-Length、ヘッダの上限の超過等）、要求の処理に入らず、既定のclientErrorの処理が、必須のヘッダと理由のない400・431を直接書く。upgradeの拒否に続く、応答の経路の2回目の迂回なので、ほかの入口も洗い出した。",
       "state": "resolved",
       "resolution": "node:httpのサーバーが応答を書きうる入口を洗い出し、すべてを同じヘッダの定義に通す。(1) request: 既存の出口（writeHead）。(2) upgradeの拒否: 既存（R008）。受け付けたupgradeの101は、開発時の口（T08のViteのHMR）がプロトコルの切替えとして書くもので、文書の応答ではないことをADRに明記する。(3) clientError（解析器の拒否・要求の時間切れ）: 新たに処理する。生の応答は、upgradeの拒否と同じ組み立ての関数（必須のヘッダ・理由の符号・Connection: close）で書き、書き切ってから壊す。すでに応答を書き始めている、または書けない接続には何も書かずに壊す（2つ目の応答を書かない）。状態は解析器の誤りの種類で決める（ヘッダの上限は431、時間切れは408、チャンクの拡張の上限は413、ほかは400）。ログには誤りの符号だけを出し、rawPacket・トークン・cookie・本文を出さない。(4) checkContinue・checkExpectation（Expectのヘッダ）: Node.jsの既定は、ヘッダなしの100 Continueや417を直接書くので、処理を登録し、既存の出口を通して417（理由expectation-not-supported）で拒否する（ブラウザは使わない）。(5) connect（CONNECTの方法）: 処理を登録せず、Node.jsが応答を書かずに接続を閉じる（応答を書かないので契約の対象外。ADRに明記）。(6) dropRequest: maxRequestsPerSocketを設定しないので起きない（ADRに明記）。応答を安全に返せないときは、何も書かずに接続を壊す、とADR-0009の5に書く。試験: 重複したContent-Length、ヘッダの上限の超過、Expectの各要求で、状態・必須のヘッダ・理由・接続の終了・応答が1つだけであること・ログに要求の中身（cookie・トークンの形の値・本文）が出ないこと。"
+    },
+    {
+      "description": "PR25-R010（Codex 5400911117、Copilot 4173259342）: 要求の対象の共通の検査が/で始まることしか見ないので、生の要求の`/launch#<トークン>`のようなフラグメント付きの対象が、API・開発時のmiddleware・upgradeへ届き、ログ用のパス（safePath）も#以降を残す。",
+      "state": "resolved",
+      "resolution": "共通の検査（checkRequestTarget）で、#を含む要求の対象を拒否する（400、理由bad-request-target）。ログ用のパス（safePath）は、処理の採否によらず、?と#のどちらか早い方より前だけにする。試験: 通常の要求・Expectの要求・upgradeの生の要求で、#を含む対象が400で拒否され、処理（API・middleware・upgrade）に届かず、#以降の値がログに出ないこと。mainの1d513e7（PR #31、mise）を取り込んだ。T26の範囲に影響する変更はない（READMEの競合は両方を残した）。"
+    },
+    {
+      "description": "PR25-R011（Codex 5400911117、Copilot 4173259381）: Expectのヘッダの要求の入口が終了の状態を見ず、終了中も417を返すので、終了中は503 closingという契約から外れる。",
+      "state": "resolved",
+      "resolution": "Expectの入口（checkContinue・checkExpectation）でも、終了の状態を先に見て、終了中は必須のヘッダ付きの503（closing）を返して接続を閉じる。通常の稼働中は417のまま。試験: closeを実行中のAPIで止めている間に、既存の接続で届いたExpectの要求（100-continueとほかの値）に503 closingが返ること。"
     }
   ],
   "assessments": [
