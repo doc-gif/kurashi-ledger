@@ -472,6 +472,17 @@
           ]
         },
         {
+          "path": "taxpayerEvent.date",
+          "when": {
+            "path": "taxpayerEvent.kind",
+            "in": [
+              "death",
+              "emigration"
+            ]
+          },
+          "type": "date"
+        },
+        {
           "path": "returnKind",
           "procedures": [
             "tax-return"
@@ -547,6 +558,21 @@
             "year-end-adjustment"
           ],
           "type": "boolean"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "path": "annualValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "給与等の収入金額・源泉徴収税額の元になった年間資料の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形と、採用した資料の支払金額・源泉徴収税額の合計がsalaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計がsocialInsuranceDeduction以下であることを検査が確かめる"
+        },
+        {
+          "path": "taxpayer",
+          "type": "object",
+          "meaning": "納税者側の家族の適用要件の入力（taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld。No.1177の(9)）。必要かどうかは家族の控除の判定の手順で決まり、特定親族特別控除の候補がいなければ求めない。中の入力の型はfamilyCheckが確かめる"
         }
       ],
       "unsupportedInputs": [
@@ -763,6 +789,17 @@
           ]
         },
         {
+          "path": "taxpayerEvent.date",
+          "when": {
+            "path": "taxpayerEvent.kind",
+            "in": [
+              "death",
+              "emigration"
+            ]
+          },
+          "type": "date"
+        },
+        {
           "path": "returnKind",
           "procedures": [
             "tax-return"
@@ -838,6 +875,21 @@
             "year-end-adjustment"
           ],
           "type": "boolean"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "path": "annualValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "給与等の収入金額・源泉徴収税額の元になった年間資料の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形と、採用した資料の支払金額・源泉徴収税額の合計がsalaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計がsocialInsuranceDeduction以下であることを検査が確かめる"
+        },
+        {
+          "path": "taxpayer",
+          "type": "object",
+          "meaning": "納税者側の家族の適用要件の入力（taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld。No.1177の(9)）。必要かどうかは家族の控除の判定の手順で決まり、特定親族特別控除の候補がいなければ求めない。中の入力の型はfamilyCheckが確かめる"
         }
       ],
       "unsupportedInputs": [

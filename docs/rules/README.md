@@ -44,7 +44,8 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 | `applies` | 適用の範囲。地域（`jurisdiction`）、対象の年・年度（`year`）、計算の規則なら手続（`procedure`）と基準の時点（`referencePoint`）。計算runの`target`がこのどれかに当たるときだけ、この規則を選ぶ（下の「規則の選び方」） |
 | `sources` | 一次資料のid（manifestの`sources`）。制度データの各値の`source`もこのidを指す |
 | `approval` | 承認の証跡の正本（下の「状態と承認」）。`draft`は「未確認」 |
-| `requiredInputs`（計算の規則） | 手続ごとの必須の入力のパス（`procedures`で手続を限る。`when`で、ほかの入力の値による条件を付ける（`greaterThan`。条件の値が分からなければ必須）。`nullable`は`null`を許す、`emptyAllowed`は空の並びを許す）。欠けた・許さない`null`・`unknown`の必須の入力があるrunは`computed`・`provisional`にしない |
+| `requiredInputs`（計算の規則） | 手続ごとの必須の入力のパスと型（`type`: `yen`・`boolean`・`enum`（`values`）・`date`・`object`・`array`）。`procedures`で手続を限る。`when`で、ほかの入力の値による条件を付ける（`greaterThan`・`in`。条件の値が分からなければ必須）。`nullable`は`null`を許す、`emptyAllowed`は空の並びを許す。欠けた・許さない`null`・`unknown`の必須の入力があるrunは`computed`・`provisional`にしない |
+| `optionalInputs`（計算の規則） | なくてもよい入力のパスと型（所得税では、年間資料の写し`annualValues`と、家族の判定で必要なときだけ求める`taxpayer`）。あれば型を確かめる。`requiredInputs`・`optionalInputs`・`unsupportedInputs`のどれにもない入力は、検査が拒否する |
 | `unsupportedInputs`（計算の規則） | 範囲外の入力の条件（`path`の値が`allowed`にない入力、または数の上限`max`を超える入力。上限ちょうどは範囲内）。`procedures`で手続を限る。当たる入力のrunは、`applies`に当たっても`unsupported`。値が`unknown`なら未対応ではなく不足（`incomplete`）。制度データに対象者の条件の一覧がある制度（所得税の年末調整の`yearEndAdjustmentLimits.targetConditions`）では、条件ごとに1つの要素が同じid（`yearEndAdjustmentCondition`）で対応し、検査が一致を確かめる |
 | `autoApply`（帰属の規則） | 規則の根拠で自動に年を決めるか。`false`なら、規則は帰属の根拠を作らない |
 
@@ -75,6 +76,15 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 5. 公式の計算例（国の資料の設例等）と照合した場合は、その資料と箇所を`derivation`に書く。資料の数値をそのまま写したケースにはしない（合成の入力で、規則から導く）。
 
 期待値の正しさは、検査では確かめられない（検査は形・整合・丸めの計算し直しだけを見る）。別の担当がレビューで確かめる。
+
+## 検査の責務（所有者の決定、PR #29）
+
+規則の検査（`tests/rules/rules.test.ts`）は、次の4つの責務を分け、どのケース・どの表にも同じように当てる（[所有者の決定](https://github.com/doc-gif/kurashi-ledger/pull/29#issuecomment-5969863635)）。
+
+1. **(a) 適用対象:** `target`が規則の`applies`に当たるか、入力が`unsupportedInputs`（年末調整の対象者の条件を含む）に当たるか。`unsupported`の判定はこれだけで決める。
+2. **(b) 存在する入力の形:** `requiredInputs`・`optionalInputs`の型、家族の入力の型と許す値、宣言にない入力の名前、年間資料の写しの形と採用した資料の合計、結果の項目の並びと値の形を、`unsupported`を含むすべてのケースで確かめる。未対応の範囲のケースに、その範囲で求められない必須の入力を足すことは求めない（欠落は(c)で数える）。制度データの表も、形（1件以上、全行、整数の昇順の上限、最後の行、率・額の型）を確かめてから中身（速算表の連続、区分のつながり、生年月日と年齢）を照合する。
+3. **(c) 分からない値から結果を確定できるか:** 既知の値は正確に使い（例: 所得金額調整控除の対象かが分かれば実際の控除額で本人の合計所得金額を求める）、分からない値のときだけ範囲で控えめに判定する。結果を決めるのに要る分からない入力があれば、`computed`・`provisional`にしない。分からない値を0で補わない。
+4. **(d) 原典からの境界の期待値:** 排他の境界は、両側の例を、どの年の規則かを明記して、一次資料から独立に導いた値で持つ（所得税の例は[income-tax.md](income-tax.md)の「制度のケース」）。
 
 ## 地域の符号（契約が委ねた体系）
 
