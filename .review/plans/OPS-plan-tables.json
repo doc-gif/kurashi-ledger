@@ -185,6 +185,10 @@
         {
           "location": "出力の notice",
           "result": "記入の充足だけを示し、内容・網羅は別担当が確かめると明記する"
+        },
+        {
+          "location": "版の比較（計画の schema_version、台帳の schema_version）",
+          "result": "Pythonでは JSON の true と 1.0 が 1 と等しいので、版1として通っていた。整数だけを受け付けるようにそろえる（計画・catalog・ledgerの3か所）"
         }
       ]
     },
@@ -303,6 +307,36 @@
         {
           "location": "tools/review_guard/README.md の書式の表",
           "result": "版と2つの節の行だけ足し、詳細は review-prevention.md を指す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "pattern": "新しい書式を使う側（進行中のPR・#38の試験）が、書式を提供する変更より先に必要とする",
+      "places": [
+        {
+          "location": "進行中のPRの版1の計画",
+          "result": "版1を受け付けるので、このPRのマージの前後で必要なものは変わらない"
+        },
+        {
+          "location": "#38の test_component_routing.py",
+          "result": "prepareの版2の表が要る。#38が先にマージされ、このPRが取り込みで直す順にする（このPRはそれまでDraft）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "pattern": "施策の時系列（計画→実装→red team→ready-for-review→レビュー→マージ）が入口ごとに違う",
+      "places": [
+        {
+          "location": "docs/review-prevention.md の変更前の手順と新しい節",
+          "result": "計画を先にcommitし、red teamはready-for-reviewの前、内容レビューはその後と同じ順で書く"
+        },
+        {
+          "location": "docs/pr-review-loop.md の1・2",
+          "result": "ready-for-reviewのあとは差分を変えない規約と矛盾しない（red teamの指摘の修正はready-for-reviewの前に済ませる）"
         }
       ]
     },
