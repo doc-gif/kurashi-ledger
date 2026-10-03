@@ -330,7 +330,13 @@ function githubMessage(body: string, secrets: readonly string[]): string {
   return '（GitHubのメッセージなし）';
 }
 
-const TOKEN_PATTERN = /^[A-Za-z0-9_]{20,255}$/;
+// installation access tokenは不透明な資格情報として扱い、形は決め打ちしない。GitHubは2026-04-27から、
+// 従来の40文字の形に加えて、stateless の形（ghs_<App ID>_<JWT>。JWTの区切りの . と base64url の - _ を含み、
+// 長い）を段階的に導入している（出典: github/docs の data/reusables/apps/ghs-stateless-token-format.md、
+// content/authentication/keeping-your-account-and-data-secure/about-authentication-to-github.md の
+// 「GitHub's token formats」。installation tokenの接頭辞は ghs_）。ここでは、接頭辞、使う文字（英数字と . _ -）、
+// 長さの範囲だけを確かめる。空白・制御文字・引用符等を含むもの、ほかの種類のトークンは受け付けない。
+export const TOKEN_PATTERN = /^ghs_[A-Za-z0-9._-]{36,8188}$/;
 
 // 応答の権限・repoが要求どおりか。違えば理由を返す（トークンは含めない）。
 export function checkGrantedScope(response: unknown, purpose: Purpose): string | null {
@@ -344,7 +350,8 @@ export function checkGrantedScope(response: unknown, purpose: Purpose): string |
   for (const [name, level] of Object.entries(granted)) {
     if (Object.hasOwn(expected, name) && expected[name] === level) continue;
     if (Object.hasOwn(IMPLICIT_PERMISSIONS, name) && IMPLICIT_PERMISSIONS[name] === level) continue;
-    return `要求していない権限（${sanitize(name, [])}）がある`;
+    // 名前は、GitHubの権限の名前の形（英小文字と_）のときだけ表示する。応答に何が入っていても出さない。
+    return /^[a-z_]{1,40}$/.test(name) ? `要求していない権限（${name}）がある` : '要求していない権限（名前は表示しない）がある';
   }
   for (const [name, level] of Object.entries(expected)) {
     if (!Object.hasOwn(granted, name) || granted[name] !== level) return `権限（${name}: ${level}）が付かなかった`;
@@ -420,7 +427,8 @@ export async function requestInstallationToken(args: {
   readonly jwt: string;
   readonly purpose: Purpose;
   readonly timeoutMs: number;
-  readonly secrets: readonly string[];
+  // 既知の秘密の一覧。発行したトークンを、得た直後にここへ加える（呼出し側の失敗の出力でも伏せるため）。
+  readonly secrets: string[];
 }): Promise<string> {
   const request = tokenRequest(args.installationId, args.jwt, args.purpose);
   let response: FetchResponse;
@@ -447,11 +455,15 @@ export async function requestInstallationToken(args: {
     throw new TokenError('GitHubの応答がJSONでない（HTTP 201）。');
   }
   const token = (parsed as { token?: unknown } | null)?.token;
-  if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw new TokenError('GitHubの応答にトークンがない、または形式が違う。');
+  if (typeof token !== 'string' || token === '') throw new TokenError('GitHubの応答にトークンがない。');
+  // 形の検査より前に既知の秘密に加える（形が違っても、エラーの出力に出さない）。
+  args.secrets.push(token);
+  if (!TOKEN_PATTERN.test(token)) throw new TokenError('GitHubの応答のトークンの形式が違う（使わない）。');
   const problem = checkGrantedScope(parsed, args.purpose) ?? (await verifyTokenRepositories(args.fetch, token, args.timeoutMs));
   if (problem !== null) {
     const revokeProblem = await revokeToken(args.fetch, token, args.timeoutMs);
-    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${problem}）。${revokeProblem ?? '発行されたトークンは失効させた。'}`);
+    const shown = sanitize(problem, [...secrets, token]);
+    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${shown}）。${revokeProblem ?? '発行されたトークンは失効させた。'}`);
   }
   return token;
 }
@@ -511,10 +523,19 @@ export function keyFileProblem(lstat: StatLike, fstat: StatLike, platform: NodeJ
 
 export type KeyFileResult = { readonly text: string; readonly warning?: string };
 
-export function readKeyFileFromDisk(path: string, platform: NodeJS.Platform, uid: number | undefined): KeyFileResult {
+// 開くときのフラグ。O_NOFOLLOW・O_NONBLOCKはmacOS・Linuxだけにある（Windowsでは0）。
+export const KEY_FILE_OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+// lstatは試験のために差し替えられる（確かめた後の差し替えを再現する）。
+export function readKeyFileFromDisk(
+  path: string,
+  platform: NodeJS.Platform,
+  uid: number | undefined,
+  lstat: (path: string) => Stats = lstatSync,
+): KeyFileResult {
   let before: Stats;
   try {
-    before = lstatSync(path);
+    before = lstat(path);
   } catch (error) {
     throw new TokenError(`鍵ファイルを読めなかった（${describeFailure(error)}）。`);
   }
@@ -522,10 +543,9 @@ export function readKeyFileFromDisk(path: string, platform: NodeJS.Platform, uid
   if (!before.isFile() || before.isSymbolicLink()) throw new TokenError('鍵ファイルを使わない: 通常のファイルでない（symlink等は使えない）。');
   // O_NOFOLLOW・O_NONBLOCKはmacOS・Linuxだけにある。確かめた後にFIFOへ差し替えられても、開くところで止まらない
   // （O_NONBLOCK）。差し替えは、開いた後のfstatで見つける。Windowsでは上のlstatで拒む。
-  const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
   let fd: number;
   try {
-    fd = openSync(path, flags);
+    fd = openSync(path, KEY_FILE_OPEN_FLAGS);
   } catch (error) {
     throw new TokenError(`鍵ファイルを開けなかった（${describeFailure(error)}）。`);
   }
@@ -749,7 +769,6 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
     }
     return EXIT_OWN_FAILURE;
   }
-  secrets.push(token);
   let configDir: string | undefined;
   let result: ChildResult;
   try {

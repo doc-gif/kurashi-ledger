@@ -44,9 +44,10 @@ webhookは使わない。インストールできるのは所有者のアカウ�
 
 1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
 2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
-3. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
+3. 同じ日の所有者決定（読み取りだけ足す）で、2つのAppに Checks と Commit statuses の Read-only を加え、インストール先で承認し直した。
+4. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
 
-**残っている所有者の手順:** 2つのAppに Checks と Commit statuses の Read-only を加え、インストール先で承認し直す（同じ日の所有者決定）。済むまでは、スクリプトが`checks`・`statuses`を求めるので、トークンの発行がHTTP 422で失敗する（コマンドは実行されない）。そのあと、下の「実際の鍵での確認」と「移行の計画」。権限を変えるときは、毎回インストール先での承認し直しが要る。
+残っているのは、下の「実際の鍵での確認」と「移行の計画」、rulesetの承認の規則の確認（所有者の確認待ち）。Appの権限を変えるときは、毎回インストール先での承認し直しが要る。
 
 ## 鍵の保管・再発行・失効
 
@@ -171,7 +172,6 @@ PRの作者が自分のAppのbotであることを2つ目で確かめる。マ�
 2. Dismiss stale pull request approvals when new commits are pushed: **有効**
 3. Require approval of the most recent reviewable push: **有効**
 4. Bypass list: **空**のまま（Repository adminも入れない）
-5. 迂回試験のために、対象に`ruleset-test/**`のbranchを加える（下の「迂回試験」）。
 
 こうすると、PRの作者は自分のPRを承認できず、最後にpushした身元の承認は数えない。**ただし、「承認できるのはもう一方のAIのAppか所有者だけ」になるのは、AIのpushとPRの作成が、すべてそのAIのAppの身元で行われるときだけ。** AIがdoc-gifの資格情報（SSHの`origin`、保存済みの`gh auth`）でpushしたりPRを作ったりすると、作者と最後のpushはdoc-gifになり、同じAIのAppでも承認できてしまう（自分の差分の承認）。GitHubはこれを止めない。緩和策（所有者の選択肢）:
 
@@ -183,19 +183,19 @@ PRの作者が自分のAppのbotであることを2つ目で確かめる。マ�
 
 ### 迂回試験（承認の規則を設定したあとに行う）
 
-**mainへマージしない。実際のrulesetの値を変えない。** 試験は`ruleset-test/**`のbranchだけで行う: 所有者が`ruleset-test/base`をmainから作り、試験のPRはすべて`ruleset-test/base`を対象にする。マージを試すときは`--match-head-commit`を付ける。rulesetの変更の試みは、いまと**同じ値**のPATCH（`gh api repos/doc-gif/kurashi-ledger/rulesets/24409165`で読んだbodyをそのまま送る）で行い、拒否されること（または、許されても何も変わらないこと）を確かめる。各手順のコマンド・エラーの文・判定をIssue #41（またはその後継）に記録する。どれかが期待と違えば、強制ゲートとして扱わず、設定を直して1からやり直す。
+**mainへマージしない。mainのrulesetを変えない。** 試験は`ruleset-test/**`のbranchと、そのための**試験用のruleset**だけで行う: 所有者が、mainのrulesetと同じ規則（承認の規則を含む）で、対象を`ruleset-test/**`だけにしたbranch rulesetを別に作り、`ruleset-test/base`をmainから作る。試験のPRはすべて`ruleset-test/base`を対象にする。マージを試すときは`--match-head-commit`を付ける。rulesetの変更の試みは、APIが定める`PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}`で（このパスに定められたメソッドはGET・PUT・DELETEで、PATCHはない）、**試験用のruleset**に対して、GETで読んだ値と同じ内容を送る（読取り専用の項目を除いたbody）。拒否されること（403）を確かめる。万一受け付けられても、同じ内容なので規則は変わらず、mainのrulesetには触れない。各手順のコマンド・エラーの文・判定をIssue #41（またはその後継）に記録する。どれかが期待と違えば、強制ゲートとして扱わず、設定を直して1からやり直す。
 
 1. ClaudeのApp（`implement`）で、`ruleset-test/claude-1`に合成のcommit（文書の1行）をpushし、`ruleset-test/base`へのPRを作る。期待: 作者がClaudeのbot。
 2. ClaudeのAppで`gh pr merge <番号> --merge --match-head-commit <SHA>`。期待: 承認がないので拒否。
 3. ClaudeのAppで自分のPRを承認（`commit_id`付きのAPI）。期待: 作者なので拒否。
 4. doc-gifで`gh pr merge <番号> --merge --admin --match-head-commit <SHA>`。期待: 迂回の一覧が空なので拒否。
-5. 2つのApp（全用途）で、rulesetの同じ値のPATCH。期待: 403。
+5. 2つのApp（全用途）で、試験用のrulesetへの同じ内容のPUT（`… -- gh api -X PUT repos/doc-gif/kurashi-ledger/rulesets/<試験用のrulesetのid> --input <GETで読んだ同じ内容のファイル>`）。期待: 403。あわせて、doc-gifで同じPUTが200になることを確かめ（同じ内容なので変化なし）、403が権限の不足によるものだと分かるようにする。
 6. CodexのApp（`review`）で、レビューしたheadを承認。期待: `reviewDecision`が`APPROVED`（`gh pr view <番号> --json reviewDecision,mergeStateStatus`）。**Appの承認が必須の承認に数えられることを、ここで確かめる。** マージはしない。
 7. ClaudeのAppで新しいcommitをpush。期待: 承認が取り消され、再び拒否。
 8. CodexのAppで新しいcommitをpushし、CodexのAppで承認。期待: 最新のpushをした身元なので数えられない。ClaudeのAppの承認なら数えられる。
 9. **doc-gifでpushしてPRを作り、同じAI（例えばClaude）のAppで承認する。** 期待（前提の限界の確認）: GitHubは承認を数える。結果を記録し、上の緩和策を所有者が選ぶ材料にする。
 10. 2つのAppとdoc-gifで、`ruleset-test/base`の削除（`git push <HTTPSのURL> --delete ruleset-test/base`）と強制push（`--force`）を試す。期待: 拒否。
-11. rulesetの「Rule insights」で、試験の間に迂回が記録されていないことを確かめる。PRは閉じ、試験用のbranchの削除は所有者が判断する。
+11. 試験用のrulesetの「Rule insights」で、試験の間に迂回が記録されていないことを確かめる。PRは閉じ、試験用のbranchとrulesetの削除は所有者が判断する。試験の結果をmainのrulesetへ当てはめるのは、2つのrulesetの規則が同じであることを、GETで読んだ内容で確かめてから。
 
 ## 確かめていないこと（推測しない）
 
@@ -207,6 +207,7 @@ PRの作者が自分のAppのbotであることを2つ目で確かめる。マ�
 - `review`の権限（issues:writeなし）で、PRへのコメントを書けるか。
 - `checks:read`・`statuses:read`で、`gh pr checks`等のCIの結果を読めるか。`actions:read`だけで足りるなら、表を縮める。
 - GitHubが、要求していない権限を暗黙に加えることがあるか。加えた場合、スクリプトは完全一致の照合で失敗する（コマンドは実行しない）。そのときは表を直すか、所有者に判断を求める。
+- トークンの形: installation tokenは不透明な資格情報として扱う。GitHubは2026-04-27から、従来の40文字の形に加えて、stateless の形（`ghs_<App ID>_<JWT>`。JWTの区切りの`.`を含み、長い）を段階的に導入している（[GitHubのdocsの説明](https://github.com/github/docs/blob/main/data/reusables/apps/ghs-stateless-token-format.md)、[トークンの形の一覧](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#githubs-token-formats)）。スクリプトは、接頭辞`ghs_`、使う文字（英数字と`. _ -`）、長さ（40〜8192文字）だけを確かめる。この範囲を外れる形が実際に出たら、スクリプトは安全側に失敗する（コマンドを実行しない）。
 - 発行の応答に、縮小したrepoの一覧（`repositories`）が入るか。入らなければ、スクリプトは安全側に失敗する。そのときは`GET /installation/repositories`だけで確かめる形に直すPRを出す。
 - Appがpushしたbranchで、CIが動くか。
 - `repos/…/activity`（pushした身元の確認）を、このトークンで読めるか。読めなければ、PRのtimelineで確かめる手順に直す。

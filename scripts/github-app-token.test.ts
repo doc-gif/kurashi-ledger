@@ -4,9 +4,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createPublicKey, generateKeyPairSync, verify, type KeyObject } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import {
   API_ORIGIN,
@@ -22,6 +23,7 @@ import {
   MAX_KEY_BYTES,
   PURPOSES,
   REPOSITORY_NAME,
+  TOKEN_PATTERN,
   TokenError,
   UNUSED_GIT_GLOBAL_CONFIG,
   UsageError,
@@ -62,15 +64,20 @@ const PEM_BODY_LINES = PEM.split('\n').filter((line) => line.length >= 16 && !li
 
 // 番兵のトークン。GitHubのinstallation tokenと同じ形（ghs_と英数字）。
 const TOKEN = ['ghs', 'SENTINEL0TOKEN0VALUE0FOR0TESTS0ONLY0x9'].join('_');
+// 数字を含まない番兵（長い英数字の並びを伏せる処理では伏せられない。既知の秘密として伏せる必要がある）。
+const DIGITLESS_TOKEN = ['ghs', 'X'.repeat(36)].join('_');
+// stateless の形（ghs_<App ID>_<JWT>。2026-04-27からGitHubが段階導入）の合成の番兵。
+const b64 = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString('base64url');
+const STATELESS_TOKEN = ['ghs', APP_ID, `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ sentinel: 'stateless-installation-token', iat: NOW })}.${Buffer.alloc(256, 7).toString('base64url')}`].join('_');
 
 function decodeSegment(segment: string | undefined): unknown {
   assert.ok(segment !== undefined);
   return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8'));
 }
 
-function grantedBody(purpose: Purpose, overrides: Record<string, unknown> = {}): string {
+function grantedBody(purpose: Purpose, overrides: Record<string, unknown> = {}, token: string = TOKEN): string {
   return JSON.stringify({
-    token: TOKEN,
+    token,
     expires_at: '2030-03-17T12:00:00Z',
     permissions: { ...PURPOSES[purpose], metadata: 'read' },
     repository_selection: 'selected',
@@ -144,7 +151,7 @@ function harness(replies: readonly Reply[], overrides: Partial<Deps> = {}, child
 }
 
 function assertNoSecrets(text: string, extra: readonly string[] = []): void {
-  for (const secret of [TOKEN, PEM, PEM_BASE64, ...PEM_BODY_LINES, ...extra]) {
+  for (const secret of [TOKEN, DIGITLESS_TOKEN, STATELESS_TOKEN, PEM, PEM_BASE64, ...PEM_BODY_LINES, ...extra]) {
     assert.ok(!text.includes(secret), `出力に秘密が含まれる（長さ${secret.length}）`);
   }
   assert.doesNotMatch(text, /eyJ[A-Za-z0-9_-]{10,}\./, 'JWTらしい文字列が出力にある');
@@ -315,6 +322,8 @@ test('実際のファイルで: 権限600の鍵ファイルは読め、644はmac
 
 // WindowsにはFIFOがなく、ファイルのsymlinkの作成に権限が要る（docs/development.mdの「環境によって飛ばす試験」）。
 const posixOnly = process.platform === 'win32' ? 'WindowsにはFIFOがなく、ファイルのsymlinkの作成に権限が要る' : false;
+// FIFOを開く処理が止まると、試験のプロセスごと止まる。そのため、FIFOに触れる確認は別のプロセスで行い、時間の上限を置く。
+const FIFO_TIMEOUT_MS = 20_000;
 test('実際のファイルで: 鍵ファイルへのsymlinkとFIFOを、開く前に拒む（FIFOで止まらない）', { skip: posixOnly }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
   try {
@@ -327,8 +336,38 @@ test('実際のファイルで: 鍵ファイルへのsymlinkとFIFOを、開く�
     const fifo = join(dir, 'fifo.pem');
     const made = spawnSync('mkfifo', ['-m', '600', fifo]);
     assert.equal(made.status, 0, 'mkfifoを実行できない');
-    // 書く側がいないFIFOを開くと、O_NONBLOCKやlstatの検査がなければここで止まる。
-    assert.throws(() => readKeyFileFromDisk(fifo, process.platform, uid), /通常のファイルでない/);
+    const env: NodeJS.ProcessEnv = {};
+    for (const [k, v] of Object.entries(process.env)) if (!/^(NODE_|KL_GITHUB_APP_)/i.test(k)) env[k] = v;
+    // 1. 実際のスクリプトに、書く側のいないFIFOを渡す。開く前に拒み、時間内に、何も出力せずに終わる。
+    const marker = join(dir, 'child-ran');
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, '--agent', 'codex', '--purpose', 'review', '--app-id', '1', '--installation-id', '1', '--key-file', fifo, '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, '')`],
+      { env, encoding: 'utf8', timeout: FIFO_TIMEOUT_MS },
+    );
+    assert.equal(r.error, undefined, 'FIFOで止まった（時間切れ）');
+    assert.equal(r.status, EXIT_OWN_FAILURE, r.stderr);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /通常のファイルでない/);
+    assert.throws(() => rmSync(marker), 'コマンドが実行された');
+    // 2. 確かめた（lstat）あとでFIFOに差し替えられた場合を、lstatを差し替えて再現する。開くところで止まらず（O_NONBLOCK）、
+    //    開いた後の確認で拒む。
+    const lib = pathToFileURL(join(import.meta.dirname, 'lib', 'github-app-token.ts')).href;
+    const source = [
+      `const { readKeyFileFromDisk } = await import(${JSON.stringify(lib)});`,
+      "const { lstatSync } = await import('node:fs');",
+      `const regular = lstatSync(${JSON.stringify(target)});`,
+      'try {',
+      `  readKeyFileFromDisk(${JSON.stringify(fifo)}, process.platform, process.getuid(), () => regular);`,
+      '  process.exit(3);',
+      '} catch (e) {',
+      "  process.stdout.write(String(e.message));",
+      '  process.exit(/置き換わった/.test(String(e.message)) ? 0 : 4);',
+      '}',
+    ].join('\n');
+    const swapped = spawnSync(process.execPath, ['--input-type=module', '-e', source], { env, encoding: 'utf8', timeout: FIFO_TIMEOUT_MS });
+    assert.equal(swapped.error, undefined, '差し替えたFIFOで止まった（時間切れ）');
+    assert.equal(swapped.status, 0, `${swapped.stdout}${swapped.stderr}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -718,6 +757,101 @@ test('発行したトークンで触れるrepoがこのrepoの1件だと確か�
   }
 });
 
+test('トークンの形: 従来の形とstatelessの形（ghs_<App ID>_<JWT>）を受け付け、ほかの種類・空白・制御文字・長すぎるものは受け付けない', () => {
+  for (const ok of [TOKEN, DIGITLESS_TOKEN, STATELESS_TOKEN, `ghs_${'a'.repeat(36)}`]) assert.match(ok, TOKEN_PATTERN);
+  assert.ok(STATELESS_TOKEN.length > 255 && STATELESS_TOKEN.includes('.'), '合成のstatelessの形が、長さと区切りを持たない');
+  for (const bad of [
+    '',
+    'ghs_',
+    `ghs_${'a'.repeat(35)}`,
+    `ghs_${'a'.repeat(8189)}`,
+    `ghp_${'a'.repeat(36)}`,
+    `github_pat_${'a'.repeat(40)}`,
+    `${'a'.repeat(40)}`,
+    `${TOKEN} `,
+    `${TOKEN}\n`,
+    `${TOKEN}"`,
+    `${TOKEN};x`,
+    `${TOKEN}$x`,
+    `${TOKEN}\u0000`,
+    `ghs_${'a'.repeat(30)} ${'a'.repeat(10)}`,
+  ]) {
+    assert.doesNotMatch(bad, TOKEN_PATTERN, JSON.stringify(bad.slice(0, 50)));
+  }
+});
+
+test('statelessの形のトークンでも、範囲を確かめてから子を起動し、子の環境にだけ置き、失効させる', async () => {
+  const h = harness([{ status: 201, body: grantedBody('review', {}, STATELESS_TOKEN) }, LISTED, REVOKED]);
+  assert.equal(await run(ARGS, h.deps), 0);
+  assert.deepEqual(h.events, [
+    `POST /app/installations/${INSTALLATION_ID}/access_tokens`,
+    'GET /installation/repositories?per_page=100',
+    'mkdir',
+    'child',
+    'rmdir',
+    'DELETE /installation/token',
+  ]);
+  assert.equal(h.children[0]?.env['GH_TOKEN'], STATELESS_TOKEN);
+  assert.equal(h.calls[1]?.init.headers['Authorization'], `Bearer ${STATELESS_TOKEN}`);
+  assert.equal(h.calls[2]?.init.headers['Authorization'], `Bearer ${STATELESS_TOKEN}`);
+  assertNoSecrets(h.err.join(''));
+});
+
+test('発行したトークンは得た直後から既知の秘密として伏せる（数字のないトークンが権限の名前や形の誤りに入っても出さない）', async () => {
+  const cases: { name: string; body: string; expect: RegExp; revoke: boolean }[] = [
+    {
+      name: '権限の名前にトークン（数字なし）',
+      body: grantedBody('review', { permissions: { ...PURPOSES.review, metadata: 'read', [DIGITLESS_TOKEN]: 'read' } }, DIGITLESS_TOKEN),
+      expect: /要求していない権限（名前は表示しない）.*失効させた/,
+      revoke: true,
+    },
+    {
+      name: '足りない権限の名前の表示（数字なし）',
+      body: grantedBody('review', { permissions: { [DIGITLESS_TOKEN]: 'write', metadata: 'read' } }, DIGITLESS_TOKEN),
+      expect: /範囲が要求と違う.*失効させた/,
+      revoke: true,
+    },
+    {
+      name: 'repoの名前にトークン（数字なし）',
+      body: grantedBody('review', { repositories: [{ name: DIGITLESS_TOKEN }] }, DIGITLESS_TOKEN),
+      expect: /範囲が要求と違う.*失効させた/,
+      revoke: true,
+    },
+    {
+      name: '形の誤り（末尾の空白）',
+      body: grantedBody('review', {}, `${DIGITLESS_TOKEN} `),
+      expect: /トークンの形式が違う/,
+      revoke: false,
+    },
+  ];
+  for (const c of cases) {
+    const h = harness(c.revoke ? [{ status: 201, body: c.body }, REVOKED] : [{ status: 201, body: c.body }]);
+    assert.equal(await run(ARGS, h.deps), EXIT_OWN_FAILURE, c.name);
+    assert.deepEqual(h.children, [], c.name);
+    const stderr = h.err.join('');
+    assert.match(stderr, c.expect, `${c.name}: ${stderr}`);
+    assert.ok(!stderr.includes(DIGITLESS_TOKEN), `${c.name}: 標準エラーにトークンがある`);
+    assertNoSecrets(stderr);
+    if (c.revoke) {
+      assert.equal(h.calls.at(-1)?.init.method, 'DELETE', c.name);
+      assert.equal(h.calls.at(-1)?.init.headers['Authorization'], `Bearer ${DIGITLESS_TOKEN}`);
+    }
+  }
+});
+
+test('文書と入口の例は、トークンをシェルの変数で受ける形（失敗時に保存済みの資格情報へ戻る）を使わない', () => {
+  const root = join(import.meta.dirname, '..');
+  for (const file of ['docs/github-apps.md', 'docs/pr-review-loop.md', 'docs/external-worker.md', 'SECURITY.md', 'scripts/github-app-token.ts', 'scripts/lib/github-app-token.ts']) {
+    const text = readFileSync(join(root, file), 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      // 例のコードとして $(node …github-app-token…) や GH_TOKEN=… を書かない（使わない理由の説明の行は除く）。
+      if (/使わない|PR42-R004/.test(line)) continue;
+      assert.doesNotMatch(line, /\$\(\s*node[^)]*github-app-token/, `${file}: ${line.slice(0, 80)}`);
+      assert.doesNotMatch(line, /\bGH_TOKEN="?\$/, `${file}: ${line.slice(0, 80)}`);
+    }
+  }
+});
+
 test('出力を伏せる処理は、長い英数字の並びと既知の秘密を伏せ、serviceの名前等は残す', () => {
   assert.equal(sanitize('Bad credentials', []), 'Bad credentials');
   assert.equal(sanitize('service kurashi-ledger-claude-implementer', []), 'service kurashi-ledger-claude-implementer');
@@ -773,6 +907,17 @@ test('スクリプトを実行しても、引数の誤りと鍵ファイルの�
     assert.match(r.stderr, process.platform === 'win32' ? /鍵の形式が違う/ : /chmod 600/);
     assert.ok(!r.stderr.includes('SENTINEL-NOT-A-KEY'));
     assertNoSecrets(r.stderr);
+    // 壊れた鍵を標準入力から渡しても、ネットワークに出る前に止まり、代わりのコマンドを実行しない。
+    const stdin = spawnSync(process.execPath, [SCRIPT, '--agent', 'claude', '--purpose', 'implement', '--app-id', '1', '--installation-id', '1', '--key-stdin', ...childArgs], {
+      env,
+      encoding: 'utf8',
+      input: 'SENTINEL-NOT-A-KEY',
+      timeout: 20_000,
+    });
+    assert.equal(stdin.status, EXIT_OWN_FAILURE, stdin.stderr);
+    assert.equal(stdin.stdout, '');
+    assert.match(stdin.stderr, /コマンドは実行していない/);
+    assert.ok(!stdin.stderr.includes('SENTINEL-NOT-A-KEY'));
     assert.throws(() => rmSync(marker), 'コマンドが実行された');
   } finally {
     rmSync(dir, { recursive: true, force: true });
