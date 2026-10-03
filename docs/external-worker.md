@@ -9,3 +9,7 @@ For Claude Code or another implementation environment. This file does not launch
 Reuse the existing job when changing its interval. Record actual job ID/frequency in the handoff; a prompt is not running-state evidence. T00's initial prompt is historical, not permission for another task.
 
 Verify supported intervals, expiry and persistent/session-local execution in the actual environment using [Claude's scheduling documentation](https://code.claude.com/docs/en/scheduled-tasks). Cloud execution cannot assume local files or Figma access. Codex does not register external jobs.
+
+## GitHub identity
+
+After the migration in [AI GitHub Apps](github-apps.md), do Claude-side pushes, PRs, comments and merges through Claude's App (`--agent claude --purpose implement`) and reviews with `--purpose review`. The script runs the command with the token; never run it from a PR checkout, only from a copy taken from a reviewed main SHA. Never read another AI's key. Until the migration, keep the current method.

@@ -54,6 +54,8 @@ README: <更新したREADMEと内容、または「更新不要」と理由（AG
 
 実装者とGitHubアカウントが同じ場合はCOMMENTとして記録する。自分で作成した変更を独立レビュー済みと扱わない。投稿直前にhead/baseとworker状態を再取得し、途中で変わった場合は完了レビューを投稿しない。
 
+自分のAIのGitHub Appで投稿するときも、本文は下の書式のまま。`accepted`はレビューしたheadを`commit_id`に指定した`APPROVE`にし、投稿者が自分のAppのbotであることを確かめる。自分が実装・pushしたPRは承認しない。AppのAPPROVEはGitHubの承認だが、rulesetの承認の規則を設定するまではマージの必須条件ではない（マージの条件は[正本](github-agent-operations.md#merge-conditions)）。手順と、PRのcheckoutからスクリプトを実行しない規則は[AIのGitHub App](github-apps.md)の「レビューの投稿」。
+
 ```text
 <!-- kurashi-ledger:review:v1 -->
 role: codex-reviewer | claude-reviewer

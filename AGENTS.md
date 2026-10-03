@@ -31,6 +31,8 @@ Stage explicit paths and inspect the public diff; run `npm run check:public -- -
 
 Update the applicable README in the same PR when usage, setup, commands, structure, available features or operations change. Link detailed specifications; distinguish planned from available features. State the update or its omission reason in the handoff. Coordinate overlapping README edits and record owner/scope/completion conditions.
 
+Each AI has its own GitHub App identity; see [AI GitHub Apps](docs/github-apps.md). Run its token script only from a copy taken from a reviewed main commit, never from a PR checkout. Never read another AI's key, and never approve a PR you implemented or pushed to.
+
 Use the [PR protocol](docs/pr-review-loop.md) for Draft/working/ready, exact head/base, evidence, independent review and stable finding IDs. Include Issue, reason, acceptance evidence and remaining scope. Only the final PR completing a split task closes its Issue. On interruption, record task/spec/branch/head/base, scope, actual verification, next action, claim/worker state and whether another worker may take over.
 
 ## Merge and authority

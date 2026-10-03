@@ -24,6 +24,7 @@
 | Codexレビュー | 受付とPR専用担当に分離。[所有者の直接指示の記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)に基づき5分間隔・専用担当最大10件（受付を除く）。実際の登録・稼働は実行環境で確認 |
 | 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
 | Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-03は[利用枠不足の応答](https://github.com/doc-gif/kurashi-ledger/pull/40#pullrequestreview-5401246180)があり、所有者が[暫定条件](github-agent-operations.md#merge-conditions)を直接承認した。各headの応答を確認し、枠の復旧時に通常条件へ戻す |
+| AIのGitHub App | 2026-10-03の所有者決定（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに1つずつ、同じ権限（Administrationなし）のApp（AIの身元）を所有者が作成し、このrepoだけにインストールした。トークンは`scripts/github-app-token.ts`が発行してコマンドを実行する（表示しない）。mainのrulesetに削除の制限と強制pushの禁止を加えた。実際の鍵での確認・移行・承認の規則は所有者の確認待ち。手順は[AIのGitHub App](github-apps.md) |
 | 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
 次の着手は計画の依存関係に従う。完了済みのT05はT26/T08が使う試験基盤を提供している。日々の作業一覧をここへ複製しない。作業中Draft、レビュー依頼Open、最新SHAの引継ぎと独立レビューは[PRループ](pr-review-loop.md)に従う。[T00開始プロンプト](first-worker-prompt.md)は歴史的記録で、新規担当への許可ではない。[worktree運用](local-worktrees.md)も確認する。
