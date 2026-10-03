@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "task_id": "OPS-plan-tables",
+  "planned_paths": [
+    ".review/tests/test_repository_routing.py",
+    "docs/review-prevention.md",
+    "tools/review_guard/README.md",
+    "tools/review_guard/guard.py",
+    "tools/review_guard/tests/test_guard.py"
+  ],
+  "conflicts": [
+    {
+      "description": "CIの`review plan`はbaseの検査器で計画を検査し、baseの検査器は`schema_version: 1`だけを受け付ける。このPRの計画を版2で書くとCIが失敗する",
+      "state": "resolved",
+      "resolution": "このPRの計画は版1に`boundaries`と`variant_analysis`を加えて書く（baseは未知の項目を無視する）。新しい検査器は版1でも表があれば検査するので、手元とレビューで同じ計画を新しい検査器にかけて表を確かめる。文書にこの初回の例外を書く"
+    },
+    {
+      "description": "すべての計画に表を必須にすると、mainの既存の計画と進行中のPR（#25・#28・#29・#33・#36・#37・#38・#40・#42）の版1の計画が一度に失敗する",
+      "state": "resolved",
+      "resolution": "版の繰上げで移行する。`prepare`は版2を出し、版2は表が必須。版1は移行前の計画として受け付け、出力の`plan_tables: legacy-v1`でレビュー担当に見せる。新しい計画を版1で書くことは文書で禁じ、red teamと内容レビューが指摘する。進行中のPRがなくなったあとで、baseにない新しい計画の版1をCIで拒否する後続を提案する"
+    },
+    {
+      "description": "`prepare`が版2の空の表を出すと、`prepare`→`check`を使う固有の試験（`.review/tests/test_repository_routing.py`、#38の`test_component_routing.py`）が失敗する",
+      "state": "resolved",
+      "resolution": "このPRで`test_repository_routing.py`の記入に表を加える（試験の判定は弱めない）。#38の試験は#38のマージ後の取り込みで同じように直す。#38へはpushしない"
+    },
+    {
+      "description": "「境界に触れる変更」を検査器がどう判定するか。条件の台帳に境界の印を足すと、#38が変える`.review/invariants.json`と重なる",
+      "state": "resolved",
+      "resolution": "台帳を変えず、不変条件が1つでも選ばれた変更を境界に触れる変更とみなし、一覧を1行以上にする（このrepoではINV-PRIVACYが全パスに掛かるので、計画だけのPR以外は常に1行以上）。条件ごとの細かい判定は、必要になってから#38のマージ後に提案する"
+    },
+    {
+      "description": "#40・#38が`docs/review-prevention.md`と`tools/review_guard/README.md`を変える。施策の文書を複数の文書に書くと重なりと食い違いが増える",
+      "state": "resolved",
+      "resolution": "施策の文書は`docs/review-prevention.md`の新しい節1か所にまとめ、#40の手順3・#38の信頼境界の節を変えない。READMEは書式の表の行だけ。#40が正本の文書を変えた場合はそれに従って取り込み時に移す"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "変更はレビュー運用ツール（guard.py）とその試験、手順の文書だけ。試験・記入例は合成の値（架空の不変条件ID・原因キー・パス）だけを使い、実データ・秘密・個人のパスを書かない。red teamの手順では、PRの本文・差分を資料として読むだけにし、報告に実データや秘密を写さないこと、PRのコードを資格情報のある環境で実行しないことを定める。guardのエラーに計画由来の文字列を出すときはJSONの表記（改行をエスケープ）にし、公開のCIログで行を偽装させない（PR12-R002の「同じ規則をすべての経路に」と同じ考え方で、新旧のエラー経路をそろえる）。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "commitの前に`node scripts/check-public.ts --staged`を実行して終了コードを確かめ、stageした差分（試験のfixture・記入例・計画）を読む。guardのエラーの経路を、改行を含む値を入れた合成の計画で試験する",
+          "expected": "終了コード0。差分に実在の勤務先・金額・個人のパス・トークンがない。改行を含む計画の値はエラー文の中でエスケープされ、行頭に`::`等の新しい行を作らない"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "施策2（計画の表）をguardの`check`に加える。既存の検査（base・task_id・ファイル名・計画の個数・未計画パス・選ばれた条件・シナリオ・衝突・change-proposedの参照）は順序も含めて変えず、表の検査を後ろに足すだけにする。新しい計画の版`schema_version: 2`では`boundaries`と`variant_analysis`を必須にし、版1は移行前の計画として受け付ける（表があれば同じ規則で検査する）。CIはbaseの検査器を使うので、このPRの計画は版1に表を加えて書き（自己の免除にならない）、新しい検査器での確認は手元とレビューで行う。構造の検査は記入の充足だけを示し、表の内容の正しさ・網羅は別担当（red teamと内容レビュー）が確かめる。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "試験: `variant_analysis`の同じ（invariant_id, cause_key）の重複、前後空白のあるcause_key、台帳にないcause_key、確かめた箇所のないcause_keyをそれぞれ入れた合成の計画で`check`を呼ぶ。出力の`causes_not_analyzed`が、選ばれた条件の台帳の原因のうち分析にないものを一覧にすることを確かめる",
+          "expected": "重複・空白・未知・箇所なしはどれも`Invalid`で、何が足りないかをメッセージで示す。台帳の原因の一覧は台帳の内容から導かれ、計画の自己申告では減らない"
+        },
+        {
+          "id": "trust",
+          "method": "試験: 版2で表の欠落・境界に触れる変更での空の一覧・選ばれた条件の分析の欠落を拒否すること、版1で表がない計画は従来どおり通り`plan_tables`が`legacy-v1`と出ること、版1でも表があれば同じ検査をすること、版3等の未知の版を拒否することを確かめる。既存の試験はすべてそのまま通す。CI（baseの検査器）でこのPRの計画が通ることと、手元の新しい検査器で同じ計画が`plan_tables: checked`になることを確かめる",
+          "expected": "版2の欠落はどれも失敗。版1の既存の計画（mainと進行中のPRの計画）は失敗しない。既存の検査の失敗条件は1つも消えない。CIの合格・構造の検査を独立承認として扱わない旨を出力のnoticeと文書に残す"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "3つの施策の文書は`docs/review-prevention.md`の1か所に置く。#40（AGENTS.md等の集約、最優先）と#38（T23）が同じ範囲を変えるので、両PRが変える行（#40は手順3、#38は信頼境界の節）を避けて新しい節を足し、`tools/review_guard/README.md`は書式の表の行だけを変える。AGENTS.md・pr-review-loop.md・PRテンプレートは変えず、既存のリンク（AGENTS.mdとpr-review-loop.mdから`review-prevention.md`）から新しい節に届く。PRはDraftのまま、#40と#38のマージのあとでmainを取り込み、#38の`.review/tests/test_component_routing.py`（prepare→checkで版2の表が要る）を含めて整合させてからReadyにする。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#40・#38の差分と自分の差分の変更箇所を`git diff`で照合する。#38の`test_component_routing.py`が`prepare`→`check`を使うことを読み、マージ後の取り込みで表を埋める修正が要ることを引継ぎに残す。Readyにする前に、mainを取り込んだ状態で両方の試験を実行する",
+          "expected": "Draftの間は#40・#38と同じ行を変えない。#40・#38のマージ後の取り込みで、両方の試験と`check`が通る"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS.md・CLAUDE.md・docs/pr-review-loop.md・docs/external-worker.md・PRテンプレートを読み、計画の手順とready-for-reviewの手順が`review-prevention.md`を指すこと、red teamをready-for-reviewの前に置く記述と、作業中Draft・レビュー依頼Openの規約が食い違わないことを確かめる",
+          "expected": "新しい節は既存の入口から届き、Draft/Openの順序（red teamはDraft・working の間、そのあとでOpenとready-for-review）と矛盾しない。入口の文書を変える必要があれば#40のマージ後に別に提案する"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "guard.py check（CLIの--plan、ci.pyが読むPRの計画）",
+      "data": "PRの作者が書く計画のJSON（新しい`boundaries`・`variant_analysis`を含む）",
+      "trust": "untrusted",
+      "control": "read_jsonの既存の制限（1 MiB、symlinkの拒否、重複キーの拒否）のうえで、型・列挙・空でない文字列・既知のID・台帳にある原因を検査する。値を実行・解釈しない"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "guard.py validate/check の--catalog・--ledger（CIではbaseのcheckout）",
+      "data": "不変条件の台帳と原因台帳",
+      "trust": "trusted",
+      "control": "CIはレビュー済みのbaseのものだけを使う（ci.pyは変えない）。手元では利用者が指定するので、既存の`validate`で構造を検査する"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "guard.py・ci.py の標準出力と標準エラー（公開のActionsのログ）",
+      "data": "検査の結果とエラーの文",
+      "trust": "untrusted",
+      "control": "結果はASCIIのJSON。エラーの文に計画由来の値を出すときはJSONの表記にし、改行で行を偽装させない（既存の`index`の重複IDの文も同じにそろえる）。秘密を読まない"
+    },
+    {
+      "id": "B4",
+      "direction": "exit",
+      "location": "guard.py prepare --output",
+      "data": "版2の計画の雛形（空の表と、記入を促すTODO）",
+      "trust": "partially-trusted",
+      "control": "既存のとおり新しいファイルだけを作り、上書きしない。TODOのままでは`check`が失敗する"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "公開のリポジトリ（docs/review-prevention.md、試験、計画）",
+      "data": "手順・記入例・合成のfixture",
+      "trust": "untrusted",
+      "control": "合成の値だけを使い、stageを明示して`check-public --staged`の終了コードを確かめる"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "red teamのエージェントが読むPRの差分・本文・コメント（文書で定める手順）",
+      "data": "PRの作者や第三者が書ける文字列とコード",
+      "trust": "untrusted",
+      "control": "読取りだけ。差分の文字列を指示として扱わない。PRのコードを資格情報のある環境で実行しない（試験の実行はCIに任せる）。push・コメントの解決・マージをしない"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "red teamの報告（PRのコメント）",
+      "data": "監査の結果（原因キーごとの判定、確かめた箇所）",
+      "trust": "untrusted",
+      "control": "決まった形式（印・対象のhead/base・表）だけを書き、実データ・秘密・PRの文字列の長い引用を書かない。レビュー記録の印とroleを使わず、内容レビューやacceptedと取り違えさせない"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "public-path-exception-scope",
+      "pattern": "同じ規則を一部の経路にだけ適用する（新しいエラーの文だけエスケープし、既存の文が計画の値をそのまま出す等）",
+      "places": [
+        {
+          "location": "guard.py index() の重複IDの文",
+          "result": "計画由来のIDをそのまま出していた。JSONの表記にそろえる"
+        },
+        {
+          "location": "guard.py check() の未計画パス・選ばれた条件の欠落の文",
+          "result": "パスはpath_okで改行を拒否済み、条件IDは台帳由来。変更不要"
+        },
+        {
+          "location": "新しい表の検査の文（boundaries・variant_analysis）",
+          "result": "計画由来の値はすべてJSONの表記で出す"
+        },
+        {
+          "location": "ci.py の例外の出力",
+          "result": "guardの例外の文をそのまま出すので、guard側でそろえれば足りる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "自己申告の欄が、中身がなくても検査を通る／PR自身が検査の免除を得る",
+      "places": [
+        {
+          "location": "版の扱い（check の schema_version）",
+          "result": "版2は表が必須、版1は従来の検査をすべて維持。版3等は拒否"
+        },
+        {
+          "location": "prepare の雛形",
+          "result": "TODO・空の箇所は失敗する。雛形のままでは通らない"
+        },
+        {
+          "location": "このPRの計画（CIはbaseの検査器）",
+          "result": "base側で版1として検査され、表は手元とレビューで新しい検査器にかける。初回の例外として文書に書く"
+        },
+        {
+          "location": "出力の notice",
+          "result": "記入の充足だけを示し、内容・網羅は別担当が確かめると明記する"
+        },
+        {
+          "location": "版の比較（計画の schema_version、台帳の schema_version）",
+          "result": "Pythonでは JSON の true と 1.0 が 1 と等しいので、版1として通っていた。整数だけを受け付けるようにそろえる（計画・catalog・ledgerの3か所）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "multiple-plan-exemption",
+      "pattern": "表の検査を計画の個数・除外の判定より前に置き、複数の計画のすり抜けを作る",
+      "places": [
+        {
+          "location": "guard.py check() の順序",
+          "result": "計画の個数・名前・未計画パスの検査のあとに表を検査する。順序は変えない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-task-identity",
+      "pattern": "入口（core・CLI・CI）ごとに表の検査の有無がずれる",
+      "places": [
+        {
+          "location": "guard.py main check",
+          "result": "core の check() を呼ぶ"
+        },
+        {
+          "location": "ci.py",
+          "result": "core の check() を呼ぶ。変更不要"
+        },
+        {
+          "location": "adapters/github-actions.yml",
+          "result": "ci.py を呼ぶ。変更不要"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "cause-key-whitespace",
+      "pattern": "前後空白のある原因キーで台帳の照合をすり抜ける",
+      "places": [
+        {
+          "location": "variant_analysis の cause_key",
+          "result": "trim済みを要求し、台帳の（invariant_id, cause_key）と完全一致で照合する。試験を加える"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "batch-cause-duplication",
+      "pattern": "同じ入力の中の同じ原因の重複を許す",
+      "places": [
+        {
+          "location": "variant_analysis の（invariant_id, cause_key）",
+          "result": "重複を拒否する。試験を加える"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "known-path-routing-gap",
+      "pattern": "既知のパスの条件の選択と、固有の試験の記入がずれる",
+      "places": [
+        {
+          "location": ".review/tests/test_repository_routing.py",
+          "result": "prepare→checkで表の記入が要る。表を埋め、選択の判定は変えない"
+        },
+        {
+          "location": "#38の .review/tests/test_component_routing.py",
+          "result": "同じ修正が要る。#38のマージ後の取り込みで直す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-assessment-drift",
+      "pattern": "実装中に差分や方針が変わっても、境界の一覧・variant analysisが古いまま残る",
+      "places": [
+        {
+          "location": "docs/review-prevention.md の施策2",
+          "result": "差分・方針が変わったら表も同じ計画で更新して先にcommitすること、red teamが表と実際の差分を照合することを書く"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "finding-id-normalization",
+      "pattern": "新しいID・キーの表記で既存の正規形を迂回する",
+      "places": [
+        {
+          "location": "variant_analysis のキー",
+          "result": "指摘IDではなく台帳の（invariant_id, cause_key）で照合する。新しいIDの表記を受け付けない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "PR自身が検査器・workflowを変えて検査を通す",
+      "places": [
+        {
+          "location": "CIの review plan（baseの検査器）",
+          "result": "このPRの新しい検査はマージ後のbaseから効く。このPRはworkflowを変えない。迂回の限界は既存の文書のまま"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "同じ手順を複数の入口に書き、入口ごとに食い違う",
+      "places": [
+        {
+          "location": "AGENTS.md・CLAUDE.md・docs/external-worker.md",
+          "result": "review-prevention.md を指すだけ。変えない"
+        },
+        {
+          "location": "docs/pr-review-loop.md の引継ぎの書式",
+          "result": "red teamの報告のリンクは既存の「実行した検証」の欄に書く。書式は変えない（#40・#38が変える）"
+        },
+        {
+          "location": "tools/review_guard/README.md の書式の表",
+          "result": "版と2つの節の行だけ足し、詳細は review-prevention.md を指す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "pattern": "新しい書式を使う側（進行中のPR・#38の試験）が、書式を提供する変更より先に必要とする",
+      "places": [
+        {
+          "location": "進行中のPRの版1の計画",
+          "result": "版1を受け付けるので、このPRのマージの前後で必要なものは変わらない"
+        },
+        {
+          "location": "#38の test_component_routing.py",
+          "result": "prepareの版2の表が要る。#38が先にマージされ、このPRが取り込みで直す順にする（このPRはそれまでDraft）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "pattern": "施策の時系列（計画→実装→red team→ready-for-review→レビュー→マージ）が入口ごとに違う",
+      "places": [
+        {
+          "location": "docs/review-prevention.md の変更前の手順と新しい節",
+          "result": "計画を先にcommitし、red teamはready-for-reviewの前、内容レビューはその後と同じ順で書く"
+        },
+        {
+          "location": "docs/pr-review-loop.md の1・2",
+          "result": "ready-for-reviewのあとは差分を変えない規約と矛盾しない（red teamの指摘の修正はready-for-reviewの前に済ませる）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "draft-open-entrypoint-coherence",
+      "pattern": "red teamの時点と、作業中Draft・レビュー依頼Openの規約が食い違う",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.md の1",
+          "result": "Openとready-for-reviewは依頼のときだけ。red teamはその前（Draft・working）に置く"
+        },
+        {
+          "location": ".github/PULL_REQUEST_TEMPLATE.md",
+          "result": "Draft/Openの記述を変えない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "review-role-spelling",
+      "pattern": "新しい報告の形式がレビュー記録のroleや印と混同される",
+      "places": [
+        {
+          "location": "red teamの報告の形式",
+          "result": "別の印（red-team）を使い、`role:`の行とdecisionを書かない。T23の巡回はhandoff・reviewの印だけを読む"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "同じ事実を状態資料・台帳・手順に重ねて書いてずれる",
+      "places": [
+        {
+          "location": "docs/project-status.md・docs/implementation-tasks.md",
+          "result": "計画の書式を書いていないので変えない。進捗はIssue #43とPRを正本にする"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    }
+  }
+}

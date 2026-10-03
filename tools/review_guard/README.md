@@ -26,7 +26,7 @@ python3 tools/review_guard/guard.py prepare --paths-file planned-paths.json --ba
 
 | 項目 | 記入内容 |
 | --- | --- |
-| `schema_version` | `1` |
+| `schema_version` | `2`。`1`は2026-10-03より前に作った計画だけ（[移行](../../docs/review-prevention.md#いたちごっこを止める3つの施策)） |
 | `task_id` | 台帳上のID（例: `T07`、`OPS-REVIEW`）。Issue番号はPR/引継ぎに記す |
 | `base_sha` | 検討した最新mainの40文字SHA |
 | `planned_paths` | このPRの予定パス（削除・rename旧名も含む）。計画自身のパスは省略可 |
@@ -36,6 +36,8 @@ python3 tools/review_guard/guard.py prepare --paths-file planned-paths.json --ba
 | `checks` | 各シナリオの`id`、確認方法`method`、独立した期待結果`expected`。実行済み証跡ではない |
 | `decision_references` | `change-proposed`では必須の非空配列。ADRのパス、公開できる決定記録のリンク等。参照先の実在・内容・権限は別担当が確認する |
 | `conflicts` | 衝突がなければ`[]`。あれば下記の形。未解決ならcheckは失敗する |
+| `boundaries` | 版2で必須。変更が触れる入口・出口の一覧（信頼の度合いと制御）。書き方は[計画の表](../../docs/review-prevention.md#いたちごっこを止める3つの施策) |
+| `variant_analysis` | 版2で必須。関係する不変条件・原因ごとの、確かめた箇所と結果。同上 |
 | `context` | 読解用の抜粋。判定根拠は指定したcatalog/ledgerなので、更新時は差分も読み直す |
 
 ```json
