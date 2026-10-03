@@ -132,6 +132,8 @@ function applyOp(run: Run, op: Obj, scenarioId: string): void {
       } else if (expected === "rejected") {
         assert.equal(out.kind, "rejected", `${where}: 拒否するはずの保存を${out.kind}にした（台帳の理由${String(expectedReason)}）`);
         if (out.kind === "rejected") assert.equal(out.reason, expectedReason, `${where}: 拒否の理由 ${JSON.stringify(out.violations)}`);
+        // 拒否した保存は、台帳（記録・改訂・連番・索引）を変えない。
+        assert.equal(out.ledger, run.ledger, `${where}: 拒否で台帳が変わった`);
         run.results.set(opId, { opId, outcome: "rejected" });
       } else if (expected === "replayed") {
         assert.equal(out.kind, "replayed", `${where}: 再送として最初の結果を返すはず`);

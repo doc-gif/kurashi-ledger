@@ -67,13 +67,26 @@ export interface Ledger {
   readonly sha256s: ReadonlyMap<string, string>;
   // 計算runのID（予約するキー。中身はT15）。
   readonly runIds: ReadonlySet<string>;
+  // 検査を通らずに置いた改訂（復元・取込等。未検査）の、revisionKeyの集合。ここにない改訂は、検査を通って保存したもの（検査済み）。
+  // T07は、この区別を改訂ごとの印として永続化し、読み込みで復元する（所有者の判断「正しい保存で信頼を回復」。P1-1）。
+  readonly unchecked: ReadonlySet<string>;
+}
+
+export function revisionKey(id: string, revision: number): string {
+  return `${id}\u0000${revision}`;
+}
+
+export function isUnchecked(ledger: Ledger, revision: Revision): boolean {
+  return ledger.unchecked.has(revisionKey(revision.id, revision.revision));
 }
 
 export interface RequestResult {
   readonly kind: "existing-returned";
   readonly request: Readonly<Record<string, unknown>>; // 写して凍結した要求の全内容
   readonly recordId: string;
-  readonly voided: boolean; // 最初に返したときの取消の有無（後の取消・取消の取り消しで変えない）
+  // 最初に返したときの取消の有無（後の取消・取消の取り消しで変えない）。その記録の最新の版が信頼できず（検査をすり抜けた履歴）、
+  // 取消かどうかを決められなかったときはundefined。
+  readonly voided: boolean | undefined;
 }
 
 export function emptyLedger(): Ledger {
@@ -86,6 +99,7 @@ export function emptyLedger(): Ledger {
     importKeys: new Map(),
     sha256s: new Map(),
     runIds: new Set(),
+    unchecked: new Set(),
   };
 }
 
@@ -127,9 +141,16 @@ export function compareStrings(a: string, b: string): number {
 }
 
 // 改訂を1件足した新しい状態。検査は呼ぶ側（save.ts、restore）が行う。
-export function withRevision(ledger: Ledger, revision: Revision): Ledger {
+// checkedは、検査を通って保存した改訂ならtrue、検査を通らずに置いた改訂（復元等）ならfalse。
+export function withRevision(ledger: Ledger, revision: Revision, checked: boolean): Ledger {
   const revisions = new Map(ledger.revisions);
-  revisions.set(revision.id, [...(ledger.revisions.get(revision.id) ?? []), revision]);
+  revisions.set(revision.id, Object.freeze([...(ledger.revisions.get(revision.id) ?? []), revision]));
+  let unchecked = ledger.unchecked;
+  if (!checked) {
+    const next = new Set(unchecked);
+    next.add(revisionKey(revision.id, revision.revision));
+    unchecked = next;
+  }
   const writeRequests = new Map(ledger.writeRequests);
   writeRequests.set(revision.writeRequestId, revision);
   // importKeyは履歴全体で予約する（共通の型の9・10）。版1だけでなく、どの改訂に現れたknownのキーも、その記録に予約する
@@ -148,7 +169,7 @@ export function withRevision(ledger: Ledger, revision: Revision): Ledger {
       }
     }
   }
-  return { ...ledger, saves: [...ledger.saves, { kind: "revision", revision }], revisions, writeRequests, importKeys };
+  return { ...ledger, saves: Object.freeze([...ledger.saves, Object.freeze({ kind: "revision" as const, revision })]), revisions, writeRequests, importKeys, unchecked };
 }
 
 // 既存の記録を返した要求の結果を足す（記録・改訂・保存の連番は作らない）。
@@ -168,14 +189,14 @@ export function withEvidenceFile(ledger: Ledger, file: EvidenceFile): Ledger {
   evidenceFiles.set(file.id, file);
   const sha256s = new Map(ledger.sha256s);
   sha256s.set(file.sha256, file.id);
-  return { ...ledger, saves: [...ledger.saves, { kind: "evidence-file", file }], evidenceFiles, sha256s };
+  return { ...ledger, saves: Object.freeze([...ledger.saves, Object.freeze({ kind: "evidence-file" as const, file })]), evidenceFiles, sha256s };
 }
 
 // 計算runの保存の時点だけを足す（runの形と保存の検査はT15）。保存の連番と、時点から連番への対応に使う。
 export function withRunStamp(ledger: Ledger, id: string, recordedAt: string): Ledger {
   const runIds = new Set(ledger.runIds);
   runIds.add(id);
-  return { ...ledger, saves: [...ledger.saves, { kind: "run", id, recordedAt, recordedSeq: nextSeq(ledger) }], runIds };
+  return { ...ledger, saves: Object.freeze([...ledger.saves, Object.freeze({ kind: "run" as const, id, recordedAt, recordedSeq: nextSeq(ledger) })]), runIds };
 }
 
 // 保存の境界で入力を深く写して凍結する（呼び出し元が後から入力を変えても、保存した履歴・連番・索引が変わらないように）。

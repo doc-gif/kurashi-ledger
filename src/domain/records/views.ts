@@ -2,6 +2,7 @@
 // 見方は、各記録の改訂から1つを選ぶ。順序はrecordedSeqと版の番号だけで決め、時計の値（recordedAt）では決めない。
 
 import { knownValue } from "./fact.ts";
+import { compareDates, isLocalDate } from "./values.ts";
 import { recordedAtOf, revisionsOf, type Ledger, type Revision } from "./ledger.ts";
 
 export type View =
@@ -41,8 +42,9 @@ export function selectRevision(ledger: Ledger, id: string, view: ResolvedView): 
   for (const r of list) {
     if (view.kind === "record-seq" && r.recordedSeq > view.seq) continue;
     if (view.kind === "known-on") {
+      // knownでもLocalDateでない把握日（検査をすり抜けたデータ）はunknownとして扱い、選ばない（P3-1）。
       const d = knownValue(r.knownOn);
-      if (typeof d !== "string" || d > view.date) continue;
+      if (!isLocalDate(d) || compareDates(d, view.date) > 0) continue;
     }
     if (chosen === undefined || r.revision > chosen.revision) chosen = r;
   }

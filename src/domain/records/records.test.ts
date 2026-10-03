@@ -8,6 +8,7 @@ import { aggregateRecords } from "./aggregate.ts";
 import { combineComparisons, compareFacts, type Comparable } from "./fact.ts";
 import { isIdWithPrefix, isLineId, uuidV7, uuidV7IdGenerator } from "./ids.ts";
 import { isHistoryValid } from "./history.ts";
+import { dependentViolations } from "./effective.ts";
 import { emptyLedger, latestRevision, revisionsOf, type Ledger } from "./ledger.ts";
 import { canonicalMasterId } from "./masters.ts";
 import { restoreUnchecked, saveRevision, type SaveOutcome } from "./save.ts";
@@ -207,10 +208,9 @@ test("集計は入力順・保存順に依存しない（不足の並びも同�
   assert.ok(first?.ok);
   if (first?.ok) {
     assert.equal(first.values[0].knownSum, 300);
-    assert.deepEqual(
-      first.values[0].missing.map((m) => m.ref.id),
-      ["dep_d", "dep_a", "dep_b"],
-    );
+    // 不足の行の集合。日付が分からない記録をどこに並べるかは契約が決めていない（実装の決め方）ので、順序は確かめず、
+    // 入力順を変えても同じ順で返す（決定的である）ことだけを上で確かめる。
+    assert.deepEqual(first.values[0].missing.map((m) => m.ref.id).sort(), ["dep_a", "dep_b", "dep_d"]);
   }
 });
 
@@ -1038,4 +1038,186 @@ test("Copilot r4173261559の監査: 形の崩れたduplicateOfの取消は除く
   assert.equal(overlap.ledger.saves.length, seq);
   // 期間が重ならない雇用条件は受け付ける。
   ok(save(t, term("2027-01-01", "2027-12-31"), T0));
+});
+
+test("P1-1（所有者の判断: 正しい保存で信頼を回復）: 不正な版のあとに検査を通った保存があれば、その版から先の判定は止まらない", () => {
+  // dep_1: v1 create、不正なv2 unvoid（activeの記録の取消の取り消し）、保存したv3 void → 除く。v3より前の見方ではincomplete。
+  let l = setup();
+  l = restore(l, [deposit("dep_1", { state: "known", value: 100 }), { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "unvoid" }]);
+  const beforeHeal = l.saves.length;
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_1@2:save-check:conflict"] });
+  l = ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void" }, T0));
+  assert.deepEqual(depositOct(l), { state: "no-records", knownSum: 0, missing: [] });
+  assert.deepEqual(depositOct(l, { kind: "record-seq", seq: beforeHeal }), { state: "incomplete", knownSum: 0, missing: ["dep_1@2:save-check:conflict"] });
+  // 不正な版は、履歴に要確認として残る（信頼できない）。
+  const v2 = revisionsOf(l, "dep_1")[1];
+  assert.ok(v2 !== undefined && !isHistoryValid(l, v2));
+  // 取消を取り消して値を直す保存のあとは、数える。
+  l = ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 4, reason: "unvoid" }, T0));
+  assert.deepEqual(depositOct(l), { state: "complete", knownSum: 100, missing: [] });
+  // emp_9: 不正な版のあとに保存した二重登録の取消で、正規のIDに解決する。
+  let m = setup();
+  m = restore(m, [{ id: "emp_9", recordType: "employer", body: { displayName: "勤務先Z" } }, { id: "emp_9", recordType: "employer", revision: 2, reason: "unvoid" }]);
+  assert.equal(canonicalMasterId(m, "emp_9", CURRENT), undefined);
+  m = ok(save(m, { id: "emp_9", recordType: "employer", revision: 3, reason: "void", duplicateOf: { state: "known", value: { id: "emp_1", revision: "current", line: "whole" } } }, T0));
+  assert.equal(canonicalMasterId(m, "emp_9", CURRENT), "emp_1");
+  // 雇用条件: 不正な版のあとに保存した取消で、重なりの検査から外れる。
+  const term = (id: string): Obj => ({ id, recordType: "employment-term", body: { employerId: "emp_2", applicablePeriod: { start: { state: "known", value: "2026-01-01" }, end: { state: "known", value: "2026-12-31" } } } });
+  let t = setup();
+  t = restore(t, [term("term_a"), { id: "term_a", recordType: "employment-term", revision: 2, reason: "unvoid" }]);
+  rejected(save(t, term("term_b"), T0), "employment-term-overlap");
+  t = ok(save(t, { id: "term_a", recordType: "employment-term", revision: 3, reason: "void" }, T0));
+  ok(save(t, term("term_b"), T0));
+});
+
+test("P3-9: 把握時点の見方と不正な履歴の組合せ、形の崩れた把握日（P3-1）", () => {
+  let l = setup();
+  // 版1（把握日2026-09-01、100）、不正なv2（取消でamountを999に変えた。把握日は引き継ぐ）。
+  l = restore(l, [
+    { ...deposit("dep_1", { state: "known", value: 100 }), knownOn: { state: "known", value: "2026-09-01" } },
+    { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", body: { amount: { state: "known", value: 999 } } },
+  ]);
+  // 把握時点の見方でも、選ばれる改訂（v2）は信頼できないのでconflict。
+  assert.deepEqual(depositOct(l, { kind: "known-on", date: "2026-09-30" }), { state: "incomplete", knownSum: 0, missing: ["dep_1@2:save-check:conflict"] });
+  // その日より前は、記録が見方にない。
+  assert.deepEqual(depositOct(l, { kind: "known-on", date: "2026-08-31" }), { state: "no-records", knownSum: 0, missing: [] });
+  // 形の崩れた把握日（knownで暦にない"2026-02-30"。文字列としては見方の日付より前）の改訂は、把握時点の見方で選ばない。
+  let z = setup();
+  z = restore(z, [{ ...deposit("dep_2", { state: "known", value: 1 }), knownOn: { state: "known", value: "2026-02-30" } }]);
+  assert.equal(selectRevision(z, "dep_2", { kind: "known-on", date: "2026-12-31" }), undefined);
+  assert.deepEqual(depositOct(z, { kind: "known-on", date: "2026-12-31" }), { state: "no-records", knownSum: 0, missing: [] });
+  assert.deepEqual(depositOct(z), { state: "incomplete", knownSum: 0, missing: ["dep_2@1:save-check:conflict"] });
+});
+
+test("P2-1（所有者の判断: 取消・却下では行の確認をしない）: 行が消えた照合配分も、取消とrejectedへの訂正ができる", () => {
+  let l = setup();
+  const lines = (ids: string[]): Obj[] => ids.map((lineId) => ({ lineId, expectedMonth: "2026-11", amount: { state: "known", value: 50000 } }));
+  l = ok(save(l, { id: "fc_1", recordType: "forecast", body: { subject: "pay", employerId: { state: "known", value: "emp_1" }, measure: "gross-pay", lines: lines(["l1", "l2", "l3"]) } }, T0));
+  l = ok(save(l, payslip("pay_1", { grossPay: { state: "known", value: 48000 } }), T0));
+  const alc = (extra: Obj = {}): Obj => ({
+    id: "alc_1",
+    recordType: "allocation",
+    body: { kind: "forecast-realization", allocationStatus: "proposed", from: { id: "pay_1", revision: "current", line: "whole" }, to: { id: "fc_1", revision: "current", line: "l3" }, amount: { state: "known", value: 48000 }, settlesForecastLine: { state: "unknown" }, proposedBy: "user" },
+    ...extra,
+  });
+  l = ok(save(l, alc(), T0));
+  // l3を消す（取り下げではなく、行を消す見直し）。
+  l = ok(save(l, { id: "fc_1", recordType: "forecast", revision: 2, reason: "new-information", body: { lines: lines(["l1", "l2"]) } }, T0));
+  // 取消はできる。
+  ok(save(l, { id: "alc_1", recordType: "allocation", revision: 2, reason: "void" }, T0));
+  // rejectedへの訂正もできる（from・toを変えない改訂）。
+  ok(save(l, { id: "alc_1", recordType: "allocation", revision: 2, reason: "correct-input-error", body: { allocationStatus: "rejected" } }, T0));
+  // toを消えた行（別の行から消えた行へ）に変える改訂は、行の実在を確かめて拒否する。
+  const m = ok(save(l, { id: "alc_1", recordType: "allocation", revision: 2, reason: "correct-input-error", body: { to: { id: "fc_1", revision: "current", line: "l1" } } }, T0));
+  const seq = m.saves.length;
+  const back = save(m, { id: "alc_1", recordType: "allocation", revision: 3, reason: "correct-input-error", body: { to: { id: "fc_1", revision: "current", line: "l3" } } }, T0);
+  rejected(back, "ref-target-invalid");
+  assert.equal(back.ledger, m);
+  assert.equal(back.ledger.saves.length, seq);
+});
+
+test("P2-2: 給与明細のnew-informationの規則は、行と期間の葉のFactまで比べる", () => {
+  let l = setup();
+  const line = (amount: Obj, taxTreatment: Obj): Obj => ({ lineId: "l1", label: "手当", category: { state: "known", value: "allowance" }, amount, taxTreatment });
+  l = ok(
+    save(
+      l,
+      payslip("pay_1", {
+        otherEarnings: { state: "known", value: [line({ state: "known", value: 1000 }, { state: "unknown" })] },
+        workPeriod: { state: "known", value: { start: { state: "known", value: "2026-09-21" }, end: { state: "unknown" } } },
+      }),
+      T0,
+    ),
+  );
+  const seq = l.saves.length;
+  const note = { changeNote: { state: "known", value: "勤務先の回答（架空）" } };
+  const rev = (body: Obj, extra: Obj = note): Obj => ({ id: "pay_1", recordType: "payslip", revision: 2, reason: "new-information", body, ...extra });
+  // 行のknownのamountを変える: 拒否（台帳・連番は変わらない）。
+  const amount = save(l, rev({ otherEarnings: { state: "known", value: [line({ state: "known", value: 2000 }, { state: "unknown" })] } }), T0);
+  rejected(amount, "transition-not-allowed");
+  assert.equal(amount.ledger, l);
+  assert.equal(amount.ledger.saves.length, seq);
+  // 行のunknownのtaxTreatmentを埋める: 情報源のメモがあれば受け付け、なければ拒否する。
+  const fill = { otherEarnings: { state: "known", value: [line({ state: "known", value: 1000 }, { state: "known", value: "taxable" })] } };
+  ok(save(l, rev(fill), T0));
+  rejected(save(l, rev(fill, {}), T0), "transition-not-allowed");
+  // knownの並びに行を足す: 拒否。
+  rejected(save(l, rev({ otherEarnings: { state: "known", value: [line({ state: "known", value: 1000 }, { state: "unknown" }), { ...line({ state: "known", value: 1 }, { state: "unknown" }), lineId: "l2" }] } }), T0), "transition-not-allowed");
+  // workPeriod.start（knownの端）を変える: 拒否。unknownのendを埋める: 受け付ける。
+  rejected(save(l, rev({ workPeriod: { state: "known", value: { start: { state: "known", value: "2026-09-20" }, end: { state: "unknown" } } } }), T0), "transition-not-allowed");
+  ok(save(l, rev({ workPeriod: { state: "known", value: { start: { state: "known", value: "2026-09-21" }, end: { state: "known", value: "2026-10-20" } } } }), T0));
+  // Factのnoteだけの変更は、記載された値ではないので許す（情報源のメモも要らない）。
+  ok(save(l, rev({ grossPay: { state: "unknown", note: "明細の印字が薄い" } }, {}), T0));
+});
+
+test("P3-2・P3-3・P3-4: 形の崩れたマスタへの参照、未検査の改訂の再送・取消の有無・行、集計の要求の形", () => {
+  // P3-2: 雇用先が文字列でない復元した明細は、範囲から外さず不足（雇用先unknown）に挙げる。
+  let l = setup();
+  l = restore(l, [{ ...payslip("pay_9", { grossPay: { state: "known", value: 1 } }), body: { ...(payslip("pay_9", {})["body"] as Obj), employerId: 7, grossPay: { state: "known", value: 1 } } }]);
+  const all = aggregateRecords(l, { key: { kind: "payslip-item", item: "grossPay" }, axis: "scheduled-pay-date", scope: { employerIds: ["emp_1"], accountIds: [], from: "2026-10-01", to: "2026-10-31" } });
+  assert.ok(all.ok && all.values[0].missing.some((m) => m.ref.id === "pay_9"), JSON.stringify(all));
+  // 形の崩れたマスタへの参照は読み飛ばさず、解決できない参照（master-refの違反）として扱う。
+  assert.ok(dependentViolations(l, CURRENT).some((v) => v.kind === "master-ref" && v.ids.includes("pay_9")));
+  // P3-3: 未検査の改訂のwriteRequestIdの再送は、最初の結果として返さず拒否する。
+  let r = setup();
+  const restored = expandRecord(deposit("dep_1", { state: "known", value: 1 }), { scenarioId: "unit", opId: "u1", previous: undefined });
+  r = restoreUnchecked(r, [restored], { clock: { now: () => T0 } });
+  const { id: _id, ...again } = restored;
+  void _id;
+  const replay = saveRevision(r, again, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
+  rejected(replay, "write-request-conflict");
+  assert.equal(replay.ledger, r);
+  // P3-3: 最新の版が信頼できない記録を再取込で返すとき、取消の有無はundefined。
+  const imp = (w: string): Obj => ({ id: "dep_i", recordType: "bank-deposit", entryChannel: "import", writeRequestId: w, importKey: { state: "known", value: { source: "架空の口座CSV", key: "K" } }, body: { accountId: "acct_1", amount: { state: "known", value: 1 } } });
+  let q = setup();
+  q = restore(q, [imp("W1"), { id: "dep_i", recordType: "bank-deposit", revision: 2, reason: "unvoid" }]);
+  const { id: _i, ...input } = expandRecord(imp("W2"), { scenarioId: "unit", opId: "u2", previous: undefined });
+  void _i;
+  const ret = saveRevision(q, input, { clock: { now: () => T0 }, ids: { next: () => "dep_j" } });
+  assert.ok(ret.kind === "existing-returned" && ret.recordId === "dep_i" && ret.voided === undefined, JSON.stringify(ret.kind));
+  // P3-3: 参照先の最新の版が信頼できないとき、その行を指す新しい配分は、行を確かめられないものとして拒否する。
+  let f = setup();
+  f = restore(f, [
+    { id: "fc_1", recordType: "forecast", body: { subject: "pay", employerId: { state: "known", value: "emp_1" }, measure: "gross-pay", lines: [{ lineId: "l1", expectedMonth: "2026-11", amount: { state: "known", value: 1 } }] } },
+    { id: "fc_1", recordType: "forecast", revision: 2, reason: "unvoid" },
+  ]);
+  f = ok(save(f, payslip("pay_1", { grossPay: { state: "known", value: 1 } }), T0));
+  rejected(
+    save(f, { id: "alc_1", recordType: "allocation", body: { kind: "forecast-realization", allocationStatus: "proposed", from: { id: "pay_1", revision: "current", line: "whole" }, to: { id: "fc_1", revision: "current", line: "l1" }, amount: { state: "known", value: 1 }, settlesForecastLine: { state: "unknown" }, proposedBy: "user" } }, T0),
+    "ref-target-invalid",
+  );
+  // P3-4: 集計の要求の余分な最上位の項目と、形の崩れた見方は拒否する。
+  const g = setup();
+  const extra = aggregateRecords(g, { ...DEPOSIT_OCT, extra: 1 });
+  assert.ok(!extra.ok && extra.error === "rejected-request");
+  for (const view of [{ kind: "record-seq", seq: -1 }, { kind: "record-time", time: "zzz" }, { kind: "known-on", date: "2026-13-01" }, { kind: "nope" }]) {
+    const out = aggregateRecords(g, DEPOSIT_OCT, view as View);
+    assert.ok(!out.ok && out.error === "rejected-request", JSON.stringify(view));
+  }
+  // P3-6: 集計の結果は凍結している。
+  const res = aggregateRecords(g, DEPOSIT_OCT);
+  assert.ok(res.ok && Object.isFrozen(res.values[0]) && Object.isFrozen(res.values[0].scope.accountIds));
+  assert.ok(Object.isFrozen(g.saves));
+});
+
+test("P3-8: 集計のoverflowは、正の値と負の値の合計で判定し、入力の順（IDの順）に依存しない", () => {
+  const half = Math.floor(Number.MAX_SAFE_INTEGER / 2);
+  for (const ids of [
+    ["pay_a", "pay_b", "pay_c"],
+    ["pay_c", "pay_b", "pay_a"],
+  ]) {
+    let l = setup();
+    // 正の値の合計が安全な整数を超える（途中で超えうる）ので、負の値で結果が範囲に戻ってもoverflow。
+    const values = [half + 1, half + 1, -(half + 1)];
+    ids.forEach((id, i) => {
+      l = ok(save(l, payslip(id, { netPay: { state: "known", value: values[i] } }), T0));
+    });
+    const out = aggregateRecords(l, netPayOct());
+    assert.ok(!out.ok && out.error === "overflow", JSON.stringify(ids));
+  }
+  let ok3 = setup();
+  ok3 = ok(save(ok3, payslip("pay_a", { netPay: { state: "known", value: Number.MAX_SAFE_INTEGER } }), T0));
+  ok3 = ok(save(ok3, payslip("pay_b", { netPay: { state: "known", value: -Number.MAX_SAFE_INTEGER } }), T0));
+  const fine = aggregateRecords(ok3, netPayOct());
+  assert.ok(fine.ok && fine.values[0].knownSum === 0 && fine.values[0].state === "complete");
 });

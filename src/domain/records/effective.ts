@@ -84,7 +84,7 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined) continue;
     for (const ref of masterRefsOf(type, bodyOf(rev))) {
-      if (canon(ref.id) === undefined) out.push({ kind: "master-ref", ids: [id], detail: `${ref.path}=${ref.id}` });
+      if (ref.id === undefined || canon(ref.id) === undefined) out.push({ kind: "master-ref", ids: [id], detail: `${ref.path}=${String(ref.id)}` });
     }
   }
   // 雇用条件の期間の重なり（端が分からなければ、その側へ限りなく開いた期間として判定する。共通の型の6）。
@@ -112,10 +112,18 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
     if (!Array.isArray(rows)) continue;
     const seen = new Set<string>();
     rows.forEach((row, i) => {
-      const raw = typeof row === "object" && row !== null ? knownValue((row as Record<string, unknown>)["payerEmployerId"]) : undefined;
-      if (typeof raw !== "string") return;
-      const c = canon(raw);
-      if (c === undefined) return;
+      // 支払者がunknown・not-statedの行は、範囲が確定しないだけで違反ではない（記録の型の6）。行の形が崩れている、knownの値が
+      // 文字列でない、有効なマスタに解決できない、または発行した支払者が分からない場合は、一意性と発行者との違いを確かめられない
+      // 違反にする（関係がないものとしない。P3-2）。
+      const fact = typeof row === "object" && row !== null ? (row as Record<string, unknown>)["payerEmployerId"] : undefined;
+      const st = stateOf(fact);
+      if (st === "unknown" || st === "not-stated") return;
+      const raw = knownValue(fact);
+      const c = st === "known" && typeof raw === "string" ? canon(raw) : undefined;
+      if (c === undefined || issuer === undefined) {
+        out.push({ kind: "included-payers", ids: [id], detail: `[${i}]=undeterminable` });
+        return;
+      }
       if (c === issuer) out.push({ kind: "included-payers", ids: [id], detail: `[${i}]=issuer:${c}` });
       if (seen.has(c)) out.push({ kind: "included-payers", ids: [id], detail: `[${i}]=duplicate:${c}` });
       seen.add(c);

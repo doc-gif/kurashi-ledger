@@ -8,6 +8,7 @@ import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, RECORD_PREFIX, RUN_
 import {
   bodyOf,
   idInUse,
+  isUnchecked,
   withRequestResult,
   writeRequestIdInUse,
   type RequestResult,
@@ -30,7 +31,7 @@ import { dependentKey, dependentViolations, isEffective, SeriesCache, type Depen
 import { REJECTION_REASONS, type RejectionReason, type Violation } from "./reasons.ts";
 import { canonicalMasterId, masterRefsOf } from "./masters.ts";
 import { analyzeSeries, isSeriesType, problemKey } from "./series.ts";
-import { checkAgainstPrevious, knownOnInFuture, sameJson } from "./history.ts";
+import { checkAgainstPrevious, isHistoryValid, knownOnInFuture, sameJson } from "./history.ts";
 import { checkEvidenceFileStatic, checkRevisionStatic, lineObjects } from "./validate.ts";
 import { isInstant } from "./values.ts";
 import { CURRENT, type ResolvedView } from "./views.ts";
@@ -51,7 +52,8 @@ export type SaveOutcome =
   | { readonly kind: "replayed"; readonly ledger: Ledger; readonly revision: Revision }
   // 同じimportKeyの記録がある（取消・差し替え済みを含む）。新しい記録を作らず、その記録を返す。
   // 新しい記録・改訂・連番は作らず、その要求の結果だけを台帳に記録する（同じ要求の再送は、この最初の結果を返す）。
-  | { readonly kind: "existing-returned"; readonly ledger: Ledger; readonly recordId: string; readonly voided: boolean }
+  // voidedは、返す記録の最新の版が信頼できず取消かどうかを決められないときundefined（P3-3）。
+  | { readonly kind: "existing-returned"; readonly ledger: Ledger; readonly recordId: string; readonly voided: boolean | undefined }
   | { readonly kind: "rejected"; readonly ledger: Ledger; readonly reason: RejectionReason; readonly violations: readonly Violation[] };
 
 type Obj = Readonly<Record<string, unknown>>;
@@ -99,6 +101,10 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
   if (typeof wr === "string") {
     const first = ledger.writeRequests.get(wr);
     if (first !== undefined) {
+      // 検査を通らずに置いた改訂（復元等）のwriteRequestIdは、保存の結果ではないので、最初の結果として返さない（P3-3）。
+      if (isUnchecked(ledger, first)) {
+        return reject(ledger, one("write-request-conflict", "$.writeRequestId", `検査を通らずに置いた改訂のwriteRequestIdと同じ: ${wr}`));
+      }
       if (sameRequest(input, first)) return { kind: "replayed", ledger, revision: first };
       return reject(ledger, one("write-request-conflict", "$.writeRequestId", `同じwriteRequestIdで内容の違う要求: ${wr}`));
     }
@@ -137,7 +143,10 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
       const existing = ledger.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
       if (existing !== undefined) {
         // この要求の全内容と最初の結果を、writeRequestIdで記録する（記録・改訂・連番は作らない）。
-        const result: RequestResult = { kind: "existing-returned", request: input, recordId: existing, voided: latestRevision(ledger, existing)?.status === "voided" };
+        // 取消の有無は、最新の版が信頼できるときだけ決める（信頼できなければundefined。P3-3）。
+        const latest = latestRevision(ledger, existing);
+        const voided = latest !== undefined && isHistoryValid(ledger, latest) ? latest.status === "voided" : undefined;
+        const result: RequestResult = { kind: "existing-returned", request: input, recordId: existing, voided };
         return { kind: "existing-returned", ledger: withRequestResult(ledger, wr as string, result), recordId: result.recordId, voided: result.voided };
       }
     }
@@ -169,7 +178,7 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
     importKey: proposal["importKey"] as Revision["importKey"],
     body: proposal["body"] as Revision["body"],
   });
-  const after = withRevision(ledger, revision);
+  const after = withRevision(ledger, revision, true);
   // 5. ほかの記録との関係で決まる検査（保存したあとの状態で）。
   const relational = checkRelations(ledger, after, revision, previous);
   if (relational.length > 0) return reject(ledger, relational);
@@ -195,25 +204,31 @@ function recordRefsOf(recordType: RecordType, duplicateOf: unknown, b: Obj): { p
 
 // 行を指す参照で、その行が参照先の現在の版にあるか。給与明細は支給の行（otherEarnings）、予測は見込みの行（lines）だけを
 // 指せる（reconciliation.mdの3の種類ごとの表）。
+// 参照先の最新の版が信頼できない（検査をすり抜けた履歴）なら、行を確かめられないものとして扱う（P3-3）。
 function lineExists(ledger: Ledger, id: string, line: string): boolean {
   const target = latestRevision(ledger, id);
-  if (target === undefined) return false;
+  if (target === undefined || !isHistoryValid(ledger, target)) return false;
   const list = target.recordType === "payslip" ? "otherEarnings" : target.recordType === "forecast" ? "lines" : undefined;
   if (list === undefined) return false;
   return lineObjects(bodyOf(target)[list]).some((l) => l["lineId"] === line);
 }
 
 // 参照先の実在（共通の型の2。参照先が存在しない参照は保存できない）と、行が参照先の現在の版にあること。
-function missingReferences(ledger: Ledger, recordType: RecordType, duplicateOf: unknown, body: Obj): Violation[] {
+// 行の実在は、記録の作成のときと、その参照を直前の版から変える改訂のときだけ確かめる（所有者の判断「取消・却下では行の確認を
+// しない」。P2-1）。参照を変えない改訂（取消・取消の取り消し・却下への訂正等）では確かめない。previousBodyは直前の版のbody。
+function missingReferences(ledger: Ledger, recordType: RecordType, duplicateOf: unknown, body: Obj, previousBody?: Obj): Violation[] {
   const out: Violation[] = [];
+  const before = previousBody === undefined ? undefined : new Map(recordRefsOf(recordType, undefined, previousBody).map((r) => [r.path, r]));
   for (const ref of recordRefsOf(recordType, duplicateOf, body)) {
+    const prev = before?.get(ref.path);
+    const unchanged = prev !== undefined && prev.id === ref.id && prev.line === ref.line;
     if (revisionsOf(ledger, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: ref.path, message: `参照先がない: ${ref.id}` });
-    else if (ref.line !== "whole" && !lineExists(ledger, ref.id, ref.line)) {
+    else if (ref.line !== "whole" && !unchanged && !lineExists(ledger, ref.id, ref.line)) {
       out.push({ reason: "ref-target-invalid", path: ref.path, message: `行${ref.line}が参照先${ref.id}の現在の版にない` });
     }
   }
   for (const ref of masterRefsOf(recordType, body)) {
-    if (revisionsOf(ledger, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: `$.body.${ref.path}`, message: `参照するマスタがない: ${ref.id}` });
+    if (ref.id !== undefined && revisionsOf(ledger, ref.id).length === 0) out.push({ reason: "ref-target-missing", path: `$.body.${ref.path}`, message: `参照するマスタがない: ${ref.id}` });
   }
   const evf = body["evidenceFileId"];
   if (recordType === "evidence-link" && typeof evf === "string" && !ledger.evidenceFiles.has(evf)) {
@@ -224,7 +239,7 @@ function missingReferences(ledger: Ledger, recordType: RecordType, duplicateOf: 
 
 function checkRelations(before: Ledger, after: Ledger, revision: Revision, previous: Revision | undefined): Violation[] {
   const view: ResolvedView = CURRENT;
-  const out = missingReferences(after, revision.recordType, revision.duplicateOf, revision.body);
+  const out = missingReferences(after, revision.recordType, revision.duplicateOf, revision.body, previous === undefined ? undefined : bodyOf(previous));
   if (out.length > 0) return out;
   const series = new SeriesCache(after, view);
   // duplicateOfの先は、自分以外の、保存のときに有効な記録だけ（共通の型の9）。
@@ -265,6 +280,7 @@ function affectedRecords(before: Ledger, after: Ledger, revision: Revision): Set
     const latest = latestRevision(after, id);
     if (latest === undefined) continue;
     for (const ref of masterRefsOf(latest.recordType, bodyOf(latest))) {
+      if (ref.id === undefined) continue;
       if ((directChange && ref.id === revision.id) || canonicalMasterId(before, ref.id, CURRENT) !== canonicalMasterId(after, ref.id, CURRENT)) out.add(id);
     }
   }
@@ -364,7 +380,7 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
       recordedAt: nowOf(deps.clock),
       recordedSeq: nextSeq(cur),
     });
-    cur = withRevision(cur, revision);
+    cur = withRevision(cur, revision, false);
   }
   return cur;
 }

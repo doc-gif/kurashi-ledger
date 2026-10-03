@@ -11,7 +11,7 @@ import { canonicalMasterId } from "./masters.ts";
 import { PAYSLIP_AMOUNT_ITEMS, type PayslipAmountItem } from "./schema.ts";
 import { analyzeSeries } from "./series.ts";
 import { isHistoryValid } from "./history.ts";
-import { addYen, isLocalDate } from "./values.ts";
+import { isInstant, isLocalDate } from "./values.ts";
 import { resolveView, selectRevision, type View } from "./views.ts";
 
 export type RecordAggregateKey = { readonly kind: "deposit-amount" } | { readonly kind: "payslip-item"; readonly item: PayslipAmountItem };
@@ -63,6 +63,9 @@ function rejected(message: string): AggregateResult {
 // 要求の検査（共通の型の11）: 表にないkind・修飾子、kindと合わないaxis、許さないscopeの次元に空でない値、from > toを拒否する。
 function parseRequest(ledger: Ledger, request: unknown): RecordAggregateRequest | string {
   if (!isObj(request) || !isObj(request["key"]) || !isObj(request["scope"])) return "要求の形が違う";
+  // 最上位の項目はkey・axis・scopeだけ（表にない項目を黙って無視しない。P3-4）。
+  const extra = Object.keys(request).filter((k) => k !== "key" && k !== "axis" && k !== "scope");
+  if (extra.length > 0) return `要求に余分な項目: ${extra.join(", ")}`;
   const key = request["key"];
   const scope = request["scope"];
   let parsedKey: RecordAggregateKey;
@@ -106,9 +109,21 @@ function fieldKeyString(f: FieldKey): string {
   return f.kind === "record-item" ? `record-item:${f.name}` : `derived:${f.key}`;
 }
 
+// 見方の形（P3-4）。形の崩れた見方は、黙って現在の見方等に読み替えず拒否する。
+function isView(v: unknown): v is View {
+  if (!isObj(v)) return false;
+  const keys = Object.keys(v).sort().join(",");
+  if (v["kind"] === "current") return keys === "kind";
+  if (v["kind"] === "record-seq") return keys === "kind,seq" && typeof v["seq"] === "number" && Number.isSafeInteger(v["seq"]) && v["seq"] >= 0;
+  if (v["kind"] === "record-time") return keys === "kind,time" && isInstant(v["time"]);
+  if (v["kind"] === "known-on") return keys === "date,kind" && isLocalDate(v["date"]);
+  return false;
+}
+
 export function aggregateRecords(ledger: Ledger, request: unknown, view: View = { kind: "current" }): AggregateResult {
   const parsed = parseRequest(ledger, request);
   if (typeof parsed === "string") return rejected(parsed);
+  if (!isView(view)) return rejected(`見方の形が違う: ${JSON.stringify(view)}`);
   const rv = resolveView(ledger, view);
   const isDeposit = parsed.key.kind === "deposit-amount";
   const type = isDeposit ? "bank-deposit" : "payslip";
@@ -131,7 +146,10 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
     if (prev !== undefined && MISSING_PRIORITY.indexOf(prev.entry.state) <= MISSING_PRIORITY.indexOf(state)) return;
     missing.set(k, { entry: { ref: { id: rev.id, revision: rev.revision, line: "whole" }, field, state }, date });
   };
-  let knownSum = 0;
+  // 合計は、正の値の合計と負の値の合計をそれぞれBigIntで求める。どちらかが安全な整数を超えれば、足す順によっては途中で
+  // 超えうるので誤りにする（入力の順に依存しない判定。共通の型の4「途中や結果」。P3-8）。
+  let positive = 0n;
+  let negative = 0n;
   let targets = 0;
   let notApplicable = 0;
   for (const id of recordIds(ledger, type)) {
@@ -188,9 +206,8 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
     if (st === "known") {
       const n = knownValue(v);
       if (typeof n !== "number") continue; // 形の違う値は上の保存の検査でsave-checkに挙がっている。
-      const s = addYen(knownSum, n);
-      if (s === undefined) return { ok: false, error: "overflow", message: `合計が安全な整数の範囲を超える（${id}で）` };
-      knownSum = s;
+      if (n >= 0) positive += BigInt(n);
+      else negative += BigInt(n);
       targets += 1;
     } else if (st === "not-applicable") {
       targets += 1;
@@ -201,7 +218,8 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
   }
   const missingList = [...missing.values()]
     .sort((a, b) => {
-      // 並べる順序は日付の軸の値、次にIDの文字列（共通の型の11）。日付が分からないものは後ろ。
+      // 並べる順序は日付の軸の値、次にIDの文字列（共通の型の11）。日付が分からないものを後ろに置くのは、契約が決めていない
+      // 実装の決め方（決定的にするため）。
       const da = a.date ?? "￿";
       const db = b.date ?? "￿";
       if (da !== db) return compareStrings(da, db);
@@ -215,8 +233,18 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
   else if (targets === 0) state = "no-records";
   else if (notApplicable === targets) state = "not-applicable";
   else state = "complete";
-  return {
-    ok: true,
-    values: [{ measure: parsed.key, axis: parsed.axis, scope: parsed.scope, state, knownSum, missing: missingList, coverage: { state: "not-applicable" } }],
-  };
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  if (positive > max || -negative > max) return { ok: false, error: "overflow", message: "正の値の合計か負の値の合計が、安全な整数の範囲を超える" };
+  const knownSum = Number(positive + negative);
+  // 結果は凍結して返す（呼び出し元が変えても、ほかの結果に影響しない。P3-6）。
+  const value: AggregateValue = deepFreeze({ measure: parsed.key, axis: parsed.axis, scope: parsed.scope, state, knownSum, missing: missingList, coverage: { state: "not-applicable" } });
+  return Object.freeze({ ok: true, values: Object.freeze([value]) as readonly [AggregateValue] });
+}
+
+function deepFreeze<T>(v: T): T {
+  if (typeof v === "object" && v !== null && !Object.isFrozen(v)) {
+    for (const x of Object.values(v)) deepFreeze(x);
+    Object.freeze(v);
+  }
+  return v;
 }

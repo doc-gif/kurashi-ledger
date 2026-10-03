@@ -2,7 +2,7 @@
 // 移行等）を導く判定のたびに確かめる条件（同9の「保存の検査をすり抜けたデータ」）を、同じ関数で決める。
 
 import { knownValue, stateOf } from "./fact.ts";
-import { revisionsOf, type Ledger, type Revision, type RevisionReason } from "./ledger.ts";
+import { isUnchecked, revisionsOf, type Ledger, type Revision, type RevisionReason } from "./ledger.ts";
 import type { RejectionReason, Violation } from "./reasons.ts";
 import { LINE_LISTS } from "./schema.ts";
 import { checkRevisionStatic, lineObjects } from "./validate.ts";
@@ -96,21 +96,14 @@ function checkTypeTransition(previous: Revision, proposal: Obj, reason: Revision
   const after = isObj(proposal["body"]) ? proposal["body"] : {};
   if (previous.recordType === "payslip" && reason === "new-information") {
     const out: Violation[] = [];
-    let filled = false;
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    for (const k of keys) {
-      if (k === "supersedes" || sameJson(before[k], after[k])) continue;
-      const was = stateOf(before[k]);
-      const now = stateOf(after[k]);
-      if ((was === "unknown" || was === "not-stated") && (now === "known" || now === "not-applicable")) {
-        filled = true;
-        continue;
-      }
-      out.push({ reason: "transition-not-allowed", path: `$.body.${k}`, message: `明細に記載された値（${String(was)}）をnew-informationで変えない。写し誤りはcorrect-input-errorで直す` });
+    const state = { filled: false };
+    for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (k === "supersedes") continue;
+      compareStated(before[k], after[k], `$.body.${k}`, out, state);
     }
     if (out.length > 0) return out;
     const note = knownValue(proposal["changeNote"]);
-    if (filled && (typeof note !== "string" || note.trim() === "")) {
+    if (state.filled && (typeof note !== "string" || note.trim() === "")) {
       return one("transition-not-allowed", "$.changeNote", "別の情報源で項目を埋めるnew-informationには、changeNoteに情報源を書く");
     }
     return [];
@@ -129,6 +122,69 @@ function checkTypeTransition(previous: Revision, proposal: Obj, reason: Revision
     }
   }
   return [];
+}
+
+// 給与明細のnew-informationで、記載された値を葉まで比べる（P2-2）。
+// - Factの葉: 同じ（noteを除いて）なら変更なし。noteだけの変更は記載された値ではないので許し、埋めたことにも数えない。
+//   unknown・not-statedからknown・not-applicableにするのは「埋める」として許す。knownどうしで値がobject・並びなら、中を比べる。
+//   それ以外（knownの値を変える、knownからunknownにする等）は、記載された値の変更として拒否する。
+// - 並び（行）: 同じ行IDの行どうしを比べる。knownの並びに行を足す・消すことは、記載された値の変更として拒否する。
+// - Factでない葉（ラベル・列挙・ID等）: 変われば拒否する。
+function compareStated(before: unknown, after: unknown, path: string, out: Violation[], state: { filled: boolean }): void {
+  if (sameJson(before, after)) return;
+  const reject = (why: string): void => {
+    out.push({ reason: "transition-not-allowed", path, message: `明細に記載された値をnew-informationで変えない（${why}）。写し誤りはcorrect-input-errorで直す` });
+  };
+  const sb = stateOf(before);
+  const sa = stateOf(after);
+  if (sb !== undefined && sa !== undefined) {
+    const withoutNote = (f: unknown): unknown => {
+      const { note: _n, ...rest } = f as Record<string, unknown>;
+      void _n;
+      return rest;
+    };
+    if (sameJson(withoutNote(before), withoutNote(after))) return;
+    if ((sb === "unknown" || sb === "not-stated") && (sa === "known" || sa === "not-applicable")) {
+      state.filled = true;
+      return;
+    }
+    if (sb === "known" && sa === "known") {
+      const vb = knownValue(before);
+      const va = knownValue(after);
+      if (typeof vb === "object" && vb !== null && typeof va === "object" && va !== null) {
+        compareStated(vb, va, `${path}.value`, out, state);
+        return;
+      }
+    }
+    reject(`${sb} → ${sa}`);
+    return;
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const byLine = (list: readonly unknown[]): Map<string, unknown> => {
+      const m = new Map<string, unknown>();
+      for (const l of list) if (isObj(l) && typeof l["lineId"] === "string") m.set(l["lineId"], l);
+      return m;
+    };
+    const mb = byLine(before);
+    const ma = byLine(after);
+    if (mb.size !== before.length || ma.size !== after.length) {
+      reject("行を行IDで対応させられない");
+      return;
+    }
+    for (const id of new Set([...mb.keys(), ...ma.keys()])) {
+      if (!mb.has(id) || !ma.has(id)) {
+        reject(`行${id}を足す・消す`);
+        continue;
+      }
+      compareStated(mb.get(id), ma.get(id), `${path}[${id}]`, out, state);
+    }
+    return;
+  }
+  if (isObj(before) && isObj(after)) {
+    for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) compareStated(before[k], after[k], `${path}.${k}`, out, state);
+    return;
+  }
+  reject("値");
 }
 
 // 行IDの予約（共通の型の2の「LineId」）: 同じ親の記録の全改訂で、同じ行には同じ行IDを使い、改訂で消した行の行IDを
@@ -161,22 +217,28 @@ function checkLineIdReservation(history: readonly Revision[], proposal: Obj, pre
   return out;
 }
 
-// 選ばれた改訂までの履歴が、保存の検査（静的な検査と版間の条件）をすべて満たすか（PR28-R001）。見方で選ばれた改訂より後の
-// 改訂は使わない。改訂は追記だけで前の改訂は変わらないので、改訂のobjectごとに結果を覚える。
-const historyMemo = new WeakMap<Revision, boolean>();
+// 改訂が信頼できるか（所有者の判断「正しい保存で信頼を回復」で確定した規則。P1-1。R001の規則はこの判定を使う）。
+// (a) どの改訂にも、その版だけの検査（静的な検査、直前の版からの遷移、連番の増加、把握日の未来の検査）を当てる。
+// (b) 検査を通って保存した改訂（検査済み）は、(a)を満たせば、それより前の版の不正に関わらず信頼する。
+// (c) 検査を通らずに置いた改訂（未検査）は、(a)を満たし、かつ直前の版も信頼できるときだけ信頼する（版1は(a)だけ）。
+// 不正な版は履歴に要確認として残るが、そのあとに検査を通った保存があれば、その版から先の判定は止まらない。見方で選ばれた
+// 改訂より後の改訂は使わないので、回復より前の時点の見方では、これまでどおり信頼できない。
+// その版だけの検査の結果は、前の改訂が変わらないので、改訂のobjectごとに覚える。
+const localMemo = new WeakMap<Revision, boolean>();
 
 export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
   const list = revisionsOf(ledger, revision.id);
   const idx = list.indexOf(revision);
   if (idx < 0) return false;
-  for (let k = 0; k <= idx; k += 1) {
+  for (let k = idx; k >= 0; k -= 1) {
     const r = list[k] as Revision;
-    const cached = historyMemo.get(r);
-    if (cached === false) return false;
-    if (cached === true) continue;
-    const ok = revisionValid(list.slice(0, k), r);
-    historyMemo.set(r, ok);
+    let ok = localMemo.get(r);
+    if (ok === undefined) {
+      ok = revisionValid(list.slice(0, k), r);
+      localMemo.set(r, ok);
+    }
     if (!ok) return false;
+    if (k === 0 || !isUnchecked(ledger, r)) return true;
   }
   return true;
 }

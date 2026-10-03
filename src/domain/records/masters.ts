@@ -2,7 +2,7 @@
 // マスタのIDは、二重登録の取消のduplicateOfをたどり、最初に着いた有効なマスタのIDに解決する。比べる・まとめるときは、
 // すべて正規のIDで行い、記録のIdの値は書き換えない。
 
-import { knownValue } from "./fact.ts";
+import { knownValue, stateOf } from "./fact.ts";
 import { isHistoryValid } from "./history.ts";
 import { isMasterType, recordTypeOfId } from "./ids.ts";
 import type { Ledger } from "./ledger.ts";
@@ -33,14 +33,17 @@ export function canonicalMasterId(ledger: Ledger, id: string, view: ResolvedView
 }
 
 // マスタのIdを持つ項目（共通の型の9の一覧）。knownの値だけを返す（Factでない項目はそのまま）。
-export function masterRefsOf(recordType: string, body: Readonly<Record<string, unknown>>): { readonly path: string; readonly id: string }[] {
-  const out: { path: string; id: string }[] = [];
+// 形の崩れた参照（Factでない項目が文字列でない、knownのFactの値が文字列でない）は読み飛ばさず、idをundefinedとして返す
+// （関係がないものとしない。解決できない参照として扱う。P3-2）。
+export function masterRefsOf(recordType: string, body: Readonly<Record<string, unknown>>): { readonly path: string; readonly id: string | undefined }[] {
+  const out: { path: string; id: string | undefined }[] = [];
   const direct = (path: string, v: unknown): void => {
-    if (typeof v === "string") out.push({ path, id: v });
+    out.push({ path, id: typeof v === "string" ? v : undefined });
   };
   const viaFact = (path: string, v: unknown): void => {
+    if (stateOf(v) !== "known" && stateOf(v) !== undefined) return;
     const x = knownValue(v);
-    if (typeof x === "string") out.push({ path, id: x });
+    out.push({ path, id: typeof x === "string" ? x : undefined });
   };
   switch (recordType) {
     case "employment-term":
@@ -52,7 +55,7 @@ export function masterRefsOf(recordType: string, body: Readonly<Record<string, u
       const rows = knownValue(body["includedOtherPayers"]);
       if (Array.isArray(rows)) {
         rows.forEach((row, i) => {
-          if (typeof row === "object" && row !== null) viaFact(`includedOtherPayers[${i}].payerEmployerId`, (row as Record<string, unknown>)["payerEmployerId"]);
+          viaFact(`includedOtherPayers[${i}].payerEmployerId`, typeof row === "object" && row !== null ? (row as Record<string, unknown>)["payerEmployerId"] : undefined);
         });
       }
       return out;
@@ -72,6 +75,7 @@ export function masterRefsOf(recordType: string, body: Readonly<Record<string, u
       const scope = knownValue(body["scope"]);
       const payers = typeof scope === "object" && scope !== null ? (scope as Record<string, unknown>)["payers"] : undefined;
       if (Array.isArray(payers)) payers.forEach((p, i) => direct(`scope.payers[${i}]`, p));
+      else if (stateOf(body["scope"]) === "known") direct("scope.payers", undefined);
       return out;
     }
     default:
