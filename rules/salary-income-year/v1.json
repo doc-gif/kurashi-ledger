@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "ruleSetId": "jp-salary-income-year",
+  "version": "1",
+  "status": "draft",
+  "note": "給与の所得の年への帰属の規則。意味・範囲・契約との対応はdocs/rules/salary-income-year.md。",
+  "basis": {
+    "description": "給与所得の収入金額の収入すべき時期は、契約・慣習等で支給日が定められている給与等はその支給日、支給日が定められていないものは支給を受けた日。給与規程の改訂が既往にさかのぼって実施された新旧給与の差額は、支給日が定められていればその支給日、定められていなければ改訂の効力が生じた日。役員賞与のうち利益を基礎として支給金額が定められるものは決議等の日、認定賞与は別の時期。",
+    "source": { "ref": "nta-ta-2509", "location": "一般の給与・役員に対する賞与・給与規程の改訂（ベースアップ）に伴う新旧給与の差額の支給・いわゆる認定賞与とされる給与等（根拠法令等: 所法36、所基通36-9）" },
+    "crossCheckSource": { "ref": "nta-2025tsukin-qa", "location": "Q3（「支払われるべき」日の判定の、所基通36-9と同じ区分）" }
+  },
+  "rule": {
+    "input": "payslip.scheduledPayDate",
+    "assumption": "給与明細に書かれた支給日（scheduledPayDate）を、契約・慣習等で定められた支給日として扱う。",
+    "result": "scheduledPayDateがknownなら、その日の暦年を所得の年とする。",
+    "notApplied": [
+      { "case": "scheduledPayDateがunknown・not-stated", "result": "規則を当てはめない（帰属の根拠にならない）。入金日・勤務期間・対象の表示で補わない。" },
+      { "case": "対象年が規則のappliesにない（令和7年・令和8年以外の暦年）", "result": "規則を当てはめない。" }
+    ],
+    "outOfScope": [
+      "支給日の定めがない給与等（支給を受けた日による）",
+      "遡及差額のうち支給日の定めがないもの（改訂の効力が生じた日による）",
+      "役員賞与のうち利益を基礎として支給金額が定められるもの（決議等の日による）",
+      "いわゆる認定賞与",
+      "経済的利益（現物給与）"
+    ],
+    "outOfScopeHandling": "契約版1.0の明細には、これらを見分ける項目がない。これらの明細も支給日から年を導くので、実際の時期と違う場合は、利用者の指定（tax-year-assertion）と食い違ってconflictになる（黙って違う年に数えない）。conflictを規則の側で外す手段は契約にない（docs/rules/salary-income-year.mdの「契約への候補」）。"
+  }
+}

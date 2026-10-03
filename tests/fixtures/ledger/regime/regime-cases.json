@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "contractVersion": "1.0",
-  "note": "制度のケースの雛形。T14が一次資料で確かめるまで、適用年・地域・基準の時点・制度データの版・原典・丸め・入力・期待値・導き方はすべて「未確認」とし、制度の値を入れない。手続（procedure）と年の種類は計算結果の契約の1の表による。必須の項目と承認の条件はdocs/test-oracles/README.mdの「制度のケース」。",
+  "note": "制度のケース。T14が一次資料で確かめた規則（rules/manifest.json）で、合成の入力から2通りの独立した導き方で求めた期待値を持つ（docs/rules/README.mdの「期待値の導き方」）。まだ一次資料で確かめていない制度のケースは雛形（placeholder）のままで、適用年・地域・基準の時点・制度データの版・原典・丸め・入力・期待値・導き方はすべて「未確認」とし、制度の値を入れない。手続（procedure）と年の種類は計算結果の契約の1の表による。必須の項目と承認の条件はdocs/test-oracles/README.mdの「制度のケース」。",
   "cases": [
     {
       "caseId": "REG-01",
@@ -20,30 +20,2066 @@
     {
       "caseId": "REG-02",
       "regime": "income-tax",
-      "title": "所得税（年末調整）",
-      "status": "placeholder",
+      "title": "所得税（年末調整）令和8年分: 表の行（4,000円刻み）と年調年税額の100円未満切捨て",
+      "status": "draft",
       "consumers": ["T14", "T16"],
-      "target": {"year": "未確認", "yearKind": "calendar", "jurisdiction": "未確認", "procedure": "year-end-adjustment", "referencePoint": "未確認"},
-      "ruleSet": "未確認",
-      "sources": "未確認",
-      "rounding": "未確認",
-      "input": "未確認",
-      "expected": "未確認",
-      "derivation": "未確認"
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "1436543",
+          "after": "1436000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "73307.8",
+          "after": "73300"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 4500000,
+        "socialInsuranceDeduction": 683457,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 96540,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3160000
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1040000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1436000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 71800
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 73300
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 23240
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行 4,500,000円以上4,504,000円未満 → 3,160,000円（給与所得控除後の給与等の金額の表 51ページ）。基礎控除: 基礎控除額の表（合計所得金額3,160,000円）→ 1,040,000円。課税される所得金額: 3,160,000−（社会保険料控除683,457＋ほかの控除0＋基礎控除1,040,000＋配偶者控除0＋扶養控除0）＝1436543→1,436,000。算出所得税額: 速算表 1,436,000×5%−0＝71800。年調年税額: 71,800×102.1%＝73307.8→73,300。過不足額: 毎月の徴収税額の合計96,540−73,300＝23,240（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 行の下限 4,500,000×0.8−440,000＝3,160,000（収入金額−給与所得控除額（収入金額×20%＋44万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の620,000円＋租税特別措置法第41条の16の2の加算額420,000円＝1,040,000円。課税される所得金額: 所得控除の合計1,723,457を引いた1436543の1,000円未満を切り捨てて1,436,000。算出所得税額: 税率の段階ごとの合計 1,436,000×5%＝71800。年調年税額: 71,800＋71,800×2.1%（1507.8）＝73307.8の100円未満を切り捨てて73,300。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
     },
     {
       "caseId": "REG-03",
       "regime": "income-tax",
-      "title": "所得税（確定申告）",
-      "status": "placeholder",
+      "title": "所得税（確定申告）令和7年分: 2つの支払者の合計と、申告納税額が赤字（還付）",
+      "status": "draft",
       "consumers": ["T14", "T16", "T22"],
-      "target": {"year": "未確認", "yearKind": "calendar", "jurisdiction": "未確認", "procedure": "tax-return", "referencePoint": "未確認"},
-      "ruleSet": "未確認",
-      "sources": "未確認",
-      "rounding": "未確認",
-      "input": "未確認",
-      "expected": "未確認",
-      "derivation": "未確認"
+      "target": {"year": {"kind": "calendar", "year": 2025}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "tax-return", "referencePoint": {"kind": "date", "date": "2026-02-20"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2025", "version": "1"},
+      "sources": [
+        {
+          "title": "令和7年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和7年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和7年分 確定申告の手引き 手順4「復興特別所得税額」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_45.htm",
+          "primary": true,
+          "documentUpdatedOn": "2025-12-24",
+          "retrievedOn": "2026-10-03",
+          "location": "計算欄の※"
+        },
+        {
+          "title": "令和7年分 確定申告の手引き 手順4「申告納税額」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_39.htm",
+          "primary": true,
+          "documentUpdatedOn": "2025-12-24",
+          "retrievedOn": "2026-10-03",
+          "location": "黒字・赤字の場合"
+        },
+        {
+          "title": "令和7年度税制改正による所得税の基礎控除の見直し等について",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2025kiso/index.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-01-30",
+          "retrievedOn": "2026-10-03",
+          "location": "施行と適用（令和7年12月1日施行、令和7年分以後）"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "1696285",
+          "after": "1696000"
+        },
+        {
+          "itemKey": "reconstruction-tax",
+          "method": "floor",
+          "unit": "1",
+          "basis": "rule",
+          "location": "確定申告の手引き「復興特別所得税額」計算欄の※（1円未満切捨て）",
+          "before": "1780.8",
+          "after": "1780"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenueByPayer": [
+          3200000,
+          1450000
+        ],
+        "salaryRevenue": 4650000,
+        "socialInsuranceDeduction": 702115,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 98431,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3278400
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 880000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1696000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 84800
+            }
+          },
+          {
+            "key": "reconstruction-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1780
+            }
+          },
+          {
+            "key": "income-tax-total",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 86580
+            }
+          },
+          {
+            "key": "filing-tax-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": -11851
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与等の収入金額: 2つの支払者の源泉徴収票の支払金額 3,200,000＋1,450,000＝4,650,000（タックスアンサーNo.1410の注4）。給与所得控除後の金額: 表の行 4,648,000円以上4,652,000円未満 → 3,278,400円（給与所得控除後の給与等の金額の表 51ページ）。基礎控除: 基礎控除額の表（合計所得金額3,278,400円）→ 880,000円。課税される所得金額: 3,278,400−（社会保険料控除702,115＋ほかの控除0＋基礎控除880,000＋配偶者控除0＋扶養控除0）＝1696285→1,696,000。算出所得税額: 速算表 1,696,000×5%−0＝84800。復興特別所得税額: 84,800×2.1%＝1780.8→1,780。所得税及び復興特別所得税の額 86,580。申告納税額: 86,580−源泉徴収税額98,431＝-11,851（赤字。還付で丸めない）。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与等の収入金額: 同じ合計。給与所得控除後の金額: 行の下限 4,648,000×0.8−440,000＝3,278,400（収入金額−給与所得控除額（収入金額×20%＋44万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の580,000円＋租税特別措置法第41条の16の2の加算額300,000円＝880,000円。課税される所得金額: 所得控除の合計1,582,115を引いた1696285の1,000円未満を切り捨てて1,696,000。算出所得税額: 税率の段階ごとの合計 1,696,000×5%＝84800。復興特別所得税額: 84,800×21/1000＝1780.8の1円未満を切り捨てて1,780。申告納税額: 確定申告の手引き「申告納税額」の赤字の場合の扱い（そのままの金額）で同じ。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
+    },
+    {
+      "caseId": "REG-09",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和8年分: 基礎控除の境界の内側（給与等の収入金額6,655,556円）",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "employment-income",
+          "method": "floor",
+          "unit": "1",
+          "basis": "rule",
+          "location": "給与所得控除後の給与等の金額の表の備考（1円未満切捨て）",
+          "before": "4890000.4",
+          "after": "4890000"
+        },
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "2837655",
+          "after": "2837000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "190110.2",
+          "after": "190100"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 6655556,
+        "socialInsuranceDeduction": 1012345,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 210000,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 4890000
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1040000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 2837000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 186200
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 190100
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 19900
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の備考（660万円以上850万円未満）: 6,655,556×90%−1,100,000＝4890000.4（1円未満切捨て）。基礎控除: 基礎控除額の表（合計所得金額4,890,000円）→ 1,040,000円。課税される所得金額: 4,890,000−（社会保険料控除1,012,345＋ほかの控除0＋基礎控除1,040,000＋配偶者控除0＋扶養控除0）＝2837655→2,837,000。算出所得税額: 速算表 2,837,000×10%−97,500＝186200。年調年税額: 186,200×102.1%＝190110.2→190,100。過不足額: 毎月の徴収税額の合計210,000−190,100＝19,900（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 収入金額−給与所得控除額（収入金額×10%＋110万円＝1765555.6）＝4890000.4（1円未満切捨て）。基礎控除: 所得税法第86条の620,000円＋租税特別措置法第41条の16の2の加算額420,000円＝1,040,000円。課税される所得金額: 所得控除の合計2,052,345を引いた2837655の1,000円未満を切り捨てて2,837,000。算出所得税額: 税率の段階ごとの合計 1,950,000×5%＋887,000×10%＝186200。年調年税額: 186,200＋186,200×2.1%（3910.2）＝190110.2の100円未満を切り捨てて190,100。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true,
+        "officialCrossCheck": "令和8年分 年末調整のしかた 3ページ ⑴イの表で、合計所得金額489万円以下に当たる収入が給与だけの場合の収入金額は「665万5,556円以下」。導き方1・2の給与所得控除後の金額4,890,000円（489万円以下）と一致。"
+      }
+    },
+    {
+      "caseId": "REG-10",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和8年分: 基礎控除の境界の外側（給与等の収入金額6,655,557円）と不足額",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "employment-income",
+          "method": "floor",
+          "unit": "1",
+          "basis": "rule",
+          "location": "給与所得控除後の給与等の金額の表の備考（1円未満切捨て）",
+          "before": "4890001.3",
+          "after": "4890001"
+        },
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "3207656",
+          "after": "3207000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "227887.2",
+          "after": "227800"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 6655557,
+        "socialInsuranceDeduction": 1012345,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 210000,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 4890001
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 670000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3207000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 223200
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 227800
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": -17800
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の備考（660万円以上850万円未満）: 6,655,557×90%−1,100,000＝4890001.3（1円未満切捨て）。基礎控除: 基礎控除額の表（合計所得金額4,890,001円）→ 670,000円。課税される所得金額: 4,890,001−（社会保険料控除1,012,345＋ほかの控除0＋基礎控除670,000＋配偶者控除0＋扶養控除0）＝3207656→3,207,000。算出所得税額: 速算表 3,207,000×10%−97,500＝223200。年調年税額: 223,200×102.1%＝227887.2→227,800。過不足額: 毎月の徴収税額の合計210,000−227,800＝-17,800（不足額（徴収））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 収入金額−給与所得控除額（収入金額×10%＋110万円＝1765555.7）＝4890001.3（1円未満切捨て）。基礎控除: 所得税法第86条の620,000円＋租税特別措置法第41条の16の2の加算額50,000円＝670,000円。課税される所得金額: 所得控除の合計1,682,345を引いた3207656の1,000円未満を切り捨てて3,207,000。算出所得税額: 税率の段階ごとの合計 1,950,000×5%＋1,257,000×10%＝223200。年調年税額: 223,200＋223,200×2.1%（4687.2）＝227887.2の100円未満を切り捨てて227,800。過不足額: 同じ式（年調年税額より徴収税額が少ない）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true,
+        "officialCrossCheck": "同じ表で、665万5,556円超は合計所得金額489万円超（基礎控除67万円）に当たる。導き方1・2の4,890,001円と一致。"
+      }
+    },
+    {
+      "caseId": "REG-11",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和8年分: 扶養親族の年齢の判定（1月1日生まれ）と配偶者控除",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        },
+        {
+          "title": "タックスアンサーNo.1180 扶養控除",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "扶養控除の金額（注1〜注3）・扶養親族の範囲"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "378766",
+          "after": "378000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "19296.9",
+          "after": "19200"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 5000000,
+        "socialInsuranceDeduction": 751234,
+        "otherIncomeDeductions": 0,
+        "spouse": {
+          "birthDate": "1990-05-05",
+          "totalIncome": 0
+        },
+        "dependents": [
+          {
+            "birthDate": "2008-01-01",
+            "totalIncome": 0,
+            "cohabitingLinealAscendant": false
+          },
+          {
+            "birthDate": "2008-01-02",
+            "totalIncome": 0,
+            "cohabitingLinealAscendant": false
+          }
+        ],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 52310,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3560000
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1040000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 380000
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1010000
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 378000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 18900
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 19200
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 33110
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行 5,000,000円以上5,004,000円未満 → 3,560,000円（給与所得控除後の給与等の金額の表 52ページ）。基礎控除: 基礎控除額の表（合計所得金額3,560,000円）→ 1,040,000円。配偶者控除: 配偶者の2026-12-31現在の年齢36歳・合計所得金額0円（620,000円以下）、本人の合計所得金額3,560,000円（900万円以下）→ 一覧表 380,000円。扶養控除: 2008-01-01生まれ→2026-12-31現在19歳・特定扶養親族630,000円、2008-01-02生まれ→2026-12-31現在18歳・一般の控除対象扶養親族380,000円（合計1,010,000円）。課税される所得金額: 3,560,000−（社会保険料控除751,234＋ほかの控除0＋基礎控除1,040,000＋配偶者控除380,000＋扶養控除1,010,000）＝378766→378,000。算出所得税額: 速算表 378,000×5%−0＝18900。年調年税額: 18,900×102.1%＝19296.9→19,200。過不足額: 毎月の徴収税額の合計52,310−19,200＝33,110（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 行の下限 5,000,000×0.8−440,000＝3,560,000（収入金額−給与所得控除額（収入金額×20%＋44万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の620,000円＋租税特別措置法第41条の16の2の加算額420,000円＝1,040,000円。配偶者控除: タックスアンサーNo.1191の表（本人900万円以下・一般の控除対象配偶者）→ 380,000円。扶養控除: 2008-01-01生まれ→扶養控除額等の表の生年月日の範囲で特定扶養親族、2008-01-02生まれ→扶養控除額等の表の生年月日の範囲で一般の控除対象扶養親族。課税される所得金額: 所得控除の合計3,181,234を引いた378766の1,000円未満を切り捨てて378,000。算出所得税額: 税率の段階ごとの合計 378,000×5%＝18900。年調年税額: 18,900＋18,900×2.1%（396.9）＝19296.9の100円未満を切り捨てて19,200。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true,
+        "officialCrossCheck": "令和8年分の扶養控除額等の表（56ページ）の特定扶養親族の生年月日の範囲「平成16年1月2日〜平成20年1月1日生」に2008-01-01生まれが入り、2008-01-02生まれは入らない（一般の控除対象扶養親族の「平成23年1月1日以前生」には入る）。"
+      }
+    },
+    {
+      "caseId": "REG-12",
+      "regime": "income-tax",
+      "title": "所得税（確定申告）令和7年分: 申告納税額が黒字（100円未満切捨て）",
+      "status": "draft",
+      "consumers": ["T14", "T16", "T22"],
+      "target": {"year": {"kind": "calendar", "year": 2025}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "tax-return", "referencePoint": {"kind": "date", "date": "2026-03-02"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2025", "version": "1"},
+      "sources": [
+        {
+          "title": "令和7年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和7年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和7年分 確定申告の手引き 手順4「復興特別所得税額」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_45.htm",
+          "primary": true,
+          "documentUpdatedOn": "2025-12-24",
+          "retrievedOn": "2026-10-03",
+          "location": "計算欄の※"
+        },
+        {
+          "title": "令和7年分 確定申告の手引き 手順4「申告納税額」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_39.htm",
+          "primary": true,
+          "documentUpdatedOn": "2025-12-24",
+          "retrievedOn": "2026-10-03",
+          "location": "黒字・赤字の場合"
+        },
+        {
+          "title": "令和7年度税制改正による所得税の基礎控除の見直し等について",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2025kiso/index.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-01-30",
+          "retrievedOn": "2026-10-03",
+          "location": "施行と適用（令和7年12月1日施行、令和7年分以後）"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "2401235",
+          "after": "2401000"
+        },
+        {
+          "itemKey": "reconstruction-tax",
+          "method": "floor",
+          "unit": "1",
+          "basis": "rule",
+          "location": "確定申告の手引き「復興特別所得税額」計算欄の※（1円未満切捨て）",
+          "before": "2994.6",
+          "after": "2994"
+        },
+        {
+          "itemKey": "filing-tax-balance",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "国税通則法第119条第1項（黒字の場合だけ100円未満切捨て）",
+          "before": "65594",
+          "after": "65500"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 5400000,
+        "socialInsuranceDeduction": 798765,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 80000,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3880000
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 680000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 2401000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 142600
+            }
+          },
+          {
+            "key": "reconstruction-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 2994
+            }
+          },
+          {
+            "key": "income-tax-total",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 145594
+            }
+          },
+          {
+            "key": "filing-tax-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 65500
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行 5,400,000円以上5,404,000円未満 → 3,880,000円（給与所得控除後の給与等の金額の表 52ページ）。基礎控除: 基礎控除額の表（合計所得金額3,880,000円）→ 680,000円。課税される所得金額: 3,880,000−（社会保険料控除798,765＋ほかの控除0＋基礎控除680,000＋配偶者控除0＋扶養控除0）＝2401235→2,401,000。算出所得税額: 速算表 2,401,000×10%−97,500＝142600。復興特別所得税額: 142,600×2.1%＝2994.6→2,994。所得税及び復興特別所得税の額 145,594。申告納税額: 145,594−源泉徴収税額80,000＝65,594（黒字）→100円未満切捨て 65,500。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 行の下限 5,400,000×0.8−440,000＝3,880,000（収入金額−給与所得控除額（収入金額×20%＋44万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の580,000円＋租税特別措置法第41条の16の2の加算額100,000円＝680,000円。課税される所得金額: 所得控除の合計1,478,765を引いた2401235の1,000円未満を切り捨てて2,401,000。算出所得税額: 税率の段階ごとの合計 1,950,000×5%＋451,000×10%＝142600。復興特別所得税額: 142,600×21/1000＝2994.6の1円未満を切り捨てて2,994。申告納税額: 確定申告の手引き「申告納税額」の黒字の場合の扱いで同じ。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
+    },
+    {
+      "caseId": "REG-13",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和7年分: 表の行の境界の内側（2,003,999円）と基礎控除95万円",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2025}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2025-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2025", "version": "1"},
+      "sources": [
+        {
+          "title": "令和7年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和7年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和7年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-09-03",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和7年度税制改正による所得税の基礎控除の見直し等について",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2025kiso/index.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-01-30",
+          "retrievedOn": "2026-10-03",
+          "location": "施行と適用（令和7年12月1日施行、令和7年分以後）"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "68124",
+          "after": "68000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "3471.4",
+          "after": "3400"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 2003999,
+        "socialInsuranceDeduction": 301876,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 18200,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1320000
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 950000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 68000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3400
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 3400
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 14800
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行 2,000,000円以上2,004,000円未満 → 1,320,000円（給与所得控除後の給与等の金額の表 47ページ）。基礎控除: 基礎控除額の表（合計所得金額1,320,000円）→ 950,000円。課税される所得金額: 1,320,000−（社会保険料控除301,876＋ほかの控除0＋基礎控除950,000＋配偶者控除0＋扶養控除0）＝68124→68,000。算出所得税額: 速算表 68,000×5%−0＝3400。年調年税額: 3,400×102.1%＝3471.4→3,400。過不足額: 毎月の徴収税額の合計18,200−3,400＝14,800（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 行の下限 2,000,000×0.7−80,000＝1,320,000（収入金額−給与所得控除額（収入金額×30%＋8万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の580,000円＋租税特別措置法第41条の16の2の加算額370,000円＝950,000円。課税される所得金額: 所得控除の合計1,251,876を引いた68124の1,000円未満を切り捨てて68,000。算出所得税額: 税率の段階ごとの合計 68,000×5%＝3400。年調年税額: 3,400＋3,400×2.1%（71.4）＝3471.4の100円未満を切り捨てて3,400。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
+    },
+    {
+      "caseId": "REG-14",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和7年分: 表の行の境界（2,004,000円）と基礎控除88万円",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2025}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2025-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2025", "version": "1"},
+      "sources": [
+        {
+          "title": "令和7年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和7年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-08-29",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和7年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2025-09-03",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和7年度税制改正による所得税の基礎控除の見直し等について",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2025kiso/index.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-01-30",
+          "retrievedOn": "2026-10-03",
+          "location": "施行と適用（令和7年12月1日施行、令和7年分以後）"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "140924",
+          "after": "140000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "7147",
+          "after": "7100"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 2004000,
+        "socialInsuranceDeduction": 301876,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 18200,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 1322800
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 880000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 140000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 7000
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 7100
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 11100
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行 2,004,000円以上2,008,000円未満 → 1,322,800円（給与所得控除後の給与等の金額の表 47ページ）。基礎控除: 基礎控除額の表（合計所得金額1,322,800円）→ 880,000円。課税される所得金額: 1,322,800−（社会保険料控除301,876＋ほかの控除0＋基礎控除880,000＋配偶者控除0＋扶養控除0）＝140924→140,000。算出所得税額: 速算表 140,000×5%−0＝7000。年調年税額: 7,000×102.1%＝7147→7,100。過不足額: 毎月の徴収税額の合計18,200−7,100＝11,100（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 行の下限 2,004,000×0.7−80,000＝1,322,800（収入金額−給与所得控除額（収入金額×30%＋8万円）を4,000円刻みの行の下限で計算した値）。基礎控除: 所得税法第86条の580,000円＋租税特別措置法第41条の16の2の加算額300,000円＝880,000円。課税される所得金額: 所得控除の合計1,181,876を引いた140924の1,000円未満を切り捨てて140,000。算出所得税額: 税率の段階ごとの合計 140,000×5%＝7000。年調年税額: 7,000＋7,000×2.1%（147）＝7147の100円未満を切り捨てて7,100。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
+    },
+    {
+      "caseId": "REG-15",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和8年分: 施行日（2026-12-01）より前の年末調整は未対応",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-11-20"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        }
+      ],
+      "rounding": [],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 4500000,
+        "socialInsuranceDeduction": 683457,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [],
+        "incomeAdjustmentEligible": false,
+        "withheldTax": 96540,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "unsupported",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "unknown"
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "規則の選び方: target.yearが2026、procedureがyear-end-adjustmentで、referencePointの2026-11-20は、jp-income-tax-salary-2026の適用の範囲（2026-12-01以後）の外。ほかに当たる規則がないので、計算runの結果の状態はunsupportedで、結果の値はすべてunknown（計算結果の契約の2）。",
+        "crossCheck": "令和8年度税制改正Q&AのQ1-3: 令和8年分の最後の給与を令和8年11月30日以前に支払った場合の年末調整には、改正後の控除等は適用されない。改正前の規則はこの版で確かめていないので、値を作らない。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
+    },
+    {
+      "caseId": "REG-16",
+      "regime": "income-tax",
+      "title": "所得税（年末調整）令和8年分: 所得金額調整控除（1円未満切上げ）と850万円以上の式",
+      "status": "draft",
+      "consumers": ["T14", "T16"],
+      "target": {"year": {"kind": "calendar", "year": 2026}, "yearKind": "calendar", "jurisdiction": {"kind": "national", "code": "JP"}, "procedure": "year-end-adjustment", "referencePoint": {"kind": "date", "date": "2026-12-10"}},
+      "ruleSet": {"id": "jp-income-tax-salary-2026", "version": "1"},
+      "sources": [
+        {
+          "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "47〜54ページ"
+        },
+        {
+          "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "55〜56ページ"
+        },
+        {
+          "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-08-31",
+          "retrievedOn": "2026-10-03",
+          "location": "39ページ 3⑶"
+        },
+        {
+          "title": "タックスアンサーNo.2260 所得税の税率",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "所得税の速算表"
+        },
+        {
+          "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+          "publisher": "デジタル庁（e-Gov法令検索）",
+          "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+          "primary": true,
+          "documentUpdatedOn": "2026-07-01",
+          "retrievedOn": "2026-10-03",
+          "location": "第118条第1項・第119条第1項"
+        },
+        {
+          "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+          "primary": true,
+          "documentUpdatedOn": "2026-05-29",
+          "retrievedOn": "2026-10-03",
+          "location": "Q1-1・Q1-3"
+        },
+        {
+          "title": "タックスアンサーNo.1411 所得金額調整控除",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1411.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "(1)(2)"
+        },
+        {
+          "title": "タックスアンサーNo.1180 扶養控除",
+          "publisher": "国税庁",
+          "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm",
+          "primary": true,
+          "documentUpdatedOn": "2026-09-09",
+          "retrievedOn": "2026-10-03",
+          "location": "扶養控除の金額（注1〜注3）・扶養親族の範囲"
+        }
+      ],
+      "rounding": [
+        {
+          "itemKey": "income-adjustment-deduction",
+          "method": "ceil",
+          "unit": "1",
+          "basis": "rule",
+          "location": "タックスアンサーNo.1411 (2)の※（1円未満切上げ）",
+          "before": "62345.7",
+          "after": "62346"
+        },
+        {
+          "itemKey": "taxable-income",
+          "method": "floor",
+          "unit": "1000",
+          "basis": "rule",
+          "location": "国税通則法第118条第1項（1,000円未満切捨て）",
+          "before": "4626544",
+          "after": "4626000"
+        },
+        {
+          "itemKey": "annual-tax",
+          "method": "floor",
+          "unit": "100",
+          "basis": "rule",
+          "location": "年末調整のしかた 39ページ 3⑶（100円未満切捨て）",
+          "before": "508151.7",
+          "after": "508100"
+        }
+      ],
+      "input": {
+        "residency": "resident",
+        "incomeSources": "salary-only",
+        "salaryRevenue": 9123457,
+        "socialInsuranceDeduction": 1234567,
+        "otherIncomeDeductions": 0,
+        "spouse": null,
+        "dependents": [
+          {
+            "birthDate": "2005-06-15",
+            "totalIncome": 0,
+            "cohabitingLinealAscendant": false
+          }
+        ],
+        "incomeAdjustmentEligible": true,
+        "withheldTax": 530000,
+        "taxCredits": 0
+      },
+      "expected": {
+        "status": "computed",
+        "results": [
+          {
+            "key": "employment-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 7173457
+            }
+          },
+          {
+            "key": "income-adjustment-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 62346
+            }
+          },
+          {
+            "key": "basic-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 620000
+            }
+          },
+          {
+            "key": "spouse-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "spouse-special-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "dependent-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 630000
+            }
+          },
+          {
+            "key": "specific-relative-deduction",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          {
+            "key": "taxable-income",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 4626000
+            }
+          },
+          {
+            "key": "computed-income-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 497700
+            }
+          },
+          {
+            "key": "annual-tax",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 508100
+            }
+          },
+          {
+            "key": "year-end-balance",
+            "valueType": "yen",
+            "value": {
+              "state": "known",
+              "value": 21900
+            }
+          }
+        ]
+      },
+      "derivation": {
+        "method": "導き方1（表と速算表）: 給与所得控除後の金額: 表の行「給与等の金額から1,950,000円を控除した金額」→ 7,173,457円。所得金額調整控除: (9,123,457−8,500,000)×10%＝62345.7→1円未満切上げ 62,346。基礎控除: 基礎控除額の表（合計所得金額7,111,111円）→ 620,000円。扶養控除: 2005-06-15生まれ→2026-12-31現在21歳・特定扶養親族630,000円（合計630,000円）。課税される所得金額: 7,111,111−（社会保険料控除1,234,567＋ほかの控除0＋基礎控除620,000＋配偶者控除0＋扶養控除630,000）＝4626544→4,626,000。算出所得税額: 速算表 4,626,000×20%−427,500＝497700。年調年税額: 497,700×102.1%＝508151.7→508,100。過不足額: 毎月の徴収税額の合計530,000−508,100＝21,900（超過額（還付））。",
+        "crossCheck": "導き方2（独立の確かめ）: 給与所得控除後の金額: 収入金額9,123,457−給与所得控除額の上限1,950,000円（収入金額850万円超）＝7,173,457。所得金額調整控除: 収入金額9,123,457のうち850万円を超える部分623,457（上限150万円）の10%＝62345.7→62,346。基礎控除: 所得税法第86条の620,000円＋租税特別措置法第41条の16の2の加算額0円＝620,000円。扶養控除: 2005-06-15生まれ→扶養控除額等の表の生年月日の範囲で特定扶養親族。課税される所得金額: 所得控除の合計2,484,567を引いた4626544の1,000円未満を切り捨てて4,626,000。算出所得税額: 税率の段階ごとの合計 1,950,000×5%＋1,350,000×10%＋1,326,000×20%＝497700。年調年税額: 497,700＋497,700×2.1%（10451.7）＝508151.7の100円未満を切り捨てて508,100。過不足額: 同じ式（年調年税額より徴収税額が多い）。",
+        "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
+        "reviewedBy": "未確認",
+        "independentOfImplementation": true
+      }
     },
     {
       "caseId": "REG-04",
