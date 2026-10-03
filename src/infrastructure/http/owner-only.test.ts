@@ -5,7 +5,9 @@ import { chmodSync, lstatSync, mkdirSync, symlinkSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ownerOnlyTempDirectory } from '../../../tests/support/http.ts';
-import { checkOwnerOnly, evaluateWindowsSddl, restrictToOwner } from './owner-only.ts';
+import { checkOwnerOnly, evaluateMacAcl, evaluateWindowsSddl, restrictToOwner } from './owner-only.ts';
+import { readdirSync } from 'node:fs';
+import { verifyTokenDirectory } from './launch-file.ts';
 
 const USER = 'S-1-5-21-1000000001-1000000002-1000000003-1001';
 const OTHER = 'S-1-5-21-1000000001-1000000002-1000000003-1002';
@@ -85,6 +87,73 @@ test('リンク（symlink・junction）は、たどらずに本人だけでな�
     assert.equal(check.ok, false);
     assert.throws(() => restrictToOwner(link, 'directory'), /リンク/);
     assert.deepEqual(checkOwnerOnly(target, 'directory'), { ok: true });
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('macOSのls -ledの判定: 実行中のユーザー以外へのallowの拡張ACL・読めない行を拒否し、denyとACLなしは許す', () => {
+  const head = (mode: string) => `${mode}  2 alice  staff  64 Oct  3 17:36 /synthetic/dir\n`;
+  assert.deepEqual(evaluateMacAcl(head('drwx------'), 'alice'), { ok: true });
+  assert.deepEqual(evaluateMacAcl(`${head('drwx------+')} 0: group:everyone deny delete\n`, 'alice'), { ok: true });
+  assert.deepEqual(evaluateMacAcl(`${head('-rw-------+')} 0: user:alice allow read,write\n`, 'alice'), { ok: true });
+  for (const output of [
+    `${head('drwx------+')} 0: group:everyone deny delete\n 1: user:nobody allow list,search,file_inherit,directory_inherit\n`,
+    `${head('-rw-------+')} 0: user:nobody inherited allow read,execute\n`,
+    `${head('-rw-------+')} 0: group:staff allow read\n`,
+    `${head('-rw-------+')} 0: ABCDEFAB-CDEF-ABCD-EFAB-CDEF00000001 allow read\n`,
+    `${head('-rw-------+')} 0: something unexpected\n`,
+    `${head('-rw-------')} 0: user:nobody allow read\n`,
+    'unexpected output\n',
+  ]) {
+    assert.equal(evaluateMacAcl(output, 'alice').ok, false, output);
+  }
+});
+
+function run(command: string, args: readonly string[]): string {
+  const r = spawnSync(command, [...args], { encoding: 'utf8', windowsHide: true, env: { ...process.env, LC_ALL: 'C' } });
+  assert.equal(r.status, 0, `${command} ${args.join(' ')}: ${r.stderr ?? ''}`);
+  return r.stdout ?? '';
+}
+
+test('モード700でも、ほかのユーザーを許可する拡張ACL（macOSのACL・LinuxのPOSIX ACL・WindowsのACE）があれば本人だけでないとし、渡されたディレクトリは変えず、作るファイルは本人だけにする', (t) => {
+  const tmp = ownerOnlyTempDirectory('acl');
+  try {
+    const shared = join(tmp.path, 'shared');
+    mkdirSync(shared, { mode: 0o700 });
+    const file = join(tmp.path, 'file.txt');
+    writeFileSync(file, 'synthetic', { mode: 0o600 });
+    if (process.platform === 'darwin') {
+      // 別のユーザーに一覧・読取りを許可し、新しいファイルにも継承させるACL。モードは700のまま。
+      run('/bin/chmod', ['+a', 'user:nobody allow list,search,read,file_inherit,directory_inherit', shared]);
+      run('/bin/chmod', ['+a', 'user:nobody allow read', file]);
+      assert.equal(lstatSync(shared).mode & 0o777, 0o700);
+    } else if (process.platform === 'linux') {
+      // 名前付きのユーザーへのエントリを足すと、ACLのmask（モードのグループのbit）が広がる。
+      run('setfacl', ['-m', 'u:nobody:rx', shared]);
+      run('setfacl', ['-m', 'u:nobody:r', file]);
+      t.diagnostic(`setfaclのあとのモード: ${(lstatSync(shared).mode & 0o777).toString(8)}`);
+    } else {
+      const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe');
+      run(icacls, [shared, '/grant', '*S-1-1-0:(OI)(CI)(R)']);
+      run(icacls, [file, '/grant', '*S-1-1-0:(R)']);
+    }
+    assert.equal(checkOwnerOnly(shared, 'directory').ok, false);
+    assert.throws(() => verifyTokenDirectory(shared), /本人だけの権限でない/);
+    assert.deepEqual(readdirSync(shared), []);
+    // 渡されたディレクトリのACLは変えない（拒否したまま）。
+    assert.equal(checkOwnerOnly(shared, 'directory').ok, false);
+    if (process.platform === 'darwin') assert.match(run('/bin/ls', ['-led', '--', shared]), /user:nobody allow/);
+
+    // 自分で作ったファイルは、ACLを含めて本人だけにする。
+    assert.equal(checkOwnerOnly(file, 'file').ok, false);
+    restrictToOwner(file, 'file');
+    assert.deepEqual(checkOwnerOnly(file, 'file'), { ok: true });
+    if (process.platform === 'darwin') assert.doesNotMatch(run('/bin/ls', ['-led', '--', file]).split('\n')[0] ?? '', /\+$|\+ /);
+    if (process.platform === 'linux') {
+      // POSIX ACLのエントリが残っても、maskが空なので本人以外には効かない。
+      assert.match(run('getfacl', ['-p', file]), /mask::---/);
+    }
   } finally {
     tmp.cleanup();
   }

@@ -4,13 +4,14 @@
 // - 標準出力が端末のときだけ、1回だけ使えるトークン付きURLを表示する。端末でないとき（リダイレクト・パイプ）は、
 //   本人だけが読める一時ファイルのURLだけを表示する（トークンをログに残さない）。
 // - Ctrl+C（SIGINT）・SIGTERM・SIGHUP（WindowsはSIGBREAKも）で、待受を止め、一時ファイルを消して0で終わる。
+//   一時ファイルを消せなかった・置き換わっていたときは、消したと言わずに対処を示して1で終わる。
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { join, relative, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { TokenDirectoryError } from './infrastructure/http/launch-file.ts';
-import { PortInUseError, startLocalServer, type LocalServer } from './infrastructure/http/server.ts';
+import { PortInUseError, startLocalServer, type CloseResult, type LocalServer } from './infrastructure/http/server.ts';
 
 export const DEFAULT_PORT = 48720;
 
@@ -28,12 +29,14 @@ export type StartIo = {
   readonly openInBrowser: (filePath: string) => void;
   // このアプリのrepo（worktree）の実体パス。--token-dirがこの中なら拒否する。
   readonly repositoryRoot: string;
+  // 一時ファイルを消す処理。試験で削除の失敗を注入するためだけに使う（既定はunlink）。
+  readonly removeFile?: (path: string) => void;
 };
 
 export type RunningApp = {
   readonly server: LocalServer;
-  // Ctrl+C等で呼ぶ終了の処理。何度呼んでも1回だけ行う。
-  stop(reason: string): Promise<void>;
+  // Ctrl+C等で呼ぶ終了の処理。何度呼んでも1回だけ行い、終了コード（一時ファイルが残れば1）を返す。
+  stop(reason: string): Promise<number>;
 };
 
 export type StartResult = { readonly kind: 'running'; readonly app: RunningApp } | { readonly kind: 'exit'; readonly code: number };
@@ -79,7 +82,12 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
 
   let server: LocalServer;
   try {
-    server = await startLocalServer({ port: Number(portText), tokenDirectory: tokenDir, log: (line) => io.out(`[http] ${line}`) });
+    server = await startLocalServer({
+      port: Number(portText),
+      tokenDirectory: tokenDir,
+      log: (line) => io.out(`[http] ${line}`),
+      ...(io.removeFile === undefined ? {} : { removeFile: io.removeFile }),
+    });
   } catch (error) {
     if (error instanceof PortInUseError) {
       io.err(`${error.message} --portで別のポートを指定するか、そのポートを使っているプロセスを終了してから起動し直す。`);
@@ -99,19 +107,48 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
   io.out('終了するには Ctrl+C を押す。');
   if (values['no-open'] !== true) io.openInBrowser(server.launchFile);
 
-  let stopping: Promise<void> | undefined;
+  let stopping: Promise<number> | undefined;
   const app: RunningApp = {
     server,
     stop(reason) {
       stopping ??= (async () => {
         io.out(`終了する（${reason}）。`);
-        await server.close();
-        io.out('終了した。待受を止め、起動用のファイルを消した。');
+        const report = describeClose(await server.close());
+        for (const line of report.lines) (report.code === 0 ? io.out : io.err)(line);
+        return report.code;
       })();
       return stopping;
     },
   };
   return { kind: 'running', app };
+}
+
+// closeの結果を、表示と終了コードにする（ADR-0009の7）。一時ファイルが残った（replaced・failed）ときは、
+// 消したと言わず、パスと手で消す手順を示して1を返す。待受の停止とトークンの無効化は、どの場合も済んでいる。
+export function describeClose(result: CloseResult): { readonly lines: readonly string[]; readonly code: number } {
+  const stopped = '待受を止め、トークンとcookieを無効にした。';
+  switch (result.launchFile) {
+    case 'removed':
+      return { lines: [`終了した。${stopped}起動用のファイルを消した。`], code: 0 };
+    case 'missing':
+      return { lines: [`終了した。${stopped}起動用のファイルはすでになかった。`], code: 0 };
+    case 'replaced':
+      return {
+        lines: [
+          `終了した。${stopped}ただし、起動用のファイル ${result.launchFilePath} が、作ったものと違うものに置き換わっていたので消していない。`,
+          '中身を確かめてから、手で消す（アプリが作ったものではない可能性がある）。',
+        ],
+        code: 1,
+      };
+    case 'failed':
+      return {
+        lines: [
+          `終了した。${stopped}ただし、起動用のファイル ${result.launchFilePath} を消せなかった（ファイルは残っている。中のトークンはもう使えない）。`,
+          'ディレクトリの権限等の原因を直してから、手で消す。',
+        ],
+        code: 1,
+      };
+  }
 }
 
 // OSの既定の処理で起動用のファイルを開く。引数はファイルのパスだけで、トークンはコマンドラインに出ない。
@@ -146,8 +183,8 @@ if (import.meta.main) {
         // 終了の処理の途中でもう一度押されたら、待たずに終える。
         if (received > 1) process.exit(1);
         result.app.stop(signal).then(
-          () => {
-            process.exitCode = 0;
+          (code) => {
+            process.exitCode = code;
             for (const s of signals) process.removeAllListeners(s);
           },
           (error: unknown) => {

@@ -97,8 +97,9 @@ export function createLaunchFile(directory: string, name: string, content: strin
 
 export type RemoveResult = 'removed' | 'missing' | 'replaced';
 
-// 作ったときと同じ通常のファイルだけを消す。置き換わっていれば消さずに'replaced'を返す。
-export function removeLaunchFile(file: LaunchFile): RemoveResult {
+// 作ったときと同じ通常のファイルだけを消す。置き換わっていれば消さずに'replaced'を返す。消せなければ例外にする
+// （握りつぶさない。呼び出し側が、残ったことを利用者に伝える）。unlinkは、試験で削除の失敗を注入するための引数。
+export function removeLaunchFile(file: LaunchFile, unlink: (path: string) => void = unlinkSync): RemoveResult {
   let st;
   try {
     st = lstatSync(file.path, { bigint: true });
@@ -108,7 +109,7 @@ export function removeLaunchFile(file: LaunchFile): RemoveResult {
   }
   if (st.isSymbolicLink() || !st.isFile() || st.dev !== file.dev || st.ino !== file.ino) return 'replaced';
   try {
-    unlinkSync(file.path);
+    unlink(file.path);
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return 'missing';
     throw error;

@@ -143,6 +143,24 @@ test('起動用の一時ファイル（file://）から開くと、cookieに交�
   }
 });
 
+test('ブラウザのDOMで、起動の識別子のmetaはちょうど1つで、コメントや紛らわしいtitleのあるページからもAPIを呼べる', async ({ page }) => {
+  const h = await startHarness();
+  try {
+    await openFromLaunchFile(page, h.server);
+    for (const path of ['/', '/tricky.html']) {
+      await page.goto(`${h.server.origin}${path}`);
+      await expect(page.locator('#state')).toHaveText('接続済み');
+      const ids = await page.evaluate(() =>
+        [...document.querySelectorAll('meta[name="kurashi-ledger-launch-id"]')].map((m) => m.getAttribute('content')),
+      );
+      expect(ids).toEqual([h.server.launchId]);
+    }
+    expect(h.calls.filter((c) => c === 'state')).toHaveLength(3);
+  } finally {
+    await h.stop();
+  }
+});
+
 test('同じPCの別のポートのページからの要求は、cookieがあっても拒否され、APIの処理は呼ばれない', async ({ page }) => {
   const h = await startHarness();
   const other = await startOther();

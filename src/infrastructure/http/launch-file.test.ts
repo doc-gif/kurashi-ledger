@@ -109,3 +109,19 @@ test('一時ファイルの名前に既存のファイル・リンク・壊れ�
     outside.cleanup();
   }
 });
+
+test('一時ファイルを消せないときは、例外にして（握りつぶさず）ファイルを残す', () => {
+  const tmp = ownerOnlyTempDirectory('launchfail');
+  try {
+    const dir = verifyTokenDirectory(tmp.path);
+    const file = createLaunchFile(dir, 'launch-fail.html', 'synthetic-token');
+    const failing = (): void => {
+      throw Object.assign(new Error('synthetic unlink failure'), { code: 'EACCES' });
+    };
+    assert.throws(() => removeLaunchFile(file, failing), /synthetic unlink failure/);
+    assert.equal(readFileSync(file.path, 'utf8'), 'synthetic-token');
+    assert.equal(removeLaunchFile(file), 'removed');
+  } finally {
+    tmp.cleanup();
+  }
+});

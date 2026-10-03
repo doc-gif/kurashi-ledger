@@ -2,7 +2,7 @@
 // どの試験も、試験ごとの本人専用の一時ディレクトリと、ポート0（OSが選ぶ）の127.0.0.1だけを使う。
 import assert from 'node:assert/strict';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import { createServer as createNetServer, connect, type Socket } from 'node:net';
 import { networkInterfaces } from 'node:os';
@@ -290,11 +290,13 @@ test('配信するHTMLと交換用のページの<meta>に起動の識別子が�
       const meta = (id: string) => `<meta name="kurashi-ledger-launch-id" content="${id}">`;
       assert.match(server.launchId, /^[A-Za-z0-9_-]{22}$/);
       assert.notEqual(server.launchId, placeholder.launchId);
-      for (const path of ['/', '/index.html', '/launch']) {
+      for (const path of ['/', '/index.html', '/launch', '/tricky.html']) {
         const res = await send(server.port, { path });
         assert.equal(res.status, 200, path);
         assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
         assert.equal(res.text.split(meta(server.launchId)).length, 2, path);
+        // コメントの中ではなく、実際の<head>の直後に入る。
+        assert.equal(res.text.includes(`<head>${meta(server.launchId)}`), true, path);
       }
       for (const path of ['/app.js', '/style.css', '/launch.js']) {
         const res = await send(server.port, { path });
@@ -441,14 +443,139 @@ test('ポートが使用中なら別のポートへ移らずに止まり、一�
   }
 });
 
-test('closeで待受を止め、一時ファイルを消し、トークンを無効にする（2回呼んでも同じ）', async () => {
+test('closeで待受を止め、一時ファイルを消した結果（removed・missing・replaced）を返し、トークンを無効にする（2回呼んでも同じ）', async () => {
   const tmp = ownerOnlyTempDirectory('close');
   try {
     const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
     assert.equal(existsSync(server.launchFile), true);
-    await Promise.all([server.close(), server.close()]);
+    const [first, second] = await Promise.all([server.close(), server.close()]);
+    assert.deepEqual(first, { launchFile: 'removed', launchFilePath: server.launchFile });
+    assert.deepEqual(second, first);
     assert.equal(existsSync(server.launchFile), false);
     assert.deepEqual(readdirSync(tmp.path), []);
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+
+    // 交換のときに消したあとはremoved、誰かが先に消していればmissing。
+    const exchanged = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
+    await exchange(exchanged);
+    assert.equal((await exchanged.close()).launchFile, 'removed');
+    const gone = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
+    rmSync(gone.launchFile);
+    assert.equal((await gone.close()).launchFile, 'missing');
+    // 作ったものと違うファイルに置き換わっていれば、消さずにreplacedを返す。
+    const replaced = await startLocalServer({ port: 0, tokenDirectory: tmp.path });
+    writeFileSync(join(tmp.path, 'other.html'), 'someone else');
+    renameSync(join(tmp.path, 'other.html'), replaced.launchFile);
+    assert.deepEqual(await replaced.close(), { launchFile: 'replaced', launchFilePath: replaced.launchFile });
+    assert.equal(readFileSync(replaced.launchFile, 'utf8'), 'someone else');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('一時ファイルを消せないとき、closeは待受を止めトークンを無効にしたうえでfailedを返し、消したことにしない', async () => {
+  const tmp = ownerOnlyTempDirectory('close-fail');
+  try {
+    let attempts = 0;
+    const removeFile = (): void => {
+      attempts += 1;
+      throw Object.assign(new Error('synthetic unlink failure'), { code: 'EACCES' });
+    };
+    const logs: string[] = [];
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, removeFile, log: (l) => logs.push(l) });
+    // 交換のときに消せなくても、交換は成功し、closeでもう一度試す。
+    await exchange(server);
+    assert.equal(existsSync(server.launchFile), true);
+    const result = await server.close();
+    assert.deepEqual(result, { launchFile: 'failed', launchFilePath: server.launchFile });
+    assert.equal(attempts, 2);
+    assert.equal(existsSync(server.launchFile), true);
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+    assert.ok(logs.includes('launch-file-remove-failed EACCES'));
+    assert.equal(logs.join('\n').includes(tokenOf(server)), false);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('closeは、維持しているupgradeの接続を閉じ、実行中のAPIの処理に中止を知らせて完了を待ってから終わる', async () => {
+  const tmp = ownerOnlyTempDirectory('close-inflight');
+  try {
+    const events: string[] = [];
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let started: () => void = () => {};
+    const handlerStarted = new Promise<void>((resolve) => (started = resolve));
+    let aborted = false;
+    const api: ApiRoute[] = [
+      {
+        method: 'POST',
+        path: '/api/test/slow',
+        handle: async (request) => {
+          request.signal.addEventListener('abort', () => (aborted = true));
+          started();
+          await released;
+          events.push('handler-finished');
+          return { status: 200, body: { ok: true } };
+        },
+      },
+    ];
+    const held: Socket[] = [];
+    const dev: LocalServerOptions['dev'] = {
+      middleware: (_req, res) => res.end(),
+      upgrade(_req, socket) {
+        held.push(socket as Socket);
+        socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, api, dev });
+    const cookie = await exchange(server);
+
+    // 1. upgradeした接続を開いたままにする（サーバーは101を返して接続を維持する）。
+    const client = connect({ host: '127.0.0.1', port: server.port });
+    const clientClosed = new Promise<void>((resolve) => client.once('close', () => resolve()));
+    let received = '';
+    const switched = new Promise<void>((resolve) =>
+      client.on('data', (chunk: Buffer) => {
+        received += chunk.toString('latin1');
+        if (received.includes('101')) resolve();
+      }),
+    );
+    client.write(`GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+    await switched;
+    assert.equal(held.length, 1);
+
+    // 2. 終わらないAPIの処理を始める。
+    const pending = send(server.port, {
+      method: 'POST',
+      path: '/api/test/slow',
+      headers: sameOriginHeaders(server, { cookie, 'content-type': 'application/json' }),
+      body: '{}',
+    });
+    await handlerStarted;
+
+    // 3. closeは、処理が終わるまで完了しない。中止の合図は届き、upgradeの接続は閉じる。
+    let closed = false;
+    const closing = server.close().then((result) => {
+      closed = true;
+      events.push('closed');
+      return result;
+    });
+    await clientClosed;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(closed, false);
+    assert.equal(aborted, true);
+    assert.equal(held[0]?.destroyed, true);
+    // 終了中は、新しい接続を受け付けない。
+    assert.equal(await connectionRefused('127.0.0.1', server.port), true);
+
+    // 4. 任意の時点で処理を終えると、その応答を返してからcloseが終わる。
+    release();
+    const response = await pending;
+    assert.equal(response.status, 200);
+    const result = await closing;
+    assert.deepEqual(events, ['handler-finished', 'closed']);
+    assert.equal(result.launchFile, 'removed');
     assert.equal(await connectionRefused('127.0.0.1', server.port), true);
   } finally {
     tmp.cleanup();

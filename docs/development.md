@@ -76,7 +76,11 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 
 件数は、macOS・Linuxの一般のユーザーで0件、Windowsで6件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
 
-飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。T26のHTTPの境界の試験（`src/infrastructure/http/launch-file.test.ts`・`static-files.test.ts`）も同じ扱いで、Windowsでファイルのsymlinkを作れないときは、一時ファイルの名前に置くリンクをjunctionで確かめ、配信ルートの外を指すリンクをjunction（ディレクトリ）だけで確かめて、その旨をdiagnosticに残す（GitHubのWindowsのrunnerはsymlinkを作れるので、CIでは弱めない）。
+飛ばさずに弱めて確かめる箇所は、次の3つ。どれも、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときだけ弱め、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこれらが出たかをそこで確かめる（GitHubのWindowsのrunnerはsymlinkを作れるので、CIでは弱めず、diagnosticは出ない）。skipではないので、上の表と件数の文（`check:test-skips`の照合）には含めない。
+
+- `scripts/install-record.test.ts`: `node_modules`の外の通常のファイルを指す実行ファイルのリンクを、リンクがない場合として確かめる（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、外を指すリンクの場合は、リンクがない場合として確かめた」）。
+- `src/infrastructure/http/launch-file.test.ts`: 一時ファイルの名前に置くリンクを、ファイルのsymlinkの代わりにjunctionで確かめ、壊れたリンクの確認は行わない（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、一時ファイルの名前のリンクはjunctionで確かめた」）。
+- `src/infrastructure/http/static-files.test.ts`: 配信ルートの外を指すリンクを、junction（ディレクトリ）だけで確かめる（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、配信ルートの外を指すファイルのリンクはjunction（ディレクトリ）だけで確かめた」）。
 
 ## npmの設定（`.npmrc`）
 
@@ -118,10 +122,10 @@ T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004�
 
 いまの`npm start`は、境界の骨格を動かすだけで、画面（UI）・記録のAPI・DBはなく、データルートも開かない。
 
-1. トークンの一時ファイルを置く、本人だけが使えるディレクトリを、repoの外に用意する。macOS・Linuxは`mkdir -m 700 <ディレクトリ>`。WindowsのPowerShellは、ディレクトリを作ってから`icacls <ディレクトリ> /setowner "${env:USERNAME}"`と`icacls <ディレクトリ> /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F"`（所有者を本人にし、継承を切って本人だけに許可する。管理者として作ると所有者がAdministratorsになることがあるため）。アプリはこのディレクトリを作らず、権限も変えない。リンク・権限の広いディレクトリ・repoの中は拒否する。
+1. トークンの一時ファイルを置く、本人だけが使えるディレクトリを、repoの外に用意する。macOS・Linuxは`mkdir -m 700 <ディレクトリ>`（macOSで、親から継承した拡張ACLがほかのユーザーに許可していれば拒否されるので、`ls -led <ディレクトリ>`で確かめ、`chmod -N <ディレクトリ>`で消す）。WindowsのPowerShellは、ディレクトリを作ってから`icacls <ディレクトリ> /setowner "${env:USERNAME}"`と`icacls <ディレクトリ> /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F"`（所有者を本人にし、継承を切って本人だけに許可する。管理者として作ると所有者がAdministratorsになることがあるため）。アプリはこのディレクトリを作らず、権限も変えない。リンク・権限の広いディレクトリ・repoの中は拒否する。
 2. `npm start -- --token-dir <ディレクトリ>`（WindowsのPowerShellは`npm.cmd start -- --token-dir <ディレクトリ>`）。既定のポートは48720で、`--port <番号>`で変えられる。使用中なら別のポートへ移らずに終了する。`--no-open`でブラウザを自動で開かない。
 3. 起動用の一時ファイル（本人だけが読めるHTML）がブラウザで開き、トークンをcookieに交換して`/`へ移る。いまの`/`は、画面がまだないことを示す案内ページ。自動で開かないときは、表示された起動用のファイルのURLを開く（端末のときは、1回だけ使えるURLも表示する。端末でないときは、ログに残さないためにトークンを表示しない）。
-4. 終了するには、ターミナルでCtrl+Cを押す。待受を止め、一時ファイルを消す。
+4. 終了するには、ターミナルでCtrl+Cを押す。実行中の処理の完了を待ち、待受を止め、トークンを無効にし、一時ファイルを消して0で終わる。一時ファイルを消せなかった（または置き換わっていた）ときは、そのパスを表示して1で終わるので、中身を確かめて手で消す（中のトークンはもう使えない）。
 
 T09で、`npm start`にデータルートの検査（ADR-0007のG1〜G5）を組み込み、`--token-dir`の代わりに検査に通ったデータルートの`tmp/`を使う。T08で、ビルドしたUIの配信と、開発時のViteの組込み（ADR-0009の6の口）を加える。
 

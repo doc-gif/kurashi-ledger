@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { ownerOnlyTempDirectory, sameOriginHeaders, send } from '../tests/support/http.ts';
-import { startApp, type StartIo } from './start.ts';
+import { describeClose, startApp, type StartIo } from './start.ts';
 
 const START = fileURLToPath(new URL('./start.ts', import.meta.url));
 const REPOSITORY_ROOT = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
@@ -191,10 +191,50 @@ test('終了の処理（Ctrl+C等のシグナルで呼ぶもの）は、待受�
     assert.equal(existsSync(server.launchFile), true);
     const first = result.app.stop('SIGINT');
     const second = result.app.stop('SIGBREAK');
-    await Promise.all([first, second]);
+    assert.deepEqual(await Promise.all([first, second]), [0, 0]);
+    assert.ok(lines.some((line) => line.includes('起動用のファイルを消した')));
     assert.equal(lines.filter((line) => line.startsWith('終了する（')).length, 1);
     assert.equal(existsSync(server.launchFile), false);
     assert.equal(await refused(server.port), true);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('終了の表示と終了コード: 一時ファイルが残った（置き換わった・消せなかった）ときは消したと言わず、対処を示して1にする', async () => {
+  const path = '/synthetic/launch-0.html';
+  assert.equal(describeClose({ launchFile: 'removed', launchFilePath: path }).code, 0);
+  assert.equal(describeClose({ launchFile: 'missing', launchFilePath: path }).code, 0);
+  for (const launchFile of ['replaced', 'failed'] as const) {
+    const report = describeClose({ launchFile, launchFilePath: path });
+    assert.equal(report.code, 1, launchFile);
+    const text = report.lines.join('\n');
+    assert.match(text, /待受を止め、トークンとcookieを無効にした/);
+    assert.equal(text.includes('起動用のファイルを消した'), false);
+    assert.equal(text.includes(path), true);
+    assert.match(text, /手で消す/);
+  }
+
+  const tmp = ownerOnlyTempDirectory('start-unlink-fail');
+  const lines: string[] = [];
+  try {
+    const result = await startApp(['--token-dir', tmp.path, '--port', '0', '--no-open'], {
+      out: (line) => lines.push(line),
+      err: (line) => lines.push(`ERR ${line}`),
+      isTerminal: false,
+      openInBrowser: () => {},
+      repositoryRoot: REPOSITORY_ROOT,
+      removeFile: () => {
+        throw Object.assign(new Error('synthetic unlink failure'), { code: 'EPERM' });
+      },
+    });
+    assert.equal(result.kind, 'running');
+    if (result.kind !== 'running') return;
+    assert.equal(await result.app.stop('SIGINT'), 1);
+    assert.equal(existsSync(result.app.server.launchFile), true);
+    assert.ok(lines.some((line) => line.startsWith('ERR ') && line.includes('消せなかった')));
+    assert.equal(lines.some((line) => line.includes('起動用のファイルを消した')), false);
+    assert.equal(await refused(result.app.server.port), true);
   } finally {
     tmp.cleanup();
   }

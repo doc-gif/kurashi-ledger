@@ -1,7 +1,11 @@
 // 本人だけが使える権限の確認と設定（ADR-0003の4、ADR-0009の「本人だけの権限」）。
 // - POSIX（macOS・Linux）: lstatで調べ（リンクをたどらない）、所有者が実行中のユーザーで、グループとほかのユーザーの
-//   権限のbitがないこと（ファイルは0600、ディレクトリは0700）。拡張ACL（macOSのACL、LinuxのPOSIX ACL）は見ない
-//   （ADR-0009の「見ないもの」）。
+//   権限のbitがないこと（ファイルは0600、ディレクトリは0700）。
+//   - macOS: モードとは別の拡張ACLで、ほかのユーザーに許可できる（chmodのモードの変更ではACLは消えない）。
+//     `ls -led`でACLのエントリを読み、実行中のユーザー以外へのallowのエントリがあれば拒否する。読めない行があっても
+//     拒否する。作るものは`chmod -N`でACLを消してからモードを設定する。
+//   - Linux: POSIX ACLがあると、モードのグループのbitがACLのmaskになり、名前付きのユーザー・グループのエントリは
+//     maskで制限される。グループとほかのユーザーのbitが0なら、ACLがあっても本人以外は使えない（ADR-0009の4）。
 // - Windows: 所有者が実行中のユーザーのSIDで、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）が
 //   実行中のユーザーのSIDだけで、Allow・Deny以外の種類のエントリがないこと。表示名はロケールで変わるので使わず、
 //   セキュリティ記述子の2進の形から取り出したSIDで判定する。読み書きはWindows PowerShell 5.1（Windowsに同梱）の.NETのAPIで行い、
@@ -11,6 +15,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
+import { userInfo } from 'node:os';
 
 export type OwnerOnlyKind = 'file' | 'directory';
 export type OwnerOnlyCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
@@ -103,6 +108,29 @@ export function evaluateWindowsSddl(sddl: string, userSid: string): OwnerOnlyChe
   return { ok: true };
 }
 
+// macOSの`ls -led`の出力（1行目がモード等、2行目以降がACLのエントリ）を判定する。純粋な関数として試験できるように分けている。
+// エントリの形: ` <番号>: <user:名前|group:名前|UUID> [inherited] <allow|deny> <権限>`。
+export function evaluateMacAcl(output: string, userName: string): OwnerOnlyCheck {
+  const [first = '', ...rest] = output.replace(/\r/g, '').split('\n').filter((line) => line !== '');
+  const mode = first.split(' ')[0] ?? '';
+  if (!/^[-dlbcps][-rwxsStT]{9}[+@.]?$/.test(mode)) return { ok: false, reason: 'ACLを読めない（lsの出力の形が違う）。' };
+  if (!mode.endsWith('+')) return rest.length === 0 ? { ok: true } : { ok: false, reason: 'ACLを読めない（ACLの印がないのにエントリがある）。' };
+  for (const line of rest) {
+    const entry = /^\s*\d+: (\S+) (?:inherited )?(allow|deny) (\S+)$/.exec(line);
+    if (entry === null) return { ok: false, reason: `読めないACLのエントリがある（${line.trim()}）。` };
+    if (entry[2] === 'allow' && entry[1] !== `user:${userName}`) {
+      return { ok: false, reason: `実行中のユーザー以外（${entry[1] ?? ''}）を許可する拡張ACLのエントリがある。` };
+    }
+  }
+  return { ok: true };
+}
+
+function checkMacAcl(path: string): OwnerOnlyCheck {
+  const result = spawnSync('/bin/ls', ['-led', '--', path], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, timeout: 30_000 });
+  if (result.error !== undefined || result.status !== 0) return { ok: false, reason: `ACLを読めなかった（${(result.stderr ?? '').trim()}）。` };
+  return evaluateMacAcl(result.stdout, userInfo().username);
+}
+
 function checkPosix(path: string, kind: OwnerOnlyKind): OwnerOnlyCheck {
   const st = lstatSync(path);
   if (st.isSymbolicLink()) return { ok: false, reason: 'リンクになっている。' };
@@ -115,6 +143,7 @@ function checkPosix(path: string, kind: OwnerOnlyKind): OwnerOnlyCheck {
   if ((mode & 0o077) !== 0) {
     return { ok: false, reason: `権限（${mode.toString(8).padStart(3, '0')}）がグループやほかのユーザーにも許している。` };
   }
+  if (process.platform === 'darwin') return checkMacAcl(path);
   return { ok: true };
 }
 
@@ -130,7 +159,7 @@ export function checkOwnerOnly(path: string, kind: OwnerOnlyKind): OwnerOnlyChec
   return evaluateWindowsSddl(sddl, userSid);
 }
 
-// pathを本人だけの権限にしてから、確かめ直す（POSIXはファイル0600・ディレクトリ0700、Windowsは継承を切って
+// pathを本人だけの権限にしてから、確かめ直す（POSIXはファイル0600・ディレクトリ0700でmacOSは拡張ACLも消す、Windowsは継承を切って
 // 実行中のユーザーだけを許可するDACL）。確かめ直しで外れていれば例外にする。リンクには使わない（呼び出し側が
 // lstatで確かめた、自分で作ったものだけに使う）。
 export function restrictToOwner(path: string, kind: OwnerOnlyKind): void {
@@ -140,6 +169,10 @@ export function restrictToOwner(path: string, kind: OwnerOnlyKind): void {
     const { userSid, sddl } = runWindowsAcl(path, kind === 'file' ? 'restrict-file' : 'restrict-directory');
     check = evaluateWindowsSddl(sddl, userSid);
   } else {
+    if (process.platform === 'darwin') {
+      const cleared = spawnSync('/bin/chmod', ['-N', path], { encoding: 'utf8', timeout: 30_000 });
+      if (cleared.error !== undefined || cleared.status !== 0) throw new Error(`${path} の拡張ACLを消せなかった（${(cleared.stderr ?? '').trim()}）。`);
+    }
     chmodSync(path, kind === 'file' ? 0o600 : 0o700);
     check = checkPosix(path, kind);
   }
@@ -150,5 +183,7 @@ export function restrictToOwner(path: string, kind: OwnerOnlyKind): void {
 export function ownerOnlyDirectoryHint(path: string): string {
   return process.platform === 'win32'
     ? `PowerShellで icacls "${path}" /setowner "\${env:USERNAME}" と icacls "${path}" /inheritance:r /grant:r "\${env:USERNAME}:(OI)(CI)F" を実行し、所有者を本人にして本人だけに許可する。`
-    : `chmod 700 "${path}" で本人だけの権限にする（新しく作るなら mkdir -m 700）。`;
+    : process.platform === 'darwin'
+      ? `chmod 700 "${path}" と、ほかのユーザーを許可する拡張ACLがあれば chmod -N "${path}" で、本人だけの権限にする（新しく作るなら mkdir -m 700）。`
+      : `chmod 700 "${path}" で本人だけの権限にする（新しく作るなら mkdir -m 700）。`;
 }

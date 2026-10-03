@@ -60,6 +60,31 @@ test('HTMLの<head>の直後に起動の識別子の<meta>を入れ、<head>が�
   assert.equal(injectLaunchId(Buffer.from('<header>x</header>'), 'AAAAAAAAAAAAAAAAAAAAAA'), undefined);
 });
 
+test('識別子の注入は、コメント・title・scriptの中の文字列を要素と取り違えず、実際の<head>に入れ、実際のmetaだけを重複とする', () => {
+  const id = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const meta = `<meta name="kurashi-ledger-launch-id" content="${id}">`;
+  const inject = (html: string) => injectLaunchId(Buffer.from(html), id)?.toString();
+  // コメントの中の<head>（とmeta）は要素ではない。実際の<head>の直後に入る。
+  const commented = '<!doctype html><!-- <head><meta name="kurashi-ledger-launch-id" content="x"></head> --><html><head><title>t</title></head></html>';
+  assert.equal(inject(commented), commented.replace('<html><head>', `<html><head>${meta}`));
+  // 同じ文字列を含む<title>・script・属性の値は、metaの重複ではない。
+  const titled = '<html><head><title>kurashi-ledger-launch-id</title><script>document.write("<meta name=\'kurashi-ledger-launch-id\'>")</script></head><body data-x="kurashi-ledger-launch-id"></body></html>';
+  assert.equal(inject(titled), titled.replace('<html><head>', `<html><head>${meta}`));
+  // 実際の同名のmeta（大文字小文字・文字参照・body の中を含む）は重複として配信しない。
+  for (const html of [
+    '<html><head><meta name="kurashi-ledger-launch-id" content="x"></head></html>',
+    '<html><head><META NAME=Kurashi-Ledger-Launch-Id content=x></head></html>',
+    '<html><head></head><body><meta name="kurashi&#45;ledger-launch-id" content="x"></body></html>',
+    "<html><head><meta content='x' name='kurashi-ledger-launch-id'/></head></html>",
+  ]) {
+    assert.equal(inject(html), undefined, html);
+  }
+  // <head>より前にほかの要素や文字がある・閉じていないコメントやタグは、識別子の場所があいまいなので配信しない。
+  for (const html of ['hello<head></head>', '<body><head></head></body>', '<!-- <head>', '<html><head', '<script>"<head>"</script><head></head>']) {
+    assert.equal(inject(html), undefined, html);
+  }
+});
+
 function linkFile(t: TestContext, target: string, path: string): boolean {
   try {
     symlinkSync(target, path, 'file');

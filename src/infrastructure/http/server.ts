@@ -59,6 +59,8 @@ export type ApiRequest = {
   readonly path: string;
   // JSONの要求は解析した値、octet-streamの要求はBuffer、GETはundefined。
   readonly body: unknown;
+  // closeが始まると中止を知らせる。処理は早めに終えてよいが、closeは処理の完了を待つ。
+  readonly signal: AbortSignal;
 };
 
 export type ApiResponse = { readonly status: number; readonly body?: unknown };
@@ -99,7 +101,15 @@ export type LocalServerOptions = {
   readonly api?: readonly ApiRoute[];
   readonly dev?: DevIntegration;
   readonly log?: (line: string) => void;
+  // 一時ファイルを消す処理。試験で削除の失敗を注入するためだけに使う（既定はunlink）。
+  readonly removeFile?: (path: string) => void;
 };
+
+// 一時ファイルの後始末の結果。replaced（作ったものと違うものに置き換わっていた）とfailed（消せなかった）は、
+// ファイルが残っている。トークンはどちらでも無効になっている。
+export type LaunchFileCleanup = 'removed' | 'missing' | 'replaced' | 'failed';
+
+export type CloseResult = { readonly launchFile: LaunchFileCleanup; readonly launchFilePath: string };
 
 export type LocalServer = {
   readonly port: number;
@@ -111,7 +121,10 @@ export type LocalServer = {
   readonly launchFileUrl: string;
   // 1回だけ使えるトークン付きのURL。端末に表示するときだけ使い、ログに出さない。
   readonly tokenUrl: string;
-  close(): Promise<void>;
+  // 終了する。新しい接続と要求を受け付けず、実行中の処理に中止を知らせてすべての完了を待ち、upgrade済みの接続と
+  // HTTPの接続を閉じ、待受を止め、トークンとセッションを無効にし、一時ファイルを消して、その結果を返す。
+  // 何度呼んでも同じ結果を返す。
+  close(): Promise<CloseResult>;
 };
 
 export class PortInUseError extends Error {
@@ -156,7 +169,7 @@ function errorName(error: unknown): string {
 
 type BodyResult = { readonly ok: true; readonly data: Buffer } | { readonly ok: false; readonly rejection: Rejection };
 
-function readBody(req: IncomingMessage, maxBytes: number): Promise<BodyResult> {
+function readBody(req: IncomingMessage, maxBytes: number, signal: AbortSignal): Promise<BodyResult> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -164,6 +177,7 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<BodyResult> {
     const finish = (result: BodyResult): void => {
       if (done) return;
       done = true;
+      signal.removeEventListener('abort', onAbort);
       resolve(result);
     };
     let tooLarge = false;
@@ -179,6 +193,12 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<BodyResult> {
     });
     req.on('end', () => finish(tooLarge ? { ok: false, rejection: { status: 413, code: 'body-too-large' } } : { ok: true, data: Buffer.concat(chunks) }));
     req.on('error', () => finish({ ok: false, rejection: { status: 400, code: 'body-read-error' } }));
+    // 終了が始まったら、本文の残りを待たない（届かない本文でcloseが止まらないように）。
+    function onAbort(): void {
+      finish({ ok: false, rejection: { status: 503, code: 'closing' } });
+    }
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -209,15 +229,25 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   let expectedHost = '';
   let expectedOrigin = '';
 
-  const removeLaunchFileNow = (): void => {
-    if (launchFile === undefined) return;
+  // 消し終えた（removed・missing）ら、それ以上は試さない。replaced・failedは、closeでもう一度確かめる。
+  let launchFileState: LaunchFileCleanup | undefined;
+  const removeLaunchFileNow = (): LaunchFileCleanup => {
+    if (launchFile === undefined) return 'missing';
+    if (launchFileState === 'removed' || launchFileState === 'missing') return launchFileState;
     try {
-      const result = removeLaunchFile(launchFile);
-      if (result === 'replaced') log('launch-file-replaced（作ったファイルと違うものになっていたので消さなかった）');
+      launchFileState = removeLaunchFile(launchFile, options.removeFile);
+      if (launchFileState === 'replaced') log('launch-file-replaced（作ったファイルと違うものになっていたので消さなかった）');
     } catch (error) {
+      launchFileState = 'failed';
       log(`launch-file-remove-failed ${errorName(error)}`);
     }
+    return launchFileState;
   };
+
+  // closeが所有するもの: 実行中の要求の処理、upgrade済みのソケット、中止の合図。
+  const inflight = new Set<Promise<void>>();
+  const upgradedSockets = new Set<Duplex>();
+  const shutdown = new AbortController();
 
   const reject = (res: ServerResponse, rejection: Rejection, api: boolean): void => {
     res.statusCode = rejection.status;
@@ -277,7 +307,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
       if (method !== 'POST') return reject(res, { status: 405, code: 'method-not-allowed' }, true);
       const type = checkContentType(req, 'json');
       if (type !== undefined) return reject(res, type, true);
-      const body = await readBody(req, EXCHANGE_MAX_BYTES);
+      const body = await readBody(req, EXCHANGE_MAX_BYTES, shutdown.signal);
       if (!body.ok) return reject(res, body.rejection, true);
       const parsed = parseJson(body.data);
       if (!parsed.ok) return reject(res, { status: 400, code: 'invalid-json' }, true);
@@ -302,7 +332,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
 
     let requestBody: unknown;
     if (changesState) {
-      const body = await readBody(req, route.body?.maxBytes ?? DEFAULT_JSON_MAX_BYTES);
+      const body = await readBody(req, route.body?.maxBytes ?? DEFAULT_JSON_MAX_BYTES, shutdown.signal);
       if (!body.ok) return reject(res, body.rejection, true);
       if ((route.body?.type ?? 'json') === 'json') {
         const parsed = parseJson(body.data);
@@ -312,7 +342,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
         requestBody = body.data;
       }
     }
-    const response = await route.handle({ method: route.method, path, body: requestBody });
+    const response = await route.handle({ method: route.method, path, body: requestBody, signal: shutdown.signal });
     sendJson(res, response);
   };
 
@@ -324,11 +354,17 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (options.dev !== undefined) {
       const dev = options.dev;
       await new Promise<void>((resolve) => {
+        // 終了が始まったら待たない（応答はcloseが接続ごと閉じる）。
+        const done = (): void => {
+          shutdown.signal.removeEventListener('abort', done);
+          resolve();
+        };
+        shutdown.signal.addEventListener('abort', done, { once: true });
+        res.once('close', done);
         dev.middleware(req, res, (error?: unknown) => {
           if (!res.headersSent) reject(res, error === undefined ? { status: 404, code: 'not-found' } : { status: 500, code: 'dev-middleware-error' }, false);
-          resolve();
+          done();
         });
-        res.once('close', () => resolve());
       });
       return;
     }
@@ -363,15 +399,21 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
       log(`${req.method ?? '?'} ${path} ${res.statusCode}${reason === undefined ? '' : ` ${String(reason)}`}`);
     });
     if (current === undefined) return reject(res, { status: 503, code: 'starting' }, api);
+    // 終了中は、すでにある接続に届いた要求も受け付けない。
+    if (shutdown.signal.aborted) {
+      res.setHeader('Connection', 'close');
+      return reject(res, { status: 503, code: 'closing' }, api);
+    }
     const host = checkHost(req, expectedHost);
     if (host !== undefined) return reject(res, host, api);
     if (!rawUrl.startsWith('/')) return reject(res, { status: 400, code: 'bad-request-target' }, api);
-    const work = api ? handleApi(req, res, current, path) : handleUi(req, res, current, path);
-    work.catch((error: unknown) => {
+    const work = (api ? handleApi(req, res, current, path) : handleUi(req, res, current, path)).catch((error: unknown) => {
       log(`internal-error ${errorName(error)}`);
       if (!res.headersSent) reject(res, { status: 500, code: 'internal-error' }, api);
       else res.destroy();
     });
+    inflight.add(work);
+    void work.finally(() => inflight.delete(work));
   });
 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -382,6 +424,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     };
     const current = session;
     if (current === undefined) return refuse({ status: 503, code: 'starting' });
+    if (shutdown.signal.aborted) return refuse({ status: 503, code: 'closing' });
     const host = checkHost(req, expectedHost);
     if (host !== undefined) return refuse(host);
     const origin = checkSameOrigin(req, expectedOrigin, true);
@@ -391,6 +434,9 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const upgrade = options.dev?.upgrade;
     if (upgrade === undefined) return refuse({ status: 404, code: 'no-websocket' });
     log(`UPGRADE ${path} accepted`);
+    // closeで閉じるために、渡したソケットを追跡する（closeAllConnectionsはupgrade済みのソケットを閉じない）。
+    upgradedSockets.add(socket);
+    socket.once('close', () => upgradedSockets.delete(socket));
     upgrade(req, socket, head);
   });
 
@@ -420,6 +466,20 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
       server.close(() => resolve());
       server.closeAllConnections();
     });
+  // 終了の手順（closeの契約）。
+  const shutDown = async (): Promise<void> => {
+    shutdown.abort();
+    // 1. 新しい接続を受け付けない（待受を止める。完了の通知は、すべての接続が閉じてから）。
+    const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
+    // 2. upgrade済みの接続を閉じる。
+    for (const socket of upgradedSockets) socket.destroy();
+    // 3. 実行中の処理に中止を知らせたうえで、すべての完了を待つ（処理中に新しく加わったものも待つ）。
+    server.closeIdleConnections();
+    while (inflight.size > 0) await Promise.allSettled([...inflight]);
+    // 4. 残ったHTTPの接続を閉じ、待受の終了を待つ。
+    server.closeAllConnections();
+    await stopped;
+  };
   try {
     launchFile = createLaunchFile(tokenDirectory, randomLaunchFileName(), launchFileHtml(tokenUrl));
   } catch (error) {
@@ -429,7 +489,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   session = current;
   const createdFile = launchFile;
 
-  let closing: Promise<void> | undefined;
+  let closing: Promise<CloseResult> | undefined;
   return {
     port,
     origin: expectedOrigin,
@@ -441,9 +501,11 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     tokenUrl,
     close() {
       closing ??= (async () => {
+        // 待受の停止とトークンの無効化は、一時ファイルの後始末の結果によらず行う。
         current.revoke();
-        await closeServer();
-        removeLaunchFileNow();
+        await shutDown();
+        const cleanup = removeLaunchFileNow();
+        return { launchFile: cleanup, launchFilePath: createdFile.path };
       })();
       return closing;
     },

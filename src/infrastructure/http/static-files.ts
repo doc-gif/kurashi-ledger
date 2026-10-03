@@ -76,15 +76,108 @@ export function isHtml(contentType: string): boolean {
   return contentType.startsWith('text/html');
 }
 
-// 配信するHTMLの<head>の直後に、起動の識別子の<meta>を入れる（ADR-0003の14、ADR-0009）。
-// <head>がないHTMLと、すでに同じ名前の<meta>を含むHTMLは、識別子があいまいになるので配信しない（undefined）。
+// HTMLを要素の単位で読む小さな字句解析（ADR-0009の1）。コメント・宣言（doctype等）・処理命令と、生のテキストを
+// 中身に持つ要素（script・style・title・textarea等）の中身を、要素と区別する。属性は引用符を考えて読む。
+type HtmlToken =
+  | { readonly kind: 'start'; readonly name: string; readonly attrs: ReadonlyMap<string, string>; readonly end: number }
+  | { readonly kind: 'end'; readonly name: string; readonly end: number }
+  | { readonly kind: 'comment' | 'declaration' | 'text'; readonly text: string; readonly end: number };
+
+const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'title', 'textarea', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
+
+function decodeEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos);/gi, (all, body: string) => {
+    const lower = body.toLowerCase();
+    if (lower.startsWith('#x')) return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
+    if (lower.startsWith('#')) return String.fromCodePoint(Number.parseInt(lower.slice(1), 10));
+    return ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" } as Record<string, string>)[lower] ?? all;
+  });
+}
+
+// 読めない形（閉じていないコメント・タグ・生のテキストの要素）ならundefined。
+function tokenizeHtml(text: string): HtmlToken[] | undefined {
+  const tokens: HtmlToken[] = [];
+  let pos = 0;
+  while (pos < text.length) {
+    if (text.startsWith('<!--', pos)) {
+      const close = text.indexOf('-->', pos + 4);
+      if (close < 0) return undefined;
+      tokens.push({ kind: 'comment', text: text.slice(pos, close + 3), end: close + 3 });
+      pos = close + 3;
+      continue;
+    }
+    if (text.startsWith('<!', pos) || text.startsWith('<?', pos)) {
+      const close = text.indexOf('>', pos);
+      if (close < 0) return undefined;
+      tokens.push({ kind: 'declaration', text: text.slice(pos, close + 1), end: close + 1 });
+      pos = close + 1;
+      continue;
+    }
+    const endTag = /^<\/([A-Za-z][^\s/>]*)[^>]*>/.exec(text.slice(pos, pos + 1024));
+    if (endTag !== null) {
+      pos += endTag[0].length;
+      tokens.push({ kind: 'end', name: (endTag[1] ?? '').toLowerCase(), end: pos });
+      continue;
+    }
+    const startTag = /^<([A-Za-z][^\s/>]*)/.exec(text.slice(pos, pos + 1024));
+    if (startTag !== null) {
+      const name = (startTag[1] ?? '').toLowerCase();
+      let at = pos + startTag[0].length;
+      const attrs = new Map<string, string>();
+      const attr = /\s*([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?|\s*\/|\s+/y;
+      for (;;) {
+        if (at >= text.length) return undefined;
+        if (text[at] === '>') break;
+        attr.lastIndex = at;
+        const m = attr.exec(text);
+        if (m === null || m[0].length === 0) return undefined;
+        if (m[1] !== undefined) {
+          const key = m[1].toLowerCase();
+          if (!attrs.has(key)) attrs.set(key, decodeEntities(m[2] ?? m[3] ?? m[4] ?? ''));
+        }
+        at += m[0].length;
+      }
+      pos = at + 1;
+      tokens.push({ kind: 'start', name, attrs, end: pos });
+      if (RAW_TEXT_ELEMENTS.has(name)) {
+        const close = text.toLowerCase().indexOf(`</${name}`, pos);
+        if (close < 0) return undefined;
+        tokens.push({ kind: 'text', text: text.slice(pos, close), end: close });
+        pos = close;
+      }
+      continue;
+    }
+    const next = text.indexOf('<', pos + 1);
+    const stop = next < 0 ? text.length : next;
+    tokens.push({ kind: 'text', text: text.slice(pos, stop), end: stop });
+    pos = stop;
+  }
+  return tokens;
+}
+
+// 配信するHTMLに、起動の識別子の<meta>を入れる（ADR-0003の14、ADR-0009の1）。注入の契約:
+// - doctype・コメント・空白・<html>の開始タグのあとの、最初の要素が<head>の開始タグであること。その直後に入れる。
+// - 文書のどこにも、name属性が同じ名前（大文字小文字を区別しない）の実際の<meta>要素がないこと。
+// 契約を満たさないHTML（<head>がない、<head>より前にほかの要素や文字がある、読めない形、すでに同じ<meta>がある）は、
+// 識別子があいまいになるので配信しない（undefined）。コメントやscript・titleの中の文字列は要素として扱わない。
 export function injectLaunchId(html: Buffer, launchId: string): Buffer | undefined {
   const text = html.toString('utf8');
-  if (text.includes(LAUNCH_ID_META_NAME)) return undefined;
-  const head = /<head(?:\s[^>]*)?>/i.exec(text);
-  if (head === null) return undefined;
-  const at = head.index + head[0].length;
-  return Buffer.from(`${text.slice(0, at)}<meta name="${LAUNCH_ID_META_NAME}" content="${launchId}">${text.slice(at)}`, 'utf8');
+  const tokens = tokenizeHtml(text);
+  if (tokens === undefined) return undefined;
+  let insertAt: number | undefined;
+  for (const token of tokens) {
+    if (token.kind === 'comment' || token.kind === 'declaration') continue;
+    if (token.kind === 'text' && token.text.trim() === '') continue;
+    if (token.kind === 'start' && token.name === 'html') continue;
+    if (token.kind === 'start' && token.name === 'head') insertAt = token.end;
+    break;
+  }
+  if (insertAt === undefined) return undefined;
+  const duplicate = tokens.some(
+    (t) => t.kind === 'start' && t.name === 'meta' && (t.attrs.get('name') ?? '').trim().toLowerCase() === LAUNCH_ID_META_NAME,
+  );
+  if (duplicate) return undefined;
+  return Buffer.from(`${text.slice(0, insertAt)}<meta name="${LAUNCH_ID_META_NAME}" content="${launchId}">${text.slice(insertAt)}`, 'utf8');
 }
 
 export type StaticFile = { readonly body: Buffer; readonly contentType: string };
