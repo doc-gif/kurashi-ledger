@@ -9,6 +9,7 @@ export * from "./reasons.ts";
 export * from "./schema.ts";
 export * from "./ledger.ts";
 export * from "./validate.ts";
+export * from "./history.ts";
 export * from "./views.ts";
 export * from "./masters.ts";
 export * from "./series.ts";

@@ -4,7 +4,7 @@
 
 import { knownValue, stateOf } from "./fact.ts";
 import { isMasterType, recordTypeOfId, type RecordType } from "./ids.ts";
-import { compareStrings, recordIds, type Ledger } from "./ledger.ts";
+import { bodyOf, compareStrings, recordIds, type Ledger } from "./ledger.ts";
 import { canonicalMasterId, masterRefsOf } from "./masters.ts";
 import { analyzeSeries, isSeriesType, type SeriesAnalysis, type SeriesType } from "./series.ts";
 import { intervalOfPeriod, intervalsOverlap } from "./values.ts";
@@ -69,15 +69,15 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
     if (type === undefined || !isEffective(ledger, id, view, series)) continue;
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined) continue;
-    for (const ref of masterRefsOf(type, rev.body)) {
+    for (const ref of masterRefsOf(type, bodyOf(rev))) {
       if (canon(ref.id) === undefined) out.push({ kind: "master-ref", ids: [id], detail: `${ref.path}=${ref.id}` });
     }
   }
   // 雇用条件の期間の重なり（端が分からなければ、その側へ限りなく開いた期間として判定する。共通の型の6）。
   const terms = effectiveIds(ledger, "employment-term", view, series).map((id) => {
     const rev = selectRevision(ledger, id, view);
-    const employer = rev?.body["employerId"];
-    return { id, employer: typeof employer === "string" ? canon(employer) : undefined, interval: intervalOfPeriod(rev?.body["applicablePeriod"]) };
+    const employer = (rev === undefined ? {} : bodyOf(rev))["employerId"];
+    return { id, employer: typeof employer === "string" ? canon(employer) : undefined, interval: intervalOfPeriod((rev === undefined ? {} : bodyOf(rev))["applicablePeriod"]) };
   });
   for (let i = 0; i < terms.length; i += 1) {
     for (let j = i + 1; j < terms.length; j += 1) {
@@ -90,8 +90,9 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
   for (const id of effectiveIds(ledger, "annual-document", view, series)) {
     const rev = selectRevision(ledger, id, view);
     if (rev === undefined) continue;
-    const issuer = typeof rev.body["payerEmployerId"] === "string" ? canon(rev.body["payerEmployerId"]) : undefined;
-    const rows = knownValue(rev.body["includedOtherPayers"]);
+    const payer = bodyOf(rev)["payerEmployerId"];
+    const issuer = typeof payer === "string" ? canon(payer) : undefined;
+    const rows = knownValue(bodyOf(rev)["includedOtherPayers"]);
     if (!Array.isArray(rows)) continue;
     const seen = new Set<string>();
     rows.forEach((row, i) => {
@@ -106,13 +107,13 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
   }
   for (const id of effectiveIds(ledger, "official-notice", view, series)) {
     const rev = selectRevision(ledger, id, view);
-    if (rev === undefined || stateOf(rev.body["issuerId"]) !== "known") continue;
-    const raw = knownValue(rev.body["issuerId"]);
+    if (rev === undefined || stateOf(bodyOf(rev)["issuerId"]) !== "known") continue;
+    const raw = knownValue(bodyOf(rev)["issuerId"]);
     const c = typeof raw === "string" ? canon(raw) : undefined;
     if (c === undefined) continue;
     const issuerRev = selectRevision(ledger, c, masterView(view));
-    if (issuerRev !== undefined && issuerRev.body["issuerKind"] !== rev.body["issuerKind"]) {
-      out.push({ kind: "issuer-kind", ids: [id], detail: `${c}:${String(issuerRev.body["issuerKind"])}` });
+    if (issuerRev !== undefined && bodyOf(issuerRev)["issuerKind"] !== bodyOf(rev)["issuerKind"]) {
+      out.push({ kind: "issuer-kind", ids: [id], detail: `${c}:${String(bodyOf(issuerRev)["issuerKind"])}` });
     }
   }
   return out.sort((a, b) => compareStrings(dependentKey(a), dependentKey(b)));

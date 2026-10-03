@@ -13,7 +13,7 @@ import { restoreUnchecked, saveRevision, type SaveOutcome } from "./save.ts";
 import { analyzeSeries } from "./series.ts";
 import { checkRevisionStatic } from "./validate.ts";
 import { addYen, isLocalDate, tokyoDateOf } from "./values.ts";
-import { CURRENT, resolveView, selectRevision, seqForTime } from "./views.ts";
+import { CURRENT, resolveView, selectRevision, seqForTime, type View } from "./views.ts";
 
 let wr = 0;
 
@@ -416,4 +416,157 @@ test("復元でも、importKeyが別の記録と重なる改訂は置かない",
   l = restoreUnchecked(l, [rec("dep_1")], { clock: { now: () => T0 } });
   const before = l;
   assert.throws(() => restoreUnchecked(before, [rec("dep_2")], { clock: { now: () => T0 } }), /importKey/);
+});
+
+// 復元（検査をすり抜けたデータ）の改訂を、台帳の既定で補って作る。版2以上は直前の改訂のbodyに書いた項目だけを差し替える。
+function restore(ledger: Ledger, compacts: Obj[], at = T0): Ledger {
+  let l = ledger;
+  for (const c of compacts) {
+    wr += 1;
+    const previous = latestRevision(l, c["id"] as string) as unknown as Obj | undefined;
+    const r = expandRecord(c, { scenarioId: "unit", opId: `restore${wr}`, previous });
+    l = restoreUnchecked(l, [r], { clock: { now: () => at } });
+  }
+  return l;
+}
+
+function depositOct(l: Ledger, view: View = CURRENT): { state: string; knownSum: number; missing: string[] } {
+  const out = aggregateRecords(l, DEPOSIT_OCT, view);
+  assert.ok(out.ok, out.ok ? "" : out.message);
+  if (!out.ok) return { state: "", knownSum: 0, missing: [] };
+  const [v] = out.values;
+  return { state: v.state, knownSum: v.knownSum, missing: v.missing.map((m) => `${m.ref.id}@${m.ref.revision}:${m.field.kind === "derived" ? m.field.key : m.field.name}:${m.state}`) };
+}
+
+test("PR28-R004: 把握日を変える訂正のchangeNoteは、knownでも空・空白だけなら拒否する", () => {
+  let l = setup();
+  l = ok(save(l, { ...deposit("dep_1", { state: "known", value: 1 }), knownOn: { state: "known", value: "2026-09-20" } }, T0));
+  const fix = (note: Obj): Obj => ({ id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", knownOn: { state: "known", value: "2026-09-21" }, changeNote: note });
+  rejected(save(l, fix({ state: "known", value: "" }), T0), "known-on-not-inherited");
+  rejected(save(l, fix({ state: "known", value: " 　\t" }), T0), "known-on-not-inherited");
+  ok(save(l, fix({ state: "known", value: "把握日の写し誤り" }), T0));
+  // 把握日を引き継ぐ訂正には、メモは要らない（空のメモでもよい）。
+  ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", changeNote: { state: "known", value: "" }, body: { amount: { state: "known", value: 2 } } }, T0));
+});
+
+test("PR28-R002: 再送は要求の全内容で比べる。正しい再送は最初の結果を返し、余分なキー・新規のbaseRevision・内容の変更は拒否する", () => {
+  let l = setup();
+  const create = expandRecord(deposit("dep_1", { state: "known", value: 100 }), { scenarioId: "unit", opId: "rp1", previous: undefined });
+  const { id: _id, ...createInput } = create;
+  void _id;
+  const d = { clock: { now: () => T0 }, ids: { next: () => "dep_1" } };
+  const first = saveRevision(l, createInput, d);
+  l = ok(first);
+  const seq = l.saves.length;
+  const replay = saveRevision(l, createInput, d);
+  assert.equal(replay.kind, "replayed");
+  if (replay.kind === "replayed" && first.kind === "accepted") assert.equal(replay.revision, first.revision);
+  for (const bad of [
+    { ...createInput, extra: 1 },
+    { ...createInput, baseRevision: 0 },
+    { ...createInput, body: { ...(createInput["body"] as Obj), amount: { state: "known", value: 101 } } },
+  ]) {
+    const out = saveRevision(l, bad, d);
+    rejected(out, "write-request-conflict");
+    assert.equal(out.ledger, l);
+    assert.equal(out.ledger.saves.length, seq);
+  }
+  // 改訂の再送は、元のbaseRevisionと同じときだけ最初の結果を返す。
+  const revise = { ...expandRecord({ id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 150 } } }, { scenarioId: "unit", opId: "rp2", previous: latestRevision(l, "dep_1") as unknown as Obj }), baseRevision: 1 };
+  l = ok(saveRevision(l, revise, d));
+  assert.equal(saveRevision(l, revise, d).kind, "replayed");
+  rejected(saveRevision(l, { ...revise, baseRevision: 2 }, d), "write-request-conflict");
+  const { baseRevision: _b, ...withoutBase } = revise;
+  void _b;
+  rejected(saveRevision(l, withoutBase, d), "write-request-conflict");
+});
+
+test("PR28-R003: 保存の前からある違反でも、保存する記録自身が関わる違反は免除せず、関係のない保存は止めない", () => {
+  let l = setup();
+  const term = (id: string, start: string, end: string): Obj => ({
+    id,
+    recordType: "employment-term",
+    body: { employerId: "emp_1", applicablePeriod: { start: { state: "known", value: start }, end: { state: "known", value: end } } },
+  });
+  // 検査をすり抜けて、同じ雇用先で期間が重なる有効な雇用条件A・Bがある。
+  l = restore(l, [term("term_a", "2026-01-01", "2026-06-30"), term("term_b", "2026-06-01", "2026-12-31")]);
+  const seq = l.saves.length;
+  const fixA = (end: string): Obj => ({ id: "term_a", recordType: "employment-term", revision: 2, reason: "correct-input-error", body: { applicablePeriod: { start: { state: "known", value: "2026-01-01" }, end: { state: "known", value: end } } } });
+  const keep = save(l, fixA("2026-06-15"), T0);
+  rejected(keep, "employment-term-overlap");
+  assert.equal(keep.ledger, l);
+  assert.equal(keep.ledger.saves.length, seq);
+  ok(save(l, fixA("2026-05-31"), T0));
+  // 関係のない記録の保存と、雇用先の表示名だけの訂正は止めない。
+  ok(save(l, deposit("dep_1", { state: "known", value: 1 }), T0));
+  ok(save(l, { id: "emp_1", recordType: "employer", revision: 2, reason: "correct-input-error", body: { displayName: "勤務先A（訂正）" } }, T0));
+});
+
+test("PR28-R001: 復元した履歴は、選んだ版までの版間の条件も確かめ、満たさなければsave-checkのconflictにする", () => {
+  // 正常な履歴（新規→訂正）は数える。
+  let ok1 = setup();
+  ok1 = restore(ok1, [deposit("dep_1", { state: "known", value: 100 }), { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 200 } } }]);
+  assert.deepEqual(depositOct(ok1), { state: "complete", knownSum: 200, missing: [] });
+  // 取消の取り消しでbodyを変えた履歴（新規100→取消→取消の取り消し999）。
+  let l = setup();
+  const base = l.saves.length;
+  l = restore(l, [
+    deposit("dep_1", { state: "known", value: 100 }),
+    { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" },
+    { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "unvoid", body: { amount: { state: "known", value: 999 } } },
+  ]);
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_1@3:save-check:conflict"] });
+  // 過去の見方は、その時点より後の改訂（違反を含む取消の取り消し）を使わない。
+  assert.deepEqual(depositOct(l, { kind: "record-seq", seq: base + 1 }), { state: "complete", knownSum: 100, missing: [] });
+  // entryChannel・importKeyを変えた改訂、直前のstatusに合わない理由（activeの記録の取消の取り消し）。
+  for (const second of [
+    { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", entryChannel: "import", importKey: { state: "known", value: { source: "架空の口座CSV", key: "9行目" } } },
+    { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "unvoid" },
+  ]) {
+    let m = setup();
+    m = restore(m, [deposit("dep_2", { state: "known", value: 50 }), second]);
+    assert.deepEqual(depositOct(m), { state: "incomplete", knownSum: 0, missing: ["dep_2@2:save-check:conflict"] });
+  }
+  // 行IDの再利用（l2を消したあとで再び使う）。
+  const line = (lineId: string): Obj => ({ lineId, label: "手当", category: { state: "known", value: "allowance" }, amount: { state: "known", value: 1000 } });
+  let p = setup();
+  p = restore(p, [
+    payslip("pay_1", { grossPay: { state: "known", value: 230000 }, otherEarnings: { state: "known", value: [line("l1"), line("l2")] } }),
+    { id: "pay_1", recordType: "payslip", revision: 2, reason: "correct-input-error", body: { otherEarnings: { state: "known", value: [line("l1")] } } },
+    { id: "pay_1", recordType: "payslip", revision: 3, reason: "correct-input-error", body: { otherEarnings: { state: "known", value: [line("l1"), line("l2")] } } },
+  ]);
+  const gross = aggregateRecords(p, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].state === "incomplete" && gross.values[0].knownSum === 0, JSON.stringify(gross));
+  assert.equal(analyzeSeries(p, "payslip", CURRENT).status.get("pay_1"), "unconfirmed-series");
+  assert.equal(analyzeSeries(p, "payslip", { kind: "record-seq", seq: (latestRevision(p, "pay_1")?.recordedSeq ?? 0) - 1 }).status.get("pay_1"), "current");
+});
+
+test("PR28-R001: bodyがobjectでない復元した記録でも、集計と系列は例外を投げずにsave-checkのconflictにする", () => {
+  let l = setup();
+  const dep = { ...expandRecord(deposit("dep_1", { state: "known", value: 1 }), { scenarioId: "unit", opId: "n1", previous: undefined }), body: null };
+  const pay = { ...expandRecord(payslip("pay_1", {}), { scenarioId: "unit", opId: "n2", previous: undefined }), body: null };
+  l = restoreUnchecked(l, [dep, pay], { clock: { now: () => T0 } });
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_1@1:save-check:conflict"] });
+  const gross = aggregateRecords(l, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].missing.some((m) => m.ref.id === "pay_1" && m.state === "conflict"), JSON.stringify(gross));
+  assert.equal(analyzeSeries(l, "payslip", CURRENT).status.get("pay_1"), "unconfirmed-series");
+  // 正しい記録の保存は止めない。
+  ok(save(l, deposit("dep_2", { state: "known", value: 2 }), T0));
+});
+
+test("PR28-R001: 履歴が検査を満たさない記録でも、選んだ版までのすべての版が範囲の外を示すなら除く", () => {
+  let l = setup();
+  l = restore(l, [
+    deposit("dep_1", { state: "known", value: 100 }, { state: "known", value: "2026-11-10" }),
+    { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" },
+    { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "unvoid", body: { amount: { state: "known", value: 999 } } },
+  ]);
+  assert.deepEqual(depositOct(l), { state: "no-records", knownSum: 0, missing: [] });
+  let m = setup();
+  m = restore(m, [
+    deposit("dep_1", { state: "known", value: 100 }, { state: "known", value: "2026-11-10" }),
+    { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" },
+    { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "unvoid", body: { depositDate: { state: "known", value: "2026-10-10" } } },
+  ]);
+  assert.deepEqual(depositOct(m), { state: "incomplete", knownSum: 0, missing: ["dep_1@3:save-check:conflict"] });
 });

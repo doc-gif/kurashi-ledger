@@ -145,6 +145,13 @@ export function withRunStamp(ledger: Ledger, id: string, recordedAt: string): Le
   return { ...ledger, saves: [...ledger.saves, { kind: "run", id, recordedAt, recordedSeq: nextSeq(ledger) }], runIds };
 }
 
+// 保存した改訂のbody。検査をすり抜けたデータではobjectでないことがあるので、導く判定はこの関数で読み、例外を投げずに
+// 空のobject（どの項目もない）として扱う（その記録は履歴の検査でsave-checkになる）。
+export function bodyOf(revision: Revision): Readonly<Record<string, unknown>> {
+  const b: unknown = revision.body;
+  return typeof b === "object" && b !== null && !Array.isArray(b) ? (b as Readonly<Record<string, unknown>>) : {};
+}
+
 export function recordedAtOf(entry: SaveEntry): string {
   if (entry.kind === "revision") return entry.revision.recordedAt;
   if (entry.kind === "evidence-file") return entry.file.recordedAt;

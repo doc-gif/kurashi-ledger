@@ -4,7 +4,8 @@
 
 import { combineComparisons, compareFacts, stateOf, type Comparable, type Comparison } from "./fact.ts";
 import { recordTypeOfId, type RecordType } from "./ids.ts";
-import { compareStrings, recordIds, revisionsOf, type Ledger, type Revision } from "./ledger.ts";
+import { bodyOf, compareStrings, recordIds, revisionsOf, type Ledger, type Revision } from "./ledger.ts";
+import { isHistoryValid } from "./history.ts";
 import { canonicalMasterId } from "./masters.ts";
 import { selectRevision, type ResolvedView } from "./views.ts";
 
@@ -22,7 +23,8 @@ export type SeriesStatus = "current" | "superseded" | "unconfirmed-series" | "vo
 // - dimension-undetermined: 未確認の差し替え（未確定の次元だけを持つ関係）。保存は許し、系列を未確認の系列にする。
 // - unresolved: 見方で改訂が選ばれない記録に着いた参照（共通の型の2の「currentの解決」）。
 // - invalid-reference: 保存の検査をすり抜けたデータ（supersedesの状態・形が契約にない、参照先がない・種類が違う）。
-export type SeriesProblemKind = "self-reference" | "cycle" | "branch" | "dimension-mismatch" | "dimension-undetermined" | "unresolved" | "invalid-reference";
+// - save-check: 見方で選ばれた改訂までの履歴が保存の検査を満たさない（検査をすり抜けたデータ。共通の型の9。PR28-R001）。
+export type SeriesProblemKind = "self-reference" | "cycle" | "branch" | "dimension-mismatch" | "dimension-undetermined" | "unresolved" | "invalid-reference" | "save-check";
 
 export interface SeriesProblem {
   readonly kind: SeriesProblemKind;
@@ -43,7 +45,7 @@ export interface SeriesAnalysis {
 type SupersedesTarget = { readonly kind: "none" } | { readonly kind: "ref"; readonly id: string } | { readonly kind: "invalid" };
 
 function supersedesOf(rev: Revision): SupersedesTarget {
-  const f = rev.body["supersedes"];
+  const f = bodyOf(rev)["supersedes"];
   const st = stateOf(f);
   if (st === "not-applicable") return { kind: "none" };
   if (st === "known") {
@@ -100,8 +102,8 @@ export function compareSupersedeDimensions(ledger: Ledger, type: SeriesType, new
     return x !== null && y !== null && typeof x === "object" && typeof y === "object" && x.kind === y.kind && x.year === y.year;
   };
   const strEq = (a: string, b: string): boolean => a === b;
-  const n = newer.body;
-  const o = older.body;
+  const n = bodyOf(newer);
+  const o = bodyOf(older);
   switch (type) {
     case "payslip":
       return combineComparisons([
@@ -138,6 +140,7 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
     if (!isActive(x)) continue;
     const visited = [x];
     let cur = selected.get(x) as Revision;
+    if (!isHistoryValid(ledger, cur)) problems.push({ kind: "save-check", ids: [x] });
     for (;;) {
       const s = supersedesOf(cur);
       if (s.kind === "none") break;

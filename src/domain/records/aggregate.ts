@@ -6,11 +6,11 @@
 
 import { knownValue, stateOf } from "./fact.ts";
 import { isIdWithPrefix, recordTypeOfId } from "./ids.ts";
-import { compareStrings, recordIds, type Ledger, type Revision } from "./ledger.ts";
+import { bodyOf, compareStrings, recordIds, revisionsOf, type Ledger, type Revision } from "./ledger.ts";
 import { canonicalMasterId } from "./masters.ts";
 import { PAYSLIP_AMOUNT_ITEMS, type PayslipAmountItem } from "./schema.ts";
 import { analyzeSeries } from "./series.ts";
-import { checkRevisionStatic } from "./validate.ts";
+import { isHistoryValid } from "./history.ts";
 import { addYen, isLocalDate } from "./values.ts";
 import { resolveView, selectRevision, type View } from "./views.ts";
 
@@ -139,24 +139,35 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
     if (rev === undefined || rev.status !== "active") continue; // 見方にない記録と取消した記録は除く。
     const seriesStatus = series?.status.get(id);
     if (seriesStatus === "superseded") continue; // 差し替え済みの記録は除く。
-    // 範囲の次元（勤務先・口座）。有効なマスタに解決できない参照はunknownとして扱い、範囲から除かない。
-    const rawDim = rev.body[dimField];
-    const canon = typeof rawDim === "string" && recordTypeOfId(rawDim) !== undefined ? canonicalMasterId(ledger, rawDim, rv) : undefined;
-    if (canon !== undefined && scopeCanon.size > 0 && !scopeCanon.has(canon)) continue;
-    // 日付の軸。knownで範囲の外なら除く。knownでなければ、どの期間からも除かず「日付不明」として不足に挙げる。
-    const dateFact = rev.body[dateField];
-    const date = knownValue(dateFact);
-    const dateKnown = isLocalDate(date);
-    if (dateKnown && (date < parsed.scope.from || date > parsed.scope.to)) continue;
-    const d = dateKnown ? date : undefined;
+    // 範囲の次元（勤務先・口座）と日付の軸で、範囲の外と確定できる記録を除く。有効なマスタに解決できない参照と、knownでない
+    // 日付では除かない（共通の型の5の「分からない値で絞り込まない」）。
+    const placement = (r: Revision): { out: boolean; canon: string | undefined; dateFact: unknown; date: string | undefined } => {
+      const body = bodyOf(r);
+      const rawDim = body[dimField];
+      const canon = typeof rawDim === "string" && recordTypeOfId(rawDim) !== undefined ? canonicalMasterId(ledger, rawDim, rv) : undefined;
+      const dateFact = body[dateField];
+      const dv = knownValue(dateFact);
+      const date = isLocalDate(dv) ? dv : undefined;
+      const outOfScope = canon !== undefined && scopeCanon.size > 0 && !scopeCanon.has(canon);
+      const outOfRange = date !== undefined && (date < parsed.scope.from || date > parsed.scope.to);
+      return { out: outOfScope || outOfRange, canon, dateFact, date };
+    };
+    const here = placement(rev);
+    if (!isHistoryValid(ledger, rev)) {
+      // 保存の検査をすり抜けた履歴（共通の型の9。PR28-R001）。集計の根拠にせず、黙って数えも落としもしない。どの改訂の値が
+      // 正しいか分からないので、選ばれた改訂までのすべての改訂がそろって範囲の外を示すときだけ除く。
+      const versions = revisionsOf(ledger, id).filter((r) => r.revision <= rev.revision);
+      if (versions.every((r) => placement(r).out)) continue;
+      addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", here.date);
+      continue;
+    }
+    if (here.out) continue;
+    const { canon, dateFact } = here;
+    const dateKnown = here.date !== undefined;
+    const d = here.date;
     let blocked = false;
     if (seriesStatus === "unconfirmed-series") {
       addMissing(rev, { kind: "derived", key: "supersede-series" }, "conflict", d);
-      blocked = true;
-    }
-    if (checkRevisionStatic(rev, { stored: true }).length > 0) {
-      // 保存の検査をすり抜けたデータ（共通の型の9）。黙って数えも落としもしない。
-      addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", d);
       blocked = true;
     }
     if (!dateKnown) {
@@ -169,7 +180,7 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
       blocked = true;
     }
     if (blocked) continue;
-    const v = rev.body[itemField];
+    const v = bodyOf(rev)[itemField];
     const st = stateOf(v);
     if (st === "known") {
       const n = knownValue(v);
