@@ -60,10 +60,20 @@ export interface Ledger {
   readonly evidenceFiles: ReadonlyMap<string, EvidenceFile>;
   // データベース全体で予約するキー（共通の型の9の「履歴全体で予約するキー」）。
   readonly writeRequests: ReadonlyMap<string, Revision>;
+  // 既存の記録を返した要求（同じimportKeyの再取込）の、要求の全内容と最初の結果（共通の型の10。PR28-R007）。writeRequestIdは
+  // writeRequestsと合わせてデータベース全体で予約する（1つのIDはどちらか一方にだけ入る）。保存ではないので、連番を持たない。
+  readonly requestResults: ReadonlyMap<string, RequestResult>;
   readonly importKeys: ReadonlyMap<string, string>;
   readonly sha256s: ReadonlyMap<string, string>;
   // 計算runのID（予約するキー。中身はT15）。
   readonly runIds: ReadonlySet<string>;
+}
+
+export interface RequestResult {
+  readonly kind: "existing-returned";
+  readonly request: Readonly<Record<string, unknown>>; // 写して凍結した要求の全内容
+  readonly recordId: string;
+  readonly voided: boolean; // 最初に返したときの取消の有無（後の取消・取消の取り消しで変えない）
 }
 
 export function emptyLedger(): Ledger {
@@ -72,6 +82,7 @@ export function emptyLedger(): Ledger {
     revisions: new Map(),
     evidenceFiles: new Map(),
     writeRequests: new Map(),
+    requestResults: new Map(),
     importKeys: new Map(),
     sha256s: new Map(),
     runIds: new Set(),
@@ -138,6 +149,18 @@ export function withRevision(ledger: Ledger, revision: Revision): Ledger {
     }
   }
   return { ...ledger, saves: [...ledger.saves, { kind: "revision", revision }], revisions, writeRequests, importKeys };
+}
+
+// 既存の記録を返した要求の結果を足す（記録・改訂・保存の連番は作らない）。
+export function withRequestResult(ledger: Ledger, writeRequestId: string, result: RequestResult): Ledger {
+  const requestResults = new Map(ledger.requestResults);
+  requestResults.set(writeRequestId, Object.freeze(result));
+  return { ...ledger, requestResults };
+}
+
+// writeRequestIdが、改訂を作った要求か既存の記録を返した要求のどちらかに使われているか。
+export function writeRequestIdInUse(ledger: Ledger, writeRequestId: string): boolean {
+  return ledger.writeRequests.has(writeRequestId) || ledger.requestResults.has(writeRequestId);
 }
 
 export function withEvidenceFile(ledger: Ledger, file: EvidenceFile): Ledger {

@@ -30,6 +30,15 @@ function save(ledger: Ledger, compact: Obj, at: string, baseRevision?: number): 
   return saveRevision(ledger, input, { clock: { now: () => at }, ids: { next: () => id } });
 }
 
+// 既存の記録を返した要求は、記録・改訂・保存の連番を作らず、その要求の結果だけを足す（PR28-R007）。
+function assertOnlyRequestResultAdded(before: Ledger, after: Ledger): void {
+  assert.equal(after.saves, before.saves);
+  assert.equal(after.revisions, before.revisions);
+  assert.equal(after.writeRequests, before.writeRequests);
+  assert.equal(after.importKeys, before.importKeys);
+  assert.equal(after.requestResults.size, before.requestResults.size + 1);
+}
+
 function ok(out: SaveOutcome): Ledger {
   assert.equal(out.kind, "accepted", out.kind === "rejected" ? `${out.reason} ${JSON.stringify(out.violations)}` : out.kind);
   return out.ledger;
@@ -390,7 +399,7 @@ test("再取込: importKeyが既存の記録と一致しても、不正な要求
   assert.equal(again.kind, "existing-returned");
   if (again.kind === "existing-returned") {
     assert.equal(again.recordId, "dep_1");
-    assert.equal(again.ledger, l);
+    assertOnlyRequestResultAdded(l, again.ledger);
   }
 });
 
@@ -738,7 +747,7 @@ test("PR28-R005: 復元したすべての改訂のimportKeyを履歴全体で予
     assert.equal(again.kind, "existing-returned", k);
     if (again.kind === "existing-returned") {
       assert.equal(again.recordId, "dep_a");
-      assert.equal(again.ledger, l);
+      assertOnlyRequestResultAdded(l, again.ledger);
     }
     assert.throws(() => restore(l, [imported("dep_c", k)]), /importKey/);
   }
@@ -847,4 +856,54 @@ test("Copilot r4173033817: 循環するobjectは、例外ではなくvalue-inval
   const shared = { state: "unknown" };
   ok(saveRevision(l, { ...input, body: { ...(input["body"] as Obj), descriptionText: shared, purpose: shared } }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } }));
   assert.throws(() => restoreUnchecked(l, [cyclic], { clock: { now: () => T0 } }), /JSONの値ではない/);
+});
+
+test("PR28-R007: 既存の記録を返した要求も、writeRequestIdごとに要求の全内容と最初の結果を持つ", () => {
+  const imported = (k: string, w: string): Obj => ({
+    id: "dep_x",
+    recordType: "bank-deposit",
+    entryChannel: "import",
+    writeRequestId: w,
+    importKey: { state: "known", value: { source: "架空の口座CSV", key: k } },
+    body: { accountId: "acct_1", depositDate: { state: "known", value: "2026-10-10" }, amount: { state: "known", value: 1000 } },
+  });
+  const input = (c: Obj): Obj => {
+    const { id: _id, ...rest } = expandRecord(c, { scenarioId: "unit", opId: "r7", previous: undefined });
+    void _id;
+    return rest;
+  };
+  const d = (id: string) => ({ clock: { now: () => T0 }, ids: { next: () => id } });
+  let l = setup();
+  // AをK1・W1で保存し、K1をW2で再取込するとAを返す（最初の結果: 取消なし）。
+  l = ok(saveRevision(l, input(imported("K1", "W1")), d("dep_a")));
+  const w2 = input(imported("K1", "W2"));
+  const first = saveRevision(l, w2, d("dep_b"));
+  assert.ok(first.kind === "existing-returned" && first.recordId === "dep_a" && !first.voided);
+  if (first.kind !== "existing-returned") return;
+  assertOnlyRequestResultAdded(l, first.ledger);
+  l = first.ledger;
+  // (1) 同じW2でimportKeyを未使用のK2に変えた要求は、内容が違うので拒否し、台帳を変えない。
+  const conflict = saveRevision(l, input(imported("K2", "W2")), d("dep_c"));
+  rejected(conflict, "write-request-conflict");
+  assert.equal(conflict.ledger, l);
+  assert.equal(l.revisions.has("dep_c"), false);
+  // (2) Aを取り消したあとも、取消を取り消したあとも、同じW2の要求は最初の結果（取消なし）を返し、台帳を変えない。
+  l = ok(save(l, { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "void" }, T0));
+  const afterVoid = saveRevision(l, w2, d("dep_d"));
+  assert.ok(afterVoid.kind === "existing-returned" && afterVoid.recordId === "dep_a" && !afterVoid.voided);
+  assert.equal(afterVoid.ledger, l);
+  // (3) 別のwriteRequestIdの再取込は、その時点の状態（取消済み）を返す。
+  const w3 = saveRevision(l, input(imported("K1", "W3")), d("dep_e"));
+  assert.ok(w3.kind === "existing-returned" && w3.recordId === "dep_a" && w3.voided);
+  if (w3.kind === "existing-returned") l = w3.ledger;
+  l = ok(save(l, { id: "dep_a", recordType: "bank-deposit", revision: 3, reason: "unvoid" }, T0));
+  const afterUnvoid = saveRevision(l, w2, d("dep_f"));
+  assert.ok(afterUnvoid.kind === "existing-returned" && !afterUnvoid.voided);
+  const w3again = saveRevision(l, input(imported("K1", "W3")), d("dep_g"));
+  assert.ok(w3again.kind === "existing-returned" && w3again.voided, "W3の最初の結果（取消済み）を返す");
+  // (4) 記録・改訂・連番は、AとAの改訂の分だけ。
+  assert.deepEqual([...l.revisions.keys()].filter((id) => id.startsWith("dep_")), ["dep_a"]);
+  assert.equal(revisionsOf(l, "dep_a").length, 3);
+  // 改訂を作った要求のwriteRequestIdも、既存の記録を返した要求のwriteRequestIdも、復元で重ねない。
+  assert.throws(() => restore(l, [{ ...deposit("dep_h", { state: "known", value: 1 }), writeRequestId: "W2" }]), /writeRequestId/);
 });

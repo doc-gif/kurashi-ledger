@@ -8,6 +8,9 @@ import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, RECORD_PREFIX, RUN_
 import {
   bodyOf,
   idInUse,
+  withRequestResult,
+  writeRequestIdInUse,
+  type RequestResult,
   snapshotJson,
   recordIds,
   importKeyIndex,
@@ -47,6 +50,7 @@ export type SaveOutcome =
   // 同じwriteRequestId・同じ内容の再送。新しい改訂を作らず、最初の結果を返す（共通の型の10）。
   | { readonly kind: "replayed"; readonly ledger: Ledger; readonly revision: Revision }
   // 同じimportKeyの記録がある（取消・差し替え済みを含む）。新しい記録を作らず、その記録を返す。
+  // 新しい記録・改訂・連番は作らず、その要求の結果だけを台帳に記録する（同じ要求の再送は、この最初の結果を返す）。
   | { readonly kind: "existing-returned"; readonly ledger: Ledger; readonly recordId: string; readonly voided: boolean }
   | { readonly kind: "rejected"; readonly ledger: Ledger; readonly reason: RejectionReason; readonly violations: readonly Violation[] };
 
@@ -98,6 +102,12 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
       if (sameRequest(input, first)) return { kind: "replayed", ledger, revision: first };
       return reject(ledger, one("write-request-conflict", "$.writeRequestId", `同じwriteRequestIdで内容の違う要求: ${wr}`));
     }
+    // 既存の記録を返した要求の再送は、要求の全内容が同じなら最初の結果をそのまま返す（PR28-R007）。
+    const returned = ledger.requestResults.get(wr);
+    if (returned !== undefined) {
+      if (sameJson(input, returned.request)) return { kind: "existing-returned", ledger, recordId: returned.recordId, voided: returned.voided };
+      return reject(ledger, one("write-request-conflict", "$.writeRequestId", `同じwriteRequestIdで内容の違う要求: ${wr}`));
+    }
   }
   // 2. 記録1件で決まる検査。冪等キーで既存の記録を返す前に、要求そのものを確かめる（検査を迂回させない）。
   const recordType = proposal["recordType"];
@@ -126,7 +136,9 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
     if (isObj(ik) && typeof ik["source"] === "string" && typeof ik["key"] === "string") {
       const existing = ledger.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
       if (existing !== undefined) {
-        return { kind: "existing-returned", ledger, recordId: existing, voided: latestRevision(ledger, existing)?.status === "voided" };
+        // この要求の全内容と最初の結果を、writeRequestIdで記録する（記録・改訂・連番は作らない）。
+        const result: RequestResult = { kind: "existing-returned", request: input, recordId: existing, voided: latestRevision(ledger, existing)?.status === "voided" };
+        return { kind: "existing-returned", ledger: withRequestResult(ledger, wr as string, result), recordId: result.recordId, voided: result.voided };
       }
     }
     id = deps.ids.next(RECORD_PREFIX[type]);
@@ -340,7 +352,7 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
     const prev = latestRevision(cur, r["id"] as string);
     if (r["revision"] !== (prev?.revision ?? 0) + 1) throw new Error(`復元する改訂の版が続かない: ${String(r["id"])}`);
     if (r["status"] !== "active" && r["status"] !== "voided") throw new Error("復元する改訂のstatusが不正");
-    if (typeof r["writeRequestId"] !== "string" || cur.writeRequests.has(r["writeRequestId"])) throw new Error("復元する改訂のwriteRequestIdがないか重なる");
+    if (typeof r["writeRequestId"] !== "string" || writeRequestIdInUse(cur, r["writeRequestId"])) throw new Error("復元する改訂のwriteRequestIdがないか重なる");
     // データベース全体で予約するキー（importKey）が別の記録と重なる改訂は置かない（既存の記録の索引を黙って上書きしない）。
     const ik = knownValue(r["importKey"]);
     if (isObj(ik) && typeof ik["source"] === "string" && typeof ik["key"] === "string") {

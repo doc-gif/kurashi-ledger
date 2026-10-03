@@ -144,7 +144,12 @@ function applyOp(run: Run, op: Obj, scenarioId: string): void {
         run.results.set(opId, { opId, outcome: "replayed" });
       } else if (expected === "existing-returned") {
         assert.equal(out.kind, "existing-returned", `${where}: 同じimportKeyの既存の記録を返すはず`);
-        if (out.kind === "existing-returned") assert.equal(out.recordId, expect["record"], `${where}: 返す記録`);
+        if (out.kind === "existing-returned") {
+          assert.equal(out.recordId, expect["record"], `${where}: 返す記録`);
+          // 記録・改訂・保存の連番は作らず、その要求の結果だけを台帳に記録する（PR28-R007）。
+          assert.equal(out.ledger.saves, run.ledger.saves, `${where}: 保存の連番を使わない`);
+          run.ledger = out.ledger;
+        }
         run.results.set(opId, { opId, outcome: "existing-returned" });
       } else {
         throw new Error(`${where}: 台帳の期待する結果が分からない: ${String(expected)}`);
