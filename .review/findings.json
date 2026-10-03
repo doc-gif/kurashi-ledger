@@ -609,7 +609,7 @@
       "id": "PR12-R104",
       "invariant_id": "INV-ROOT",
       "cause_key": "destructive-op-follows-link",
-      "lesson": "削除や上書きの前に対象とその親をlstatで確かめ、symlink・junctionをたどってリポジトリ外や別worktreeのファイルを変更しない。",
+      "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957"
       ]
