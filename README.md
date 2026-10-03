@@ -13,6 +13,7 @@
 いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CI、ローカルHTTPサーバーの骨格（`npm start`）とその安全境界の試験です。画面（UI）とそのビルド、記録・計算の機能、DBはまだありません。
 
 - Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
+- 手元の版は[mise](https://mise.jdx.dev)でそろえられます。ルートの`mise.toml`がNode.js 24.21.0とPython 3.11.17を固定し、どのworktreeでも`mise install`で同じ版になります（macOSの導入、Windowsでの扱い、版の正本の役割は[開発環境](docs/development.md)の「miseで版をそろえる」）。
 - `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験、合成データの台帳の検査と、HTTPの境界の試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
 - `npm start -- --token-dir <本人だけが使えるディレクトリ>`（T26の段階のローカルHTTPサーバー。`127.0.0.1`だけで待ち受け、起動用のファイルからcookieに交換して、画面がまだないことを示す案内ページを開きます。Ctrl+Cで終了。ディレクトリの用意とポートの指定は[開発環境](docs/development.md)の「ローカルHTTPサーバー」）。
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
