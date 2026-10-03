@@ -8,6 +8,10 @@
 
 最初に [AGENTS.md](AGENTS.md) と [現在の状態](docs/project-status.md) を読んでください。最新mainと関連Issue・PRを確認し、実装の許可・担当・依存関係が揃ってからタスク専用worktreeで着手します。古い会話やcloneの状態だけで進めません。
 
+## 運用資料の読み方
+
+現在の進捗は[状態資料](docs/project-status.md)、担当・権限・マージ条件は[運用規約](docs/github-agent-operations.md)、短い完了報告とレビューの書式は[PRレビューループ](docs/pr-review-loop.md)を正本とします。AI向けの文章整理には[Google Technical Writingに基づくスキル](.agents/skills/google-technical-writing/SKILL.md)を使います。人向けの結論は日本語、AI向け指示は英語を基本とし、必要な証跡は省略しません。
+
 ## 開発環境
 
 いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIです。アプリの起動、UIのビルド、製品の試験はまだありません。
