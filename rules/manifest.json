@@ -435,56 +435,93 @@
       ],
       "requiredInputs": [
         {
-          "path": "residency"
+          "path": "residency",
+          "type": "enum",
+          "values": [
+            "resident",
+            "non-resident"
+          ]
         },
         {
-          "path": "incomeSources"
+          "path": "incomeSources",
+          "type": "enum",
+          "values": [
+            "salary-only",
+            "other"
+          ]
         },
         {
-          "path": "taxpayerEvent.kind"
+          "path": "taxpayerEvent.kind",
+          "type": "enum",
+          "values": [
+            "none",
+            "death",
+            "emigration"
+          ]
         },
         {
           "path": "returnKind",
           "procedures": [
             "tax-return"
+          ],
+          "type": "enum",
+          "values": [
+            "regular",
+            "quasi"
           ]
         },
         {
-          "path": "salaryRevenue"
+          "path": "salaryRevenue",
+          "type": "yen"
         },
         {
-          "path": "socialInsuranceDeduction"
+          "path": "socialInsuranceDeduction",
+          "type": "yen"
         },
         {
-          "path": "otherIncomeDeductions"
+          "path": "otherIncomeDeductions",
+          "type": "yen"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen"
         },
         {
           "path": "incomeAdjustmentEligible",
           "when": {
             "path": "salaryRevenue",
             "greaterThan": 8500000
-          }
+          },
+          "type": "boolean"
         },
         {
-          "path": "withheldTax"
+          "path": "withheldTax",
+          "type": "yen"
         },
         {
-          "path": "taxCredits"
+          "path": "taxCredits",
+          "type": "yen"
         },
         {
           "path": "spouse",
-          "nullable": true
+          "nullable": true,
+          "type": "object"
         },
         {
           "path": "relatives",
-          "emptyAllowed": true
+          "emptyAllowed": true,
+          "type": "array"
         },
         {
           "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
           "when": {
             "path": "relatives",
             "nonEmpty": true
-          }
+          },
+          "type": "boolean"
         }
       ],
       "unsupportedInputs": [
@@ -553,6 +590,16 @@
             true
           ],
           "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "allowed": [
+            0
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
         }
       ]
     },
@@ -623,56 +670,93 @@
       ],
       "requiredInputs": [
         {
-          "path": "residency"
+          "path": "residency",
+          "type": "enum",
+          "values": [
+            "resident",
+            "non-resident"
+          ]
         },
         {
-          "path": "incomeSources"
+          "path": "incomeSources",
+          "type": "enum",
+          "values": [
+            "salary-only",
+            "other"
+          ]
         },
         {
-          "path": "taxpayerEvent.kind"
+          "path": "taxpayerEvent.kind",
+          "type": "enum",
+          "values": [
+            "none",
+            "death",
+            "emigration"
+          ]
         },
         {
           "path": "returnKind",
           "procedures": [
             "tax-return"
+          ],
+          "type": "enum",
+          "values": [
+            "regular",
+            "quasi"
           ]
         },
         {
-          "path": "salaryRevenue"
+          "path": "salaryRevenue",
+          "type": "yen"
         },
         {
-          "path": "socialInsuranceDeduction"
+          "path": "socialInsuranceDeduction",
+          "type": "yen"
         },
         {
-          "path": "otherIncomeDeductions"
+          "path": "otherIncomeDeductions",
+          "type": "yen"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen"
         },
         {
           "path": "incomeAdjustmentEligible",
           "when": {
             "path": "salaryRevenue",
             "greaterThan": 8500000
-          }
+          },
+          "type": "boolean"
         },
         {
-          "path": "withheldTax"
+          "path": "withheldTax",
+          "type": "yen"
         },
         {
-          "path": "taxCredits"
+          "path": "taxCredits",
+          "type": "yen"
         },
         {
           "path": "spouse",
-          "nullable": true
+          "nullable": true,
+          "type": "object"
         },
         {
           "path": "relatives",
-          "emptyAllowed": true
+          "emptyAllowed": true,
+          "type": "array"
         },
         {
           "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
           "when": {
             "path": "relatives",
             "nonEmpty": true
-          }
+          },
+          "type": "boolean"
         }
       ],
       "unsupportedInputs": [
@@ -741,6 +825,16 @@
             true
           ],
           "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "allowed": [
+            0
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
         }
       ]
     },

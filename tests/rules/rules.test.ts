@@ -595,6 +595,31 @@ function missingRequired(rs: Obj, input: unknown, procedure: unknown): string[] 
   return out;
 }
 
+// 必須の入力の型（Copilot 5400605738）。yenは0以上の整数、booleanは真偽値、enumはvaluesの列挙、objectはobject（nullableならnullも）、arrayは並び。
+// 「unknown」は不足として別に数えるので、ここでは型を問わない。条件（when）で必須でない入力も、値があれば型を確かめる。
+function invalidRequired(rs: Obj, input: unknown, procedure: unknown): string[] {
+  const out: string[] = [];
+  for (const r of arr(rs["requiredInputs"])) {
+    const o = obj(r);
+    if (Array.isArray(o["procedures"]) && !o["procedures"].includes(procedure)) continue;
+    let cur: unknown = input;
+    let present = true;
+    for (const part of String(o["path"]).split(".")) {
+      if (!isObj(cur) || !(part in cur)) {
+        present = false;
+        break;
+      }
+      cur = cur[part];
+    }
+    if (!present || cur === "unknown" || (cur === null && o["nullable"] === true)) continue;
+    const t = o["type"];
+    const ok =
+      t === "yen" ? isInt(cur) && cur >= 0 : t === "boolean" ? typeof cur === "boolean" : t === "enum" ? arr(o["values"]).includes(cur) : t === "object" ? isObj(cur) : t === "array" ? Array.isArray(cur) : false;
+    if (!ok) out.push(`${String(o["path"])}（型か値が正しくない: ${JSON.stringify(cur)}）`);
+  }
+  return out;
+}
+
 const REVIEW_RECORD = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)#(pullrequestreview|issuecomment)-[1-9][0-9]*$/;
 const PULL_REQUEST = /^https:\/\/github\.com\/doc-gif\/kurashi-ledger\/pull\/([1-9][0-9]*)$/;
 
@@ -757,7 +782,7 @@ export function validateRules(input: RulesInput): string[] {
     if (listed.size === 0) problems.add(w, "一次資料（sources）がない");
     else if (![...listed].some((s) => sources.get(s)?.["primary"] === true)) problems.add(w, "一次資料（primary: true）が要る");
     const applies = checkApplies(rs, `${w} ${key}`, problems);
-    if (rs["kind"] === "calculation" && (!Array.isArray(rs["requiredInputs"]) || rs["requiredInputs"].length === 0 || !rs["requiredInputs"].every((r) => nonEmpty(obj(r)["path"])))) problems.add(`${w} ${key}`, "計算の規則には必須の入力（requiredInputs: [{ path, procedures?, nullable?, emptyAllowed? }]）が要る");
+    if (rs["kind"] === "calculation" && (!Array.isArray(rs["requiredInputs"]) || rs["requiredInputs"].length === 0 || !rs["requiredInputs"].every((r) => nonEmpty(obj(r)["path"]) && ["yen", "boolean", "enum", "object", "array"].includes(String(obj(r)["type"])) && (obj(r)["type"] !== "enum" || arr(obj(r)["values"]).length > 0)))) problems.add(`${w} ${key}`, "計算の規則には必須の入力（requiredInputs: [{ path, type: yen・boolean・enum（values）・object・array, procedures?, when?, nullable?, emptyAllowed? }]）が要る");
     ruleSets.set(key, { rs, applies, used: new Set<string>() });
     // 制度データ
     const data = obj(input.dataFiles.get(String(rs["data"])));
@@ -839,6 +864,7 @@ export function validateRules(input: RulesInput): string[] {
     if (!targetCovered(target, entry.applies)) problems.add(w, "targetが規則の適用の範囲（applies）に当たらない");
     if (unsup.violates.length > 0) problems.add(w, `入力が規則の未対応の条件に当たるのに${String(status)}: ${unsup.violates.join("・")}`);
     const unknownInputs = [...unsup.unknown, ...missingRequired(entry.rs, caseInput, target["procedure"])];
+    for (const k of invalidRequired(entry.rs, caseInput, target["procedure"])) problems.add(w, `input.${k}`);
     if (entry.rs["regime"] === "income-tax" && entry.rs["kind"] === "calculation") {
       const fc = familyCheck(obj(input.dataFiles.get(String(entry.rs["data"]))), obj(caseInput));
       for (const k of fc.missingKeys) problems.add(w, `input.${k}がない（家族の控除の適用要件と判定に使う入力。PR29-R006）`);
@@ -1093,6 +1119,13 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["特定親族の所属の入力がない", (c) => delete obj(arr(input(c, "REG-19")["relatives"])[0])["specificRelativeClaimedAsSpecificRelativeByOther"], "specificRelativeClaimedAsSpecificRelativeByOtherがない"],
     ["特定親族の所属が分からないのに計算する", (c) => (obj(arr(input(c, "REG-19")["relatives"])[0])["specificRelativeClaimedAsSpouseByOther"] = "unknown"), "specificRelativeClaimedAsSpouseByOther"],
     ["配偶者の特定親族としての所属が分からないのに計算する", (c) => (obj(input(c, "REG-24")["spouse"])["spouseClaimedAsSpecificRelativeByOther"] = "unknown"), "spouseClaimedAsSpecificRelativeByOther"],
+    ["給与等の収入金額が文字列", (c) => (input(c, "REG-16")["salaryRevenue"] = "9123457"), "salaryRevenue（型か値が正しくない"],
+    ["源泉徴収税額が負", (c) => (input(c, "REG-03")["withheldTax"] = -1), "withheldTax（型か値が正しくない"],
+    ["所得金額調整控除の対象かが文字列", (c) => (input(c, "REG-16")["incomeAdjustmentEligible"] = "true"), "incomeAdjustmentEligible（型か値が正しくない"],
+    ["居住者の区分が列挙にない", (c) => (input(c, "REG-02")["residency"] = "domestic"), "residency（型か値が正しくない"],
+    ["確定申告の確定申告だけの控除がない", (c) => delete input(c, "REG-17")["returnOnlyDeductions"], "returnOnlyDeductions（必須の入力）"],
+    ["年末調整に確定申告だけの控除がある", (c) => (input(c, "REG-02")["returnOnlyDeductions"] = 120000), "未対応の条件に当たるのに"],
+    ["必須の入力の型の定義がない", (c) => delete obj(arr(ruleSetOf(c.manifest, "jp-income-tax-salary-2026")["requiredInputs"])[0])["type"], "requiredInputs"],
     ["1つの条件に主語がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["specificRelativeDeduction"])["eligibility"])[4])["subject"], "subject"],
     ["分からない適用要件で計算する", (c) => (obj(input(c, "REG-11")["spouse"])["sameHousehold"] = "unknown"), "分からない入力があるのにcomputed"],
     ["incompleteなのに結果がすべて分かる", (c) => (obj(caseOf(c.cases, "REG-02")["expected"])["status"] = "incomplete"), "unknownの結果がない"],
