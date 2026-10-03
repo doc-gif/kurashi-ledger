@@ -11,12 +11,15 @@
     "SECURITY.md",
     "docs/development.md",
     "docs/github-agent-operations.md",
+    "docs/implementation-plan.md",
     "docs/implementation-tasks.md",
     "docs/project-status.md",
+    "docs/public-data.md",
     "docs/review-prevention.md",
     "docs/testing.md",
+    "e2e/browser-base.spec.ts",
     "e2e/browsers.ts",
-    "e2e/harness.spec.ts",
+    "e2e/install-browsers.ts",
     "e2e/strict-reporter.ts",
     "e2e/tsconfig.json",
     "package-lock.json",
@@ -25,8 +28,7 @@
     "scripts/check-test-skips.ts",
     "scripts/lib/test-skips.ts",
     "scripts/test-skips.test.ts",
-    "tools/review_guard/README.md",
-    "tsconfig.json"
+    "tools/review_guard/README.md"
   ],
   "conflicts": [
     {
@@ -53,7 +55,7 @@
       "checks": [
         {
           "id": "browser-flow",
-          "method": "playwright.config.tsとe2e/の差分を読み、useに安全上の既定を変える設定がないことを確かめる。CIのbrowserのジョブで、ChromiumをLinux・Windows・macOS、WebKitをmacOSで実行し、e2e/strict-reporter.tsが、OSごとに必要なブラウザの試験が1件以上実行され、skip・flakyがないことを確かめることをrunのログで見る。",
+          "method": "playwright.config.tsとe2e/の差分を読み、useに安全上の既定を変える設定がないことを確かめる。CIのbrowserのジョブで、ChromiumをLinux・Windows・macOS、WebKitをmacOSで実行し、e2e/strict-reporter.ts（e2e/browsers.tsのブラウザごとに照合）が、OSごとに必要なブラウザの試験が1件以上実行され、skip・flakyがないことを確かめることをrunのログで見る。",
           "expected": "設定はtestDir・testMatch・projects・reporter・forbidOnly・retries・成果物を残さない設定だけ。後続タスクがe2e/に*.spec.tsを加えると、同じ設定で全OSのCIで実行される。トークンの交換・API・HMR・CSPの試験はT26・T08で加える。"
         },
         {
@@ -185,7 +187,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・テスト方針・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。Windowsの実機での手の確認はこの担当では行えないので、Issue #17を閉じずに残し、手順と記録の様式を文書に置く。",
+      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。Windowsの実機での手の確認はこの担当では行えないので、Issue #17を閉じずに残し、手順と記録の様式を文書に置く。",
       "checks": [
         {
           "id": "dependencies",
