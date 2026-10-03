@@ -96,8 +96,15 @@ export type Options = {
 };
 
 export class UsageError extends Error {}
-// 利用者に見せてよい（秘密を含まない）文だけを持つエラー。
-export class TokenError extends Error {}
+// 利用者に見せてよい（秘密を含まない）文だけを持つエラー。トークンを受け取ったあとの失敗では、失効が失敗した
+// （または試みていない）ときの警告も持つ。シグナルで止めた経路でも、この警告は必ず伝える（PR42-R010）。
+export class TokenError extends Error {
+  readonly revokeWarning: string | undefined;
+  constructor(message: string, revokeWarning?: string) {
+    super(message);
+    this.revokeWarning = revokeWarning;
+  }
+}
 
 const permissionList = (purpose: Purpose): string =>
   Object.entries(PURPOSES[purpose])
@@ -446,6 +453,11 @@ export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs
   }
 }
 
+// 失効が失敗したときの警告。成功・すでに無効なら undefined。
+function revokeWarningOf(result: RevokeResult): string | undefined {
+  return result.status === 'failed' ? result.message : undefined;
+}
+
 // 失敗の経路で、失効の結果を伝える文。
 function revokeSummary(result: RevokeResult): string {
   if (result.status === 'revoked') return '発行されたトークンは失効させた。';
@@ -496,19 +508,31 @@ export async function requestInstallationToken(args: {
   args.secrets.push(token);
   if (!TOKEN_PATTERN.test(token)) {
     // 形が違っても、ヘッダに入れて安全な値（印字できるASCIIだけ）なら、失効を試みる。
-    const revoked = HEADER_SAFE.test(token)
-      ? revokeSummary(await revokeToken(args.fetch, token, args.timeoutMs))
-      : 'ヘッダに入れられない値なので失効を試みていない。1時間で失効する。';
-    throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${revoked}`);
+    if (!HEADER_SAFE.test(token)) {
+      const warning = 'ヘッダに入れられない値なので失効を試みていない。1時間で失効する。';
+      throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${warning}`, warning);
+    }
+    const result = await revokeToken(args.fetch, token, args.timeoutMs);
+    throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${revokeSummary(result)}`, revokeWarningOf(result));
   }
-  const problem =
-    (args.abort?.aborted === true ? 'シグナルを受けた' : null) ??
-    checkGrantedScope(parsed, args.purpose) ??
-    (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
+  let problem: string | null;
+  try {
+    problem =
+      (args.abort?.aborted === true ? 'シグナルを受けた' : null) ??
+      checkGrantedScope(parsed, args.purpose) ??
+      (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
+  } catch (error) {
+    // 受け取ったトークンを確かめる途中の予期しない例外でも、失効させてから伝える（結果を捨てない）。
+    const result = await revokeToken(args.fetch, token, args.timeoutMs);
+    throw new TokenError(
+      `発行されたトークンを確かめる途中で予期しないエラー（${describeFailure(error)}）。使わない。${revokeSummary(result)}`,
+      revokeWarningOf(result),
+    );
+  }
   if (problem !== null) {
-    const revoked = revokeSummary(await revokeToken(args.fetch, token, args.timeoutMs));
+    const result = await revokeToken(args.fetch, token, args.timeoutMs);
     const shown = sanitize(problem, [...secrets, token]);
-    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${shown}）。${revoked}`);
+    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${shown}）。${revokeSummary(result)}`, revokeWarningOf(result));
   }
   return token;
 }
@@ -918,6 +942,10 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
     } catch (error) {
       if (state.received !== null) {
         deps.stderr(`シグナル（${state.received}）を受けたので止めた。コマンドは実行していない。\n`);
+        // 受け取ったトークンの失効が失敗していれば、シグナルで止めた場合も伝える（PR42-R010）。
+        if (error instanceof TokenError && error.revokeWarning !== undefined) {
+          deps.stderr(`注意: ${sanitize(error.revokeWarning, secrets)}\n`);
+        }
         return exitCodeOfSignal(state.received);
       }
       if (error instanceof TokenError) {

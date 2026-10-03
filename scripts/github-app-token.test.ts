@@ -1257,6 +1257,118 @@ test('発行の要求の途中でシグナルを受けても、発行の要求�
   assertNoSecrets(h.err.join(''));
 });
 
+test('シグナルで止めた経路でも、失効の失敗（HTTP・通信の例外・時間切れ）を伝え、子を起動せず128+番号で終える（PR42-R010）', async () => {
+  // 失効の要求（DELETE）の失敗の種類。
+  const revokeFailures: { name: string; reply: Reply; expect: RegExp }[] = [
+    { name: 'HTTP 500', reply: { status: 500, body: JSON.stringify({ message: TOKEN }) }, expect: /失効できなかった（HTTP 500）/ },
+    {
+      name: '通信の例外',
+      reply: async () => {
+        throw Object.assign(new Error(`reset ${TOKEN}`), { name: 'TypeError', cause: { code: 'ECONNRESET' } });
+      },
+      expect: /失効できなかった（TypeError・ECONNRESET）/,
+    },
+    {
+      name: '時間切れ',
+      reply: async () => {
+        throw new DOMException(`timeout ${TOKEN}`, 'TimeoutError');
+      },
+      expect: /失効できなかった（TimeoutError）/,
+    },
+  ];
+  // シグナルを受けるタイミング。fireは harness の fire。返すのは、DELETEより前の応答の列。
+  type Timing = { name: string; replies: (fire: () => void) => Reply[] };
+  const timings: Timing[] = [
+    {
+      name: '発行の要求の途中',
+      replies: (fire) => [
+        async () => {
+          fire();
+          return { status: 201, text: async () => grantedBody('review') };
+        },
+      ],
+    },
+    {
+      name: '確認の要求の途中',
+      replies: (fire) => [
+        { status: 201, body: grantedBody('review') },
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+            fire();
+          }),
+      ],
+    },
+    {
+      name: '形の不一致の処理',
+      replies: (fire) => [
+        async () => {
+          fire();
+          return { status: 201, text: async () => grantedBody('review', {}, `${TOKEN}"`) };
+        },
+      ],
+    },
+    {
+      name: '範囲の不一致の処理',
+      replies: (fire) => [
+        async () => {
+          fire();
+          return { status: 201, text: async () => grantedBody('review', { repository_selection: 'all' }) };
+        },
+      ],
+    },
+  ];
+  for (const timing of timings) {
+    for (const failure of revokeFailures) {
+      const label = `${timing.name} × ${failure.name}`;
+      let fire: () => void = () => undefined;
+      const h = harness([...timing.replies(() => fire()), failure.reply]);
+      fire = () => h.fire('SIGTERM');
+      assert.equal(await run(ARGS, h.deps), 143, label);
+      assert.deepEqual(h.children, [], `${label}: 子を起動した`);
+      assert.equal(h.calls.at(-1)?.init.method, 'DELETE', `${label}: 失効を試みていない`);
+      const stderr = h.err.join('');
+      assert.match(stderr, /SIGTERM/, label);
+      assert.match(stderr, failure.expect, `${label}: ${stderr}`);
+      assert.match(stderr, /1時間で失効する/, label);
+      assertNoSecrets(stderr, [`${TOKEN}"`]);
+    }
+  }
+  // 範囲の不一致の処理の途中（失効の要求の最中）にシグナルを受けても、失効は中断せず、その失敗を伝える。
+  let fire: () => void = () => undefined;
+  const during: Reply = async () => {
+    fire();
+    throw new DOMException('timeout', 'TimeoutError');
+  };
+  const h = harness([{ status: 201, body: grantedBody('review', { repository_selection: 'all' }) }, during]);
+  fire = () => h.fire('SIGINT');
+  assert.equal(await run(ARGS, h.deps), 130);
+  assert.deepEqual(h.children, []);
+  assert.match(h.err.join(''), /SIGINT[\s\S]*失効できなかった（TimeoutError）/);
+  assertNoSecrets(h.err.join(''));
+});
+
+test('受け取ったトークンを確かめる途中の予期しない例外でも、失効させてから伝え、子を起動しない', async () => {
+  const broken: Reply = async () =>
+    ({
+      get status(): number {
+        throw new RangeError(`synthetic ${TOKEN}`);
+      },
+      text: async () => '',
+    }) as { status: number; text(): Promise<string> };
+  for (const [revoke, expect] of [
+    [REVOKED, /予期しないエラー（RangeError）.*失効させた/],
+    [{ status: 502, body: '' }, /予期しないエラー（RangeError）.*失効できなかった（HTTP 502）/],
+  ] as const) {
+    const h = harness([{ status: 201, body: grantedBody('review') }, broken, revoke]);
+    assert.equal(await run(ARGS, h.deps), EXIT_OWN_FAILURE);
+    assert.deepEqual(h.children, []);
+    assert.equal(h.calls.at(-1)?.init.method, 'DELETE');
+    assert.match(h.err.join(''), expect);
+    assertNoSecrets(h.err.join(''));
+  }
+});
+
 test('形の検査に通らないトークンも、ヘッダに入れて安全な値なら失効を試み、失効の401はすでに無効として扱う', async () => {
   const quoted = `${TOKEN}"`;
   const safe = harness([{ status: 201, body: grantedBody('review', {}, quoted) }, REVOKED]);
