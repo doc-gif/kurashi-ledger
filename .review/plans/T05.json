@@ -26,6 +26,7 @@
     "package.json",
     "playwright.config.ts",
     "scripts/check-test-skips.ts",
+    "scripts/install-record.test.ts",
     "scripts/lib/test-skips.ts",
     "scripts/test-skips.test.ts",
     "tools/review_guard/README.md"
@@ -114,11 +115,11 @@
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。",
+      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。 最初のCI（run 37087512129）で、WindowsだけT02のscripts/install-record.test.tsの21件が失敗した。原因は試験の合成の環境で、照合に渡す実行環境はdarwinに固定しているのに、.binの実行ファイルのリンクを実際のOS（Windows）に合わせて.cmdのshimだけにしていたこと（darwinの照合は拡張子のない名前を見る）。製品のコード（scripts/lib/install-record.ts）は正しく、実際のnpmを使うscripts/setup.test.tsと、CIの`npm run setup`・`check:install`はWindowsで通った。試験の合成のnpmを、Windowsの実際のnpm（cmd-shim）と同じく、拡張子のないshim（通常のファイル）と.cmdのshimを置く形に直す。照合の判定や期待結果は変えない（.cmdだけのときにwin32の実行環境で通ることは、既存の試験が全OSで確かめている）。",
       "checks": [
         {
           "id": "update",
-          "method": "CIのchecksのジョブ（Linux・Windows・macOS）で、記録したNode.jsの版がdevEnginesの範囲に入ること、`npm run setup`→`check:install`→`typecheck`→`npm test`→`build`が通ることをrunで確かめる。lockfileの差分が@playwright/test・playwright・playwright-coreの3つだけで、resolvedがregistry.npmjs.orgで、インストールスクリプトがないことを読む。",
+          "method": "CIのchecksのジョブ（Linux・Windows・macOS）で、記録したNode.jsの版がdevEnginesの範囲に入ること、`npm run setup`→`check:install`→`typecheck`→`npm test`→`build`が通ることをrunで確かめる。lockfileの差分が@playwright/test・playwright・playwright-coreの3つだけで、resolvedがregistry.npmjs.orgで、インストールスクリプトがないことを読む。 scripts/install-record.test.tsの変更が、合成のnpmの.binの形（Windowsの実際のnpmと同じ形）だけで、assertと期待結果を変えていないことを差分で確かめ、WindowsのCIで同じ試験が通ることを確かめる。",
           "expected": "全OSでsetupが記録を書き、check:installとbuildが一致と判定する。lockfileを変えたあとは、npm run setupをやり直すまで手元のcheck:install・buildが止まる（T02の試験の範囲）。"
         },
         {
