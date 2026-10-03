@@ -113,9 +113,9 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 
 | 環境 | 飛ばす試験（ファイル・件数・試験の名前） | 理由 | 代わりの確認 |
 | --- | --- | --- | --- |
-| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」）、`scripts/setup-lock.test.ts`の1件（「実際のCtrl+Cで中断したときに印を消せなければ、130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進む」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
+| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」）、`scripts/setup-lock.test.ts`の1件（「実際のCtrl+Cで中断したときに印を消せなければ、130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進む」）、`scripts/setup.test.ts`の1件（「印を消せないときにCtrl+Cでnpm run setupを止めると、印が残ったことと消し方を表示し、記録を残さず、印を消すと次のsetupと照合が通る」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで0件、macOS・Linuxのrootで2件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで0件、macOS・Linuxのrootで3件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。
 
 Windowsでは、以前は飛ばしていた中断の5件の試験を、実際のコンソールの制御イベントで実行する（下の「Windowsのコンソールの中断の試験」）。
 
@@ -127,8 +127,8 @@ Windowsでは、以前は飛ばしていた中断の5件の試験を、実際の
 
 - 制御イベントの送り方（`tests/support/windows-console.ts`）: Node.jsは、Windowsでほかのプロセスへコンソールの制御イベントを送れない（`kill`は強制終了になる）。そこで、Windowsに同梱のWindows PowerShell 5.1から、.NETのP/InvokeでWin32のAPIを呼ぶ（依存を加えない。スクリプトは`-EncodedCommand`、設定は環境変数で渡すので、実行ポリシーは関係しない）。対象を新しい見えないコンソールで起動してジョブ オブジェクトに入れ、送るときは対象のコンソールに付いて、`GenerateConsoleCtrlEvent`でそのコンソールの全員に送る。端末でCtrl+C・Ctrl+Breakを押したときと同じく、setupも子のnpmも受け取る。試験を動かすプロセスやCIのシェルとはコンソールが別なので、そちらには届かない。対象の子・孫まで全部が終わるのを待ってから確かめる。
 - 印を消せない状態（`tests/support/prevent-deletion.ts`）: Windowsでは、別のプロセスが削除の共有を許さずに印を開いたままにする（#19の手での手順と同じ方法。管理者かどうかに左右されない）。POSIXはこれまでどおり、worktreeの直下を書込み禁止にする。
-- 対応する試験: `scripts/setup-lock.test.ts`（合成のnpmで、setupを直接起動する。setup自身の終了コード130・149と、印も記録も残らず次のsetupが進むこと、npmがCtrl+Cを無視して自分では止まらないときに、setupが猶予のあとでnpmを終わらせること、印を消せないときに130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進むこと）、`scripts/setup.test.ts`（実際のnpmで`npm run setup`をCtrl+Cで止める）、`scripts/install-record.test.ts`（印を消せないときの片付け）。
-- `npm run setup`の終了コード（Windows）: Windowsのnpmは、Ctrl+Cを受けると、スクリプトを動かすシェル（`cmd.exe`）を強制終了して、自分も1で終わる（npmの`@npmcli/run-script`の動き）。CIでは、`npm run setup`が1で戻った時点で、setupと子のnpmはまだ動いていて、そのあとsetupが片付けを終え（「SIGINT を受けたので中断した」と表示）、印も記録も残らなかった。つまり、Windowsで`npm run setup`をCtrl+Cで止めると、終了コードはsetupの130ではなくnpmの1で、プロンプトが戻ったあとも片付けが続くことがある（その間に次の`npm run setup`を始めると、印があるので「別の `npm run setup` が動いているか…」と表示して止まる。少し待ってからやり直す）。`scripts/setup.test.ts`は、コンソールのすべてのプロセスが終わるのを待ってから確かめ、`npm run setup`の終了コードは0でないことを確かめて、観測した値をdiagnosticに出す。setupの修正が要るかは、#19の完了の条件どおり、所有者・調整係が判断する。
+- 対応する試験: `scripts/setup-lock.test.ts`（合成のnpmで、setupを直接起動する。setup自身の終了コード130・149と、印も記録も残らず次のsetupが進むこと、npmがCtrl+Cを無視して自分では止まらないときに、setupが猶予のあとでnpmを終わらせること、印を消せないときに130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進むこと）、`scripts/setup.test.ts`（実際のnpmで`npm run setup`を、Ctrl+C、Ctrl+Break（POSIXはSIGTERM）、印を消せないときのCtrl+Cで止める。コンソールのすべてのプロセスが終わってから、setupの表示、記録・印の有無、照合、次のsetup（印を消せないときは印を消したあと）とその後の照合を確かめる。[PR #33](https://github.com/doc-gif/kurashi-ledger/pull/33)のPR33-R001）、`scripts/install-record.test.ts`（印を消せないときの片付け）。
+- `npm run setup`の終了コード（Windows）: Windowsのnpmは、Ctrl+Cを受けると、スクリプトを動かすシェル（`cmd.exe`）を強制終了して、自分も1で終わる（npmの`@npmcli/run-script`の動き）。CIでは、`npm run setup`が1で戻った時点で、setupと子のnpmはまだ動いていて、そのあとsetupが片付けを終え（「SIGINT を受けたので中断した」と表示）、印も記録も残らなかった。つまり、Windowsで`npm run setup`をCtrl+Cで止めると、終了コードはsetupの130ではなくnpmの1で、プロンプトが戻ったあとも片付けが続くことがある（その間に次の`npm run setup`を始めると、印があるので「別の `npm run setup` が動いているか…」と表示して止まる。少し待ってからやり直す）。`scripts/setup.test.ts`は、コンソールのすべてのプロセスが終わるのを待ってから確かめ、`npm run setup`の終了コードは0でないことを確かめて、観測した終了コードと、npmが終わったときに残っていたプロセスの数を、3つの止め方ごとにdiagnosticに出す（所有者の判断が出るまで、その値を期待値に固定しない）。setupの修正が要るかは、#19の完了の条件どおり、所有者・調整係が判断する（2026-10-03の時点で未決）。
 - 一般のユーザー: GitHubのWindowsのrunnerは管理者で動くので、CIの`checks (windows, standard user)`で、一時の一般のローカルユーザーとしても同じ試験を実行する（下の「CI」）。
 - T26（[PR #25](https://github.com/doc-gif/kurashi-ledger/pull/25)）との関係: T26の`npm start`の実際のCtrl+C（Windowsで飛ばす`src/start.test.ts`の試験）は、T26の統合後に、この補助でコンソールへCtrl+Cを送る試験に変え、表の行を外す。T26の本人だけのACLの試験は`npm test`に含まれるので、統合後は`checks (windows, standard user)`で一般のユーザーとしても実行される。
 - 手で残る確認: `npm.cmd`（バッチファイル）で起動したときに`cmd.exe`が出す「バッチ ジョブを終了しますか (Y/N)?」の表示と、Y・Nの答えによる終了コード。`cmd.exe`の対話の表示の確認で、setupの動き（記録・印・終了コード）は上の試験で確かめている。答えを自動で入れるにはコンソールの入力を擬似する必要があり、得られるのは`cmd.exe`の表示の確認だけなので、自動にしない。キーボードのCtrl+Cを制御イベントに変える部分は、OSとターミナルの機能で、試験では制御イベントを直接生成する。

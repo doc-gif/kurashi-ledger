@@ -10,12 +10,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
-import { startInNewConsole } from '../tests/support/windows-console.ts';
+import { preventDeletion } from '../tests/support/prevent-deletion.ts';
+import { type ConsoleEvent, startInNewConsole } from '../tests/support/windows-console.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const DEP_NAME = 'kl-synthetic-dep';
 const DEP_FILE = `${DEP_NAME}-1.0.0.tgz`;
 const RECORD = join('node_modules', '.kurashi-ledger-install.json');
+const LOCK = '.kurashi-ledger-setup.lock';
 const BIN_NAME = 'kl-synthetic-bin';
 const TIMEOUT_MS = 120_000;
 
@@ -412,19 +414,30 @@ test('node_modulesがリポジトリの外へのリンクなら、setup・check:
   assert.equal(readFileSync(join(shared, '.kurashi-ledger-install.json'), 'utf8'), '{"other":"worktree"}');
 });
 
-// 実際のCtrl+C。POSIXはプロセスグループへのSIGINT。Windowsは、npm run setupを新しいコンソールで起動し、実際の
-// コンソールの制御イベント（Ctrl+C）をそのコンソールの全員に送る（tests/support/windows-console.ts。Issue #19）。
+// 実際のnpmでnpm run setupを止める（Issue #19）。POSIXはプロセスグループへのシグナル。Windowsは、npm run setupを
+// 新しいコンソールで起動し、実際のコンソールの制御イベント（Ctrl+C・Ctrl+Break）をそのコンソールの全員に送る
+// （tests/support/windows-console.ts）。
 // Windowsのnpmは、Ctrl+Cを受けるとスクリプトのシェル（cmd.exe）を強制終了して自分も終わる（@npmcli/run-script）ので、
-// npm runの終了コードはsetupの130にならず、setupの片付けより先に戻ることがある。そこで、コンソールのすべてのプロセスが
-// 終わるのを待ってから確かめ、npm runの終了コードは0でないことだけを確かめる（setup自身の130・149は、setupを直接
-// 起動する scripts/setup-lock.test.ts で確かめる）。観測した終了コードと、npmが戻ったときに残っていたプロセスの数は
-// diagnosticに出す。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
-test('Ctrl+C（POSIXはプロセスグループへのSIGINT、Windowsは新しいコンソールへのCtrl+C）でnpm run setupを止めると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', async (t) => {
-  mode = 'ok';
-  const root = makeProject();
-  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
-  assert.ok(existsSync(join(root, RECORD)));
+// npm runの終了コードはsetupのものにならず、setupの片付けより先に戻ることがある（CIで1、残りのプロセス3を観測）。
+// この扱いは所有者の判断待ちなので、その値を期待値に固定しない。コンソールのすべてのプロセスが終わるのを待ってから
+// 確かめ、npm runの終了コードは0でないことを確かめ、観測した終了コードと、npmが終わったときに残っていたプロセスの数を
+// diagnosticに出す。setup自身の終了コード（130・149）は、setupを直接起動する scripts/setup-lock.test.ts で確かめる。
+// 強制終了で印が残る場合も scripts/setup-lock.test.ts が全OSで確かめる。
 
+type NpmStop = {
+  // POSIX: プロセスグループ全体（端末と同じ）に送るシグナル。Windows: コンソールに送る制御イベント。
+  readonly posix: NodeJS.Signals;
+  readonly windows: ConsoleEvent;
+};
+
+// npm ciが依存の取得を始めたところで止め、npm runとその子・孫が全部終わるまで待つ。beforeInterruptは止める直前に
+// 呼ぶ（戻り値で元に戻す。全部が終わってから戻す）。返すのは、setupが受けたはずのシグナルの名前と結果。
+async function stopNpmRunSetup(
+  t: { diagnostic(message: string): void },
+  root: string,
+  stop: NpmStop,
+  beforeInterrupt?: () => () => void,
+): Promise<{ result: Run; signal: string }> {
   mode = 'hang';
   const before = requests;
   useCache(root, `cache-hang-${counter}`);
@@ -444,37 +457,100 @@ test('Ctrl+C（POSIXはプロセスグループへのSIGINT、Windowsは新し�
       res.end(tarball);
     }
   };
-  let result: Run;
-  if (process.platform === 'win32') {
-    const run = startInNewConsole(process.execPath, [npmCli, 'run', 'setup'], { cwd: root, env: npmEnv(), exchangeParent: work });
-    try {
-      await run.started;
-      await waitForFetch();
-      await run.send('ctrl-c');
-      await releaseHeld();
-      const r = await run.done;
-      assert.equal(r.timedOut, false, `時間切れ: ${r.stderr}`);
-      t.diagnostic(`Windowsのnpm run setupの終了コード: ${String(r.status)}（npmが終わったときに残っていたプロセス: ${r.remainingAtExit}）`);
-      assert.ok(r.status !== null && r.status !== 0, `中断したnpm run setupが成功を返した: ${r.stderr}`);
-      result = { status: r.status, signal: null, stdout: r.stdout, stderr: r.stderr };
-    } finally {
-      run.abort();
+  let restore: (() => void) | undefined;
+  try {
+    if (process.platform === 'win32') {
+      const run = startInNewConsole(process.execPath, [npmCli, 'run', 'setup'], { cwd: root, env: npmEnv(), exchangeParent: work });
+      try {
+        await run.started;
+        await waitForFetch();
+        restore = beforeInterrupt?.();
+        await run.send(stop.windows);
+        await releaseHeld();
+        const r = await run.done;
+        assert.equal(r.timedOut, false, `時間切れ: ${r.stderr}`);
+        t.diagnostic(
+          `Windowsのnpm run setupの終了コード（${stop.windows}）: ${String(r.status)}（npmが終わったときに残っていたプロセス: ${r.remainingAtExit}）`,
+        );
+        assert.ok(r.status !== null && r.status !== 0, `中断したnpm run setupが成功を返した: ${r.stderr}`);
+        return {
+          result: { status: r.status, signal: null, stdout: r.stdout, stderr: r.stderr },
+          signal: stop.windows === 'ctrl-c' ? 'SIGINT' : 'SIGBREAK',
+        };
+      } finally {
+        run.abort();
+      }
     }
-  } else {
     const { child, done } = startNpm(root, ['run', 'setup']);
     await waitForFetch();
-    killTree(child, 'SIGINT');
+    restore = beforeInterrupt?.();
+    killTree(child, stop.posix);
     await releaseHeld();
-    result = await done;
-    assert.ok(result.status === 130 || result.signal === 'SIGINT', `中断されていない: ${describe(result)}`);
+    const result = await done;
+    const code = 128 + (stop.posix === 'SIGINT' ? 2 : 15);
+    assert.ok(result.status === code || result.signal === stop.posix, `中断されていない: ${describe(result)}`);
+    return { result, signal: stop.posix };
+  } finally {
+    restore?.();
   }
-  assert.match(result.stderr, /SIGINT を受けたので中断した/);
+}
+
+async function freshProjectWithRecord(): Promise<string> {
+  mode = 'ok';
+  const root = makeProject();
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0);
+  assert.ok(existsSync(join(root, RECORD)));
+  return root;
+}
+
+// 中断のあと、記録も印も残らず、照合は止まり、次のsetupとその後の照合が通ること。
+async function expectCleanInterruption(root: string, result: Run, signal: string): Promise<void> {
+  assert.match(result.stderr, new RegExp(`${signal} を受けたので中断した`));
   assert.equal(existsSync(join(root, RECORD)), false, '記録は残らない');
-  assert.equal(existsSync(join(root, '.kurashi-ledger-setup.lock')), false, '作業中の印は残らない（ADR-0008）');
+  assert.equal(existsSync(join(root, LOCK)), false, '作業中の印は残らない（ADR-0008）');
   const check = await npm(root, ['run', 'check:install']);
   assert.notEqual(check.status, 0);
   assert.match(check.stderr, /npm run setup/);
   assert.equal((await npm(root, ['run', 'setup'])).status, 0, '次のsetupは止まらずに進める');
+  assert.equal((await npm(root, ['run', 'check:install'])).status, 0, '次のsetupのあとの照合は通る');
+}
+
+test('Ctrl+C（POSIXはプロセスグループへのSIGINT、Windowsは新しいコンソールへのCtrl+C）でnpm run setupを止めると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', async (t) => {
+  const root = await freshProjectWithRecord();
+  const { result, signal } = await stopNpmRunSetup(t, root, { posix: 'SIGINT', windows: 'ctrl-c' });
+  await expectCleanInterruption(root, result, signal);
+});
+
+test('ほかの終了のシグナル（POSIXはプロセスグループへのSIGTERM、Windowsは新しいコンソールへのCtrl+Break）でnpm run setupを止めても、記録も作業中の印も残さずに終える', async (t) => {
+  const root = await freshProjectWithRecord();
+  const { result, signal } = await stopNpmRunSetup(t, root, { posix: 'SIGTERM', windows: 'ctrl-break' });
+  await expectCleanInterruption(root, result, signal);
+});
+
+// 印を消せない状態は tests/support/prevent-deletion.ts で作る。rootのユーザーは書込み禁止のディレクトリからも消せる。
+const lockUndeletableSkip =
+  process.platform !== 'win32' && process.getuid?.() === 0
+    ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、印の削除の失敗を再現できない。CIは一般のユーザーで実行する（T05）'
+    : false;
+
+test('印を消せないときにCtrl+Cでnpm run setupを止めると、印が残ったことと消し方を表示し、記録を残さず、印を消すと次のsetupと照合が通る', { skip: lockUndeletableSkip }, async (t) => {
+  const root = await freshProjectWithRecord();
+  const { result, signal } = await stopNpmRunSetup(t, root, { posix: 'SIGINT', windows: 'ctrl-c' }, () => preventDeletion(root, LOCK));
+  assert.match(result.stderr, new RegExp(`${signal} を受けたので中断した。依存の導入の記録は残していない。`));
+  assert.match(result.stderr, /印（\.kurashi-ledger-setup\.lock）を消せなかった/);
+  assert.match(result.stderr, /rm \.kurashi-ledger-setup\.lock/);
+  assert.match(result.stderr, /Remove-Item \.kurashi-ledger-setup\.lock/);
+  assert.equal(existsSync(join(root, LOCK)), true, '印は残る');
+  assert.equal(existsSync(join(root, RECORD)), false, '記録は残らない');
+  const check = await npm(root, ['run', 'check:install']);
+  assert.notEqual(check.status, 0, '印があるあいだは照合が止まる');
+  const refused = await npm(root, ['run', 'setup']);
+  assert.notEqual(refused.status, 0, describe(refused));
+  assert.match(refused.stderr, /前の `npm run setup` が強制終了/);
+
+  rmSync(join(root, LOCK));
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0, '印を消すと次のsetupが進む');
+  assert.equal((await npm(root, ['run', 'check:install'])).status, 0, '印を消したあとの照合は通る');
 });
 
 test('setupはnpm run経由でだけ動き、--forceを拒む', async () => {
