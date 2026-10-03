@@ -10,6 +10,12 @@
 
 一度だけ書き、改訂を持たない。途中で失敗した場合も、`failed`として書く（状態は2の順序で決める）。
 
+**入力を固める前に止まったrun（1つの規則）:** runは、入力の写し（`inputs`の閉包と必要な写し）を固めたかどうかを`inputStage`（`fixed`・`not-fixed`）に持つ。
+
+- `computed`・`provisional`・`incomplete`は`fixed`だけ。`failed`と`unsupported`は、入力を固める前に止まった場合だけ`not-fixed`にできる（入力の要求の一覧や閉包を作っている途中の異常終了、`target`の地域・年度が対象外で入力の要求の一覧が決まらない等）。
+- `not-fixed`のrunは、最小の形で保存する。`inputs`の各並び・`results`・`roundingSteps`・`missingInputs`・`assumptions`は空にし、入力の閉包・必要な写しの集合・結果と丸めの検査をしない（固めていない入力の完全性は確かめられないため）。持つのは、`id`・`createdAt`・`recordedSeq`・`calculator`・`appCommit`・`target`・`status`・`inputStage`と、止まった理由（`failed`なら`failure`。どの段階で止まったかを含める。`unsupported`なら`unconfirmedItems`に対象外の理由）と、`ruleSet`・`previousRunId`（[共通の型](common-types.md)の12の表のとおり）だけ。runの履歴の鎖の検査（3）は受ける。結果の項目を持たないので、2の表の「結果の値」は当てはまらない（表示では「入力を固める前に止まった」と示す）。
+- `fixed`のrunは、`failed`・`unsupported`でも、通常の検査（入力の閉包、必要な写しの集合、run内の並び）をすべて受ける。結果の値の扱いは2の表のとおり（`failed`の値は表示・比較に使わない）。
+
 **run内の並びの規則（1つの規則）:** 計算runの中の並びは、それぞれ下の表のキーがrun内で一意であり、順序の意味は表のとおりとする。キーが重なるrunは保存しない（計算器の誤りとして扱う）。再計算や比較では、並びの位置ではなくキーで対応を取る。
 
 | 並び | run内で一意のキー | 並びの順序の意味 |
@@ -48,7 +54,7 @@
 | どの記録も | それを`duplicateOf`で指す記録（二重登録として取り消した記録）と、その記録を指す照合配分 | 正規の記録と、正規の記録に付く使えない関係（照合の規則の9） |
 
   - 閉包は、根からの順方向のたどりと、この表による逆向きの追加を、増えなくなるまで繰り返したもの。年間の値を入力済みの記録から示す場合は、その年に帰属するその支払者の明細も、計算に使った記録（根）に含める。
-  - **保存のときの検査:** runを作る処理は、保存のときに、次をすべて確かめる。`inputs.requests`が、計算器の版と`target`から決まる要求の一覧と同じであること。要求から決まる根を、runを作ったときの見方でデータベース全体から求め直し、runが持つ参照と合わせた根から閉包を計算し直して、閉包のすべてが`inputs`にあること。どれかを満たさないrun（含まれていない記録・マスタを指す記録があるrunを含む）は保存しない。runは不変なので、保存のあとに増えた関係では確かめ直さない（表示で「入力が変わった」と示す。3）。
+  - **保存のときの検査:** runを作る処理は、保存のときに（`inputStage`が`fixed`のrunについて。`not-fixed`は上の「入力を固める前に止まったrun」の最小の形だけを確かめる）、次をすべて確かめる。`inputs.requests`が、計算器の版と`target`から決まる要求の一覧と同じであること。要求から決まる根を、runを作ったときの見方でデータベース全体から求め直し、runが持つ参照と合わせた根から閉包を計算し直して、閉包のすべてが`inputs`にあること。どれかを満たさないrun（含まれていない記録・マスタを指す記録があるrunを含む）は保存しない。runは不変なので、保存のあとに増えた関係では確かめ直さない（表示で「入力が変わった」と示す。3）。
   - 例はEX-07(a)の「予測を使うrunの閉包」。
 - runの中の正規のIDの解決、差し替えの系列、二重登録の鎖は、`inputs`の版だけで導く。`AdoptionSnapshot`の`payers`は、その解決による正規のIDで書く。
 - **導いた状態の写し:** 照合配分の使われ方と照合の判断の前提は、確かめ直しの条件（[照合の規則](reconciliation.md)の9）のように、過去の版（`confirmedAgainst`の版）や過去の時点（確定・保存の`recordedSeq`）の解決と比べて決まるので、run時点の1つの版だけからは導けない。そのため、runの中では導き直さず、runを作ったときに導いた結果を写して持つ（`AdoptionSnapshot`と同じく、実行時に導いた結果の写し）。`inputs.allocations`の各要素は`usageAtRun`（照合の規則の9の使われ方の識別子）、`inputs.decisions`の各要素は`premiseAtRun`（`holds`＝前提を満たす、`broken`＝前提が崩れている、同4）を持つ。計算に使ってよいのは、`usageAtRun`が`valid`の配分と、`premiseAtRun`が`holds`の判断だけ（項目ごとの前提を持つ判断は、さらにその項目の前提が`holds`の項目だけ）。
@@ -67,6 +73,7 @@
 | `target` | `Target` | 計算の対象（年・年度・地域） |
 | `inputs` | `Inputs` | 入力の固定した写し |
 | `status` | `computed・provisional・incomplete・unsupported・failed` | 結果の状態（2の順序で1つに決める） |
+| `inputStage` | `fixed・not-fixed` | 入力の写しを固めたか（1の「入力を固める前に止まったrun」）。`not-fixed`は`failed`・`unsupported`だけ |
 | `results` | `List<ResultItem>` | 結果の項目 |
 | `roundingSteps` | `List<RoundingStep>` | 丸めの記録。適用した順に並べ、`order`は1から始めて1ずつ増やす（run内で一意の連番） |
 | `missingInputs` | `List<MissingInput>` | 不足した入力 |
@@ -95,7 +102,7 @@
 
 `AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定。指せるのは、`targetYear`が`year`と同じで、範囲が確定していて、その範囲が`payers`と同じ集合である年間資料だけで、照合の規則の5でその年・支払者に選ばれた資料と同じであること（年間資料の値は範囲全体の分けられない合計なので、範囲の一部の支払者だけのスナップショットに年間資料を固定しない。範囲の一部だけの集計は照合の規則の5の`partial-scope`）。[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: 年間資料の金額の項目名, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態で、同じ`field`を2回含まない。1つの項目の比較の状態は1つに決まる（[照合の規則](reconciliation.md)の5）ため）。2つの並びの一意のキーは、[共通の型](common-types.md)の12の並びの表による（重なるスナップショットを持つrunは保存しない）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
 
-**必要な写しの集合（1つの規則）:** runが持つ導いた結果の写し（`adoptions`、各`AdoptionSnapshot`の`comparisons`、`inputs.decisions`の`itemPremisesAtRun`、要求の集計に由来する`missingInputs`）は、入力の要求（`inputs.requests`）と閉包から一意に決まる**必要な集合**と、過不足なく一致しなければならない。重複がないことだけでは、欠けた要素を見つけられないため。保存のときに、runを作る処理は必要な集合を求め直し、写しと比べる。
+**必要な写しの集合（1つの規則）:** `inputStage`が`fixed`のrunでは、runが持つ導いた結果の写し（`adoptions`、各`AdoptionSnapshot`の`comparisons`、`inputs.decisions`の`itemPremisesAtRun`、要求の集計に由来する`missingInputs`）は、入力の要求（`inputs.requests`）と閉包から一意に決まる**必要な集合**と、過不足なく一致しなければならない。重複がないことだけでは、欠けた要素を見つけられないため。保存のときに、runを作る処理は必要な集合を求め直し、写しと比べる。
 
 | 写し | 必要な集合 |
 | --- | --- |
@@ -172,6 +179,8 @@
 - 過去のrunの入力の版が現在の版と違う場合（閉包のマスタの改訂・取消・取消の取り消しで、現在の正規のIDがrunの中の解決と違う場合を含む）、表示で「入力が変わった」と示す（記録を書き換えず、そのつど導く）。
 - 制度データが更新されても、過去のrunを新しい制度で計算し直して上書きしない。
 - 過去のrunを再現するために必要な情報（入力の版、制度データの版、計算器の版、アプリのcommit）は、バックアップと復元で保たれる（ADR-0006、T12・T15）。
+
+**入力を固める前に止まったrunの例:** 計算runが、入力の要求の一覧を作っている途中で異常終了した。runは`status` `failed`、`inputStage` `not-fixed`、`failure`「入力の要求の一覧を作る途中で停止（段階: 要求の作成）」で、`inputs`・`results`は空のまま保存する（閉包・必要な写しの検査はしない）。入力の写しを固めたあとで丸めの途中に異常終了したrunは、`inputStage` `fixed`で、通常どおり閉包・必要な写しの検査を受けてから`failed`として保存する。
 
 ## 4. 丸めの記録の例
 

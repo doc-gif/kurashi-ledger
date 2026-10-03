@@ -213,6 +213,8 @@
 
 `NoticeAmount`: `lineId`（`LineId`）、`label`（`Text`、記載どおり）、`category`（`Fact<annual-total・other>`）、`amount`（`Fact<Yen>`、0以上）。`category`と`amount`は`not-applicable`を使わない（[共通の型](common-types.md)の12の既定）。
 
+- **決定額の行は1件の通知に1行:** `amounts`のうち`category`が`annual-total`の行は、1件の通知に1行だけ（2行目を保存しようとしたら拒否する）。決定額は通知の年間の総額で、資料に1つしかないため（2行あると、同じ総額を二重に足すおそれがある）。資料に年間の総額の記載が複数ある（内訳と合計等）場合は、総額の行だけを`annual-total`にし、ほかは`other`にする。`category`が`other`の行は何行でもよい（決定額に足さない）。`installments`・`statusDates`の`kind`等の分類は、集計に足さないので、分類ごとの行の数を制限しない（使い方はT17〜T19で決める）。
+
 `Installment`: `lineId`、`label`（例「第1期」）、`dueDate`（`Fact<LocalDate>`）、`amount`（`Fact<Yen>`、0以上）、`collectionMethod`（`Fact<special・ordinary・other>`。特別徴収・普通徴収・その他）。
 
 `StatusDate`: `lineId`、`label`、`kind`（`Fact<qualification-acquired・qualification-lost・eligibility-start・eligibility-end・other>`）、`date`（`Fact<LocalDate>`）。
