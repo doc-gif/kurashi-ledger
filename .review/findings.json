@@ -297,6 +297,38 @@
       ]
     },
     {
+      "id": "PR11-R010",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "decision-premise-recheck",
+      "lesson": "判断や確定した関係は、根拠にしたすべての属性（入金の用途、対象の項目、確認した版、識別次元、正規の発行者ID、行の状態など）を前提として保持し、前提が変わったら要再確認として使わない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956"
+      ]
+    },
+    {
+      "id": "PR11-R011",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "run-pinned-input-completeness",
+      "lesson": "計算runに固定する入力（記録・関係の閉包、採用スナップショット、比較項目）は、計算対象と入力要求から独立に導いた必要集合と過不足なく一致することを保存時に検査する。逆向きに効く配分・判断、取消済みの橋渡し記録、直接持つマスタIDも含める。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693"
+      ]
+    },
+    {
       "id": "PR11-R101",
       "invariant_id": "INV-RECORDS",
       "cause_key": "unresolvable-relation-as-absent",
@@ -312,20 +344,6 @@
     {
       "id": "PR11-R102",
       "invariant_id": "INV-RECORDS",
-      "cause_key": "run-input-closure-completeness",
-      "lesson": "計算runの入力閉包には、run内の全参照、直接持つマスタID、逆向きに効く配分・判断、取消済みの橋渡し記録、計算対象から独立に導く初期の根を含め、保存時に計算し直して検査する。",
-      "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693"
-      ]
-    },
-    {
-      "id": "PR11-R103",
-      "invariant_id": "INV-RECORDS",
       "cause_key": "ref-revision-semantics",
       "lesson": "参照ごとにcurrentと整数版のどちらを指すかを定め、過去時点の見方や固定した記録を未来の版へ結び付けない。関係の参照と確認済みの版を二重に固定して矛盾させない。",
       "sources": [
@@ -336,7 +354,7 @@
       ]
     },
     {
-      "id": "PR11-R104",
+      "id": "PR11-R103",
       "invariant_id": "INV-RECORDS",
       "cause_key": "pinned-snapshot-granularity",
       "lesson": "runに固定するスナップショットは、実行時の判定を一意に再現できる粒度で持つ。項目別の適用状態、年と支払者ごとに1つの採用、一意なキー、再確認に使う比較値と正規IDを含める。",
@@ -350,7 +368,7 @@
       ]
     },
     {
-      "id": "PR11-R105",
+      "id": "PR11-R104",
       "invariant_id": "INV-RECORDS",
       "cause_key": "annual-document-indivisible-scope",
       "lesson": "年間資料の値は範囲全体の不可分な総額として扱う。採用・比較・説明・runへの固定は資料の年と確定範囲に一致するときだけ許し、部分範囲や支払者ごとに重ねて加算しない。",
@@ -364,7 +382,7 @@
       ]
     },
     {
-      "id": "PR11-R106",
+      "id": "PR11-R105",
       "invariant_id": "INV-RECORDS",
       "cause_key": "self-referential-step-inputs",
       "lesson": "状態や上限の判定に、その判定の結果や対象自身を入力として含めない。段階ごとの入力集合を先に確定し、同じ計算を述べる各節で含める状態をそろえる。",
@@ -376,7 +394,7 @@
       ]
     },
     {
-      "id": "PR11-R107",
+      "id": "PR11-R106",
       "invariant_id": "INV-RECORDS",
       "cause_key": "contract-type-expressiveness",
       "lesson": "共通の型（集計値・coverage・不足状態・記録の種類）が、規則の求める全ケース（年間以外、採用未決定、採用元の混在、通知の重複、対応表の未定義、不完全な実績）を偽らずに表せるか確かめる。",
@@ -392,7 +410,7 @@
       ]
     },
     {
-      "id": "PR11-R108",
+      "id": "PR11-R107",
       "invariant_id": "INV-RECORDS",
       "cause_key": "free-value-identity-key",
       "lesson": "同一性・重複判定・集計に使うキーを自由な文字列や表示名にしない。型・名前空間・許す次元を定めた判別できるキーとし、集合の中での一意性か合算の規則を定める。",
@@ -407,7 +425,7 @@
       ]
     },
     {
-      "id": "PR11-R109",
+      "id": "PR11-R108",
       "invariant_id": "INV-RECORDS",
       "cause_key": "restated-facts-drift",
       "lesson": "件数・列挙・ID・連番・前提のマスタを本文や合成例で手書きで繰り返すと正本とずれる。正本を参照し、合成例はfixtureとして契約の保存条件を満たすか確かめる。",
@@ -420,7 +438,7 @@
       ]
     },
     {
-      "id": "PR11-R110",
+      "id": "PR11-R109",
       "invariant_id": "INV-RECORDS",
       "cause_key": "lifecycle-transition-revalidation",
       "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。",
@@ -432,21 +450,7 @@
       ]
     },
     {
-      "id": "PR11-R111",
-      "invariant_id": "INV-RECORDS",
-      "cause_key": "decision-premise-recheck",
-      "lesson": "判断や確定した関係は、依存する前提（対象の項目、確認した版、識別次元、正規の発行者ID、行の状態など）を保持し、前提が変わったら要再確認として使わない。",
-      "sources": [
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956"
-      ]
-    },
-    {
-      "id": "PR11-R112",
+      "id": "PR11-R110",
       "invariant_id": "INV-RECORDS",
       "cause_key": "state-classification-precedence",
       "lesson": "状態の判定表は、条件が重なるときの優先順を明示する。異常終了・取り下げ・0件（空集合）・使えない関係などの境界でも結果が一意に決まるようにする。",
@@ -458,7 +462,7 @@
       ]
     },
     {
-      "id": "PR11-R113",
+      "id": "PR11-R111",
       "invariant_id": "INV-RECORDS",
       "cause_key": "recorded-time-ordering",
       "lesson": "版の順序を時計の時刻に頼らない。時計の後退や同じ時刻でも一意に並ぶ記録順（連番など）を使い、生の時計値どうしの比較を保存条件にしない。",
@@ -469,7 +473,7 @@
       ]
     },
     {
-      "id": "PR11-R114",
+      "id": "PR11-R112",
       "invariant_id": "INV-REVIEW",
       "cause_key": "plan-assessment-drift",
       "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
