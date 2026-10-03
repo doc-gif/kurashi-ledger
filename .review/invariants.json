@@ -226,6 +226,181 @@
           "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
         }
       ]
+    },
+    {
+      "id": "INV-G1-PATH",
+      "condition": "G1（パスの検査）: 実体パスとその祖先で判定し、拒否する場所は対象（データルート、バックアップの保存先、CSV/JSONの出力先）ごとに決める。規則はADR-0006の1（「起動時の検査」「保存先と出力先」）を正とし、操作ごとの適用はADR-0007の適用表に従う。",
+      "paths": [
+        "docs/adr/0006-data-location-backup-encryption.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**"
+      ],
+      "related": [
+        "INV-ROOT"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "targets",
+          "question": "データルート・保存先・出力先のそれぞれで、symlink・junction・大小文字の違い・まだ存在しないパスを、実体とその祖先で同じく判定するか。対象ごとの拒否する場所を取り違えていないか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G2-STRUCTURE",
+      "condition": "G2（データルートの構造）: 固定の子を空で作る共通の初期化、固定の子がリンクでなく配下にあることの確認、本人だけの権限、構造の版。規則はADR-0006の1（「固定の子の検査」「権限」「共通の初期化」「構造の版」）を正とし、G2はG3・G4を扱わない（ADR-0007の4）。",
+      "paths": [
+        "docs/adr/0006-data-location-backup-encryption.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**",
+        "migrations/**"
+      ],
+      "related": [
+        "INV-ROOT",
+        "INV-STORAGE"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "init-and-version",
+          "question": "新規作成と復元が同じ共通の初期化を使い、欠けた子を作り直してよい操作とだめな操作（復旧操作）を区別するか。古い版から増えた子だけを作り、新しい版のデータルートの版を下げないか。権限を作成後に確かめるか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G3-LOCK",
+      "condition": "G3（単一起動のlock）: データルートの外の`<データルート>.lock`を、OSのファイルロックで原子的に取る。規則はADR-0006の1（「単一起動のlock」）を正とし、G4はG3のlockを取ったあとで確かめる（ADR-0007の3）。",
+      "paths": [
+        "docs/adr/0006-data-location-backup-encryption.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**"
+      ],
+      "related": [
+        "INV-LOCK"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "order",
+          "question": "lockを取る前にG4を確かめた場合も取ったあとで確かめ直すか。保守作業が入れ替えの前後を通してlockを保持し、取れなければ奪わずに終了するか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G4-MAINTENANCE",
+      "condition": "G4（保守作業の状態ファイル）: 復元・rollbackの間、アプリと新しい保守作業と新規作成を止め、記録と一致する復旧操作だけを許す。状態ファイルが失われた場合の追加の防御を含む。規則はADR-0006の3（「保守作業の状態ファイル」、復元の手順7、rollbackの手順6）を正とする。",
+      "paths": [
+        "docs/adr/0006-data-location-backup-encryption.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/infrastructure/storage/**",
+        "src/infrastructure/portability/**"
+      ],
+      "related": [
+        "INV-STORAGE",
+        "INV-LOCK"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "作業自身の状態ファイルと作業ディレクトリで自分を止めず、記録と一致しない復旧操作・新規作成・起動を止めるか。状態ファイルが失われた場合も、残った退避物から誤って新規作成・起動しないか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G5-MODE",
+      "condition": "G5（起動モードと承認済みリリース）: 実利用モードと合成データモードの判別、種別マーカーとの照合、実利用モードでの承認済みリリースの確認。規則はADR-0006の1（「実データと合成データの分離」）を正とする。",
+      "paths": [
+        "docs/adr/0006-data-location-backup-encryption.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/start.ts",
+        "src/application/**",
+        "package.json"
+      ],
+      "related": [
+        "INV-RELEASE"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "separation",
+          "question": "開発時の起動・試験・保守コマンドが実データのデータルートを開かず、実利用モードは`:real`の入口だけで選べ、承認済みリリースの条件を満たさなければDBを開く前に止まるか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G6-ARTIFACTS",
+      "condition": "G6（実行物の一致）: 依存の導入の記録と、配信物のmanifest。規則はADR-0002（「依存の導入とリリースの対応」、ビルドとmanifest）とADR-0008を正とする。",
+      "paths": [
+        "docs/adr/0002-runtime-and-distribution.md",
+        "docs/adr/0008-install-record.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "scripts/setup.ts",
+        "scripts/check-install.ts",
+        "scripts/build.ts",
+        "scripts/lib/install-record.ts",
+        "package.json",
+        "package-lock.json",
+        ".npmrc",
+        "src/start.ts"
+      ],
+      "related": [
+        "INV-RELEASE"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "record-and-manifest",
+          "question": "記録は導入が成功したときだけ書き、lockfile・Node.jsの版・OS・CPUのどれかが変われば照合で止まるか。manifestはHEAD・lockfile・Node.jsの版に結び付き、余分なファイルやハッシュの不一致でDBを開く前に止まるか。"
+        }
+      ]
+    },
+    {
+      "id": "INV-G7-HTTP",
+      "condition": "G7（HTTPの境界）: Host、`Sec-Fetch-Site`・`Origin`、起動ごとのトークンとcookie、起動の識別子、CSP、`no-store`、静的配信の範囲。規則はADR-0003を正とし、G7は起動の識別子を自分で作ってG6に依存しない（ADR-0007の4）。",
+      "paths": [
+        "docs/adr/0003-local-http-boundary.md",
+        "docs/adr/0009-local-http-implementation.md",
+        "docs/adr/0007-shared-safety-checks.md",
+        "src/infrastructure/http/**",
+        "src/start.ts",
+        "vite.config.*",
+        "e2e/**"
+      ],
+      "related": [
+        "INV-HTTP"
+      ],
+      "scenarios": [
+        {
+          "id": "operations",
+          "question": "ADR-0007の適用表の列を上から確かめ、この部品を使う操作ごとに、定義の場所の本文と台帳の試験を同じPRで直したか。規則を適用表やADRの別の節に書き写していないか。"
+        },
+        {
+          "id": "modes",
+          "question": "開発（Viteのmiddleware）・合成データ・実利用のどのモードでも同じ検査の後ろでAPIと静的配信を行い、開発時だけ認証や識別子を外していないか。一時ファイルは渡された本人専用のディレクトリだけに置くか。"
+        }
+      ]
     }
   ]
 }
