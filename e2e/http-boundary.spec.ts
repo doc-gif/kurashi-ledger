@@ -331,3 +331,44 @@ test('文字参照で書いたmetaのnameは、ブラウザのDOMと同じに判
     tmp.cleanup();
   }
 });
+
+test('コメントの終わりの書き方（<!-->・<!--->・--!>）も、ブラウザのDOMとサーバーの判定が一致し、配信したページでは識別子のmetaがちょうど1つになる', async ({ page }) => {
+  const meta = '<meta name="kurashi-ledger-launch-id" content="x">';
+  const heads = [
+    `<!-->${meta}<!-- -->`,
+    `<!--->${meta}<!-- -->`,
+    `<!-- a --!>${meta}<!-- -->`,
+    `<!-- ${meta} -->`,
+    `<!---->${'<!-- x -- y -->'}<!-- ${meta} --!>`,
+    `<!-- <!-- ${meta} -->`,
+  ];
+  const html = (head: string) => `<!doctype html><html lang="ja"><head>${head}<title>t</title></head><body>synthetic</body></html>`;
+  const files = new Map(heads.map((head, i) => [`c${i}.html`, html(head)]));
+  const staticSource: StaticSource = {
+    read: async (segments) => {
+      const body = files.get(segments.join('/'));
+      return body === undefined ? undefined : { body: Buffer.from(body), contentType: 'text/html; charset=utf-8' };
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('e2e-comments');
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, staticSource });
+  try {
+    for (const [i, head] of heads.entries()) {
+      await page.setContent(html(head));
+      const browserCount = await page.evaluate(() => document.querySelectorAll('meta[name="kurashi-ledger-launch-id"]').length);
+      const response = await page.goto(`${server.origin}/c${i}.html`);
+      if (browserCount > 0) {
+        expect(response?.status(), head).toBe(500);
+      } else {
+        expect(response?.status(), head).toBe(200);
+        const ids = await page.evaluate(() =>
+          [...document.querySelectorAll('meta[name="kurashi-ledger-launch-id"]')].map((m) => m.getAttribute('content')),
+        );
+        expect(ids, head).toEqual([server.launchId]);
+      }
+    }
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+});

@@ -153,16 +153,27 @@ export function decodeAttributeValue(raw: string): DecodedAttribute {
   return { value: out, unresolved };
 }
 
+// コメントの終わり（HTMLの仕様の字句解析と同じ）。startは<!--の直後。<!-->と<!--->（空のコメントの急な終わり）、
+// 最初の-->か--!>のどちらか早い方で終わる。閉じていなければundefined。
+function commentEnd(text: string, start: number): number | undefined {
+  if (text.startsWith('>', start)) return start + 1;
+  if (text.startsWith('->', start)) return start + 2;
+  const dashes = text.indexOf('-->', start);
+  const bang = text.indexOf('--!>', start);
+  const candidates = [dashes < 0 ? undefined : dashes + 3, bang < 0 ? undefined : bang + 4].filter((v): v is number => v !== undefined);
+  return candidates.length === 0 ? undefined : Math.min(...candidates);
+}
+
 // 読めない形（閉じていないコメント・タグ・生のテキストの要素）ならundefined。
 function tokenizeHtml(text: string): HtmlToken[] | undefined {
   const tokens: HtmlToken[] = [];
   let pos = 0;
   while (pos < text.length) {
     if (text.startsWith('<!--', pos)) {
-      const close = text.indexOf('-->', pos + 4);
-      if (close < 0) return undefined;
-      tokens.push({ kind: 'comment', text: text.slice(pos, close + 3), end: close + 3 });
-      pos = close + 3;
+      const end = commentEnd(text, pos + 4);
+      if (end === undefined) return undefined;
+      tokens.push({ kind: 'comment', text: text.slice(pos, end), end });
+      pos = end;
       continue;
     }
     if (text.startsWith('<!', pos) || text.startsWith('<?', pos)) {

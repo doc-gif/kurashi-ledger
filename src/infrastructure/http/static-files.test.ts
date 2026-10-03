@@ -195,3 +195,19 @@ test('ディスクの読み出し元は、実体パスを確かめたあと・�
     tmp.cleanup();
   }
 });
+
+test('コメントの終わりはブラウザと同じに読み（<!-->・<!--->・--!>）、コメントのあとの実際の同名のmetaを重複とする', () => {
+  const id = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const meta = '<meta name="kurashi-ledger-launch-id" content="x">';
+  const page = (head: string) => `<!doctype html><html><head>${head}<title>t</title></head><body></body></html>`;
+  // ブラウザでは、どれもコメントがすぐ終わり、そのあとのmetaは実際の要素になる。
+  for (const head of [`<!-->${meta}<!-- -->`, `<!--->${meta}<!-- -->`, `<!-- a --!>${meta}<!-- -->`, `<!-- a --!>${meta}`]) {
+    assert.equal(injectLaunchId(Buffer.from(page(head)), id), undefined, head);
+  }
+  // 閉じていないコメントは配信しない。
+  assert.equal(injectLaunchId(Buffer.from(page(`<!-- ${meta}`)), id), undefined);
+  // 本当にコメントの中にあるmetaは、重複としない。
+  for (const head of [`<!-- ${meta} -->`, `<!---->${'<!-- x -- y -->'}<!-- ${meta} --!>`, `<!-- <!-- ${meta} -->`]) {
+    assert.notEqual(injectLaunchId(Buffer.from(page(head)), id), undefined, head);
+  }
+});
