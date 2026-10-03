@@ -612,6 +612,12 @@
           "foster-child",
           "entrusted-elderly"
         ],
+        "domain": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly",
+          "other"
+        ],
         "source": {
           "ref": "nta-ta-1180",
           "location": "扶養親族に該当する人の範囲(1)"
@@ -690,6 +696,12 @@
         "allowed": [
           "relative",
           "foster-child"
+        ],
+        "domain": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly",
+          "other"
         ],
         "source": {
           "ref": "nta-ta-1177",

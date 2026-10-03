@@ -427,7 +427,24 @@ function checkAgeRange(o: Obj, ref: string, w: string, problems: Problems): void
 // 条件群はORで、既知の代替で満たせば、ほかの代替のunknownで不足にしない。どの代替でも決まらない条件群だけを不足に数える。
 interface FamilyCheck {
   missingKeys: string[];
+  invalid: string[];
   unknown: string[];
+}
+
+// 入力の値の型と許す値（Copilot 4172986641）。「unknown」はどの入力にも許し、分からない入力として数える。
+// 不正な値（日付でない生年月日、整数でない所得、真偽値でない要件等）は、既知の入力として扱わず、問題にする。
+function validValue(v: unknown, domain: readonly unknown[] | "date" | "income" | "boolean"): boolean {
+  if (v === "unknown") return true;
+  if (domain === "date") return isLocalDate(v);
+  if (domain === "income") return isInt(v) && v >= 0;
+  if (domain === "boolean") return typeof v === "boolean";
+  return domain.includes(v);
+}
+
+function domainOf(alt: Obj): readonly unknown[] | "boolean" | undefined {
+  const allowed = arr(alt["allowed"]);
+  if (Array.isArray(alt["domain"])) return alt["domain"];
+  return allowed.length > 0 && allowed.every((x) => typeof x === "boolean") ? "boolean" : undefined;
 }
 
 function evalGroup(e: Obj, person: Obj, ci: Obj): "met" | "unmet" | "unknown" {
@@ -443,7 +460,7 @@ function evalGroup(e: Obj, person: Obj, ci: Obj): "met" | "unmet" | "unknown" {
 }
 
 function familyCheck(data: Obj, ci: Obj): FamilyCheck {
-  const out: FamilyCheck = { missingKeys: [], unknown: [] };
+  const out: FamilyCheck = { missingKeys: [], invalid: [], unknown: [] };
   const dep = obj(data["dependentDeduction"]);
   const ref = String(dep["ageDeterminationDate"]);
   const depMax = Number(dep["dependentTotalIncomeMax"]);
@@ -453,9 +470,29 @@ function familyCheck(data: Obj, ci: Obj): FamilyCheck {
   const sr = obj(data["specificRelativeDeduction"]);
   const srBr = arr(sr["brackets"]).map(obj);
   const srMax = Number(srBr[srBr.length - 1]?.["totalIncomeMax"]);
+  // 入力の名前と許す値の範囲（domain。真偽の要件は真偽値）。
+  const domains = new Map<string, readonly unknown[] | "boolean" | undefined>();
+  // 同じ入力が複数の条件に現れるとき、どれか1つでも許す値の範囲がなければ、範囲がないとする。
+  const register = (a: Obj): string => {
+    const k = String(a["input"]);
+    const d = domainOf(a);
+    domains.set(k, domains.has(k) && domains.get(k) === undefined ? undefined : d);
+    return k;
+  };
   const inputsOf = (keys: string[]): string[] =>
-    keys.flatMap((k) => arr(obj(data[k])["eligibility"]).map(obj).filter((e) => e["scope"] !== "taxpayer").flatMap((e) => (Array.isArray(e["anyOf"]) ? e["anyOf"].map(obj) : [e]).map((a) => String(a["input"]))));
-  const catInputs = arr(dep["categories"]).flatMap((c) => arr(obj(c)["requires"]).map((r) => String(obj(r)["input"])));
+    keys.flatMap((k) =>
+      arr(obj(data[k])["eligibility"])
+        .map(obj)
+        .filter((e) => e["scope"] !== "taxpayer")
+        .flatMap((e) => (Array.isArray(e["anyOf"]) ? e["anyOf"].map(obj) : [e]).map(register)),
+    );
+  const catInputs = arr(dep["categories"]).flatMap((c) => arr(obj(c)["requires"]).map((r) => register(obj(r))));
+  if (ci["spouse"] !== null && !isObj(ci["spouse"])) out.invalid.push("spouse（objectかnull）");
+  if (!Array.isArray(ci["relatives"]) || !ci["relatives"].every(isObj)) out.invalid.push("relatives（objectの並び）");
+  if (arr(ci["relatives"]).length > 0) {
+    const tv = obj(ci["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"];
+    if (tv !== undefined && !validValue(tv, "boolean")) out.invalid.push("taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（真偽値かunknown）");
+  }
   const people: [string, Obj, string[], (p: Obj) => string[]][] = [];
   if (ci["spouse"] !== null) {
     people.push(["spouse", obj(ci["spouse"]), inputsOf(["spouseDeduction", "spouseSpecialDeduction"]), (p) => {
@@ -476,7 +513,13 @@ function familyCheck(data: Obj, ci: Obj): FamilyCheck {
   });
   for (const [name, p, keys, relevant] of people) {
     for (const k of new Set(["birthDate", "totalIncome", "livingAtYearEnd", "resident", ...keys])) {
-      if (!(k in p)) out.missingKeys.push(`${name}.${k}`);
+      if (!(k in p)) {
+        out.missingKeys.push(`${name}.${k}`);
+        continue;
+      }
+      const dom = k === "birthDate" ? "date" : k === "totalIncome" ? "income" : k === "livingAtYearEnd" || k === "resident" ? "boolean" : domains.get(k);
+      if (dom === undefined) out.invalid.push(`${name}.${k}（制度データに許す値の範囲（domain）がない）`);
+      else if (!validValue(p[k], dom)) out.invalid.push(`${name}.${k}（型か値が正しくない: ${JSON.stringify(p[k])}）`);
     }
     for (const k of ["birthDate", "totalIncome"]) if (p[k] === "unknown") out.unknown.push(`${name}.${k}`);
     for (const d of relevant(p)) {
@@ -799,6 +842,7 @@ export function validateRules(input: RulesInput): string[] {
     if (entry.rs["regime"] === "income-tax" && entry.rs["kind"] === "calculation") {
       const fc = familyCheck(obj(input.dataFiles.get(String(entry.rs["data"]))), obj(caseInput));
       for (const k of fc.missingKeys) problems.add(w, `input.${k}がない（家族の控除の適用要件と判定に使う入力。PR29-R006）`);
+      for (const k of fc.invalid) problems.add(w, `input.${k}`);
       unknownInputs.push(...fc.unknown);
     }
     if ((status === "computed" || status === "provisional") && unknownInputs.length > 0) problems.add(w, `分からない入力があるのに${String(status)}: ${unknownInputs.join("・")}`);
@@ -1034,6 +1078,16 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["対応表の種類", (c) => (obj(variant(c, 3, 0)["mapping"])["kind"] = "difference"), "mapping.kind"],
     ["親族の所属が分からないのに計算する", (c) => (obj(arr(input(c, "REG-11")["relatives"])[0])["dependentClaimedByOtherTaxpayer"] = "unknown"), "dependentClaimedByOtherTaxpayer"],
     ["850万円超で所得金額調整控除の対象かが分からないのに計算する", (c) => (input(c, "REG-16")["incomeAdjustmentEligible"] = "unknown"), "incomeAdjustmentEligible（必須の入力）"],
+    ["生年月日が日付でない", (c) => (obj(arr(input(c, "REG-11")["relatives"])[0])["birthDate"] = "not-a-date"), "birthDate（型か値が正しくない"],
+    ["合計所得金額が文字列", (c) => (obj(arr(input(c, "REG-20")["relatives"])[0])["totalIncome"] = "580000"), "totalIncome（型か値が正しくない"],
+    ["合計所得金額が負", (c) => (obj(input(c, "REG-11")["spouse"])["totalIncome"] = -1), "totalIncome（型か値が正しくない"],
+    ["生計一が真偽値でない", (c) => (obj(arr(input(c, "REG-19")["relatives"])[0])["sameHousehold"] = "yes"), "sameHousehold（型か値が正しくない"],
+    ["関係が列挙にない", (c) => (obj(arr(input(c, "REG-19")["relatives"])[0])["relationship"] = "cousin"), "relationship（型か値が正しくない"],
+    ["生存が真偽値でない", (c) => (obj(arr(input(c, "REG-11")["relatives"])[1])["livingAtYearEnd"] = 1), "livingAtYearEnd（型か値が正しくない"],
+    ["納税者の(9)が真偽値でない", (c) => (obj(input(c, "REG-26")["taxpayer"])["declaredAsSourceDeductionRelativeByOtherAndWithheld"] = "no"), "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld（真偽値か"],
+    ["配偶者の(4)が真偽値でない", (c) => (obj(input(c, "REG-24")["spouse"])["spouseWithheldViaSalaryDeclaration"] = "true"), "spouseWithheldViaSalaryDeclaration（型か値が正しくない"],
+    ["親族の並びにobjectでない要素", (c) => arr(input(c, "REG-19")["relatives"]).push("x"), "relatives（objectの並び）"],
+    ["関係の許す値の範囲がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["dependentDeduction"])["eligibility"])[0])["domain"], "domain）がない"],
     ["1つの条件に主語がない", (c) => delete obj(arr(obj(c.data.get("rules/income-tax/jp-2026.json")?.["specificRelativeDeduction"])["eligibility"])[4])["subject"], "subject"],
     ["分からない適用要件で計算する", (c) => (obj(input(c, "REG-11")["spouse"])["sameHousehold"] = "unknown"), "分からない入力があるのにcomputed"],
     ["incompleteなのに結果がすべて分かる", (c) => (obj(caseOf(c.cases, "REG-02")["expected"])["status"] = "incomplete"), "unknownの結果がない"],
