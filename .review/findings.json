@@ -238,7 +238,7 @@
       "id": "PR11-R005",
       "invariant_id": "INV-RECORDS",
       "cause_key": "notice-issuer-identity",
-      "lesson": "正式通知の重複判定は、安定した発行者キーと発行者の種類の整合で行う。表示名の表記差・不明・3件以上での未判断の組を別件とみなして加算しない。 二重登録の取消はsame判断の有無によらずduplicateOfの正規先で類にまとめ、類は正規の通知の種類・年度でちょうど1つの集合に割り当てる。",
+      "lesson": "正式通知の重複判定は、安定した発行者キーと発行者の種類の整合で行う。表示名の表記差・不明・3件以上での未判断の組を別件とみなして加算しない。 二重登録の取消はsame判断の有無によらずduplicateOfの正規先で類にまとめ、類は正規の通知の種類・年度でちょうど1つの集合に割り当てる（正規の通知の年度がunknown・not-statedなら類の値は足さずにその種類のすべての年度に不足として挙げ、残す方がない二重登録はその記録自身の種類・年度の集合に割り当てて集合全体をconflictにする）。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535788",
@@ -466,7 +466,7 @@
       "id": "PR11-R109",
       "invariant_id": "INV-RECORDS",
       "cause_key": "lifecycle-transition-revalidation",
-      "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。 正規IDを変える保存では正規IDに依存するすべての保存条件を再検査し、取込キーなど冪等性のキーは取消後も予約し、保存後に要求範囲へ加わった記録も変化として検知する。",
+      "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。 正規IDを変える保存では正規IDに依存するすべての保存条件を再検査し、取込キーなど冪等性のキーは取消後も予約し、保存後に要求範囲へ加わった記録も変化として検知する。 再検査で記録の保存条件を満たさなくなる保存は拒否し、確定済みの関係は拒否の理由にせず確かめ直して要再確認・前提の崩れにする。記録のIdと版、過去の計算runと履歴は書き換えない（runは入力が変わったと示す）。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
