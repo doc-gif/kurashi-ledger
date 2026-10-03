@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "b54565589be5a5ec5f5a6e90b8688b57fe554645",
+  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
   "task_id": "T26",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -93,6 +93,16 @@
       "description": "PR25-D001（Copilot 4172307621）: docs/development.mdの「弱めて確かめる箇所が1つある」と、列挙した3つの試験のファイルが食い違う。",
       "state": "resolved",
       "resolution": "数を3つにし、各箇所とdiagnosticの文言を列挙する。skipの表と件数の文（check:test-skipsが読む）は変えない。"
+    },
+    {
+      "description": "Copilot 5399809549のr4172383954（PR25-R001の続き）: 終了の合図で、開発時のmiddlewareの処理を待つのをやめていたので、middlewareの非同期の処理がnext()も応答もしないまま続いていても、closeが返る。",
+      "state": "resolved",
+      "resolution": "開発時のmiddlewareを、APIの処理と同じく、応答が終わる（res の finish・close）か next() が呼ばれるまで追跡する。終了の合図では待つのをやめず、まず実行中の処理の完了を待ち、そのあとHTTPの接続を閉じる（接続を閉じると応答はcloseになる）。middlewareには、devRequestContextで中止の合図（AbortSignal）も渡す。応答を返さない遅いmiddlewareで、closeが接続を閉じて応答の終了を待ち、そのあとに処理が残らないことを試験する。upgradeの処理（ソケットは追跡して閉じる）、本文の読込み（合図で503）も同じ観点で確かめる。"
+    },
+    {
+      "description": "Copilot 5399809549のPreviously missed（server.ts:388）: APIの完全一致の振り分けに、ログ用に文字を置き換え200文字で切ったsafePathを使っているので、非ASCII・200文字を超えるパスに届かず、先頭200文字が同じ別のパスが誤って一致しうる。",
+      "state": "resolved",
+      "resolution": "振り分けには、クエリだけを除いた生のパスを使い、safePathはログにだけ使う。登録できるAPIのパスを、登録時に明示的に検証する（/api/で始まる、ASCIIの印字できる文字だけ、%・?・#・バックスラッシュ・空白を含まない、長さの上限1024）。非ASCII（登録で拒否）、200文字を超えるパス、先頭が同じ別のパスの回帰試験を加える。"
     }
   ],
   "assessments": [
