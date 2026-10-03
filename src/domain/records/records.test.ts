@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { expandRecord, type Obj } from "../../../tests/fixtures/ledger/load.ts";
 import { aggregateRecords } from "./aggregate.ts";
 import { combineComparisons, compareFacts, type Comparable } from "./fact.ts";
-import { isIdWithPrefix, uuidV7, uuidV7IdGenerator } from "./ids.ts";
+import { isIdWithPrefix, isLineId, uuidV7, uuidV7IdGenerator } from "./ids.ts";
 import { emptyLedger, latestRevision, revisionsOf, type Ledger } from "./ledger.ts";
 import { canonicalMasterId } from "./masters.ts";
 import { restoreUnchecked, saveRevision, type SaveOutcome } from "./save.ts";
@@ -717,4 +717,69 @@ test("PR28-R002: JSON.parseで作った「__proto__」のown keyも保存の写�
     assert.equal(out.ledger.writeRequests, l.writeRequests);
     assert.equal(out.ledger.importKeys, l.importKeys);
   }
+});
+
+test("PR28-R005: 復元したすべての改訂のimportKeyを履歴全体で予約する", () => {
+  const key = (k: string): Obj => ({ state: "known", value: { source: "架空の口座CSV", key: k } });
+  const imported = (id: string, k: string, extra: Obj = {}): Obj => ({
+    id,
+    recordType: "bank-deposit",
+    entryChannel: "import",
+    importKey: key(k),
+    body: { accountId: "acct_1", depositDate: { state: "known", value: "2026-10-10" }, amount: { state: "known", value: 1000 } },
+    ...extra,
+  });
+  let l = setup();
+  // 版1のK1と、版2で変えたK2（不正な履歴）を復元する。
+  l = restore(l, [imported("dep_a", "K1"), { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", importKey: key("K2") }]);
+  for (const k of ["K1", "K2"]) {
+    const again = save(l, imported("dep_b", k), T0);
+    assert.equal(again.kind, "existing-returned", k);
+    if (again.kind === "existing-returned") {
+      assert.equal(again.recordId, "dep_a");
+      assert.equal(again.ledger, l);
+    }
+    assert.throws(() => restore(l, [imported("dep_c", k)]), /importKey/);
+  }
+  // 正常な履歴（キーを変えない改訂、取消、取消のあとの再取込、同じIDの復元の改訂）は変わらない。
+  let g = setup();
+  g = ok(save(g, imported("dep_1", "K9"), T0));
+  g = ok(save(g, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 1100 } } }, T0));
+  g = ok(save(g, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void" }, T0));
+  const re = save(g, imported("dep_2", "K9"), T0);
+  assert.ok(re.kind === "existing-returned" && re.recordId === "dep_1" && re.voided);
+  g = restore(g, [{ id: "dep_1", recordType: "bank-deposit", revision: 4, reason: "unvoid" }]);
+  assert.equal([...g.importKeys.values()].filter((v) => v === "dep_1").length, 1);
+});
+
+test("PR28-R006: 不正な期間の端（knownでもLocalDateでない）から重ならないと決めない", () => {
+  let l = setup();
+  const term = (id: string, start: Obj, end: Obj): Obj => ({ id, recordType: "employment-term", body: { employerId: "emp_1", applicablePeriod: { start, end } } });
+  const d = (v: string): Obj => ({ state: "known", value: v });
+  // 復元した有効な雇用条件A: startがknownの"zzz"、endは継続中。
+  l = restore(l, [term("term_a", d("zzz"), { state: "not-applicable" })]);
+  const seq = l.saves.length;
+  const b = save(l, term("term_b", d("2026-01-01"), d("2026-12-31")), T0);
+  rejected(b, "employment-term-overlap");
+  assert.equal(b.ledger, l);
+  assert.equal(b.ledger.saves.length, seq);
+  // Aの端を訂正すれば、重ならない保存を受け付ける。
+  const fixed = ok(save(l, { id: "term_a", recordType: "employment-term", revision: 2, reason: "correct-input-error", body: { applicablePeriod: { start: d("2027-01-01"), end: { state: "not-applicable" } } } }, T0));
+  ok(save(fixed, term("term_b", d("2026-01-01"), d("2026-12-31")), T0));
+  // unknownの端は限りなく開き、取消した雇用条件は検査を妨げない（これまでどおり）。
+  let u = setup();
+  u = ok(save(u, term("term_u", { state: "unknown" }, d("2025-12-31")), T0));
+  rejected(save(u, term("term_v", d("2025-06-01"), d("2025-06-30")), T0), "employment-term-overlap");
+  ok(save(u, term("term_w", d("2026-01-01"), d("2026-12-31")), T0));
+  u = ok(save(u, { id: "term_u", recordType: "employment-term", revision: 2, reason: "void" }, T0));
+  ok(save(u, term("term_v", d("2025-06-01"), d("2025-06-30")), T0));
+});
+
+test("Copilot r4172982694: IDと行IDの末尾の改行は、IDとして受け付けない", () => {
+  assert.equal(isIdWithPrefix("dep_1\n", "dep"), false);
+  assert.equal(isIdWithPrefix("dep_1\r", "dep"), false);
+  assert.equal(isIdWithPrefix("dep_1", "dep"), true);
+  assert.equal(isLineId("l1\n"), false);
+  assert.equal(isLineId("l1"), true);
+  assert.equal(isLocalDate("2026-10-10\n"), false);
 });

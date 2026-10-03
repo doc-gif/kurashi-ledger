@@ -121,11 +121,21 @@ export function withRevision(ledger: Ledger, revision: Revision): Ledger {
   revisions.set(revision.id, [...(ledger.revisions.get(revision.id) ?? []), revision]);
   const writeRequests = new Map(ledger.writeRequests);
   writeRequests.set(revision.writeRequestId, revision);
+  // importKeyは履歴全体で予約する（共通の型の9・10）。版1だけでなく、どの改訂に現れたknownのキーも、その記録に予約する
+  // （復元した不正な履歴の版2以降のキーも。PR28-R005）。すでに予約されたキーの持ち主は変えない。
   let importKeys = ledger.importKeys;
-  if (revision.importKey.state === "known" && revision.revision === 1) {
-    const next = new Map(importKeys);
-    next.set(importKeyIndex(revision.recordType, revision.importKey.value), revision.id);
-    importKeys = next;
+  const ik: unknown = revision.importKey;
+  const value = typeof ik === "object" && ik !== null && (ik as { state?: unknown }).state === "known" ? (ik as { value?: unknown }).value : undefined;
+  if (typeof value === "object" && value !== null) {
+    const { source, key } = value as { source?: unknown; key?: unknown };
+    if (typeof source === "string" && typeof key === "string") {
+      const index = importKeyIndex(revision.recordType, { source, key });
+      if (!importKeys.has(index)) {
+        const next = new Map(importKeys);
+        next.set(index, revision.id);
+        importKeys = next;
+      }
+    }
   }
   return { ...ledger, saves: [...ledger.saves, { kind: "revision", revision }], revisions, writeRequests, importKeys };
 }

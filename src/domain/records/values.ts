@@ -101,11 +101,13 @@ export interface OpenInterval {
 }
 
 export function intervalOfPeriod(period: unknown): OpenInterval {
+  // 形の崩れた期間（objectでない等）は、両端とも分からない期間として扱う。
   if (typeof period !== "object" || period === null) return { start: undefined, end: undefined };
   const p = period as { start?: unknown; end?: unknown };
+  // knownでも暦に実在するLocalDateでない端（検査をすり抜けたデータ）は、境界に使わず、分からない端と同じく開く（PR28-R006）。
   const s = knownValue(p.start);
   const e = knownValue(p.end);
-  return { start: typeof s === "string" ? s : undefined, end: typeof e === "string" ? e : undefined };
+  return { start: isLocalDate(s) ? s : undefined, end: isLocalDate(e) ? e : undefined };
 }
 
 // Fact<Period>の期間。期間そのものがunknown・not-statedなら両端とも分からない期間、not-applicableなら期間がない（undefined）。
