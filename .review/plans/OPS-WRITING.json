@@ -42,12 +42,27 @@
       "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
     },
     {
-      "description": "PR #38 overlaps README.md; docs/pr-review-loop.md; docs/project-status.md: T23 Issue #34, record parser required headings/markers and proposed protection status.",
+      "description": "PR #38 overlaps README.md; docs/pr-review-loop.md; docs/review-prevention.md; docs/project-status.md: T23 Issue #34, record parser required headings/markers and proposed protection status.",
       "state": "resolved",
       "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
     },
     {
       "description": "PR #42 overlaps README.md; docs/external-worker.md; docs/github-agent-operations.md; docs/pr-review-loop.md; docs/project-status.md: GitHub App identity/migration boundaries and App review events, preserving the shared-account fallback.",
+      "state": "resolved",
+      "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
+    },
+    {
+      "description": "PR #28 overlaps .github/copilot-instructions.md; AGENTS.md; README.md; docs/github-agent-operations.md; docs/project-status.md: T06 domain/product tests and verification scope.",
+      "state": "resolved",
+      "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
+    },
+    {
+      "description": "PR #29 overlaps README.md; docs/project-status.md: T14 rule framework/income tax and published scope, keeping main facts separate from open-PR claims.",
+      "state": "resolved",
+      "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
+    },
+    {
+      "description": "PR #44 overlaps docs/review-prevention.md: plan schema migration, boundary/variant-analysis tables and red-team/design-first procedures. PR44 implementer explicitly waits for #40/#38 integration before reconciliation and ready handoff.",
       "state": "resolved",
       "resolution": "Integration order: #31 is already merged and must be preserved now; for each remaining open PR, whichever merges later incorporates latest main. Owner: the later PR implementer, without fixed ordering or new task assignment. Completion: compare both PR diffs with resulting main, preserve both meanings, validate links/plan/CI, and obtain an independent review for the new head/base."
     }
@@ -68,17 +83,17 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "Preserve all authorization exceptions and exact protocol evidence. Reassess the complete current finding set (PR40-R001–R006 plus two Copilot findings) before patching, against the cause ledger and design; short prose is not permission to drop conditions.",
+      "reason": "Preserve authorization and evidence while shortening prose. Reassess all PR40-R001–R010 and older Copilot findings against every relevant cause_key before patching; centralize the directly confirmed temporary quota exception without weakening ordinary review conditions.",
       "checks": [
         {
           "id": "duplicates",
-          "method": "Cross-check every finding and past causes PR2-R008, PR11-R112 and PR10-R004 against canonical sources and both templates. Inspect the T23 parser headings without executing another PR.",
-          "expected": "All markers/roles/SHA/plan fields and six handoff headings remain; one cause retains one ID, new regressions are not suppressed, and each fix first checks whole-design compatibility and independent expected outcomes."
+          "method": "Compare all latest findings and INV-REVIEW/INV-TASKS/INV-PRIVACY historical causes with every changed normative entrypoint and both templates. Check whole-design compatibility, prior resolutions, independent expected outcomes and active-versus-superseded decisions; inspect T23 parser only as source.",
+          "expected": "Preserve stable IDs, exact-pair evidence and protocol fields. Stop for conflicting requirements, including a proposed change that reintroduces a resolved defect; do not suppress regressions. Current owner decisions remain canonical; only superseded decisions move to recoverable history. Tax/insurance expectation changes retain their reason and evidence."
         },
         {
           "id": "trust",
-          "method": "Trace the old owner-prefix rule, merge rule and readiness boundaries through all entrypoints; follow each canonical link. Compare polling scope with the public direct-instruction record https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770.",
-          "expected": "First-line owner marker and quotation-only AI use remain; relaxing merge/deletion/deploy/permissions still needs direct confirmation. Merge source is Oct 2 owner decision in operations; review polling is 5 minutes/max 10 excluding dispatcher, implementation baseline stays 10 minutes."
+          "method": "Trace the old owner-prefix rule, merge rule and readiness boundaries through all entrypoints; follow each canonical link. Compare polling scope with the public direct-instruction record https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770. Trace the directly confirmed quota scope and PR40 Claude-role substitution in public records 5970135036/5970160060, and review5401307660, through operations#merge-conditions and linked status/entrypoints.",
+          "expected": "Owner marker/quotation rules remain. Direct owner confirmation is required for any instruction relaxing a rule or expanding authority, with examples rather than a closed list. Operations is the canonical merge/deployment source. Latest-head explicit Copilot quota response alone permits independent exact-pair accepted plus completed non-implementer design fault-finding with no unresolved design defects (Claude accepted for Codex PR40); older findings still need resolution. Preserve normal Copilot re-review verification when available, end the exception on quota recovery and retrospectively re-review affected merges. Review polling stays5min/max10 excluding dispatcher; Claude implementation stays10min."
         }
       ]
     },
@@ -89,8 +104,8 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "Compare changed-file metadata and affected text for PRs #25/#31/#33/#36/#37/#38/#42; preserve merged #31 now, then apply the integration order/owner/completion checks in conflicts at each base update.",
-          "expected": "No open-PR claims become main facts prematurely. Merged mise content is retained. Later implementers reconcile overlap without dropping HTTP tests, Windows scope, contract version, diagnostics, T23 metadata or App authority boundaries."
+          "method": "Compare changed-file metadata and affected text for PRs #25/#28/#29/#31/#33/#36/#37/#38/#42/#44; preserve merged #31 now, then apply the integration order/owner/completion checks in conflicts at each base update.",
+          "expected": "No open-PR claims become main facts prematurely. Merged mise content is retained. Later implementers reconcile overlap without dropping HTTP tests, Windows scope, contract version, diagnostics, T23 metadata or App authority boundaries. Reconcile T06/T14 verification scope, T23 review-prevention changes and PR44 plan/red-team procedures without claiming open work is published or implementing it in this PR."
         },
         {
           "id": "entrypoints",
