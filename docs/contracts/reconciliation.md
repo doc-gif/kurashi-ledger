@@ -125,15 +125,12 @@
 
 | 判断 | 前提に含める属性 |
 | --- | --- |
-| `duplicate-review`の`distinct`（銀行入金） | 2件の`accountId`・`depositDate`・`amount`・`payerHint` |
-| 同（給与明細） | 2件の`employerId`・`paymentKind`・`scheduledPayDate`・`grossPay`・`bankTransferAmount` |
-| 同（年間資料） | 2件の`payerEmployerId`・`documentType`・`targetYear`・`paymentAmount` |
-| 同（正式通知） | 2件の`issuerId`（正規の発行者のID）・`noticeType`・`subjectYear`・`amounts`の決定額の行 |
+| `duplicate-review`の`distinct` | 2件の記録の内容（`body`）のうち、メモ（`note`）を除くすべての項目と、参照するマスタの正規のID。分類（入金の`purpose`、明細の`paymentKind`）、記載どおりの表示（摘要、表題）、金額、日付、支払者・口座・発行者を含む。利用者がどの属性を根拠に別件と見分けたかは記録されないので、根拠になりうる属性を漏らさない（合成例の理由: EX-03の`dcs_301`は入金の`purpose`、EX-04(d)は正式通知の`issuerId`・表題） |
 | `duplicate-review`の`same` | 2件が二重登録の取消をたどって同じ正規の記録に着くこと（上の表）。`same`の根拠は2件が同じ取引・資料であることで、残した側の訂正（同じ取引の写し誤りの訂正）では崩れない |
 | `tax-year-assertion` | 対象の明細の、帰属の候補の年の表の次元に使う項目（上の表） |
 | `annual-adoption`・`mismatch-explanation` | 保存の検証と、項目・支払者ごとの前提（上の表）。そのつど現在の値で検査する |
 
-`distinct`の判断の前提は、重複の候補の比較項目（7）より広い。判断は利用者が2件を別のものと見分けた根拠（発行者・金額・口座等）に頼るので、重複の候補を出すための項目だけでは足りない。例はEX-04(d)の「別の発行者」（発行者が変わったら`distinct`は要確認）。
+`distinct`の判断の前提は、重複の候補の比較項目（7）より広い。判断は利用者が2件を別のものと見分けた根拠（分類・発行者・金額・口座等）に頼るので、重複の候補を出すための項目だけでは足りない。前提の属性が1つも変わらない改訂（メモや把握日だけの改訂）では、既存の`distinct`はそのまま保たれる。前提が崩れた`distinct`は、要確認として表示し、その組は重複の候補に再び出る。利用者が判断を改訂して（`new-information`）確かめ直すと、その改訂の時点の値が新しい前提になり、候補は再び抑制される。例はEX-03の「分類だけを直した場合」とEX-04(d)の「別の発行者」。
 
 ## 5. 年間資料と月次資料（採用と不一致）
 

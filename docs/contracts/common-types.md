@@ -559,10 +559,10 @@
 | `explainedComparisons`の各要素の`coveredPayslips`（同4） | 利用者の操作が作る（判断したときの写し） | 空を許す（結んだ明細がなかった） | 明細の`id` |
 | 集計値の`scope`の`employerIds`・`accountIds`（11） | 利用者の操作が作る | 空は「限定しない」 | `id` |
 | 集計値の`missing`（11） | アプリが作る | 空は不足がない | `ref`と`field`の組 |
-| 計算runの`results`・`roundingSteps`・`missingInputs`・`unconfirmedItems`・`assumptions`・`adoptions`・`inputs`の各並び（[計算結果](calculation-results.md)の1） | 計算器が作る | 空は該当なし | [計算結果](calculation-results.md)の1の「run内の並びの規則」の表 |
+| 計算runの`results`・`roundingSteps`・`missingInputs`・`unconfirmedItems`・`assumptions`・`adoptions`・`inputs`の各並び（[計算結果](calculation-results.md)の1） | 計算器が作る | 空は該当なし（`adoptions`・要求の集計に由来する`missingInputs`が空でよいかは、同1の「必要な写しの集合」で決まる） | [計算結果](calculation-results.md)の1の「run内の並びの規則」の表 |
 | `ResultItem`の`explanationRefs`（同1） | 計算器が作る | 空は該当なし | 参照先の`id`と`line`の組 |
 | `AdoptionSnapshot`の`payers`（同1） | 計算器が作る | 空を許さない | 支払者の`id` |
-| `AdoptionSnapshot`の`comparisons`（同1） | 計算器が作る | 空は比較する項目がない | `field` |
+| `AdoptionSnapshot`の`comparisons`（同1） | 計算器が作る | 空は比較する項目がない（空でよいかは、同1の「必要な写しの集合」で決まる） | `field` |
 
 **計算runの項目の状態（結果の状態ごと）:** 計算runの`Fact`の項目のうち、結果の状態で決まるものを、結果の状態のすべてについてこの1つの表で定める。結果の状態は、[計算結果](calculation-results.md)の2の順序（`failed` > `unsupported` > `incomplete` > `provisional` > `computed`）で1つに決まる。結果の値（`results`の`value`）の状態も、同じ2の表による。
 

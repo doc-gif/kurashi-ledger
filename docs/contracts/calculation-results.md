@@ -18,7 +18,7 @@
 | `roundingSteps` | `order` | 適用した順（`order`の連番の順に並べる。下の`RoundingStep`） |
 | `assumptions` | `key` | 意味はない。同じ`key`の仮定を2つ持たない |
 | `missingInputs` | `field`と`ref`の組 | 意味はない |
-| `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`）。スナップショットの中の`payers`は支払者の`id`、`comparisons`は`field`で一意 | 意味はない |
+| `adoptions` | `year`と、`payers`の各支払者の組（同じ組は1つのスナップショットにだけ現れる。下の`AdoptionSnapshot`）。スナップショットの中の`payers`は支払者の`id`、`comparisons`は`field`で一意。組の集合と比較の項目は、下の「必要な写しの集合」と過不足なく一致させる | 意味はない |
 | `inputs.records`・`inputs.allocations`・`inputs.decisions` | 参照先の`id`（`allocations`・`decisions`は要素の`ref`の`id`。1つのrunでは、同じ記録を1つの版でだけ参照する。下の「入力の閉包と推移的な固定」） | 意味はない |
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
 | `inputs.requests` | `kind`と中身の全体（同じ要求を重ねない） | 意味はない |
@@ -94,6 +94,19 @@
 | `requests` | `List<InputRequest>` | 入力の要求の写し（1の「入力の閉包と推移的な固定」の根）。`InputRequest`は`kind`で判別する: `aggregate`（`key`: `AggregateKey`、`scope`: 集計値の`scope`と同じ形。[共通の型](common-types.md)の11）か、`records`（`recordType`と、`target`の年・年度と重なる適用期間。端が分からない期間は[共通の型](common-types.md)の6の「端が分からない期間の扱い」で重なりを決める）。一意のキーは`kind`と中身の全体 |
 
 `AdoptionSnapshot`: `year`（`CalendarYear`）、`payers`（`List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない）、`selection`（`annual-document・entered-payslips・no-annual-document・adoption-needed`）、`adoptedRef`（`Fact<Ref>`。`annual-document`の場合だけ、版を固定。指せるのは、`targetYear`が`year`と同じで、範囲が確定していて、その範囲が`payers`と同じ集合である年間資料だけで、照合の規則の5でその年・支払者に選ばれた資料と同じであること（年間資料の値は範囲全体の分けられない合計なので、範囲の一部の支払者だけのスナップショットに年間資料を固定しない。範囲の一部だけの集計は照合の規則の5の`partial-scope`）。[共通の型](common-types.md)の2の「参照先の種類・粒度・次元」）、`coverage`（`Fact<annual-document・entered-records-only>`。`adoption-needed`の場合は`not-applicable`）、`comparisons`（`List<{ field: 年間資料の金額の項目名, state: rule-pending・no-coverage・incomplete・match・mismatch-unresolved・mismatch-explained }>`。項目ごとの比較の状態で、同じ`field`を2回含まない。1つの項目の比較の状態は1つに決まる（[照合の規則](reconciliation.md)の5）ため）。2つの並びの一意のキーは、[共通の型](common-types.md)の12の並びの表による（重なるスナップショットを持つrunは保存しない）。1つのrunの`adoptions`では、同じ年・同じ支払者の組は、ちょうど1つの`AdoptionSnapshot`にだけ現れる（同じ`year`のスナップショットどうしで`payers`が重ならない。照合の規則では、選択は年・支払者ごとに1つのため。保存の検査）。`selection`ごとの`adoptedRef`と`coverage`の状態は1つに決まる（[共通の型](common-types.md)の12）: `annual-document`なら`adoptedRef`は`known`（版を固定）で`coverage`は`annual-document`、`entered-payslips`と`no-annual-document`なら`adoptedRef`は`not-applicable`で`coverage`は`entered-records-only`、`adoption-needed`ならどちらも`not-applicable`。
+
+**必要な写しの集合（1つの規則）:** runが持つ導いた結果の写し（`adoptions`、各`AdoptionSnapshot`の`comparisons`、`inputs.decisions`の`itemPremisesAtRun`、要求の集計に由来する`missingInputs`）は、入力の要求（`inputs.requests`）と閉包から一意に決まる**必要な集合**と、過不足なく一致しなければならない。重複がないことだけでは、欠けた要素を見つけられないため。保存のときに、runを作る処理は必要な集合を求め直し、写しと比べる。
+
+| 写し | 必要な集合 |
+| --- | --- |
+| `adoptions`の（`year`、支払者）の組 | `kind`が`annual-value`の要求の、軸の範囲のすべての年と、`scope`のすべての支払者（正規のID。`scope`が空なら、その時点の有効な雇用先のすべて）の組。さらに、そのうち選択が年間資料の組には、その年間資料の範囲のすべての支払者の組を加える（スナップショットの`payers`は範囲と同じ集合にするため。範囲の一部だけを要求した集計は、照合の規則の5の`partial-scope`のまま）。`annual-value`の要求がなければ空 |
+| 各`AdoptionSnapshot`の`comparisons`の`field` | `selection`が`annual-document`なら、その年の`annual-value`の要求の`item`のすべて。それ以外の`selection`なら空 |
+| `inputs.decisions`の各要素の`itemPremisesAtRun`の`item` | `mismatch-explanation`なら`explainedComparisons`の`field`のすべて、`annual-adoption`なら`scope.payers`のすべて（正規のID）。ほかの種類は空 |
+| 要求の集計に由来する`missingInputs` | 要求ごとの集計（[共通の型](common-types.md)の11）の`missing`の行のすべて。計算器の入力の不足（`calculator-input`）は、計算器がこれに足してよい |
+
+- 必要な集合より少ない（スナップショット・支払者・比較の項目・不足の行が欠けた）runも、多い（要求していない年・支払者・項目を含む）runも保存しない。
+- 年間資料が複数の支払者を範囲に含む場合は、従来どおり、範囲と同じ集合の`payers`を持つスナップショット1つで表し、ほかのスナップショットに同じ組を重ねない（1の「run内の並びの規則」）。年間資料の値は1回だけ数える。
+- 例は[合成例](examples.md)のEX-06(d)。
 
 `Assumption`: `key`（`Text`。run内で一意。1の「run内の並びの規則」）、`valueType`（`text・decimal・yen`）、`value`（`valueType`に合う値）、`source`（`user・forecast・rule-default`）、`ref`（`Fact<Ref>`。予測の行等。`revision`は整数（固定した写し））。
 
