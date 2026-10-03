@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "4a8667ba7dfa5b7bd55625bb7ea2bed96bfdc126",
+  "base_sha": "aa38a32ee33e9191e8f43230401ea5452a8ada03",
   "task_id": "T05",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -114,7 +114,7 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "CIのログ・step summary・Playwrightの出力・試験のデータは合成のものだけにし、秘密を使わない。workflowはsecretsを参照せず、checkoutはpersist-credentials: falseで、artifactをuploadしない。Playwrightのtrace・screenshot・videoは作らない。step summaryには試験の名前・skipの理由・diagnostic・版・SHAだけを書く。公開検査はCI=trueでファイル名を伏せて実行する。新しい外部への送信はない（取得だけ: Node.js、Pythonの配布物、npmのregistry、Playwrightのブラウザの配布）。",
+      "reason": "CIのログ・step summary・Playwrightの出力・試験のデータは合成のものだけにし、秘密を使わない。workflowはsecretsを参照せず、checkoutはpersist-credentials: falseで、artifactをuploadしない。Playwrightのtrace・screenshot・videoは作らない。step summaryには試験の名前・skipの理由・diagnostic・版・SHAだけを書く。公開検査はCI=trueでファイル名を伏せて実行する。新しい外部への送信はない（取得だけ: Node.js、Pythonの配布物、npmのregistry、Playwrightのブラウザの配布）。 base aa38a32（PR #16）で加わったPR12-R002（公開検査の場所の規則を.gitignoreと一致させる）に照らすと、T05が.gitignoreに加えた`/test-results/`は、`dist/`・`coverage/`と同じ生成物の出力先で、実データの置き場所の規則や例外ではない（公開検査の規則・例外は変えていない）。Playwrightのtrace・screenshot・videoは作らず、出力先の中身も公開しない。",
       "checks": [
         {
           "id": "public",
@@ -126,7 +126,7 @@
     {
       "id": "INV-RECORDS",
       "disposition": "not-applicable",
-      "reason": "e2e/はブラウザ試験の基盤で、記録・照合・計算・金額の状態を扱わない。最初の試験は合成の固定の文字列とcookieの往復だけで、金額や給与・入金の意味を持たない。T01の契約とT03の期待値に触れない。",
+      "reason": "e2e/はブラウザ試験の基盤で、記録・照合・計算・金額の状態を扱わない。最初の試験は合成の固定の文字列とcookieの往復だけで、金額や給与・入金の意味を持たない。T01の契約とT03の期待値に触れない。 base aa38a32（PR #16）で加わったPR10-R001〜R003・R101（UIの状態）は、e2e/がUIの部品を持たないので当たらない。PR11-R108（正本の書き写し）は、skipの表の試験の名前を正本とし、試験のファイルの名前との一致を試験で確かめる形で守っている。",
       "checks": [
         {
           "id": "meaning",
@@ -143,7 +143,7 @@
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。 最初のCI（run 37087512129）で、WindowsだけT02のscripts/install-record.test.tsの21件が失敗した。原因は試験の合成の環境で、照合に渡す実行環境はdarwinに固定しているのに、.binの実行ファイルのリンクを実際のOS（Windows）に合わせて.cmdのshimだけにしていたこと（darwinの照合は拡張子のない名前を見る）。製品のコード（scripts/lib/install-record.ts）は正しく、実際のnpmを使うscripts/setup.test.tsと、CIの`npm run setup`・`check:install`はWindowsで通った。試験の合成のnpmを、Windowsの実際のnpm（cmd-shim）と同じく、拡張子のないshim（通常のファイル）と.cmdのshimを置く形に直す。照合の判定や期待結果は変えない（.cmdだけのときにwin32の実行環境で通ることは、既存の試験が全OSで確かめている）。 T02の試験（setup-lock・setup・install-record）のskipの理由の文字列と注記は、手での確認の参照先をT05から#19へ直すだけで、skipの条件・試験の中身は変えない。",
+      "reason": "T05は依存（@playwright/test 1.63.0とその依存のplaywright・playwright-core、Apache-2.0、インストールスクリプトなし）をlockfileに加える。これで依存の導入の記録の入力（package.json・lockfile）が変わるので、各worktreeは`npm run setup`をやり直す（ADR-0008のとおり照合が止まる）。CIは`npm ci`を直接使わず`npm run setup`で導入し、`check:install`と`build`（記録の確認）を固定の版で実行する。Node.jsの版はpackage.jsonのdevEngines（setup-nodeのnode-version-file）から取り、npm自身もdevEnginesで検査する。Playwrightのブラウザは`playwright install`でnode_modulesの外（利用者のキャッシュ）に入り、記録とlockfileの照合に影響しない。dist/とmanifest（T08）は作らない。 最初のCI（run 37087512129）で、WindowsだけT02のscripts/install-record.test.tsの21件が失敗した。原因は試験の合成の環境で、照合に渡す実行環境はdarwinに固定しているのに、.binの実行ファイルのリンクを実際のOS（Windows）に合わせて.cmdのshimだけにしていたこと（darwinの照合は拡張子のない名前を見る）。製品のコード（scripts/lib/install-record.ts）は正しく、実際のnpmを使うscripts/setup.test.tsと、CIの`npm run setup`・`check:install`はWindowsで通った。試験の合成のnpmを、Windowsの実際のnpm（cmd-shim）と同じく、拡張子のないshim（通常のファイル）と.cmdのshimを置く形に直す。照合の判定や期待結果は変えない（.cmdだけのときにwin32の実行環境で通ることは、既存の試験が全OSで確かめている）。 T02の試験（setup-lock・setup・install-record）のskipの理由の文字列と注記は、手での確認の参照先をT05から#19へ直すだけで、skipの条件・試験の中身は変えない。 base aa38a32（PR #16）で加わったPR12-R001・R101・R102（setupの排他、後始末の失敗経路、記録の照合の範囲）は、T05がsetup・記録の製品のコードを変えないので当たらない（T02の試験の合成のnpmの.binの形だけを直した）。PR12-R103（固定した版と対象OSで検証し、失敗・未実行を成功と扱わず、警告を隠す環境変数で素通りさせない）は、T05のCIの目的そのもので、固定の範囲のNode.jsで3つのOSに実行し、Quality gate・skipの照合・期待した失敗の検出で失敗・未実行を成功にしない。CIはNODE_OPTIONS等を設定せず、入れ子で起動する試験（runtime・skipの照合・ブラウザの照合の回帰試験）はNODE_で始まる環境変数を外して起動する。",
       "checks": [
         {
           "id": "update",
@@ -177,7 +177,7 @@
     {
       "id": "INV-ROOT",
       "disposition": "not-applicable",
-      "reason": "T05はデータルートの検査と作成（ADR-0006のG1・G2、T07・T09）を扱わない。CIと試験は、checkoutと一時ディレクトリだけを使う。",
+      "reason": "T05はデータルートの検査と作成（ADR-0006のG1・G2、T07・T09）を扱わない。CIと試験は、checkoutと一時ディレクトリだけを使う。 base aa38a32（PR #16）で加わったPR12-R104（削除・上書きの前にリンクをたどらない）に照らすと、T05の試験が消すのは、自分がmkdtempで作った一時ディレクトリだけで、リポジトリやworktreeの中のものを消さない。skipの照合のCLIは読むだけで、ディレクトリをたどるときもリンク（Direntのsymlink）をたどらない。",
       "checks": [
         {
           "id": "first-use",
@@ -216,7 +216,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。完了の条件: Windowsの実機の3つの確認は、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達。所有者本人の確認はPR18-O001で依頼中）でT05の受入から外し、Issue #19（依存のない独立したIssueで、T26・T28をブロックしない）で行う。T05の受入はCIでの照合までで、PR #18は#17を閉じる（Closes #17）。",
+      "reason": "T05はT02（mainに統合済み）だけに依存し、package.jsonとlockfileをT02→T05（Playwright）→T26→T08の順で変える。T26・T08が加える試験が全OSで実行されるよう、npm testの対象をsrc/・tests/の*.test.tsにも広げ、ブラウザ試験はe2e/の*.spec.tsを全OSで実行する（INV-HTTP・INV-RECORDSの既知のパスe2e/**に合わせた）。CIができたことを、README・AGENTS・状態資料・実装計画・テスト方針・公開範囲（public-data）・SECURITY・GitHub運用・review-prevention・review_guardのREADME・Copilotの指示で同じ内容に直す（PR10-R004の教訓）。ブラウザは e2e/browsers.ts の1か所で決め、Playwrightの設定・照合・ブラウザの導入（npm run test:browser:install）が同じものを使う。完了の条件: Windowsの実機の3つの確認は、2026-10-03の所有者決定（実装側のチャットで、調整係が伝達。所有者本人の確認はPR18-O001で依頼中）でT05の受入から外し、Issue #19（依存のない独立したIssueで、T26・T28をブロックしない）で行う。T05の受入はCIでの照合までで、PR #18は#17を閉じる（Closes #17）。 base aa38a32（PR #16）で更新されたPR2-R003（後続へ残す判断は、依存・決める担当・受入条件を台帳に書く）は、Windowsの実機の確認を#19（依存なし、T26・T28をブロックしない）として台帳のT05に書いた形で守る。PR2-R008（成果物のディレクトリのREADME等の運用手順も入口として照合）とPR10-R004（状態資料をまとめて更新）は、tools/review_guard/README.md・状態資料・台帳・ADR一覧を同じPRで直した形で守る。",
       "checks": [
         {
           "id": "dependencies",
@@ -300,7 +300,23 @@
           "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
         }
       ],
-      "history": []
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
     },
     "INV-RECORDS": {
       "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
@@ -404,7 +420,8 @@
             "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
             "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
             "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954"
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954",
+            "https://github.com/doc-gif/kurashi-ledger/pull/14#discussion_r4170901342"
           ]
         },
         {
@@ -579,7 +596,8 @@
             "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
             "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
             "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279"
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530273"
           ]
         },
         {
@@ -616,6 +634,49 @@
             "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345106",
             "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434527"
           ]
+        },
+        {
+          "id": "PR10-R001",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "focus-target-per-element",
+          "lesson": "フォーカスの表示と状態は値ではなくフォーカスできる要素ごとに定め、表示しない要素（不明を許さない項目のチェックボックス等）へのフォーカス状態を組合せから除く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245148",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167691997"
+          ]
+        },
+        {
+          "id": "PR10-R002",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "design-implementation-correspondence",
+          "lesson": "Figma・トークン・CSS・外部の形式の対応は、実装で同じ表示を再現できる方式・寸法の定義・検証条件として一意に書き、「1対1」や標準への準拠などの主張は実物と照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245244",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245294",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394218551"
+          ]
+        },
+        {
+          "id": "PR10-R003",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unknown-state-accessibility-semantics",
+          "lesson": "不明の値とError・Disabled等の状態の組合せごとに、読み上げ・エラー文の関連付け・保存時のフォーカス先を定め、共通の規則と矛盾させないか、その組合せを無効にする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394143877",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167923590"
+          ]
+        },
+        {
+          "id": "PR10-R101",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "ui-contract-state-mapping",
+          "lesson": "UI部品の値の状態（空欄・金額・0・不明）は契約の金額の状態へ一意に対応付け、保存しない編集中の状態を決め、保存して再表示した状態が黙って変わらないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395958798"
+          ]
         }
       ]
     },
@@ -641,6 +702,52 @@
             "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
             "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
             "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        },
+        {
+          "id": "PR12-R001",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "PR12-R101",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "cleanup-failure-path-contract",
+          "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+          ]
+        },
+        {
+          "id": "PR12-R102",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        },
+        {
+          "id": "PR12-R103",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "verification-on-target-runtime",
+          "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
           ]
         }
       ]
@@ -760,6 +867,17 @@
           "sources": [
             "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
           ]
+        },
+        {
+          "id": "PR12-R104",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "destructive-op-follows-link",
+          "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+          ]
         }
       ]
     },
@@ -808,20 +926,22 @@
           "id": "PR2-R003",
           "invariant_id": "INV-TASKS",
           "cause_key": "dependency-before-consumer",
-          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
           "sources": [
             "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197"
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
           ]
         },
         {
           "id": "PR2-R008",
           "invariant_id": "INV-TASKS",
           "cause_key": "entrypoint-order",
-          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
           "sources": [
             "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
           ]
         },
         {
@@ -842,6 +962,22 @@
           "sources": [
             "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
             "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
           ]
         }
       ]
