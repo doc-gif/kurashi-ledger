@@ -155,8 +155,8 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - **提案のPRはそのままマージしない。** 提案のPRはPRの計画（`.review/plans/`）を含まないので、CIの`review plan`と`Quality gate`が失敗する。これは意図した状態で、例外は作らない。auto-merge・`@dependabot merge`は使わない。Dependabotのbranchへpushしない（ほかの担当のbranchへpushしない規約。Dependabotがbranchを作り直すと、足した変更が消える）。
 - 採用の手順:
   1. 所有者または調整係が、採用の担当を割り当てる（タスクID`DEPS`。セキュリティ更新を先に割り当てる）。npmの更新は`package.json`とlockfileを変えるので、ほかのタスク（T08等）がそれを使っている間は待つ。
-  2. 担当は、最新のmainから自分のbranch（例: `task/deps-20261012-claude`）を作り、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。
-  3. 計画`.review/plans/DEPS-<日付>.json`を先にcommitする（[修正前の整合確認](review-prevention.md)）。
+  2. 担当は、最新のmainから自分のbranch（例: `task/deps-20261012-claude`）を作り、**提案のcommitを取り込む前に**、計画`.review/plans/DEPS-<日付>.json`をcommitする（[修正前の整合確認](review-prevention.md)の「変更前の手順」の5の順序）。予定のパスは、提案のPRの変更したファイル（`gh pr diff <番号> --name-only`等で、checkoutせずに読む）。
+  3. 計画のcommitのあとで、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。
   4. 変更の内容（リリースノート）、lockfileの`resolved`が`https://registry.npmjs.org/`だけであること、新しくインストールスクリプトを持つ依存がないこと（lockfileの`hasInstallScript`）、ライセンスを確かめてPRに書く。actionの更新では、新しいSHAが公式のリポジトリのタグを指すことを確かめる。`npm run setup`と3つのOSのCIを通す。
   5. Draft PR→別の担当の内容レビュー→[AGENTS.md](../AGENTS.md)のマージの条件、の通常の流れで進める。
   6. 採用のPRがマージされたら、提案のPRに採用のPRのリンクを書いて閉じる。採用しない場合は理由を書いて閉じる。続けて止めたい依存は、`@dependabot ignore`ではなく`.github/dependabot.yml`を変える（設定をレビューに載せるため）。
