@@ -2,14 +2,72 @@
 // 検査に当たらないよう、試験の中で文字列を組み立てる。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { inspectIndexEntry, inspectPublicFile, pathFindings, textFindings } from './lib/public-policy.ts';
+import {
+  BLOCKED_EXTENSION_KEYS,
+  SYNTHETIC_LOCATIONS,
+  inspectIndexEntry,
+  inspectPublicFile,
+  pathFindings,
+  textFindings,
+} from './lib/public-policy.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const text = (s: string) => new TextEncoder().encode(s);
+
+// 除外する拡張子（実装とは別に、ここで書き出す）。実装・.gitignore・docs/public-data.mdと一致することを
+// 下の試験で確かめる。例外の場所で許すのは、tests/fixtures/のcsv・pdf・png・jpg・jpegと、design/の
+// png・jpg・jpegだけ。
+const EXPECTED_BLOCKED_EXTENSIONS = [
+  // 文書
+  'pdf', 'doc', 'docx', 'odt', 'rtf', 'pages',
+  // 画像（スマートフォンの写真、スキャン、スクリーンショット）
+  'png', 'jpg', 'jpeg', 'jfif', 'heic', 'heif', 'webp', 'gif', 'tif', 'tiff', 'bmp', 'avif', 'dng',
+  // 表計算・表形式
+  'csv', 'tsv', 'xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'numbers',
+  // 金融機関の明細の書き出し
+  'ofx', 'qfx', 'qif', 'qbo',
+  // メールの書き出し
+  'eml', 'msg', 'mbox',
+  // アーカイブ・圧縮
+  'zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst',
+  // ログ、鍵・証明書、暗号化したバックアップ、DB
+  'log', 'pem', 'key', 'p12', 'pfx', 'age', 'db', 'sqlite',
+];
+const EXCEPTIONS: Record<string, readonly string[]> = {
+  'tests/fixtures/': ['csv', 'pdf', 'png', 'jpg', 'jpeg'],
+  'design/': ['png', 'jpg', 'jpeg'],
+};
+
+// 拡張子ごとの見本: 直下、深い階層、大文字、先頭だけ大文字、同じ名前のディレクトリ（中のファイルと、
+// ディレクトリの項目そのもの）、例外の場所の中（許す種類以外は拒否、許す種類は大文字でも許す）。
+function extensionSamples(): { blocked: string[]; allowed: string[] } {
+  const blocked: string[] = [];
+  const allowed: string[] = [];
+  for (const ext of EXPECTED_BLOCKED_EXTENSIONS) {
+    const upper = ext.toUpperCase();
+    const capital = ext.charAt(0).toUpperCase() + ext.slice(1);
+    blocked.push(
+      `statement.${ext}`,
+      `a/b/c/d/statement.${ext}`,
+      `STATEMENT.${upper}`,
+      `docs/Statement.${capital}`,
+      `docs/scans.${ext}/readme.md`,
+      `src/scans.${ext}/`,
+    );
+    for (const [location, permitted] of Object.entries(EXCEPTIONS)) {
+      const inside = [`${location}sample.${ext}`, `${location}deep/er/SAMPLE.${upper}`];
+      if (permitted.includes(ext)) allowed.push(...inside);
+      else blocked.push(...inside);
+      blocked.push(`${location}scans.${ext}/readme.md`, `${location}scans.${ext}/`);
+    }
+  }
+  return { blocked, allowed };
+}
+const EXTENSION_SAMPLES = extensionSamples();
 
 // .gitignoreと公開検査の両方で「公開しない」になる見本と、両方で許す見本。
 // 末尾が / の見本はディレクトリ（submoduleのgitlink等）として扱う。
@@ -102,6 +160,7 @@ const BLOCKED_PATHS = [
   'tests/fixtures/.env.example/records.csv',
   '.kurashi-ledger-setup.lock/',
   '.kurashi-ledger-setup.lock/notes.txt',
+  ...EXTENSION_SAMPLES.blocked,
 ];
 const ALLOWED_PATHS = [
   'src/domain/evidence/evidence-ref.ts',
@@ -137,6 +196,24 @@ const ALLOWED_PATHS = [
   'tests/fixtures/',
   'config/deep/.env.example',
   'tests/fixtures/.env.example',
+  // ソース・文書・設定に要る形式は、拡張子では除外しない（中身の検査だけを当てる）。
+  'docs/diagram.svg',
+  'design/icons/check.svg',
+  'design/tokens.json',
+  'src/ui/App.tsx',
+  'src/ui/styles.css',
+  'index.html',
+  'config/settings.yml',
+  'docs/README.MD',
+  'tests/fixtures/payroll.json',
+  'tests/fixtures/notice.txt',
+  'tests/fixtures/statement.xml',
+  // 拡張子の文字列を名前の途中に含むだけのものは許す。
+  'docs/gif-guide.md',
+  'src/msg/format.ts',
+  'src/infrastructure/backups/tar.ts',
+  'scripts/key-rotation.md',
+  ...EXTENSION_SAMPLES.allowed,
 ];
 
 function kindOf(sample: string): ['file' | 'directory', string] {
@@ -152,6 +229,16 @@ test('実データ・出力・鍵・バックアップになりうる場所と�
     const [kind, path] = kindOf(sample);
     assert.deepEqual(pathFindings(path, kind), [], sample);
   }
+});
+
+test('除外する拡張子の一覧は、試験・実装・例外の場所・docs/public-data.mdで一致する', () => {
+  assert.deepEqual([...BLOCKED_EXTENSION_KEYS].sort(), [...EXPECTED_BLOCKED_EXTENSIONS].sort());
+  assert.deepEqual(
+    Object.fromEntries(SYNTHETIC_LOCATIONS.map((l) => [l.prefix, [...l.extensions].sort()])),
+    Object.fromEntries(Object.entries(EXCEPTIONS).map(([k, v]) => [k, [...v].sort()])),
+  );
+  const doc = readFileSync(join(repoRoot, 'docs', 'public-data.md'), 'utf8');
+  for (const ext of EXPECTED_BLOCKED_EXTENSIONS) assert.ok(doc.includes(`\`.${ext}\``), `docs/public-data.mdに .${ext} がない`);
 });
 
 test('.gitignoreと公開検査の置き場所の規則が一致する', () => {

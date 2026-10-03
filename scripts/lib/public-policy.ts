@@ -14,23 +14,37 @@ export const ROOT_PRIVATE_DIRS: readonly string[] = [
   'backups',
 ];
 
-// どの階層でも公開しない拡張子。名前は小文字で比べる。
-const BLOCKED_EXTENSIONS: readonly { readonly key: string; readonly pattern: RegExp }[] = [
-  { key: 'pdf', pattern: /\.pdf$/i },
-  { key: 'png', pattern: /\.png$/i },
-  { key: 'jpg', pattern: /\.jpg$/i },
-  { key: 'jpeg', pattern: /\.jpeg$/i },
-  { key: 'heic', pattern: /\.heic$/i },
-  { key: 'csv', pattern: /\.csv$/i },
-  { key: 'xlsx', pattern: /\.xlsx$/i },
-  { key: 'zip', pattern: /\.zip$/i },
-  { key: 'log', pattern: /\.log$/i },
-  { key: 'pem', pattern: /\.pem$/i },
-  { key: 'key', pattern: /\.key$/i },
-  { key: 'age', pattern: /\.age$/i },
-  { key: 'db', pattern: /\.db(?:-[^/]*)?$/i },
-  { key: 'sqlite', pattern: /\.sqlite[^/]*$/i },
+// どの階層でも公開しない拡張子（大文字小文字を区別しない）。実データ（給与明細・通知書の画像やスキャン、
+// 銀行・カードの明細の書き出し、表計算、メール、バックアップ）になりうるが、ソース・文書・設定には要らない
+// 形式を、種類ごとに並べる。json・md・svg・ts・txt・xml等は、ソースと文書に要るので除外しない
+// （中身の検査だけを当てる。docs/public-data.md）。変更するときは、.gitignore・docs/public-data.md・
+// 試験の見本を同じPRで直す。
+const BLOCKED_EXTENSION_GROUPS: readonly { readonly label: string; readonly extensions: readonly string[] }[] = [
+  { label: '文書', extensions: ['pdf', 'doc', 'docx', 'odt', 'rtf', 'pages'] },
+  {
+    label: '画像',
+    extensions: ['png', 'jpg', 'jpeg', 'jfif', 'heic', 'heif', 'webp', 'gif', 'tif', 'tiff', 'bmp', 'avif', 'dng'],
+  },
+  { label: '表計算・表形式', extensions: ['csv', 'tsv', 'xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'numbers'] },
+  { label: '金融機関の明細の書き出し', extensions: ['ofx', 'qfx', 'qif', 'qbo'] },
+  { label: 'メールの書き出し', extensions: ['eml', 'msg', 'mbox'] },
+  { label: 'アーカイブ・圧縮', extensions: ['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst'] },
+  { label: 'ログ', extensions: ['log'] },
+  { label: '鍵・証明書', extensions: ['pem', 'key', 'p12', 'pfx'] },
+  { label: '暗号化したバックアップ', extensions: ['age'] },
 ];
+
+// 名前は小文字にしてから比べる。DBは付随するファイル（-wal、-journal等）も含める。
+const BLOCKED_EXTENSIONS: readonly { readonly key: string; readonly pattern: RegExp }[] = [
+  ...BLOCKED_EXTENSION_GROUPS.flatMap((group) =>
+    group.extensions.map((key) => ({ key, pattern: new RegExp(`\\.${key}$`) })),
+  ),
+  { key: 'db', pattern: /\.db(?:-[^/]*)?$/ },
+  { key: 'sqlite', pattern: /\.sqlite[^/]*$/ },
+];
+
+/** 除外する拡張子の一覧（文書と試験の見本のため）。DBの付随ファイルの形は含めない。 */
+export const BLOCKED_EXTENSION_KEYS: readonly string[] = BLOCKED_EXTENSIONS.map((e) => e.key);
 
 // 合成データ・デザイン資産だけを置く場所（リポジトリ直下からのディレクトリ）と、そこで許す拡張子。
 // 例外は、この場所の下にある通常のファイルの、最後の名前の拡張子にだけ当てる（.gitignoreと同じ）。

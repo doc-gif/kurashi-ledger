@@ -57,6 +57,20 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 
 `npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
 
+### 環境によって飛ばす試験
+
+`npm test`は、試験の中で再現できない環境では、次の試験を理由を出して飛ばす（`node --test`の出力に`# SKIP`と理由が出る）。飛ばした分は、T05の受入条件の手での確認（[タスク台帳](implementation-tasks.md)のT05）で確かめる。飛ばす試験を増やすときは、この表とT05の手での確認を同じPRで直す。想定と違う件数のskipは、成功として扱わない。
+
+| 環境 | 飛ばす試験（件数） | 理由 | 代わりの確認（T05） |
+| --- | --- | --- | --- |
+| Windows | `scripts/setup-lock.test.ts`の実際のシグナルの3件（setupだけへの`SIGINT`、プロセスグループへの`SIGINT`、`SIGTERM`・`SIGHUP`）、`scripts/setup.test.ts`の実際のnpmでのCtrl+C相当の1件 | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（`kill`は強制終了になる）。`SIGTERM`・`SIGHUP`は、Windowsのsetupが受けるシグナルではない | 実機のコンソールで、`npm ci`の最中にCtrl+C（130）とCtrl+Break（149）を押し、記録も作業中の印も残らず、続けて`npm run setup`が進むこと |
+| Windows | `scripts/install-record.test.ts`の、印を消せないときの1件 | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | 別のPowerShellで印を削除できない共有の指定で開いたまま（`$f = [System.IO.File]::Open("$PWD\.kurashi-ledger-setup.lock", 'Open', 'Read', 'Read')`）、`npm ci`の最中にCtrl+Cを押し、130で終わり、印が残ったことと消し方が表示されること。`$f.Close()`のあと印を消すと、`npm run setup`が進むこと |
+| macOS・Linuxのroot | `scripts/install-record.test.ts`の、印を消せないときの1件 | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipの件数を記録する（GitHubのhosted runnerは一般のユーザー） |
+
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。
+
+飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。T05のWindowsのCIでは、出力にこの旨が出たかを記録する。
+
 ## npmの設定（`.npmrc`）
 
 - `ignore-scripts=true`: 依存のインストールスクリプトを動かさない（ADR-0002）。npmの仕様で、`npm run`で指定したスクリプトは動くが、`prebuild`のようなpre/postスクリプトは動かない。`package.json`のscriptsにpre/postを使わず、必要な確認はスクリプトの中で行う。スクリプトが必要な依存を入れる場合は、理由を確かめてから個別に扱う（ADR-0002）。

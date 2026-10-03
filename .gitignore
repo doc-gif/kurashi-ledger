@@ -26,21 +26,70 @@ Thumbs.db
 /[eE][vV][iI][dD][eE][nN][cC][eE]/
 /[eE][xX][pP][oO][rR][tT][sS]/
 /[bB][aA][cC][kK][uU][pP][sS]/
+# 実データになりうるが、ソース・文書・設定に要らない形式（scripts/lib/public-policy.tsと同じ一覧）。
+# json・md・svg・ts・txt・xml等は、ソースと文書に要るので除外しない（docs/public-data.md）。
+# 文書
 *.[pP][dD][fF]
+*.[dD][oO][cC]
+*.[dD][oO][cC][xX]
+*.[oO][dD][tT]
+*.[rR][tT][fF]
+*.[pP][aA][gG][eE][sS]
+# 画像
 *.[pP][nN][gG]
 *.[jJ][pP][gG]
 *.[jJ][pP][eE][gG]
+*.[jJ][fF][iI][fF]
 *.[hH][eE][iI][cC]
+*.[hH][eE][iI][fF]
+*.[wW][eE][bB][pP]
+*.[gG][iI][fF]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
+*.[bB][mM][pP]
+*.[aA][vV][iI][fF]
+*.[dD][nN][gG]
+# 表計算・表形式
 *.[cC][sS][vV]
+*.[tT][sS][vV]
 *.[xX][lL][sS][xX]
+*.[xX][lL][sS]
+*.[xX][lL][sS][mM]
+*.[xX][lL][sS][bB]
+*.[oO][dD][sS]
+*.[nN][uU][mM][bB][eE][rR][sS]
+# 金融機関の明細の書き出し
+*.[oO][fF][xX]
+*.[qQ][fF][xX]
+*.[qQ][iI][fF]
+*.[qQ][bB][oO]
+# メールの書き出し
+*.[eE][mM][lL]
+*.[mM][sS][gG]
+*.[mM][bB][oO][xX]
+# アーカイブ・圧縮
+*.[zZ][iI][pP]
+*.7[zZ]
+*.[rR][aA][rR]
+*.[tT][aA][rR]
+*.[gG][zZ]
+*.[tT][gG][zZ]
+*.[bB][zZ]2
+*.[xX][zZ]
+*.[zZ][sS][tT]
+# ログ
+*.[lL][oO][gG]
+# 鍵・証明書
+*.[pP][eE][mM]
+*.[kK][eE][yY]
+*.[pP]12
+*.[pP][fF][xX]
+# 暗号化したバックアップ
+*.[aA][gG][eE]
+# DB（付随するファイルを含む）
 *.[sS][qQ][lL][iI][tT][eE]*
 *.[dD][bB]
 *.[dD][bB]-*
-*.[zZ][iI][pP]
-*.[lL][oO][gG]
-*.[pP][eE][mM]
-*.[kK][eE][yY]
-*.[aA][gG][eE]
 .venv/
 __pycache__/
 # 例外: 合成データのfixture（tests/fixtures/）とデザイン資産（design/）だけ。
