@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "note": "PRの巡回の判定（tools/review_guard/patrol.py）の、このrepoの設定。役割は本文の印とrole欄だけで決め、loginでは決めない。trusted_associationsは役割ではなく、外部の第三者が書いた印を読まないための信頼の境界。copilot_loginsはCopilotの補助レビューの有無を表示するためだけに使い、判定と承認には使わない。",
+  "repository": "doc-gif/kurashi-ledger",
+  "marker_namespace": "kurashi-ledger",
+  "required_check": "Quality gate",
+  "reviewer_roles": {
+    "codex-reviewer": "codex",
+    "claude-reviewer": "claude",
+    "reviewer": "legacy-reviewer"
+  },
+  "trusted_associations": [
+    "OWNER",
+    "MEMBER",
+    "COLLABORATOR"
+  ],
+  "copilot_logins": [
+    "copilot-pull-request-reviewer[bot]",
+    "Copilot"
+  ],
+  "policy_paths": [
+    ".github/**",
+    "tools/review_guard/**",
+    ".review/invariants.json",
+    ".review/findings.json",
+    ".review/patrol.json",
+    ".review/tests/**",
+    "scripts/check-*.ts",
+    "scripts/lib/public-policy.ts",
+    "scripts/lib/test-skips.ts",
+    "scripts/lib/browser-outcomes.ts",
+    "e2e/strict-reporter.ts",
+    "playwright.config.ts"
+  ]
+}

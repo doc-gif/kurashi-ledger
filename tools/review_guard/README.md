@@ -79,6 +79,55 @@ python3 tools/review_guard/guard.py triage --candidates candidates.json
 
 成功時exit 0は記入の充足のみ。入力不備・未記入・未解決の衝突・古いbase・未計画パスはexit 1。未知の版、重複キー・ID、参照不明IDも拒否する。方針の自動修正・承認・ネットワーク操作は行わない。
 
+## PRの巡回の判定（patrol）
+
+T23で加えた。[PRの引継ぎとレビューのループ](../../docs/pr-review-loop.md)の「レビュー開始の条件」「重複防止」を、開いているPRごとに機械で判定する補助。判定は承認でもマージの許可でもない。
+
+```sh
+python3 tools/review_guard/github_source.py                 # 開いているPRを読み、判定を表示する（投稿しない）
+python3 tools/review_guard/github_source.py --pr 25         # PRを絞る（複数指定できる）
+python3 tools/review_guard/github_source.py --snapshot-out snap.json
+python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存したデータを、ネットワークなしで判定し直す
+python3 tools/review_guard/github_source.py --post          # 新しい通知だけを投稿する（明示したときだけ）
+```
+
+設定は`.review/patrol.json`（repo、印の名前空間、必須のcheckの名前、レビュー役のrole、信頼する作者の関係、Copilotのアカウント、保護対象のパス）。終了コードは、0が判定済み、1が入力の不備、2が引数の誤り、3が未確認（どれかの取得に失敗した）。
+
+### 分け方
+
+| 状態 | 意味 | 条件 |
+| --- | --- | --- |
+| `ready-for-review` | 着手候補 | 最新の引継ぎが`ready-for-review`で、そのhead/baseがPRのいまのheadとbaseのbranchの先端に一致し、そのheadの必須のcheck（`Quality gate`）の最新のrunが成功し、引継ぎのあとに、このhead/baseへの別担当のレビュー記録がない |
+| `awaiting-fixes` | 修正待ち | このhead/baseへの`changes-requested`、必須のcheckの失敗・中断・skip、または`ready-for-review`のあとのpush・baseの更新（引継ぎの出し直しが要る） |
+| `awaiting-owner` | 判断待ち | このhead/baseへのレビューの`needs-owner`、または最新の引継ぎが`needs-owner` |
+| `in-progress` | 作業中 | 引継ぎがない、最新の引継ぎが`working`等、または最新の引継ぎが読めない（それより前の`ready-for-review`は使わない） |
+| `waiting-ci` | CI待ち | 引継ぎは最新だが、必須のcheckがまだ終わっていない・見つからない |
+| `accepted` | レビュー済み | このhead/baseへの別担当の`accepted`があり、必須のcheckが成功。マージの条件（[AGENTS.md](../../AGENTS.md)）は別に確かめる |
+| `unconfirmed` | 未確認 | 取得の失敗・rate limit・ページの取り切れなさ・baseの先端が読めない、または`ready-for-review`のあとに読めないレビュー役の記録（印のないもの、書式の誤り）がある |
+
+- 経過時間とOpen/Draftの状態は判定に使わない（時計を読まない）。無更新のPRは、引継ぎがなければいつまでも`in-progress`。
+- 役割は、本文の印（`<!-- <名前空間>:handoff:v1 -->`・`<!-- <名前空間>:review:v1 -->`）と`role:`欄だけで決める。全員が同じGitHubアカウントで書くので、loginでは決めない。GitHubのレビューの状態（APPROVED等）やCOMMENTかどうかも使わない。印は、コードブロックの外で、行に単独で書いたものだけを読む。`role: reviewer`（旧表記）も読む。
+- 作者の関係（`author_association`）が`trusted_associations`にない記録は読まない。これは役割の識別ではなく、public repoで第三者が書いた印を除くため。
+- 実装者と同じ`agent_id`のレビューは数えない（`agent_id`は協調用の表示で、本人確認ではない）。
+- Copilotは補助。レビューの有無を表示するだけで、未実施・利用不可でも判定を変えず、承認にも数えない。未解決のスレッドは読まない（レビュー担当が確かめる）。
+- 保護対象のパス（workflow・検査器・条件・原因台帳）を変えるPRは`policy_files`に一覧にする。判定は変えない。CIの合格は迂回を防がないので、独立レビューでその変更を確かめる（[修正前の整合確認](../../docs/review-prevention.md)の「独立レビューを必須にする保護」）。
+
+### 通知と重複の防止
+
+`awaiting-fixes`のうち、引継ぎが古いとき（`stale-handoff`）と必須のcheckが失敗したとき（`ci-failed`）だけ、通知の候補を作る（[PRレビューのループ](../../docs/pr-review-loop.md)の「開始条件の不足は同じheadに一度だけ知らせる」）。本文は印・種別・PR番号・head/base・固定の文だけで、PRやコメントの文字列を写さない。
+
+- 既定はdry-run。`--post`を付けたときだけ投稿する。
+- （PR、種別、head、base）の印が、信頼する作者のコメントに既にあれば投稿しない。
+- 投稿の直前に、PR・baseの先端・コメントを取り直す。headやbaseが変わった、PRが閉じた、取り直しに失敗した、のどれかなら投稿しない。同時に動いた別の巡回が先に投稿していれば、取り直しで印が見えるので投稿しない。取り直しと投稿の間の数秒の競合は残る（GitHubに原子的な条件付き投稿がないため）。その場合も2件目は同じ印なので、次の巡回からは増えない。
+- 判定の全体が未確認なら、どのPRにも投稿しない。
+
+### 信頼の境界
+
+- `patrol.py`（判定の中核）は、ネットワーク・投稿・時計・プロセスの起動を使わない純粋な関数。試験は合成のfixtureで行う。
+- `github_source.py`は、`gh api`を固定の引数の並びで呼ぶ（shellを使わない）。読取りはGETだけで、ghの既存のログインを使い、トークンを読まない・出力しない。次のページは`https://api.github.com/`のLinkだけをたどる。
+- PRのコードをcheckout・build・実行しない。PRの本文・コメントは文字列として読むだけで、コマンドとして解釈しない。
+- GitHub Actionsからは動かさない（定期実行やコメントの投稿をActionsに加えない。[GitHub・複数AIの運用](../../docs/github-agent-operations.md)の「定期実行」）。CIでは、この判定の試験（`tests/test_patrol.py`・`tests/test_github_source.py`）だけを、既存の`review tools`のジョブで実行する。定期的な巡回への組込みはT24で行う。
+
 ## CIの配置前提
 
 `adapters/github-actions.yml`はテンプレート。このrepoでは、T05で同じ内容を`.github/workflows/ci.yml`の`review plan`・`review tools`のジョブとして配置した（actionの版と`setup-python`を合わせ、3つのOSで試験する）。ほかのrepoへ移すときは、このテンプレートから配置する。

@@ -201,6 +201,7 @@
 ## T23 — PR定期確認とレビュー状態の検査
 
 - 依存: T02、T05。担当: レビュー運用。範囲: docs/pr-review-loop.mdに沿った状態判定・重複防止の仕組みとtests。
+- 成果物の所在: [CLI手順](../tools/review_guard/README.md)の「PRの巡回の判定」（`tools/review_guard/patrol.py`・`github_source.py`と試験、設定`.review/patrol.json`）、`.review/invariants.json`の`INV-G1-PATH`〜`INV-G7-HTTP`、[修正前の整合確認](review-prevention.md)の「独立レビューを必須にする保護」（提案と迂回試験の手順。repoの設定は所有者の確認待ち）。
 - 成果物: Issue/PR/CI、最新head/base、workerの明示的引継ぎ、レビュー記録から着手候補・修正待ち・判断待ちを判定。文書版のCodex定期確認は先行設定済みで、本タスクは製品CIとの統合と検証を追加する。PR #4のレビュー運用の台帳（`.review/invariants.json`）がmainにあれば、ADR-0007の部品（G1〜G7）ごとの不変条件を登録し、部品のファイルを変えたときに関係する確認の観点が引き出されるようにする。
 - 受入: 無更新の時間だけで完了とせず、最新SHAのready-for-reviewを確認する。API不調は未確認とし、同じheadへの同じコメントを重複投稿しない。PR由来コードを高権限環境で実行しない。
 - 検証: ページネーション、rate limit、古いready、レビュー中のpush/base更新、CI失敗、同時巡回、同一アカウントのCOMMENTレビュー、Copilot利用不可。

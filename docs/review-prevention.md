@@ -25,13 +25,61 @@
 
 不変条件は結果の制約であり、過去の修正方法を永久に固定するルールではない。設計が変わる場合は新しい決定と旧判断の置換理由を残す。学習したAIメモリは正本にしない。履歴に載る指摘も、根拠と現在の適用範囲を確認する。
 
-汎用CLIは確認観点の抽出・構造検査・原因キーの照合だけを行う。Gitアダプタのみ、信頼したbaseから読み取りのgitコマンドを呼ぶ。自由文をコマンドとして実行せず、ネットワーク、GitHub投稿、マージ、アプリDBへのアクセスを行わない。判断・投稿権限は持たない。
+汎用CLI（`guard.py`・`ci.py`・`changed_paths.py`）は確認観点の抽出・構造検査・原因キーの照合だけを行う。Gitアダプタのみ、信頼したbaseから読み取りのgitコマンドを呼ぶ。自由文をコマンドとして実行せず、ネットワーク、GitHub投稿、マージ、アプリDBへのアクセスを行わない。判断・投稿権限は持たない。T23で加えたPRの巡回の判定は、判定の中核（`patrol.py`。ネットワーク・投稿・実行なし）と、GitHubを読む部分（`github_source.py`。`gh api`のGETだけ。投稿は`--post`を明示したときだけで、既定はdry-run）に分けた。どちらもPRのコードを実行せず、マージしない（[CLI手順](../tools/review_guard/README.md)の「PRの巡回の判定」）。
 
-T05で、テンプレートの計画の検査とツールの試験を、CI（`.github/workflows/ci.yml`の`review plan`・`review tools`）に配置した。base側の検査器と条件を実行するので、そのPRの計画記入にbaseの条件が適用される。ただし`pull_request`のworkflow自体もPRから変更できるので、**この配置だけでは検査の迂回を防げない**。workflow・検査器・条件・台帳の変更に独立レビューを必須にする保護と、迂回試験を別途用意するまでは、強制ゲートとは扱わない。必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側が設定する。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。必須のstatus checkにしても、この迂回の限界は残る。
+T05で、テンプレートの計画の検査とツールの試験を、CI（`.github/workflows/ci.yml`の`review plan`・`review tools`）に配置した。base側の検査器と条件を実行するので、そのPRの計画記入にbaseの条件が適用される。ただし`pull_request`のworkflow自体もPRから変更できるので、**この配置だけでは検査の迂回を防げない**。workflow・検査器・条件・台帳の変更に独立レビューを必須にする保護と、迂回試験を別途用意するまでは、強制ゲートとは扱わない。必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側が設定する。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で提案と手順を下の「独立レビューを必須にする保護」にまとめた（repoの設定は所有者の確認待ちで、まだ設定していない）。必須のstatus checkにしても、この迂回の限界は残る。
 
 候補catalogは構造検査に加え、baseとの条件・シナリオ・paths・関連条件の追加／削除／変更を報告する。意味的な「緩和」の自動判定はしない。台帳変更も表示する。そのPR自身にbaseの記入条件を適用しても、変更をマージすれば次回のbaseは変わるため、差分の採否は別担当が必ずレビューする。初回導入でbaseに検査器がないCIは失敗終了する。ツールを先にmainへ導入してからCIを別PRで配置する。
 
 Gitアダプタはbaseがheadに取り込まれているか確認して三点diffを取る。遅れたbranchは明示的に停止し、他PRのファイルを計画へ加えさせない。CLIの構造検査だけでは実際のGit祖先関係を証明しない。
+
+## 独立レビューを必須にする保護（T23の提案。所有者の確認待ち）
+
+**状態: 提案。repoの設定は変えていない。** repoの設定は所有者が判断する（[タスク台帳](implementation-tasks.md)のT23）。設定するまでは、下の「設定するまでの扱い」のとおり手続きで補う。
+
+### 問題
+
+- `pull_request`のworkflowはPR自身が変えられるので、CI（`review plan`等）の合格は、workflow・検査器・条件・原因台帳を変えるPRの迂回を防がない。
+- 所有者とAIが同じGitHubアカウントを使うので、GitHubの承認（Approve）は作者自身にできず、COMMENTのレビュー記録はGitHub上の独立承認にならない。承認を必須にすると、別の権限主体がいない限り誰もマージできない。
+- AIが使う資格情報に管理者の権限があると、AIもrulesetを外せる・迂回できる。管理者を迂回の一覧に入れると、同じアカウントのAIも迂回できる。
+
+### 提案（推奨）
+
+1. **別の権限主体を用意する（所有者の判断）。** レビュー専用のGitHubアカウント（所有者が管理）をwrite権限のcollaboratorにする。AIの実装側は使わない。
+2. **CODEOWNERS:** `.github/CODEOWNERS`で、保護対象のパスの所有者をそのアカウントにする。保護対象は、巡回の判定の`policy_paths`（`.review/patrol.json`）と同じ: `.github/**`（CODEOWNERS自身を含む）、`tools/review_guard/**`、`.review/invariants.json`、`.review/findings.json`、`.review/patrol.json`、`.review/tests/**`、`scripts/check-*.ts`、`scripts/lib/public-policy.ts`、`scripts/lib/test-skips.ts`、`scripts/lib/browser-outcomes.ts`、`e2e/strict-reporter.ts`、`playwright.config.ts`。計画（`.review/plans/**`）は含めない。
+3. **mainのbranch ruleset:** 「Require a pull request before merging」で、Code Ownersのレビューを必須、新しいpushで古い承認を取り消す（dismiss stale reviews）、最新のpushの承認を必須（require approval of the most recent reviewable push）、会話の解決を必須にする。迂回の一覧（bypass list）は空にする（Repository adminも入れない）。必須のstatus check（`Quality gate`）と最新のbaseは、T05の決定どおり別に設定する（T23の範囲ではない）。
+4. **AIの資格情報から管理者の権限を外す:** AIが使うトークンを、fine-grained PAT等の、Contents・Pull requests・Issues の読み書きだけで、Administration（rulesetの変更）を含まないものにする。所有者のアカウントのフルの資格情報をAIの実行環境に置かない。
+
+この組合せで、保護対象を変えるPRは、作者と別の権限主体が最新のpushを承認するまでマージできず、AIはrulesetを変えられない。保護対象を変えないPRは、いまの運用（実装していない別の担当のCOMMENTの`accepted`と、AGENTS.mdのマージの条件）のまま。Code Ownersのレビューだけを必須にして、必須の承認数を0にしたときの動きは、下の迂回試験で確かめる。
+
+### 選択肢
+
+| 案 | 利点 | 欠点 |
+| --- | --- | --- |
+| A. 上の推奨（別アカウント＋CODEOWNERS＋ruleset＋AIの権限の縮小） | GitHubが強制する。CIの迂回と自己承認を防ぐ | アカウントとトークンの管理が増える。保護対象を変えるPRは、別アカウントの承認を待つ |
+| B. 設定を変えず、手続きで補う（いまの状態） | 費用・管理が増えない | 強制ではない。同じアカウントなので、規約に反した操作をGitHubは止めない |
+| C. Bの上に、AIのトークンだけを縮小する（rulesetは使わない） | rulesetの改変・設定の変更をAIができなくなる | 保護対象のパスの独立レビューは強制されない |
+
+### 迂回試験の手順（設定したあとに行う）
+
+合成の変更だけを使い、マージしない。結果（各手順のコマンド・エラーの文・判定）を、T23のIssueかその後継のIssueに記録する。
+
+1. mainから試験用のbranchを作り、`.github/workflows/ci.yml`から`review-plan`のジョブを消す合成の変更をcommitし、AIの資格情報でPRを作る。期待: PRは作れる。CIは変更後のworkflowで動き、合格しうる。
+2. AIの資格情報で`gh pr merge <番号> --merge`を実行する。期待: Code Ownersのレビューがないので拒否される。
+3. 同じアカウントで承認を試みる（`gh pr review <番号> --approve`）。期待: 作者自身は承認できない。
+4. `--admin`を付けてマージを試みる。期待: 迂回の一覧が空なので拒否される（トークンにAdministrationがなければ、そもそも使えない）。
+5. AIの資格情報でrulesetの一覧・変更を試みる（`gh api repos/<owner>/<repo>/rulesets`と、その1件への`PATCH`）。期待: 変更は403等で拒否される。
+6. 同じPRで`.github/CODEOWNERS`から保護対象の行を消す。期待: baseのCODEOWNERSが使われるので、まだCode Ownersのレビューが必要。
+7. レビュー用のアカウントで承認し、そのあと実装側が新しいcommitをpushする。期待: 承認が取り消され、再び拒否される。
+8. 保護対象を変えない合成のPR（文書の1行）で、Code Ownersのレビューを求められないこと（`gh pr view <番号> --json mergeStateStatus,reviewDecision`）を確かめる。マージはしない。
+9. rulesetの「Rule insights」で、試験の間に迂回が記録されていないことを確かめる。PRは閉じ、試験用のbranchの削除は所有者が判断する。
+
+どれかが期待と違えば、保護は強制ゲートとして扱わず、設定を直して1からやり直す。
+
+### 設定するまでの扱い
+
+- 保護対象を変えるPRは、巡回の判定（[CLI手順](../tools/review_guard/README.md)の「PRの巡回の判定」）が`policy_files`に一覧にする。レビュー担当は、CIの合格ではなく、その変更そのもの（迂回・条件の緩和がないか）を内容レビューで確かめる。
+- 判定の`accepted`・CIの合格・COMMENTの記録を、GitHub上の独立承認や強制ゲートと称さない。
 
 ## 同じ指摘を繰り返さない
 
