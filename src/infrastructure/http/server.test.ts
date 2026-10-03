@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer as createNetServer, connect, type Socket } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +11,16 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { exchange, ownerOnlyTempDirectory, sameOriginHeaders, send, sendRaw, tokenOf } from '../../../tests/support/http.ts';
 import { PRODUCTION_CSP } from './response-headers.ts';
-import { PortInUseError, devRequestContext, startLocalServer, type ApiRoute, type LocalServer, type LocalServerOptions } from './server.ts';
+import {
+  LOGGABLE_ERROR_CODES,
+  PortInUseError,
+  devRequestContext,
+  loggableErrorCode,
+  startLocalServer,
+  type ApiRoute,
+  type LocalServer,
+  type LocalServerOptions,
+} from './server.ts';
 import type { StaticSource } from './static-files.ts';
 
 const FIXTURE_ROOT = fileURLToPath(new URL('../../../tests/fixtures/http/static/', import.meta.url));
@@ -810,16 +819,20 @@ test('開発時の口のupgradeの処理が同期で例外を投げても、プ�
       },
     };
     const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
-    const cookie = await exchange(server);
-    const res = await sendRaw(
-      server.port,
-      `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
-    ).catch(() => ({ status: 0, raw: '' })); // 壊したソケットは、OSによっては接続のリセットになる。
-    assert.equal(res.status, 0);
-    assert.ok(logs.includes('UPGRADE /hmr upgrade-handler-error ESYNTHETIC'));
-    assert.equal(logs.join('\n').includes('synthetic upgrade failure'), false);
-    assert.equal((await send(server.port, { path: '/src/main.ts' })).text, 'ok');
-    assert.equal((await server.close()).launchFile, 'removed');
+    try {
+      const cookie = await exchange(server);
+      const res = await sendRaw(
+        server.port,
+        `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+      ).catch(() => ({ status: 0, raw: '' })); // 壊したソケットは、OSによっては接続のリセットになる。
+      assert.equal(res.status, 0);
+      // 合成の符号（ESYNTHETIC）は許可リストにないので、ログには固定のotherとして出る。
+      assert.ok(logs.includes('UPGRADE /hmr upgrade-handler-error other'), logs.join('\n'));
+      assert.equal(logs.join('\n').includes('synthetic upgrade failure'), false);
+      assert.equal((await send(server.port, { path: '/src/main.ts' })).text, 'ok');
+    } finally {
+      assert.equal((await server.close()).launchFile, 'removed');
+    }
     assert.equal(await connectionRefused('127.0.0.1', server.port), true);
   } finally {
     tmp.cleanup();
@@ -907,7 +920,8 @@ async function closeWaitsForMiddleware(kind: 'end' | 'next' | 'reject'): Promise
     assert.deepEqual(events, ['middleware-finished', 'closed'], kind);
     assert.equal(result.launchFile, 'removed');
     // あとからのrejectも、処理の結果として記録される。
-    if (kind === 'reject') assert.ok(logs.includes('internal-error ELATE'), logs.join('\n'));
+    // 合成の符号（ELATE）は許可リストにないので、ログには固定のotherとして出る（ADR-0009の5「ログ」）。
+    if (kind === 'reject') assert.ok(logs.includes('internal-error other'), logs.join('\n'));
     assert.equal(await connectionRefused('127.0.0.1', server.port), true);
   } finally {
     tmp.cleanup();
@@ -1285,4 +1299,147 @@ test('終了が始まったあとに既存の接続で届いたExpectの要求�
   } finally {
     tmp.cleanup();
   }
+});
+
+test('informational応答（1xx）を書く4つの入口は禁止され、呼ぶと例外になり、1xxは送られず、最後の応答に必須のヘッダが付く', async () => {
+  const tmp = ownerOnlyTempDirectory('informational');
+  try {
+    const attempts: string[] = [];
+    const call = (res: ServerResponse, name: string): void => {
+      const target = res as unknown as Record<string, (...args: unknown[]) => unknown>;
+      if (name === 'writeEarlyHints') target[name]?.({ link: '<https://example.invalid/x>; rel=preload', 'Access-Control-Allow-Origin': '*' });
+      else if (name === 'writeInformation') target[name]?.(103, { Link: '<https://example.invalid/x>; rel=preload' });
+      else target[name]?.();
+    };
+    const dev: LocalServerOptions['dev'] = {
+      middleware(req, res) {
+        const [mode = '', name = ''] = (req.url ?? '').slice(1).split('/');
+        if (mode === 'caught') {
+          try {
+            call(res, name);
+            attempts.push(`${name}:allowed`);
+          } catch (error) {
+            attempts.push(`${name}:${(error as { code?: string }).code ?? ''}`);
+          }
+          res.end('final');
+          return;
+        }
+        // 捕まえない場合は、同期の例外として500になる。
+        call(res, name);
+        res.end('never');
+      },
+    };
+    const logs: string[] = [];
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+    try {
+      for (const name of ['writeEarlyHints', 'writeContinue', 'writeProcessing', 'writeInformation']) {
+        for (const mode of ['caught', 'thrown']) {
+          const res = await sendRaw(server.port, `GET /${mode}/${name} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: close\r\n\r\n`);
+          // 1xxの行は送られない（応答は1つだけ）。
+          assert.equal(/HTTP\/1\.1 1\d\d /.test(res.raw), false, `${mode} ${name}`);
+          assert.equal(rawHead(res.raw).statusLines, 1, `${mode} ${name}`);
+          assert.equal(res.raw.includes('example.invalid'), false);
+          assert.equal(res.status, mode === 'caught' ? 200 : 500, `${mode} ${name}`);
+          const { fields } = rawHead(res.raw);
+          assert.equal(fields.get('cache-control'), 'no-store');
+          assert.equal(fields.get('referrer-policy'), 'no-referrer');
+          assert.ok((fields.get('content-security-policy') ?? '').startsWith("default-src 'self'"));
+          assert.deepEqual([...fields.keys()].filter((k) => k.startsWith('access-control-')), []);
+        }
+      }
+      // writeInformationがない版のNode.jsでも、置き換えたメソッドが例外を投げる。
+      assert.deepEqual(attempts, [
+        'writeEarlyHints:ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN',
+        'writeContinue:ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN',
+        'writeProcessing:ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN',
+        'writeInformation:ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN',
+      ]);
+      assert.ok(logs.includes('internal-error ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN'), logs.join('\n'));
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('例外のcode・nameに秘密の形の値・改行・長い値があっても、ログに出さず固定のotherにし、通常の500か接続の終了になる', async () => {
+  const tmp = ownerOnlyTempDirectory('error-metadata');
+  try {
+    const hostile = [
+      'tok_SYNTHETICSECRET1234567890abcdef',
+      'EACCES\nGET /forged 200',
+      `E${'X'.repeat(500)}`,
+    ];
+    let index = 0;
+    const makeError = (): Error => {
+      const value = hostile[index % hostile.length] ?? '';
+      index += 1;
+      const error = Object.assign(new Error(`message ${value}`), { code: value });
+      error.name = value;
+      return error;
+    };
+    const logs: string[] = [];
+    const api: ApiRoute[] = [
+      { method: 'GET', path: '/api/test/throw', handle: () => { throw makeError(); } },
+      { method: 'GET', path: '/api/test/reject', handle: async () => { throw makeError(); } },
+    ];
+    const dev: LocalServerOptions['dev'] = {
+      middleware(req) {
+        if (req.url === '/sync') throw makeError();
+        return Promise.reject(makeError());
+      },
+      upgrade() {
+        throw makeError();
+      },
+    };
+    const server = await startLocalServer({
+      port: 0,
+      tokenDirectory: tmp.path,
+      api,
+      dev,
+      log: (l) => logs.push(l),
+      removeFile: () => {
+        throw makeError();
+      },
+    });
+    let closed: Awaited<ReturnType<LocalServer['close']>> | undefined;
+    try {
+      const cookie = await exchange(server);
+      const headers = sameOriginHeaders(server, { cookie });
+      for (let round = 0; round < hostile.length; round += 1) {
+        assert.equal((await send(server.port, { path: '/api/test/throw', headers })).status, 500);
+        assert.equal((await send(server.port, { path: '/api/test/reject', headers })).status, 500);
+        assert.equal((await send(server.port, { path: '/sync' })).status, 500);
+        assert.equal((await send(server.port, { path: '/async' })).status, 500);
+        const upgraded = await sendRaw(
+          server.port,
+          `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+        ).catch(() => ({ status: 0, raw: '' }));
+        assert.equal(upgraded.status, 0);
+      }
+    } finally {
+      closed = await server.close();
+    }
+    // 一時ファイルの削除の失敗も、固定の符号で記録する。
+    assert.equal(closed.launchFile, 'failed');
+    const text = logs.join('\n');
+    for (const value of ['SYNTHETICSECRET', 'forged', 'XXXXXXXXXX', 'message']) assert.equal(text.includes(value), false, value);
+    assert.ok(logs.filter((l) => l === 'internal-error other').length >= 12, text);
+    assert.ok(logs.filter((l) => l === 'UPGRADE /hmr upgrade-handler-error other').length >= 3, text);
+    assert.ok(logs.includes('launch-file-remove-failed other'), text);
+    for (const line of logs) assert.equal(line.includes('\n'), false);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('ログに出してよい例外の符号は、入口ごとの許可リストのものだけ', () => {
+  assert.equal(loggableErrorCode(Object.assign(new Error('x'), { code: 'EACCES' }), LOGGABLE_ERROR_CODES.handler), 'EACCES');
+  assert.equal(loggableErrorCode(Object.assign(new Error('x'), { code: 'HPE_HEADER_OVERFLOW' }), LOGGABLE_ERROR_CODES.client), 'HPE_HEADER_OVERFLOW');
+  for (const code of ['HPE_HEADER_OVERFLOW', 'tok_secret', 'EACCES\nx', 'X'.repeat(300), '', 42, undefined]) {
+    assert.equal(loggableErrorCode({ code }, LOGGABLE_ERROR_CODES.handler), 'other', String(code));
+  }
+  assert.equal(loggableErrorCode('EACCES', LOGGABLE_ERROR_CODES.handler), 'other');
+  assert.equal(loggableErrorCode(null, LOGGABLE_ERROR_CODES.client), 'other');
 });

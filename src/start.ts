@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { TokenDirectoryError, verifyTokenDirectory, type VerifiedDirectory } from './infrastructure/http/launch-file.ts';
-import { PortInUseError, startLocalServer, type CloseResult, type LocalServer } from './infrastructure/http/server.ts';
+import { LOGGABLE_ERROR_CODES, PortInUseError, loggableErrorCode, startLocalServer, type CloseResult, type LocalServer } from './infrastructure/http/server.ts';
 
 export const DEFAULT_PORT = 48720;
 
@@ -78,7 +78,8 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
       ],
     });
   } catch (error) {
-    io.err(error instanceof Error ? error.message : String(error));
+    // 自分の検査の理由（TokenDirectoryError）は表示し、ほかの例外はmessageを出さず、許可した符号だけを出す（ADR-0009の5）。
+    io.err(error instanceof TokenDirectoryError ? error.message : `一時ディレクトリを確かめられなかった（${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}）。`);
     return { kind: 'exit', code: 1 };
   }
 
@@ -96,7 +97,7 @@ export async function startApp(argv: readonly string[], io: StartIo): Promise<St
     } else if (error instanceof TokenDirectoryError) {
       io.err(error.message);
     } else {
-      io.err(`起動できなかった: ${error instanceof Error ? error.message : String(error)}`);
+      io.err(`起動できなかった（${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}）。`);
     }
     return { kind: 'exit', code: 1 };
   }
@@ -190,7 +191,7 @@ if (import.meta.main) {
             for (const s of signals) process.removeAllListeners(s);
           },
           (error: unknown) => {
-            process.stderr.write(`終了の処理で失敗した: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.stderr.write(`終了の処理で失敗した（${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}）。\n`);
             process.exit(1);
           },
         );

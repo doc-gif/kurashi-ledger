@@ -73,8 +73,24 @@ export function requiredResponseHeaders(csp: string): ReadonlyArray<readonly [st
   return [...FIXED_HEADERS, ['Content-Security-Policy', csp]];
 }
 
+// informational応答（1xx）を書く公開のAPI（Node.js v24.21.0の_http_server.js）。2026-10-03の所有者の決定で禁止する
+// （ADR-0009の5）。writeContinue・writeProcessing・writeEarlyHintsはwriteInformationを呼ぶが、どれも個別に置き換える。
+export const INFORMATIONAL_METHODS = ['writeInformation', 'writeContinue', 'writeProcessing', 'writeEarlyHints'] as const;
+
+export const INFORMATIONAL_FORBIDDEN_CODE = 'ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN';
+
 // resに、出口で付け直すヘッダを設定する。cspは、その応答に使うCSP（本番はPRODUCTION_CSP）。
+// informational応答を書くメソッドは、呼ぶと例外を投げて何も書かないものに置き換える。
 export function enforceResponseHeaders(res: ServerResponse, csp: string): void {
+  for (const name of INFORMATIONAL_METHODS) {
+    Object.defineProperty(res, name, {
+      configurable: false,
+      writable: false,
+      value: () => {
+        throw Object.assign(new Error('informational responses (1xx) are forbidden (ADR-0009)'), { code: INFORMATIONAL_FORBIDDEN_CODE });
+      },
+    });
+  }
   const apply = (): void => {
     for (const name of res.getHeaderNames()) {
       if (name.toLowerCase().startsWith('access-control-')) res.removeHeader(name);

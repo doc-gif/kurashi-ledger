@@ -178,9 +178,41 @@ function safePath(rawUrl: string | undefined): string {
   return printable.length > 200 ? `${printable.slice(0, 200)}…` : printable;
 }
 
-function errorName(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'code' in error) return String((error as { code: unknown }).code);
-  return error instanceof Error ? error.name : 'unknown';
+// 例外の符号（code）を、入口ごとに決めた許可リストに照らして、ログに出してよい固定の理由にする（ADR-0009の5「ログ」）。
+// 例外のnameやmessageは出さない。許可リストにない符号（外部の組込みのコードが投げる任意の値を含む）はotherにする
+// （文字種や長さの制限だけでは、英数字の秘密の値を防げないため）。
+export const LOGGABLE_ERROR_CODES = {
+  // APIの処理・開発時のmiddleware・upgradeの処理・一時ファイルの操作で起きうる、Node.jsのファイル・ストリームの誤り。
+  handler: ['ENOENT', 'EACCES', 'EPERM', 'EBUSY', 'EISDIR', 'ENOTDIR', 'ENOTEMPTY', 'EMFILE', 'ENFILE', 'EROFS', 'ERR_STREAM_DESTROYED', 'ERR_HTTP_HEADERS_SENT', 'ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN'],
+  // HTTPの解析器（llhttp）と接続の誤り。
+  client: [
+    'ECONNRESET',
+    'ERR_HTTP_REQUEST_TIMEOUT',
+    'HPE_HEADER_OVERFLOW',
+    'HPE_CHUNK_EXTENSIONS_OVERFLOW',
+    'HPE_INVALID_HEADER_TOKEN',
+    'HPE_UNEXPECTED_CONTENT_LENGTH',
+    'HPE_INVALID_CONTENT_LENGTH',
+    'HPE_INVALID_METHOD',
+    'HPE_INVALID_URL',
+    'HPE_INVALID_CONSTANT',
+    'HPE_INVALID_VERSION',
+    'HPE_INVALID_TRANSFER_ENCODING',
+    'HPE_INVALID_CHUNK_SIZE',
+    'HPE_LF_EXPECTED',
+    'HPE_CR_EXPECTED',
+    'HPE_INVALID_EOF_STATE',
+  ],
+} as const;
+
+export function loggableErrorCode(error: unknown, allowed: readonly string[]): string {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined;
+  return typeof code === 'string' && allowed.includes(code) ? code : 'other';
+}
+
+function errorCodeOf(error: unknown): string | undefined {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined;
+  return typeof code === 'string' ? code : undefined;
 }
 
 type BodyResult = { readonly ok: true; readonly data: Buffer } | { readonly ok: false; readonly rejection: Rejection };
@@ -341,7 +373,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
       if (launchFileState === 'replaced') log('launch-file-replaced（作ったファイルと違うものになっていたので消さなかった）');
     } catch (error) {
       launchFileState = 'failed';
-      log(`launch-file-remove-failed ${errorName(error)}`);
+      log(`launch-file-remove-failed ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
     }
     return launchFileState;
   };
@@ -508,7 +540,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const target = checkRequestTarget(req.url);
     if (target !== undefined) return reject(res, target, api);
     const work = (api ? handleApi(req, res, current, path) : handleUi(req, res, current, path)).catch((error: unknown) => {
-      log(`internal-error ${errorName(error)}`);
+      log(`internal-error ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
       if (!res.headersSent) reject(res, { status: 500, code: 'internal-error' }, api);
       else res.destroy();
     });
@@ -536,16 +568,18 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   // HTTPの解析器が要求の処理の前に拒否したとき（重複したContent-Length、ヘッダの上限、要求の時間切れ等）。Node.jsの
   // 既定は必須のヘッダのない応答を書くので、ここで同じ定義のヘッダと理由を付けて書く。前の要求の応答が残っている、
   // または書けない接続には、2つ目の応答を書かずに壊す。ログには誤りの符号だけを出す（rawPacket・要求の中身は出さない）。
-  server.on('clientError', (error: Error & { code?: unknown }, socket: Duplex) => {
-    const code = typeof error.code === 'string' ? error.code.replace(/[^A-Za-z0-9_]/g, '?') : 'unknown';
+  server.on('clientError', (error: Error, socket: Duplex) => {
+    // 状態の判定には解析器の符号を使い、ログには許可リストの符号だけを出す。
+    const rawCode = errorCodeOf(error) ?? '';
+    const code = loggableErrorCode(error, LOGGABLE_ERROR_CODES.client);
     const inFlight = (socket as unknown as { _httpMessage?: { headersSent?: boolean } | null })._httpMessage;
     // 同じ接続で、前の要求の応答がまだ終わっていない（書き始めた・これから書く）ときも、応答が2つ混ざらないよう書かない。
-    if (code === 'ECONNRESET' || !socket.writable || (inFlight !== undefined && inFlight !== null)) {
+    if (rawCode === 'ECONNRESET' || !socket.writable || (inFlight !== undefined && inFlight !== null)) {
       log(`CLIENT-ERROR ${code} closed-without-response`);
       socket.destroy();
       return;
     }
-    const rejection = parserRejection(code);
+    const rejection = parserRejection(rawCode);
     log(`CLIENT-ERROR ${code} ${rejection.status} ${rejection.code}`);
     writeRawRefusal(socket, rejection);
   });
@@ -580,7 +614,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     try {
       upgrade(req, socket, head);
     } catch (error) {
-      log(`UPGRADE ${path} upgrade-handler-error ${errorName(error)}`);
+      log(`UPGRADE ${path} upgrade-handler-error ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
       upgradedSockets.delete(socket);
       socket.destroy();
     }
@@ -589,7 +623,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   await new Promise<void>((resolve, reject) => {
     const onError = (error: unknown): void => {
       server.off('listening', onListening);
-      if (errorName(error) === 'EADDRINUSE') reject(new PortInUseError(options.port));
+      if (errorCodeOf(error) === 'EADDRINUSE') reject(new PortInUseError(options.port));
       else reject(error instanceof Error ? error : new Error(String(error)));
     };
     const onListening = (): void => {
