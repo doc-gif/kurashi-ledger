@@ -338,7 +338,7 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
     const target = latest(state, dupOf["id"]);
     const lookup = latestLookup(state);
     const series = seriesAmong(lookup, [...state.records.keys()]);
-    if (target !== undefined && (target["status"] !== "active" || series.superseded.has(dupOf["id"]) || series.unconfirmed.has(dupOf["id"]))) {
+    if (target !== undefined && (target["status"] !== "active" || series.superseded.has(dupOf["id"]) || series.illFormed.has(dupOf["id"]))) {
       codes.add("ref-target-invalid");
     }
   }
@@ -658,10 +658,14 @@ function supersedeDimensions(lookup: RecordLookup, x: Obj, y: Obj): Cmp {
 
 // 記録の型の10の1〜5: 与えた記録（その見方の版）から差し替えの関係と系列を作り、
 // 差し替え済みの記録（現在の記録でないもの）と、整っていない系列（未確認の系列を含む）のすべての記録を返す。
-// 整っていない系列: その見方で解決できない参照、循環・分岐、差し替えの識別の次元が一致でない（未確定・不一致）関係を含む系列。
+// 整っていない系列: その見方で解決できない参照、自己参照・循環（取消していない記録どうしの関係を含め、長さによらない）、
+// 分岐、差し替えの識別の次元が一致でない（未確定・不一致）関係を含む系列。
+// 関係は記録ごとに差し替える先が1件以下なので、つながった記録の集まりが1本の鎖なら関係の数は記録の数より1少ない。
+// 関係の数が記録の数以上の集まりは循環（自己参照を含む）を持つので、系列全体を整っていない系列にする。
+// runの不足の判断・二重登録の取消の残す方・系列の状態の期待値は、どれもこの補助の結果だけを使う（入口ごとに系列の判定を変えない）。
 // linkLookupを渡すと、その見方で選ばれない記録（runに固定していない記録等）も、保存されている記録のsupersedesのつながりで
 // 同じ系列に入れる（選ばれない記録をはさむ系列を広く取り、黙って数える記録を減らす。記録の型の10の「時点を指定した見方」）。
-function seriesAmong(lookup: RecordLookup, ids: readonly string[], linkLookup?: RecordLookup): { superseded: Set<string>; unconfirmed: Set<string> } {
+function seriesAmong(lookup: RecordLookup, ids: readonly string[], linkLookup?: RecordLookup): { superseded: Set<string>; illFormed: Set<string> } {
   const parent = new Map<string, string>();
   const find = (a: string): string => {
     let r = a;
@@ -676,6 +680,7 @@ function seriesAmong(lookup: RecordLookup, ids: readonly string[], linkLookup?: 
   const superseded = new Set<string>();
   const broken = new Set<string>();
   const targets = new Map<string, string>();
+  const relations: string[] = [];
   for (const id of ids) {
     const x = lookup(id);
     if (x === undefined || x["status"] !== "active") continue;
@@ -697,6 +702,7 @@ function seriesAmong(lookup: RecordLookup, ids: readonly string[], linkLookup?: 
       continue;
     }
     union(id, t);
+    relations.push(id);
     if (targets.has(t)) broken.add(t);
     targets.set(t, id);
     const y = lookup(t);
@@ -704,8 +710,16 @@ function seriesAmong(lookup: RecordLookup, ids: readonly string[], linkLookup?: 
     superseded.add(t);
   }
   const badRoots = new Set([...broken].map(find));
-  const unconfirmed = new Set([...parent.keys()].filter((id) => badRoots.has(find(id))));
-  return { superseded, unconfirmed };
+  // 自己参照・循環: 集まりごとに関係と記録を数え、関係が記録より少なくなければ循環がある。
+  const count = (keys: Iterable<string>): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const k of keys) m.set(find(k), (m.get(find(k)) ?? 0) + 1);
+    return m;
+  };
+  const nodes = count(parent.keys());
+  for (const [root, n] of count(relations)) if (n >= (nodes.get(root) ?? 0)) badRoots.add(root);
+  const illFormed = new Set([...parent.keys()].filter((id) => badRoots.has(find(id))));
+  return { superseded, illFormed };
 }
 
 function inScope(list: unknown, id: string): boolean {
@@ -729,7 +743,7 @@ function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Pro
   // 固定した版だけで差し替えの系列をたどり、現在の記録でない記録（差し替え済み）は集計の対象にしない（記録の型の10）。
   // 取消した中間の記録は通り過ぎる。整っていない系列（固定した版でたどれない参照、未確定・不一致の識別の次元等）の記録は、
   // 系列全体を集計から除いてconflictで挙げる記録なので、要求の範囲にあれば不足とする。
-  const { superseded, unconfirmed } = seriesAmong(lookup, [...pins.keys()], latestLookup(state));
+  const { superseded, illFormed } = seriesAmong(lookup, [...pins.keys()], latestLookup(state));
   const canonical = (id: string): string => canonicalIdOf(lookup, id) ?? id;
   requests.forEach((req, ri) => {
     const key = isObj(req) && isObj(req["key"]) ? req["key"] : undefined;
@@ -754,13 +768,11 @@ function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Pro
     } else return;
     for (const input of inputs) {
       const rec = input.rec;
-      if (rec === undefined || rec["recordType"] !== targetType || rec["status"] !== "active" || (superseded.has(input.id) && !unconfirmed.has(input.id)) || !isObj(rec["body"])) continue;
+      if (rec === undefined || rec["recordType"] !== targetType || rec["status"] !== "active" || (superseded.has(input.id) && !illFormed.has(input.id)) || !isObj(rec["body"])) continue;
       const body = rec["body"];
+      // 範囲の判定（支払者・日付の軸）を先にし、既知の日付で要求の範囲の外と確定できる記録は、系列が整っていなくても
+      // その要求の不足にしない（記録の型の10の5の「除いた記録が入るはずだった集計」だけをincompleteにする。PR23-R004）。
       if (!dimension(body)) continue;
-      if (unconfirmed.has(input.id)) {
-        problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]の対象の${input.id}版${input.revision}が、整っていない差し替えの系列（固定した版でたどれない・未確認の系列）にある（分からない入力）`);
-        continue;
-      }
       const date = body[dateField];
       const ds = factStateOf(date);
       // 日付の軸の日付が分からない記録は、その要求の範囲から外せない（照合の規則の2の「日付不明」）。
@@ -770,6 +782,10 @@ function checkComputedRunInputs(run: Obj, state: State, w: string, problems: Pro
       }
       const d = isObj(date) ? String(date["value"]) : "";
       if (d < from || d > to) continue;
+      if (illFormed.has(input.id)) {
+        problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]の対象の${input.id}版${input.revision}が、整っていない差し替えの系列（固定した版でたどれない・自己参照・循環・分岐・未確認の系列）にある（分からない入力）`);
+        continue;
+      }
       const st = factStateOf(body[item]);
       if (st === "unknown" || st === "not-stated") {
         problems.add(w, `${String(run["status"])}のrunのrequests[${ri}]（${String(key["kind"])}・${item}）が、分からない入力（${input.id}版${input.revision}の${item}が${st}）を要求している`);
@@ -1232,10 +1248,20 @@ function checkOne(ctx: CheckCtx, check: Obj): void {
       if (expect["premise"] !== "holds" && expect["premise"] !== "broken") ctx.problems.add(ctx.where, "premiseはholds・broken");
       return;
     }
-    case "seriesStatus":
+    case "seriesStatus": {
       requireRecord(ctx, query["record"], ["payslip", "annual-document", "official-notice"]);
       if (!SERIES_STATUSES.includes(String(expect["status"]))) ctx.problems.add(ctx.where, "系列の状態が表にない");
+      // 最新の見方の期待値は、runの不足の判断・二重登録の取消と同じ系列の補助で導いた状態と一致させる（入口ごとに判定を変えない）。
+      // 時点を指定した見方（not-in-view等）は、この補助の見方と違うので比べない。
+      const id = String(query["record"]);
+      const rec = latest(ctx.state, id);
+      if (rec !== undefined && Object.keys(query).every((k) => k === "kind" || k === "record") && expect["status"] !== "not-in-view") {
+        const series = seriesAmong(latestLookup(ctx.state), [...ctx.state.records.keys()]);
+        const actual = rec["status"] !== "active" ? "voided" : series.illFormed.has(id) ? "unconfirmed-series" : series.superseded.has(id) ? "superseded" : "current";
+        if (actual !== expect["status"]) ctx.problems.add(ctx.where, `${id}の系列の状態の期待値${String(expect["status"])}が、系列の補助で導いた${actual}と合わない`);
+      }
       return;
+    }
     case "canonicalId":
     case "runCanonicalId":
       if (k === "runCanonicalId" && !ctx.state.runs.has(String(query["run"]))) ctx.problems.add(ctx.where, "runがない");
@@ -2129,6 +2155,103 @@ test("検査の自己確認: 差し替えの識別の次元が未確定の系列
   assert.ok(dup.some((x) => x.includes("TC-04-b d2") && x.includes("ref-target-invalid")), dup.join("\n"));
   // 対: 整った系列の現在の記録なら、残す方にできる。
   assert.deepEqual(only(mutated(voidTo(5, "e"))), []);
+});
+
+// EX-04a-a6のrun（9月の所得税・10月の総支給額を要求）の前に、restoreUncheckedで差し替えの関係を置いた明細を復元し、runに固定する
+// （合成の見本）。どの明細も識別の次元（emp_1・salary・支払予定日）が一致し、要求の項目（所得税・総支給額）は分かっている。
+// records: [ID, 版, 差し替える先（なければundefined）, 取消すか]。
+type Restored = readonly [string, number, string | undefined, boolean?];
+function restoreSeriesToA6(copy: LedgerFiles, records: readonly Restored[], date: Obj = { state: "known", value: "2026-09-25" }): void {
+  const sc = scenario(firstCase(copy, "EX-04a"), "EX-04a-a6");
+  const pins = new Map<string, number>();
+  const restored = records.map(([id, revision, sup, voided]) => {
+    pins.set(id, revision);
+    const supersedes = sup === undefined ? { state: "not-applicable" } : { state: "known", value: { id: sup, revision: "current", line: "whole" } };
+    if (revision > 1) return { id, recordType: "payslip", revision, reason: voided === true ? "void" : "correct-input-error", body: { supersedes } };
+    return {
+      id,
+      recordType: "payslip",
+      body: { employerId: "emp_1", paymentKind: { state: "known", value: "salary" }, scheduledPayDate: date, incomeTax: { state: "known", value: 4100 }, grossPay: { state: "known", value: 230000 }, supersedes },
+    };
+  });
+  (sc["operations"] as Obj[]).splice(2, 0, { op: "restoreUnchecked", opId: "r1", at: "2026-11-01T00:10:00.000Z", expect: { outcome: "restored" }, expectedViolations: [], records: restored });
+  const run = op(sc, "o3")["run"] as Obj;
+  for (const [id, revision] of pins) (run["inputsRecords"] as Obj[]).push({ id, revision });
+}
+
+test("検査の自己確認: 自己参照・循環の差し替えの系列は、取消していない記録どうしでも整っていない系列にする（PR23-R005）", () => {
+  const onlyA6 = (p: string[]): string[] => p.filter((x) => x.includes("EX-04a-a6"));
+  const flagged = (p: string[], ids: readonly string[]): void => {
+    for (const id of ids) assert.ok(p.some((x) => x.includes("requests[0]") && x.includes(id) && x.includes("整っていない差し替えの系列")), `${id}\n${p.join("\n")}`);
+  };
+  // 自己参照（A → A）。
+  flagged(onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, "pay_441"]]))), ["pay_441"]);
+  // 2件の循環（A → B → A）。Aの版2でBを指す。
+  flagged(onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_441", 2, "pay_442"]]))), ["pay_441", "pay_442"]);
+  // 3件の循環（A → C → B → A）。
+  flagged(
+    onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_443", 1, "pay_442"], ["pay_441", 2, "pay_443"]]))),
+    ["pay_441", "pay_442", "pay_443"],
+  );
+  // 取消した記録を通り過ぎて自分に戻る循環（A → B（取消） → A）は、Aの自己参照の関係になる。
+  flagged(onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_441", 2, "pay_442"], ["pay_442", 2, "pay_441", true]]))), ["pay_441"]);
+  // 対: 同じ記録の正常な鎖（A ← B ← C）と、取消した中間の記録（Bを取消し、CがAを差し替える）は通る。
+  assert.deepEqual(onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_443", 1, "pay_442"]]))), []);
+  assert.deepEqual(
+    onlyA6(mutated((copy) => restoreSeriesToA6(copy, [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_443", 1, "pay_442"], ["pay_442", 2, "pay_441", true]]))),
+    [],
+  );
+  // 二重登録の取消の残す方: 循環の系列の記録は有効な記録ではないので、残す方にできない（同じ補助を使う）。
+  const dupTo = (records: readonly Restored[]): string[] =>
+    onlyA6(
+      mutated((copy) => {
+        restoreSeriesToA6(copy, records);
+        (scenario(firstCase(copy, "EX-04a"), "EX-04a-a6")["operations"] as Obj[]).splice(
+          3,
+          0,
+          { op: "save", opId: "d1", at: "2026-11-01T00:30:00.000Z", expect: { outcome: "accepted" }, record: { id: "pay_444", recordType: "payslip", body: { employerId: "emp_1", scheduledPayDate: { state: "known", value: "2026-09-26" } } } },
+          { op: "save", opId: "d2", at: "2026-11-01T00:31:00.000Z", expect: { outcome: "accepted" }, record: { id: "pay_444", recordType: "payslip", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "pay_442", revision: "current", line: "whole" } } } },
+        );
+      }),
+    );
+  assert.ok(dupTo([["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_441", 2, "pay_442"]]).some((x) => x.includes("EX-04a-a6 d2") && x.includes("ref-target-invalid")));
+  assert.ok(dupTo([["pay_442", 1, "pay_442"]]).some((x) => x.includes("EX-04a-a6 d2") && x.includes("ref-target-invalid")));
+  // 対: 正常な鎖の現在の記録（B ← Aの鎖の最新のB）なら残す方にできる。
+  assert.ok(!dupTo([["pay_441", 1, undefined], ["pay_442", 1, "pay_441"]]).some((x) => x.includes("EX-04a-a6 d2")));
+});
+
+test("検査の自己確認: 整っていない系列でも、既知の日付で要求の範囲の外と確定できる記録は不足にしない（PR23-R004）", () => {
+  const onlyA6 = (p: string[]): string[] => p.filter((x) => x.includes("EX-04a-a6"));
+  const cycle: readonly Restored[] = [["pay_441", 1, undefined], ["pay_442", 1, "pay_441"], ["pay_441", 2, "pay_442"]];
+  // 期間外: 循環の系列の明細が11月なら、9月・10月の要求のどちらの範囲にも入らないので通る。
+  assert.deepEqual(onlyA6(mutated((copy) => restoreSeriesToA6(copy, cycle, { state: "known", value: "2026-11-25" }))), []);
+  // 期間内: 同じ系列が9月なら、9月の要求（requests[0]）の不足。10月の要求（requests[1]）には挙がらない。
+  const inside = onlyA6(mutated((copy) => restoreSeriesToA6(copy, cycle)));
+  assert.ok(inside.some((x) => x.includes("requests[0]") && x.includes("整っていない差し替えの系列")), inside.join("\n"));
+  assert.ok(!inside.some((x) => x.includes("requests[1]")), inside.join("\n"));
+  // 日付不明: 支払予定日が分からない（unknown・not-stated）明細は範囲から外せないので、どちらの要求でも不足。
+  for (const state of ["unknown", "not-stated"]) {
+    const undated = onlyA6(mutated((copy) => restoreSeriesToA6(copy, cycle, { state })));
+    assert.ok(undated.some((x) => x.includes("requests[0]") && x.includes(`scheduledPayDateが${state}`)), undated.join("\n"));
+    assert.ok(undated.some((x) => x.includes("requests[1]") && x.includes(`scheduledPayDateが${state}`)), undated.join("\n"));
+  }
+  // 未確認の系列（TC-04-bのo04のあと。系列は10月）: 9月だけを要求するrunは通り、10月を要求するrunは不足（上の試験）。
+  const tc = (copy: LedgerFiles): Obj[] => scenario(firstCase(copy, "TC-04"), "TC-04-b")["operations"] as Obj[];
+  const september = (copy: LedgerFiles): void => {
+    const r = seriesRun("run_443", 1);
+    const scope = (((r["run"] as Obj)["requests"] as Obj[])[0] as Obj)["scope"] as Obj;
+    scope["from"] = "2026-09-01";
+    scope["to"] = "2026-09-30";
+    tc(copy).splice(4, 0, r);
+  };
+  assert.deepEqual(mutated(september).filter((x) => x.includes("TC-04-b")), []);
+});
+
+test("検査の自己確認: 系列の状態の期待値は、runの検査・二重登録の取消と同じ系列の補助で導いた状態と一致させる", () => {
+  const p = mutated((copy) => {
+    (check(scenario(firstCase(copy, "TC-04"), "TC-04-b"), "c02")["expect"] as Obj)["status"] = "superseded";
+  });
+  assert.ok(p.some((x) => x.includes("TC-04-b c02") && x.includes("系列の補助で導いたunconfirmed-series")), p.join("\n"));
 });
 
 test("検査の自己確認: 目的が決まらないrunはどの鎖にも入らず、目的が決まった最初のrunは1要素の鎖", () => {
