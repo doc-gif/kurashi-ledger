@@ -17,6 +17,7 @@
     "rules/manifest.json",
     "rules/salary-income-year/v1.json",
     "rules/withholding-slip-mapping/v1.json",
+    "tests/fixtures/ledger/contract-shape.ts",
     "tests/fixtures/ledger/ledger.test.ts",
     "tests/fixtures/ledger/regime/regime-cases.json",
     "tests/rules/rules.test.ts"
@@ -75,7 +76,7 @@
         },
         {
           "id": "history",
-          "method": "rules/manifest.jsonの各規則に、識別子と版、状態（draft・approved）、対象の年・手続・基準の時点・地域・適用範囲、一次資料（URL・資料の更新日・取得日・箇所）を持たせ、制度データに丸めの方法・単位・原典の箇所を持たせる。regime-cases.jsonの各ケースは、規則から2通りの独立した導き方で求めた期待値と、規則の版を持つ。tests/rules/rules.test.tsが、manifestの形、ケースの規則の版がmanifestに実在すること、ケースの原典がmanifestの原典と一致すること、丸めの記録が計算し直せること、承認前の規則をapprovedのケースが使わないことを確かめる。",
+          "method": "rules/manifest.jsonの各規則に、識別子と版、状態（draft・approved）、対象の年・手続・基準の時点・地域・適用範囲、一次資料（URL・資料の更新日・取得日・箇所）を持たせ、制度データに丸めの方法・単位・原典の箇所を持たせる。regime-cases.jsonの各ケースは、規則から2通りの独立した導き方で求めた期待値と、規則の版を持つ。tests/rules/rules.test.tsが、manifestの形、ケースの規則の版がmanifestに実在すること、ケースの原典がmanifestの原典と一致すること、丸めの記録が計算し直せること、承認前の規則をapprovedのケースが使わないことを確かめる。 制度のケースと規則の検査が同じ語（手続・制度・丸め方）を使うよう、tests/fixtures/ledger/contract-shape.tsから共通の一覧を出し、ledger.test.tsとrules.test.tsで書き写さない。",
           "expected": "期待値はレビュー前はdraftのままで、実装の出力を使わない。規則の版・原典・丸めがケースとmanifestで食い違えば試験が失敗する。過去の版を書き換えずに新しい版を足す運用が文書にある。"
         }
       ]
