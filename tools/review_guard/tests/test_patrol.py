@@ -172,11 +172,61 @@ class SameAccountAndTrustTests(unittest.TestCase):
         comments = [comment(1, T1, handoff_body()), comment(2, T2, review_body("accepted", role="reviewer"))]
         self.assertEqual(only(judged(pull(comments)))["state"], patrol.ACCEPTED)
 
-    def test_self_review_by_the_implementer_agent_is_not_counted(self):
-        comments = [comment(1, T1, handoff_body()), comment(2, T2, review_body("accepted", agent=IMPLEMENTER))]
-        result = only(judged(pull(comments)))
-        self.assertEqual(result["state"], patrol.READY)
-        self.assertTrue(any("implementer's agent_id" in w for w in result["warnings"]))
+    def test_review_from_the_implementer_side_is_not_counted(self):
+        # PR38-R010: only the opposite side counts (Claude implements -> Codex reviews, and back).
+        same = [("claude-reviewer", IMPLEMENTER), ("claude-reviewer", "claude-session/other-subagent")]
+        for role, agent in same:
+            with self.subTest(role=role, agent=agent):
+                comments = [comment(1, T1, handoff_body()), comment(2, T2, review_body("accepted", role=role, agent=agent))]
+                result = only(judged(pull(comments)))
+                self.assertEqual(result["state"], patrol.READY)
+                self.assertTrue(any("implementer's side (claude)" in w for w in result["warnings"]))
+        # The other direction: Codex implemented, a Codex subagent reviewed; then Claude reviewed.
+        codex_ready = comment(1, T1, handoff_body(agent="codex-session/impl"))
+        own = comment(2, T2, review_body("accepted", role="codex-reviewer", agent="codex-session/other"))
+        self.assertEqual(only(judged(pull([codex_ready, own])))["state"], patrol.READY)
+        other = comment(3, T3, review_body("accepted", role="claude-reviewer", agent="claude-session/reviewer"))
+        result = only(judged(pull([codex_ready, own, other])))
+        self.assertEqual((result["state"], result["review"]["side"]), (patrol.ACCEPTED, "claude"))
+
+    def test_review_side_that_cannot_be_determined_is_unconfirmed(self):
+        for role, agent in [("reviewer", "someone/unknown"),            # legacy role, unknown agent_id
+                            ("codex-reviewer", "claude-session/x")]:    # role and agent_id disagree
+            with self.subTest(role=role, agent=agent):
+                comments = [comment(1, T1, handoff_body()), comment(2, T2, review_body("accepted", role=role, agent=agent))]
+                self.assertEqual(only(judged(pull(comments)))["state"], patrol.UNCONFIRMED)
+        legacy = [comment(1, T1, handoff_body()), comment(2, T2, review_body("accepted", role="reviewer"))]
+        self.assertEqual(only(judged(pull(legacy)))["state"], patrol.ACCEPTED)  # codex-session agent_id
+        unknown_impl = [comment(1, T1, handoff_body(agent="someone/impl")), comment(2, T2, review_body("accepted"))]
+        self.assertEqual(only(judged(pull(unknown_impl)))["state"], patrol.UNCONFIRMED)
+        self.assertEqual(only(judged(pull(unknown_impl[:1])))["state"], patrol.READY)
+
+    def test_same_second_records_of_different_resources_are_unconfirmed(self):
+        # PR38-R009: an issue comment and a pull review in the same second have no provable order.
+        for review_id, handoff_id in [(5, 900), (900, 5)]:          # either id order
+            for decision in ("accepted", "changes-requested"):
+                with self.subTest(review_id=review_id, decision=decision):
+                    comments = [comment(handoff_id, T2, handoff_body()),
+                                comment(review_id, T2, review_body(decision), source="review",
+                                        review_state="COMMENTED", commit_id=HEAD)]
+                    self.assertEqual(only(judged(pull(comments)))["state"], patrol.UNCONFIRMED)
+        unreadable = [comment(900, T2, handoff_body()),
+                      comment(5, T2, "role: codex-reviewer\ndecision: accepted", source="review")]
+        self.assertEqual(only(judged(pull(unreadable)))["state"], patrol.UNCONFIRMED)
+        # Same resource: ids order them. Different seconds: timestamps order them.
+        same_resource = [comment(5, T2, handoff_body()), comment(6, T2, review_body("accepted"))]
+        self.assertEqual(only(judged(pull(same_resource)))["state"], patrol.ACCEPTED)
+        before = [comment(900, T2, handoff_body()),
+                  comment(5, T1, review_body("accepted"), source="review", commit_id=HEAD)]
+        self.assertEqual(only(judged(pull(before)))["state"], patrol.READY)
+        after = [comment(900, T1, handoff_body()),
+                 comment(5, T2, review_body("accepted"), source="review", commit_id=HEAD)]
+        self.assertEqual(only(judged(pull(after)))["state"], patrol.ACCEPTED)
+
+    def test_conflicting_decisions_in_the_same_second_are_unconfirmed(self):
+        comments = [comment(1, T1, handoff_body()), comment(900, T2, review_body("accepted")),
+                    comment(5, T2, review_body("changes-requested"), source="review", commit_id=HEAD)]
+        self.assertEqual(only(judged(pull(comments)))["state"], patrol.UNCONFIRMED)
 
     def test_records_from_untrusted_authors_are_ignored(self):
         forged = [comment(1, T1, handoff_body()),
@@ -229,7 +279,7 @@ class SameAccountAndTrustTests(unittest.TestCase):
         self.assertTrue(result["warnings"])
 
     def test_unmarked_implementer_notes_are_reported_but_do_not_block(self):
-        note = "role: implementer\nagent_id: impl-session/alpha\n指摘への対応の記録"
+        note = "role: implementer\nagent_id: claude-session/alpha\n指摘への対応の記録"
         result = only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, note)])))
         self.assertEqual(result["state"], patrol.READY)
         self.assertTrue(any("without the marker" in w for w in result["warnings"]))
@@ -303,6 +353,18 @@ class UnconfirmedTests(unittest.TestCase):
     def test_empty_but_complete_snapshot_is_judged(self):
         self.assertEqual(patrol.judge(snapshot(), config())["result"], "judged")
 
+    def test_snapshot_of_another_repository_is_rejected(self):
+        # PR38-R011
+        for value in ("other-owner/other-repo", None):
+            with self.subTest(repository=value):
+                snap = snapshot(pull([comment(1, T1, handoff_body())]))
+                if value is None:
+                    del snap["repository"]
+                else:
+                    snap["repository"] = value
+                with self.assertRaisesRegex(patrol.Invalid, "repository"):
+                    patrol.judge(snap, config())
+
 
 class ParseAndConfigTests(unittest.TestCase):
     def test_duplicate_field_and_oversized_body_are_not_records(self):
@@ -317,6 +379,8 @@ class ParseAndConfigTests(unittest.TestCase):
     def test_config_is_validated(self):
         for key, value in [("marker_namespace", "Bad Name"), ("repository", "no-slash"),
                            ("tested_commit_env", "lower"), ("trusted_logins", "not-a-list"),
+                           ("agent_sides", {"codex": ["codex"]}),
+                           ("reviewer_roles", {"codex-reviewer": "unknown-side"}),
                            ("trusted_associations", []), ("policy_paths", ["/abs"]), ("reviewer_roles", {})]:
             with self.subTest(key=key):
                 bad = config()
@@ -330,7 +394,8 @@ class ParseAndConfigTests(unittest.TestCase):
             (root / "config.json").write_text(json.dumps(config()), encoding="utf-8")
             cases = [(snapshot(pull([comment(1, T1, handoff_body())])), 0),
                      (dict(snapshot(), complete=False), patrol.EXIT_UNCONFIRMED),
-                     ({"schema_version": 9}, 1)]
+                     ({"schema_version": 9}, 1),
+                     (dict(snapshot(), repository="other-owner/other-repo"), 1)]
             for value, code in cases:
                 with self.subTest(code=code):
                     (root / "snap.json").write_text(json.dumps(value), encoding="utf-8")

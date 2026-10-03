@@ -37,6 +37,16 @@ class PatrolConfigTests(unittest.TestCase):
                 self.assertTrue(any(patrol.fnmatch.fnmatchcase(path, p) for p in policy))
         self.assertFalse(any(patrol.fnmatch.fnmatchcase(".review/plans/T23.json", p) for p in policy))
 
+    def test_agent_sides_classify_the_agent_ids_in_use(self):
+        # Claude's sessions start with "claude-code-...", Codex's with "codex/..." or "codex-desktop/...".
+        for agent_id, side in [("claude-code-desktop/session/subagent-T23", "claude"),
+                               ("codex/session", "codex"), ("codex-desktop/session/pr25", "codex"),
+                               ("someone-else/session", None)]:
+            with self.subTest(agent_id=agent_id):
+                self.assertEqual(patrol.side_of(agent_id, self.config), side)
+        self.assertEqual(self.config["reviewer_roles"]["codex-reviewer"], "codex")
+        self.assertEqual(self.config["reviewer_roles"]["claude-reviewer"], "claude")
+
     def test_roles_are_not_identified_by_login(self):
         # Copilot logins only label the auxiliary review; no reviewer role is mapped to a login.
         self.assertFalse(set(self.config["copilot_logins"]) & set(self.config["reviewer_roles"]))

@@ -91,7 +91,7 @@ python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存した
 python3 tools/review_guard/github_source.py --post          # 新しい通知だけを投稿する（明示したときだけ）
 ```
 
-設定は`.review/patrol.json`（repo、印の名前空間、必須のcheckの名前と、そのジョブが試験したmerge commitをログに出す環境変数の名前（`tested_commit_env`）、レビュー役のrole、信頼する作者の関係、追加で信頼するlogin（`trusted_logins`。GitHub Appのbot等。既定は空）、Copilotのアカウント、保護対象のパス）。終了コードは、0が判定済み、1が入力の不備、2が引数の誤り、3が未確認（どれかの取得に失敗した）。
+設定は`.review/patrol.json`（repo、印の名前空間、必須のcheckの名前と、そのジョブが試験したmerge commitをログに出す環境変数の名前（`tested_commit_env`）、agent_idの先頭から系統（Codex側・Claude側）を決める表（`agent_sides`）、レビュー役のroleとその系統、信頼する作者の関係、追加で信頼するlogin（`trusted_logins`。GitHub Appのbot等。既定は空）、Copilotのアカウント、保護対象のパス）。終了コードは、0が判定済み、1が入力の不備、2が引数の誤り、3が未確認（どれかの取得に失敗した）。
 
 ### 分け方
 
@@ -102,14 +102,16 @@ python3 tools/review_guard/github_source.py --post          # 新しい通知だ
 | `awaiting-owner` | 判断待ち | このhead/baseへのレビューの`needs-owner`、または最新の引継ぎが`needs-owner` |
 | `in-progress` | 作業中 | 引継ぎがない、最新の引継ぎが`working`等、最新の引継ぎが読めない（それより前の`ready-for-review`は使わない）、またはPRがDraft（`ready-for-review`や`accepted`があっても、Draftに戻したら作業中） |
 | `waiting-ci` | CI待ち | 引継ぎは最新だが、必須のcheckがまだ終わっていない・見つからない |
-| `accepted` | レビュー済み | このhead/baseへの別担当の`accepted`があり、必須のcheckが成功。マージの条件（[AGENTS.md](../../AGENTS.md)）は別に確かめる |
-| `unconfirmed` | 未確認 | 取得の失敗・rate limit・ページの取り切れなさ・baseの先端が読めない・引継ぎが名指しするIssueが読めない、必須のcheckの成功が試験したmerge commitをログとcommitから確かめられない、または`ready-for-review`のあとに読めないレビュー役の記録（印のないもの、書式の誤り）がある |
+| `accepted` | レビュー済み | このhead/baseへの、実装と反対の系統の`accepted`があり、必須のcheckが成功。マージの条件（[AGENTS.md](../../AGENTS.md)）は別に確かめる |
+| `unconfirmed` | 未確認 | 取得の失敗・rate limit・ページの取り切れなさ・ファイル一覧の件数がPRの`changed_files`と合わない（上限の3,000件での打切りを含む）・baseの先端が読めない・引継ぎが名指しするIssueが読めない、最新の引継ぎと同じ秒に別の資源（issue commentとpull review）の記録がある、系統を決められないレビューがある、必須のcheckの成功が試験したmerge commitをログとcommitから確かめられない、または`ready-for-review`のあとに読めないレビュー役の記録（印のないもの、書式の誤り）がある |
 
 - 経過時間は判定に使わない（時計を読まない）。無更新のPRは、引継ぎがなければいつまでも`in-progress`。Openであることは完了の根拠にしない。Draftは作業中として扱う（[AGENTS.md](../../AGENTS.md)の作業中Draft・レビュー依頼Open）。
 - 役割は、本文の印（`<!-- <名前空間>:handoff:v1 -->`・`<!-- <名前空間>:review:v1 -->`）と`role:`欄だけで決める。全員が同じGitHubアカウントで書くので、loginでは決めない。GitHubのレビューの状態（APPROVED等）やCOMMENTかどうかも使わない。印は**本文の1行目**（先頭の空行は除く）にあるものだけを読み、2行目以降の印（前置きのあとの例示、コードブロック、後置の書式例）は記録にしない（警告に出す）。`role: reviewer`（旧表記）も読む。
 - 作者の関係（`author_association`）が`trusted_associations`になく、loginが`trusted_logins`にない記録は読まない。これは役割の識別ではなく、public repoで第三者が書いた印を除くため。GitHub Appのbotで投稿する場合は、そのbotのloginを`trusted_logins`に加える（役割は本文の印のまま）。
 - 必須のcheckの成功は、そのrunが試験したmerge commitが、いまのbaseの先端とheadを親に持つときだけ数える。試験したcommitはジョブのログの`<tested_commit_env>: <SHA>`の行（このrepoではQuality gateの`TESTED_SHA`）から読み、commitのAPIで親を確かめる。PRやrunのAPIのbase.shaは更新が遅れるので使わない。
-- 実装者と同じ`agent_id`のレビューは数えない（`agent_id`は協調用の表示で、本人確認ではない）。
+- レビューは、実装と反対の系統のものだけを数える（Claude側の実装はCodex側、Codex側の実装はClaude側。[現在の状態](../../docs/project-status.md)の「レビュー」）。実装の系統は引継ぎの`agent_id`の先頭、レビューの系統は`role`（`codex-reviewer`・`claude-reviewer`）で決める。旧表記の`role: reviewer`はレビューの`agent_id`の先頭で決める。`role`と`agent_id`の系統が食い違う、または決められないレビューは未確認にする。同じ系統の別のsubagentのレビューは数えない。`agent_id`は協調用の表示で、本人確認ではない（同じアカウントの間は、書いた本人を機械では確かめられない）。
+- 前後は作成時刻で決める。同じ資源（issue comment同士、pull review同士）の同じ秒はIDで決めるが、別の資源の同じ秒はIDで決めない（前後を証明できないので未確認）。
+- 保存したsnapshotで判定し直すときは、snapshotの`repository`が設定と一致しなければ拒否する。
 - Copilotは補助。レビューの有無を表示するだけで、未実施・利用不可でも判定を変えず、承認にも数えない。未解決のスレッドは読まない（レビュー担当が確かめる）。
 - 保護対象のパス（workflow・検査器・条件・原因台帳）を変えるPRは`policy_files`に一覧にする。判定は変えない。CIの合格は迂回を防がないので、独立レビューでその変更を確かめる（[修正前の整合確認](../../docs/review-prevention.md)の「独立レビューを必須にする保護」）。
 

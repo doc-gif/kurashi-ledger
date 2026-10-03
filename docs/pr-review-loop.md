@@ -84,5 +84,6 @@ PR<N>-R002: <同上>
 - 引継ぎとレビュー記録は、1行目の印（`<!-- kurashi-ledger:handoff:v1 -->`・`<!-- kurashi-ledger:review:v1 -->`）がある記録だけを数える。印のない記録は数えず、`ready-for-review`のあとに印のないレビュー役の記録があれば「未確認」にする。PRのレビュー（COMMENT）に書く場合も、本文の1行目に印を書く。
 - `worker_status`は先頭の語（`ready-for-review`・`working`・`needs-owner`・`blocked`・`paused`）で読む。読めない引継ぎは、それより前の`ready-for-review`を取り消したものとして扱う。
 - 引継ぎとレビュー記録の印は本文の1行目だけを読む。2行目以降の印（前置きのあとの例示や書式例）は記録にしない。
+- レビューは、実装と反対の系統のものだけを数える。系統は`agent_id`の先頭（`claude`・`codex`）とレビューの`role`で決めるので、`agent_id`は自分の系統の名前で始める。
 - Draftのあいだは、`ready-for-review`や`accepted`があっても作業中として扱う。必須のcheckの成功は、試験したmerge commitの親がいまのbaseの先端とheadのときだけ数える。
 - 取得の失敗・rate limit・ページの取り切れなさ・引継ぎが名指しするIssueを読めないことは「未確認」で、「PRなし」「指摘なし」にしない。開始条件の不足の通知は、`--post`を付けたときだけ、投稿の直前に判定し直してから、同じ（PR、種別、head、base）に1回だけ投稿する。`--post`は、投稿のロックを共有する1台の機械からだけ行う。

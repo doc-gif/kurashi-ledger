@@ -22,6 +22,7 @@ import patrol
 API = "https://api.github.com/"
 MAX_PAGES = 30
 MAX_LOG = 5 * 1_048_576
+MAX_PR_FILES = 3000  # the documented maximum of GET /pulls/{n}/files
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 LINK_NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
 
@@ -178,7 +179,15 @@ def read_pull(gh, raw, config, tips, issues):
         repo = gh.repo
         if pull["base_ref"] not in tips:
             tips[pull["base_ref"]] = gh.base_tip(pull["base_ref"])
-        pull["files"] = [f.get("filename") for f in gh.pages(f"repos/{repo}/pulls/{number}/files?per_page=100")]
+        detail, _ = gh.get(f"repos/{repo}/pulls/{number}")
+        changed = detail.get("changed_files") if isinstance(detail, dict) else None
+        if not isinstance(changed, int) or (detail.get("head") or {}).get("sha") != pull["head_sha"]:
+            raise SourceError("incomplete", f"pull {number} detail (changed_files or head) not read")
+        files = gh.pages(f"repos/{repo}/pulls/{number}/files?per_page=100")
+        # The files API stops at a fixed maximum without saying so; only a full count proves completeness.
+        if len(files) != changed or changed > MAX_PR_FILES:
+            raise SourceError("incomplete", f"pull {number} files: read {len(files)} of {changed}")
+        pull["files"] = [f.get("filename") for f in files]
         pull["comments"] = comment_items(gh.pages(f"repos/{repo}/issues/{number}/comments?per_page=100"),
                                          gh.pages(f"repos/{repo}/pulls/{number}/reviews?per_page=100"))
         runs = gh.pages(f"repos/{repo}/commits/{pull['head_sha']}/check-runs?per_page=100", key="check_runs")

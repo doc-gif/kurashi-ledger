@@ -31,6 +31,7 @@ class FakeGitHub:
         self.comments, self.reviews, self.files, self.checks = {}, {}, {}, {}
         self.logs, self.commits = {}, {}
         self.issues = {"7": "open"}
+        self.changed_files = {}  # number -> changed_files in the PR detail, when it differs from the list
         self.fail = {}          # path prefix -> (status, headers)
         self.calls = []
         self.posted = []
@@ -99,7 +100,9 @@ class FakeGitHub:
         if parts[3] == "pulls" and len(parts) == 4:
             return self.page(path, [p for p in self.pulls.values() if p["state"] == "open"], query)
         if parts[3] == "pulls" and len(parts) == 5:
-            return self.response(200, self.pulls[int(parts[4])])
+            number = int(parts[4])
+            detail = dict(self.pulls[number], changed_files=self.changed_files.get(number, len(self.files[number])))
+            return self.response(200, detail)
         if parts[3] == "pulls" and parts[5] == "files":
             return self.page(path, self.files[int(parts[4])], query)
         if parts[3] == "pulls" and parts[5] == "reviews":
@@ -161,6 +164,19 @@ class SourceTests(unittest.TestCase):
         self.assertFalse(snap["complete"])
         self.assertEqual(snap["pulls"], [])
         self.assertEqual(patrol.judge(snap, config())["result"], "unconfirmed")
+
+    def test_truncated_file_list_is_unconfirmed(self):
+        # PR38-R008: the files API silently stops at its maximum; compare with changed_files.
+        for changed, files in [(6, 5), (3001, 3001), (4, 5)]:
+            with self.subTest(changed=changed, files=files):
+                fake = FakeGitHub(page_size=100)
+                fake.add_pull(5, head=HEAD2, comments=[raw_comment(1, handoff_body(head=HEAD))],
+                              files=[f"src/f{i}.ts" for i in range(files)])
+                fake.changed_files[5] = changed
+                code, out, _ = run(fake, "--post")
+                self.assertEqual(code, patrol.EXIT_UNCONFIRMED)
+                self.assertIn("incomplete", json.loads(out)["pulls"][0]["reasons"][0])
+                self.assertEqual(fake.posted, [])
 
     def test_check_run_total_mismatch_is_incomplete(self):
         fake = FakeGitHub()

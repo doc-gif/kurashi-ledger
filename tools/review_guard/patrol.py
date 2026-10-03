@@ -26,6 +26,7 @@ WAITING_CI = "waiting-ci"         # ready for this head/base, the required check
 ACCEPTED = "accepted"             # a reviewer accepted this head/base; merge conditions are separate
 UNCONFIRMED = "unconfirmed"       # some data could not be read; never read as "nothing to do"
 
+ANY_SIDE = "*"  # a reviewer role whose side comes from the agent_id (the legacy `role: reviewer`)
 DECISIONS = {"accepted", "changes-requested", "needs-owner"}
 WORKER_STATUSES = {"ready-for-review", "working", "needs-owner", "blocked", "paused"}
 # The leading status word counts ("working（中断中）" is working). "ready-for-reviewではない" does not match.
@@ -58,9 +59,15 @@ def load_config(value):
     logins = value.get("trusted_logins", [])
     require(isinstance(logins, list) and all(guard.text(item) for item in logins),
             "trusted_logins must be a list of strings")
+    sides = value.get("agent_sides")
+    require(isinstance(sides, dict) and len(sides) >= 2 and all(
+        guard.text(side) and side != ANY_SIDE and isinstance(prefixes, list) and prefixes
+        and all(guard.text(p) for p in prefixes) for side, prefixes in sides.items()),
+        "agent_sides must map at least two sides to agent_id prefixes")
     roles = value.get("reviewer_roles")
     require(isinstance(roles, dict) and roles and all(
-        guard.text(k) and guard.text(v) for k, v in roles.items()), "reviewer_roles must map role to reviewer")
+        guard.text(k) and (v in sides or v == ANY_SIDE) for k, v in roles.items()),
+        "reviewer_roles must map each role to a side in agent_sides, or to * (side from agent_id)")
     for key in ("trusted_associations", "copilot_logins", "policy_paths"):
         require(isinstance(value.get(key), list) and value[key] and all(
             guard.text(item) for item in value[key]), f"{key} must be a non-empty list of strings")
@@ -127,13 +134,29 @@ def handoff(fields):
             "base_sha": fields.get("base_sha") if guard.sha(fields.get("base_sha")) else None}
 
 
-def review(fields, roles):
+def side_of(agent_id, config):
+    """The side (e.g. codex or claude) whose agent_id prefix matches, or None if none or several.
+
+    agent_id is a coordination label, not an identity proof (docs/pr-review-loop.md)."""
+    if not isinstance(agent_id, str):
+        return None
+    found = {side for side, prefixes in config["agent_sides"].items()
+             if any(agent_id.startswith(prefix) for prefix in prefixes)}
+    return found.pop() if len(found) == 1 else None
+
+
+def review(fields, config):
+    roles = config["reviewer_roles"]
     require(fields.get("role") in roles, "unknown reviewer role")
     require(fields.get("decision") in DECISIONS, "unknown decision")
     require(guard.text(fields.get("agent_id")), "missing agent_id")
     require(guard.sha(fields.get("head_sha")) and guard.sha(fields.get("base_sha")),
             "review needs 40-character head_sha and base_sha")
-    return {"reviewer": roles[fields["role"]], "role": fields["role"], "agent_id": fields["agent_id"],
+    by_role, by_agent = roles[fields["role"]], side_of(fields["agent_id"], config)
+    side = by_agent if by_role == ANY_SIDE else by_role
+    require(side is not None, "the reviewer's side cannot be determined")
+    require(by_agent in (None, side), "the role and the agent_id name different sides")
+    return {"side": side, "role": fields["role"], "agent_id": fields["agent_id"],
             "decision": fields["decision"], "head_sha": fields["head_sha"], "base_sha": fields["base_sha"]}
 
 
@@ -158,6 +181,13 @@ def order(item):
     return (str(item.get("created_at") or item.get("at")), ident if isinstance(ident, int) else 0)
 
 
+def same_second_elsewhere(record, others):
+    """Issue comments and pull reviews are different resources: their ids do not order them.
+    Records of another resource with the same timestamp cannot be placed before or after."""
+    return [o for o in others if o is not record and str(o.get("at")) == str(record.get("at"))
+            and o.get("source") != record.get("source")]
+
+
 def collect(pull, config):
     """Turn trusted comments and reviews into ordered records. Roles come from the body only.
 
@@ -165,14 +195,15 @@ def collect(pull, config):
     earlier ready-for-review. Unreadable or unmarked reviewer records are kept in `unreadable`,
     so a later judgment can refuse to call the PR ready while they are unexplained.
     """
-    ns, roles = config["marker_namespace"], config["reviewer_roles"]
+    ns = config["marker_namespace"]
     trusted = set(config["trusted_associations"])
     trusted_logins = set(config.get("trusted_logins", []))
     out = {"handoffs": [], "reviews": [], "unreadable": [], "notices": set(), "warnings": []}
     for item in sorted(pull.get("comments", []), key=order):
         records, unmarked, misplaced = parse_records(item.get("body"), ns)
         where = f"{item.get('source', 'comment')} {item.get('id')}"
-        at = {"at": item.get("created_at"), "id": item.get("id") if isinstance(item.get("id"), int) else 0}
+        at = {"at": item.get("created_at"), "id": item.get("id") if isinstance(item.get("id"), int) else 0,
+              "source": item.get("source", "comment")}
         if item.get("author_association") not in trusted and item.get("login") not in trusted_logins:
             if records or unmarked or misplaced:
                 out["warnings"].append(f"{where}: record from an untrusted author association ignored")
@@ -181,7 +212,7 @@ def collect(pull, config):
             out["warnings"].append(f"{where}: a marker that is not on the first line is not a record")
         if unmarked:
             out["warnings"].append(f"{where}: role {unmarked!r} without the marker; not counted as a record")
-            if unmarked in roles:
+            if unmarked in config["reviewer_roles"]:
                 out["unreadable"].append(dict(at, reason=f"{where}: reviewer text without the marker"))
         for record in records:
             try:
@@ -189,7 +220,7 @@ def collect(pull, config):
                 if record["kind"] == "handoff":
                     out["handoffs"].append(dict(handoff(record["fields"]), **at))
                 elif record["kind"] == "review":
-                    out["reviews"].append(dict(review(record["fields"], roles), **at))
+                    out["reviews"].append(dict(review(record["fields"], config), **at))
                 else:
                     out["notices"].add(notice_record(record["fields"]))
             except Invalid as exc:
@@ -276,6 +307,11 @@ def judge_pull(pull, base_tip, config, issues):
         return finish(IN_PROGRESS, "no handoff; elapsed time or Open state is not completion")
     latest = records["handoffs"][-1]
     result["handoff"] = {k: latest[k] for k in ("worker_status", "agent_id", "task_id", "head_sha", "base_sha", "id")}
+    tied = same_second_elsewhere(latest, records["handoffs"] + records["reviews"] + records["unreadable"])
+    if tied:
+        result.update(state=UNCONFIRMED, reasons=[
+            "a comment and a review share the latest handoff's timestamp; their order cannot be proven"])
+        return result
     if latest.get("invalid"):
         return finish(IN_PROGRESS, "the latest handoff is not readable; earlier handoffs are not used")
     unread = [ref for ref in ISSUE_REF.findall(latest["task_id"]) if issues.get(ref) is None]
@@ -306,10 +342,16 @@ def judge_pull(pull, base_tip, config, issues):
                       "stale-handoff")
     after = [r for r in records["reviews"]
              if r["head_sha"] == head and r["base_sha"] == base_tip and order(r) >= since]
+    implementer = side_of(latest["agent_id"], config)
+    if after and implementer is None:
+        result.update(state=UNCONFIRMED, reasons=[
+            "the implementer's side cannot be determined from the handoff agent_id, so reviews cannot be counted"])
+        return result
+    result["implementer_side"] = implementer
     for r in after:
-        if r["agent_id"] == latest["agent_id"]:
-            result["warnings"].append(f"review {r['id']} has the implementer's agent_id; not counted")
-    independent = [r for r in after if r["agent_id"] != latest["agent_id"]]
+        if r["side"] == implementer:
+            result["warnings"].append(f"review {r['id']} is from the implementer's side ({implementer}); not counted")
+    independent = [r for r in after if r["side"] != implementer and r["agent_id"] != latest["agent_id"]]
     older = [r["id"] for r in records["reviews"] if r not in after]
     if older:
         result["outdated_reviews"] = older
@@ -317,7 +359,11 @@ def judge_pull(pull, base_tip, config, issues):
     result["ci"] = ci
     if independent:
         last = independent[-1]
-        result["review"] = {k: last[k] for k in ("role", "agent_id", "decision", "id")}
+        if any(r["decision"] != last["decision"] for r in same_second_elsewhere(last, independent)):
+            result.update(state=UNCONFIRMED, reasons=[
+                "a comment and a review with different decisions share a timestamp; the latest cannot be proven"])
+            return result
+        result["review"] = {k: last[k] for k in ("role", "side", "agent_id", "decision", "id")}
         if last["decision"] == "needs-owner":
             return finish(OWNER, "the reviewer recorded needs-owner for this head/base")
         if last["decision"] == "changes-requested":
@@ -341,6 +387,8 @@ def judge(snapshot, config):
     """Judge every PR in a snapshot. Missing or partial data makes the run unconfirmed."""
     config = load_config(config)
     require(isinstance(snapshot, dict) and snapshot.get("schema_version") == 1, "unsupported snapshot")
+    require(snapshot.get("repository") == config["repository"],
+            "snapshot repository does not match the config repository")
     pulls = snapshot.get("pulls")
     require(isinstance(pulls, list), "snapshot pulls must be a list")
     tips = snapshot.get("base_tips") or {}

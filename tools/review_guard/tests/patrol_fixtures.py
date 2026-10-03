@@ -16,8 +16,8 @@ HEAD = "1" * 40
 HEAD2 = "2" * 40
 BASE = "a" * 40
 BASE2 = "b" * 40
-IMPLEMENTER = "impl-session/alpha"
-REVIEWER = "review-session/beta"
+IMPLEMENTER = "claude-session/alpha"
+REVIEWER = "codex-session/beta"
 LOGIN = "shared-account"  # everyone posts from the same account; roles come from the body
 
 CONFIG = {
@@ -27,7 +27,8 @@ CONFIG = {
     "required_check": "Quality gate",
     "tested_commit_env": "TESTED_SHA",
     "trusted_logins": [],
-    "reviewer_roles": {"codex-reviewer": "codex", "claude-reviewer": "claude", "reviewer": "legacy-reviewer"},
+    "agent_sides": {"codex": ["codex"], "claude": ["claude"]},
+    "reviewer_roles": {"codex-reviewer": "codex", "claude-reviewer": "claude", "reviewer": "*"},
     "trusted_associations": ["OWNER", "MEMBER", "COLLABORATOR"],
     "copilot_logins": ["copilot-pull-request-reviewer[bot]"],
     "policy_paths": [".github/**", "tools/review_guard/**", ".review/invariants.json"],
