@@ -23,6 +23,7 @@
 - [実装順序・並行作業](docs/implementation-plan.md)
 - [タスク台帳 — T00–T28と任意評価E01](docs/implementation-tasks.md)
 - [技術構成の決定（ADR）](docs/adr/README.md)
+- [デザインの基礎・トークン・部品の仕様（Figmaとの対応）](design/README.md)
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
