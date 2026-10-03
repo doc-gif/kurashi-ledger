@@ -23,7 +23,7 @@
 現在は文書、AI向け指示、PRテンプレート、.gitignoreと、[レビュー運用ツール](review-prevention.md)・そのテスト・Actions導入用テンプレートを共有する。T02で、開発用の設定・スクリプトとその試験（`npm run setup`、`npm test`、`npm run check:public`等。下の「開発環境」）も加えた。T05で、CI（`.github/workflows/ci.yml`）とブラウザ試験の基盤（Playwright）を加えた（下の「CI」）。アプリ、計算エンジン、製品テストはまだ含まない。ローカルに残る未追跡の試作コードを自動的に採用・公開しない。
 
 - 設計: 実装計画、T00–T28と任意評価E01、GitHub・複数AI運用案、技術構成のADR（[docs/adr/](adr/README.md)）。
-- タスクIDに対応するGitHub Issue: T00は#1（完了）、T01は#8、T02は#9（完了）、T04は#7（完了）、T05は#17（2026-10-03時点）。ほかのタスクのIssueは、担当の割当時に作成する。一覧はGitHubのIssueを正本とし、架空のIssue番号を作らない。
+- タスクIDに対応するGitHub Issue: T00は#1（完了）、T01は#8、T02は#9（完了）、T04は#7（完了）、T05は#17（2026-10-03時点）。タスクに属さないWindowsの実機での確認は#19。ほかのタスクのIssueは、担当の割当時に作成する。一覧はGitHubのIssueを正本とし、架空のIssue番号を作らない。
 - Codex側のPR定期確認: このチャットに紐づく10分ごとの確認を登録済み。変更がある場合だけレビュー・通知する。稼働状態の正本は実行環境の設定。
 - 外部AIの定期実行: 所有者指定の10分を基準に、Claude Code等の実行環境で担当ごとに1本登録する。登録の有無・頻度・job IDの正本は実行環境の設定で、担当のIssue・PRの引継ぎに記録する。
 - Copilotレビュー: main向けの自動レビューrulesetを有効化済み。repo設定はDraft対象外・新push対象。利用権・利用枠に依存し、初回PRでのレビュー実行は未確認。
@@ -34,7 +34,7 @@
 - 実行方式、UI、DBドライバ、配布方式、データの保管先、共通の安全確認: T00で決定した（[ADR-0002〜0007](adr/README.md)）。
 - ライセンス: 未選択。publicであることだけでOSSの再利用許諾を意味しない。
 - 開発環境（T02、#9）: Node.jsの版の固定（24系の24.15.0以上）、`npm run setup`と依存の導入の記録、型検査、開発用の試験（`npm test`）、公開検査（`npm run check:public`）、`.gitignore`の修正。手順は[開発環境](development.md)と[公開範囲と公開前の点検](public-data.md)。固定した版とMac/Windows/Linuxでの実行は、所有者の決定でT05の受入条件にし、T05のCIで行う（T02では固定版とWindowsで実行していない）。
-- CI（T05、#17）: PRとmainへのpushで、固定した版のNode.jsを使うLinux・Windows・macOSの検査（`npm run setup`・`typecheck`・`npm test`とskipの照合・`build`・`check:public`）、ブラウザ試験（ChromiumをすべてのOS、WebKitをmacOS）、レビュー運用ツールの検査、PRの計画の検査を行い、Quality gateで結果をまとめる。手順と結果の読み方は[開発環境](development.md)の「CI」。必須のcheckやrulesetは設定していない（repoの設定は所有者が決める）。CIの合格は別担当の内容レビューの代わりにならない。Windowsの実機でのCtrl+C等の確認は、CIではできないので手で行う（同じ資料の「Windowsの実機での確認」）。
+- CI（T05、#17）: PRとmainへのpushで、固定した版のNode.jsを使うLinux・Windows・macOSの検査（`npm run setup`・`typecheck`・`npm test`とskipの照合・`build`・`check:public`）、ブラウザ試験（ChromiumをすべてのOS、WebKitをmacOS）、レビュー運用ツールの検査、PRの計画の検査を行い、Quality gateで結果をまとめる。手順と結果の読み方は[開発環境](development.md)の「CI」。repoの設定は、2026-10-03の所有者決定で、必須のstatus checkを`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする（T05のマージのあとに実装側が設定する）。CIの合格は別担当の内容レビューの代わりにならない。Windowsの実機でのCtrl+C等の確認は、CIではできないので、2026-10-03の所有者決定でT05から分けた#19で手で行う（どのタスクにも依存せず、T26・T28をブロックしない）。
 
 ## 次に行うこと
 

@@ -1,7 +1,10 @@
 // npm test（node --test）のskipの照合（T05）。
 // npm testの出力（既定のspecの形式）から、要約・skipした試験と理由・diagnosticを読み取り、
-// docs/development.md の「環境によって飛ばす試験」の表（skipの件数と一覧の正本）と、OSごとに照合する。
-// 表とは別の一覧を持たない（件数を書き写さない）。表の書き方が変わって読めなくなったら、照合を失敗にする。
+// docs/development.md の「環境によって飛ばす試験」の表（飛ばしてよい試験の名前と件数の正本）と、OSごとに照合する。
+// 照合は、ファイルごとに、飛ばしてよい試験の名前の集合と、実際にskipした試験の名前の集合が過不足なく一致すること
+// （件数が同じでも、別の試験とのすり替えは不一致）。表とは別の一覧を持たない。表の書き方が変わって読めなくなったら、
+// 照合を失敗にする。skipの理由は期待値に含めない（理由の文字列の正本は試験のファイル）。代わりに、skipごとに
+// 理由の文字列があることを確かめて記録し、理由の妥当性はレビューで表と読み合わせる。
 
 export type TestSummary = {
   readonly tests: number;
@@ -81,8 +84,8 @@ export function skipEnvironment(platform: NodeJS.Platform, uid: number | undefin
 }
 
 export type SkipTable = {
-  // 環境ごとの、ファイル（リポジトリからの相対パス）ごとの件数。
-  readonly byEnvironment: ReadonlyMap<SkipEnvironment, ReadonlyMap<string, number>>;
+  // 環境ごとの、ファイル（リポジトリからの相対パス）ごとの、飛ばしてよい試験の名前。
+  readonly byEnvironment: ReadonlyMap<SkipEnvironment, ReadonlyMap<string, ReadonlySet<string>>>;
   // 表の下の「件数は、…になる。」の文の件数。
   readonly stated: Readonly<Record<SkipEnvironment, number>>;
 };
@@ -93,9 +96,9 @@ function cells(row: string): string[] {
   return row.split('|').slice(1, -1).map((c) => c.trim());
 }
 
-// docs/development.mdの「環境によって飛ばす試験」の表と件数の文を読む。表の各行は
-// 「| 環境 | `ファイル`の…N件、`ファイル`の…M件 | 理由 | 代わりの確認 |」の形。
-// 表の合計と文の件数が環境ごとに一致しなければ失敗にする（片方だけを直した食い違いを見逃さない）。
+// docs/development.mdの「環境によって飛ばす試験」の表と件数の文を読む。表の各行の2つ目の列は
+// 「`ファイル`のN件（「試験の名前」「試験の名前」…）、`ファイル`のM件（…）」の形。
+// 件数と名前の数、表の合計と文の件数が食い違えば失敗にする（片方だけを直した食い違いを見逃さない）。
 export function parseSkipTable(markdown: string): SkipTable {
   const lines = markdown.split(/\r?\n/);
   const start = lines.findIndex((l) => l.trim() === SKIP_SECTION_HEADING);
@@ -106,26 +109,38 @@ export function parseSkipTable(markdown: string): SkipTable {
   const rows = section.filter((l) => l.trimStart().startsWith('|'));
   const header = cells(rows[0] ?? '');
   if (rows.length < 3 || header[0] !== '環境' || !(header[1] ?? '').startsWith('飛ばす試験')) {
-    throw new Error('「環境によって飛ばす試験」の表（環境・飛ばす試験（件数）の列）を読めない。');
+    throw new Error('「環境によって飛ばす試験」の表（環境・飛ばす試験の列）を読めない。');
   }
   const labelToEnvironment = new Map<string, SkipEnvironment>(
     Object.entries(ENVIRONMENT_LABELS).map(([env, label]) => [label, env as SkipEnvironment]),
   );
-  const byEnvironment = new Map<SkipEnvironment, Map<string, number>>();
+  const byEnvironment = new Map<SkipEnvironment, Map<string, Set<string>>>();
   for (const row of rows.slice(2)) {
     const [label = '', skips = ''] = cells(row);
     const env = labelToEnvironment.get(label);
     if (env === undefined) {
       throw new Error(`表の環境「${label}」を照合で扱えない。scripts/lib/test-skips.tsのENVIRONMENT_LABELSとCIの照合を同じPRで直す。`);
     }
-    const files = byEnvironment.get(env) ?? new Map<string, number>();
+    const files = byEnvironment.get(env) ?? new Map<string, Set<string>>();
+    // 書き方の外の文字（「、」と空白以外）が残れば、読み落としとして失敗にする。
     let found = 0;
-    for (const match of skips.matchAll(/`([^`]+\.test\.ts)`の[^`]*?(\d+)件/g)) {
-      const file = match[1] ?? '';
-      files.set(file, (files.get(file) ?? 0) + Number(match[2]));
+    const rest = skips.replace(/`([^`]+\.test\.ts)`の(\d+)件（((?:「[^「」]+」)+)）/g, (_all, file: string, count: string, list: string) => {
+      const names = [...list.matchAll(/「([^「」]+)」/g)].map((m) => m[1] ?? '');
+      if (names.length !== Number(count)) {
+        throw new Error(`表の「${label}」の行の ${file}: 件数（${count}件）と、書いた試験の名前の数（${names.length}）が合わない。`);
+      }
+      const set = files.get(file) ?? new Set<string>();
+      for (const name of names) {
+        if (set.has(name)) throw new Error(`表の「${label}」の行の ${file}: 試験「${name}」が2回ある。`);
+        set.add(name);
+      }
+      files.set(file, set);
       found += 1;
+      return '';
+    });
+    if (found === 0 || rest.replace(/[、\s]/g, '') !== '') {
+      throw new Error(`表の「${label}」の行を、\`ファイル\`のN件（「試験の名前」…）の形で読めない。`);
     }
-    if (found === 0) throw new Error(`表の「${label}」の行から、\`ファイル\`の…N件 の形の記載を読めない。`);
     byEnvironment.set(env, files);
   }
 
@@ -139,7 +154,7 @@ export function parseSkipTable(markdown: string): SkipTable {
     'posix-root': Number(sentence[3]),
   };
   for (const env of Object.keys(ENVIRONMENT_LABELS) as SkipEnvironment[]) {
-    const total = [...(byEnvironment.get(env)?.values() ?? [])].reduce((a, b) => a + b, 0);
+    const total = [...(byEnvironment.get(env)?.values() ?? [])].reduce((a, names) => a + names.size, 0);
     if (total !== stated[env]) {
       throw new Error(`表の${ENVIRONMENT_LABELS[env]}の合計（${total}件）と、件数の文（${stated[env]}件）が食い違う。`);
     }
@@ -186,16 +201,29 @@ export function attributeSkips(
   return { byFile, problems };
 }
 
-// ファイルごとに、表の件数と実際のskipの件数を比べる。
+// ファイルごとに、表で飛ばしてよいとした試験の名前の集合と、実際にskipした試験の名前の集合を比べる。
+// 表にない試験のskip（同じファイルの中のすり替えを含む）、表にあるのにskipしなかった試験、同じ名前の重複を
+// 問題として返す。skipに理由の文字列がない（既定のSKIP）ものも問題にする。
 export function compareSkips(
-  expected: ReadonlyMap<string, number>,
+  expected: ReadonlyMap<string, ReadonlySet<string>>,
   actual: ReadonlyMap<string, readonly SkippedTest[]>,
 ): string[] {
   const problems: string[] = [];
   for (const file of [...new Set([...expected.keys(), ...actual.keys()])].sort()) {
-    const want = expected.get(file) ?? 0;
-    const got = actual.get(file)?.length ?? 0;
-    if (want !== got) problems.push(`${file}: 表では${want}件、実際は${got}件skipした。`);
+    const want = expected.get(file) ?? new Set<string>();
+    const got = actual.get(file) ?? [];
+    const seen = new Set<string>();
+    for (const test of got) {
+      if (seen.has(test.name)) problems.push(`${file}: 試験「${test.name}」のskipが2回ある。`);
+      seen.add(test.name);
+      if (!want.has(test.name)) problems.push(`${file}: 表にない試験「${test.name}」をskipした。`);
+      if (test.reason.trim() === '' || test.reason.trim() === 'SKIP') {
+        problems.push(`${file}: 試験「${test.name}」のskipに理由の文字列がない。`);
+      }
+    }
+    for (const name of want) {
+      if (!seen.has(name)) problems.push(`${file}: 表で飛ばすとした試験「${name}」をskipしなかった。`);
+    }
   }
   return problems;
 }

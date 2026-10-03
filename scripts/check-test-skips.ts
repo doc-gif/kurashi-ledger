@@ -1,6 +1,7 @@
 // `npm run check:test-skips -- <npm testの出力のファイル>`: npm testのskipを、docs/development.md の
 // 「環境によって飛ばす試験」の表とこのOSで照合し、結果（skipした試験と理由、diagnostic）を記録する（T05のCI）。
-// 一致しない・読めない・失敗や中断やtodoがある・試験が0件のときは、1で終える。
+// 照合は、ファイルごとに、表で飛ばしてよいとした試験の名前の集合と、実際にskipした試験の名前の集合を比べる。
+// 一致しない・読めない・理由のないskipがある・失敗や中断やtodoがある・試験が0件のときは、1で終える。
 // GitHub Actionsでは、同じ内容をstep summaryにも書く。
 import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -64,18 +65,24 @@ try {
 
   const attributed = attributeSkips(report.skipped, sources);
   problems.push(...attributed.problems);
-  const expected = table.byEnvironment.get(env) ?? new Map<string, number>();
+  const expected = table.byEnvironment.get(env) ?? new Map<string, ReadonlySet<string>>();
   problems.push(...compareSkips(expected, attributed.byFile));
 
   const files = [...new Set([...expected.keys(), ...attributed.byFile.keys()])].sort();
   if (files.length > 0) {
     lines.push('| ファイル | 表の件数 | 実際のskip |', '| --- | --- | --- |');
-    for (const file of files) lines.push(`| ${file} | ${expected.get(file) ?? 0} | ${attributed.byFile.get(file)?.length ?? 0} |`);
+    for (const file of files) {
+      lines.push(`| ${file} | ${expected.get(file)?.size ?? 0} | ${attributed.byFile.get(file)?.length ?? 0} |`);
+    }
     lines.push('');
   }
-  lines.push('skipした試験と理由:');
+  lines.push('skipした試験と理由（表に名前があるものは「表どおり」）:');
   if (report.skipped.length === 0) lines.push('- なし');
-  for (const t of report.skipped) lines.push(`- ${t.name} — ${t.reason}`);
+  for (const [file, tests] of attributed.byFile) {
+    for (const t of tests) {
+      lines.push(`- ${file}: ${t.name} — ${t.reason}（${expected.get(file)?.has(t.name) === true ? '表どおり' : '表にない'}）`);
+    }
+  }
   lines.push('', '試験の出力のdiagnostic（弱めて確かめた箇所の記録を含む）:');
   if (report.diagnostics.length === 0) lines.push('- なし');
   for (const d of report.diagnostics) lines.push(`- ${d}`);

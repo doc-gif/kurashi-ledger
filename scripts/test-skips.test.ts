@@ -105,11 +105,11 @@ const SAMPLE_DOC = [
   '',
   '### 環境によって飛ばす試験',
   '',
-  '| 環境 | 飛ばす試験（件数） | 理由 | 代わりの確認（T05） |',
+  '| 環境 | 飛ばす試験（ファイル・件数・試験の名前） | 理由 | 代わりの確認 |',
   '| --- | --- | --- | --- |',
-  '| Windows | `scripts/a.test.ts`の実際のシグナルの3件（`SIGINT`、`SIGTERM`）、`scripts/b.test.ts`の1件 | 理由 | 確認 |',
-  '| Windows | `scripts/c.test.ts`の、印を消せないときの1件 | 理由 | 確認 |',
-  '| macOS・Linuxのroot | `scripts/c.test.ts`の、印を消せないときの1件 | 理由 | 確認 |',
+  '| Windows | `scripts/a.test.ts`の3件（「シグナルA」「シグナルB」「シグナルC」）、`scripts/b.test.ts`の1件（「npmのCtrl+C」） | 理由 | 確認 |',
+  '| Windows | `scripts/c.test.ts`の1件（「印を消せない」） | 理由 | 確認 |',
+  '| macOS・Linuxのroot | `scripts/c.test.ts`の1件（「印を消せない」） | 理由 | 確認 |',
   '',
   '件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。',
   '',
@@ -118,41 +118,49 @@ const SAMPLE_DOC = [
   '件数は、macOS・Linuxの一般のユーザーで9件、Windowsで9件、macOS・Linuxのrootで9件になる。',
 ].join('\n');
 
-test('表と件数の文を読み、環境ごと・ファイルごとの件数を返す', () => {
+function namesOf(table: ReturnType<typeof parseSkipTable>, env: 'windows' | 'posix-root' | 'posix-user') {
+  return [...(table.byEnvironment.get(env) ?? [])].map(([file, names]) => [file, [...names]]);
+}
+
+test('表と件数の文を読み、環境ごと・ファイルごとに飛ばしてよい試験の名前を返す', () => {
   const table = parseSkipTable(SAMPLE_DOC);
   assert.deepEqual(table.stated, { 'posix-user': 0, windows: 5, 'posix-root': 1 });
-  assert.deepEqual(
-    [...(table.byEnvironment.get('windows') ?? [])],
-    [
-      ['scripts/a.test.ts', 3],
-      ['scripts/b.test.ts', 1],
-      ['scripts/c.test.ts', 1],
-    ],
-  );
-  assert.deepEqual([...(table.byEnvironment.get('posix-root') ?? [])], [['scripts/c.test.ts', 1]]);
+  assert.deepEqual(namesOf(table, 'windows'), [
+    ['scripts/a.test.ts', ['シグナルA', 'シグナルB', 'シグナルC']],
+    ['scripts/b.test.ts', ['npmのCtrl+C']],
+    ['scripts/c.test.ts', ['印を消せない']],
+  ]);
+  assert.deepEqual(namesOf(table, 'posix-root'), [['scripts/c.test.ts', ['印を消せない']]]);
   assert.equal(table.byEnvironment.get('posix-user'), undefined);
 });
 
-test('表と件数の文が食い違う・知らない環境・読めない行・節がないときは失敗にする', () => {
+test('件数と名前の数、表と件数の文が食い違う・知らない環境・読めない行・名前の重複・節がないときは失敗にする', () => {
   assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('Windowsで5件', 'Windowsで4件')), /食い違う/);
+  assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('`scripts/a.test.ts`の3件', '`scripts/a.test.ts`の2件')), /合わない/);
   assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('| macOS・Linuxのroot |', '| FreeBSD |')), /FreeBSD/);
-  assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('`scripts/b.test.ts`の1件', '`scripts/b.test.ts`の1つ')), /食い違う/);
+  // 名前のない書き方や、書き方の外の文字が残る行は、読み落とさずに失敗にする。
+  assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('`scripts/b.test.ts`の1件（「npmのCtrl+C」）', '`scripts/b.test.ts`の1件')), /読めない/);
   assert.throws(
-    () => parseSkipTable(SAMPLE_DOC.replace('`scripts/c.test.ts`の、印を消せないときの1件 | 理由 | 確認 |\n| macOS', '印を消せないとき | 理由 | 確認 |\n| macOS')),
+    () => parseSkipTable(SAMPLE_DOC.replace('| Windows | `scripts/c.test.ts`の1件（「印を消せない」） |', '| Windows | 印を消せないとき |')),
     /読めない/,
   );
+  assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('「シグナルB」', '「シグナルA」')), /2回/);
   assert.throws(() => parseSkipTable(SAMPLE_DOC.replace('### 環境によって飛ばす試験', '### 別の節')), /節がない/);
   assert.throws(() => parseSkipTable(SAMPLE_DOC.replace(/件数は、macOS・Linuxの一般のユーザーで0件[^\n]*\n/, '')), /文を読めない/);
 });
 
-test('docs/development.mdの実際の表を読め、表のファイルがあり、そのファイルにskipの指定がある', () => {
+test('docs/development.mdの実際の表を読め、表の試験はそのファイルでskipの指定を持つ試験の名前である', () => {
   const table = parseSkipTable(readFileSync(join(repoRoot, 'docs', 'development.md'), 'utf8'));
-  const files = new Set([...table.byEnvironment.values()].flatMap((m) => [...m.keys()]));
-  assert.ok(files.size > 0);
-  for (const file of files) {
+  const listed = [...table.byEnvironment.values()].flatMap((m) => [...m].flatMap(([file, names]) => [...names].map((n) => [file, n] as const)));
+  assert.ok(listed.length > 0);
+  for (const [file, name] of listed) {
     const path = join(repoRoot, ...file.split('/'));
     assert.ok(existsSync(path), `表のファイルがない: ${file}`);
-    assert.match(readFileSync(path, 'utf8'), /\{ skip: /, `表のファイルにskipの指定がない: ${file}`);
+    const line = readFileSync(path, 'utf8')
+      .split(/\r?\n/)
+      .find((l) => l.includes(`test('${name}'`));
+    assert.ok(line !== undefined, `表の試験が ${file} にない: ${name}`);
+    assert.match(line, /\{ skip: /, `表の試験にskipの指定がない: ${name}`);
   }
 });
 
@@ -178,13 +186,23 @@ test('skipした試験を名前でファイルに結び付け、見つからな�
   assert.match(bad.problems[1] ?? '', /複数/);
 });
 
-test('ファイルごとの件数が表と違えば、多い・少ない・表にないファイルを問題にする', () => {
-  const skip = { name: 'n', reason: 'r' };
-  assert.deepEqual(compareSkips(new Map([['a', 1]]), new Map([['a', [skip]]])), []);
+test('ファイルごとに、表の試験の名前の集合と実際のskipの集合が過不足なく一致しなければ問題にする', () => {
+  const skip = (name: string, reason = '理由') => ({ name, reason });
+  const expected = new Map([['a', new Set(['A', 'B'])]]);
+  assert.deepEqual(compareSkips(expected, new Map([['a', [skip('A'), skip('B')]]])), []);
   assert.deepEqual(compareSkips(new Map(), new Map()), []);
-  assert.equal(compareSkips(new Map([['a', 2]]), new Map([['a', [skip]]])).length, 1);
-  assert.equal(compareSkips(new Map([['a', 1]]), new Map()).length, 1);
-  assert.match(compareSkips(new Map(), new Map([['b', [skip]]]))[0] ?? '', /b: 表では0件、実際は1件/);
+  // 同じファイルの中のすり替え（件数は同じ2件）: Bの代わりにCがskipされたら拒む。
+  const swapped = compareSkips(expected, new Map([['a', [skip('A'), skip('C')]]]));
+  assert.equal(swapped.length, 2);
+  assert.match(swapped.join('\n'), /表にない試験「C」/);
+  assert.match(swapped.join('\n'), /「B」をskipしなかった/);
+  // 少ない・表にないファイル・同じ名前の重複。
+  assert.match(compareSkips(expected, new Map([['a', [skip('A')]]])).join(), /「B」をskipしなかった/);
+  assert.match(compareSkips(new Map(), new Map([['b', [skip('X')]]])).join(), /b: 表にない試験「X」/);
+  assert.match(compareSkips(expected, new Map([['a', [skip('A'), skip('A'), skip('B')]]])).join(), /2回/);
+  // 理由の文字列がないskip（skip: true の既定のSKIP、空）は、表にあっても問題にする。
+  assert.match(compareSkips(expected, new Map([['a', [skip('A', 'SKIP'), skip('B')]]])).join(), /理由の文字列がない/);
+  assert.match(compareSkips(expected, new Map([['a', [skip('A', ' '), skip('B')]]])).join(), /理由の文字列がない/);
 });
 
 test('失敗・中断・todo・0件の試験を問題にする', () => {
