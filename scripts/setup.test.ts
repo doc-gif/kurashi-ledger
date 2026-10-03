@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
+import { startInNewConsole } from '../tests/support/windows-console.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const DEP_NAME = 'kl-synthetic-dep';
@@ -411,14 +412,14 @@ test('node_modulesがリポジトリの外へのリンクなら、setup・check:
   assert.equal(readFileSync(join(shared, '.kurashi-ledger-install.json'), 'utf8'), '{"other":"worktree"}');
 });
 
-// Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を送れないので、理由を出してskipし、
-// Windowsの実機で手で確かめる（Issue #19）。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
-const posixOnly =
-  process.platform === 'win32'
-    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。Windowsの実機で手で確かめる（Issue #19）'
-    : false;
-
-test('Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', { skip: posixOnly }, async () => {
+// 実際のCtrl+C。POSIXはプロセスグループへのSIGINT。Windowsは、npm run setupを新しいコンソールで起動し、実際の
+// コンソールの制御イベント（Ctrl+C）をそのコンソールの全員に送る（tests/support/windows-console.ts。Issue #19）。
+// Windowsのnpmは、Ctrl+Cを受けるとスクリプトのシェル（cmd.exe）を強制終了して自分も終わる（@npmcli/run-script）ので、
+// npm runの終了コードはsetupの130にならず、setupの片付けより先に戻ることがある。そこで、コンソールのすべてのプロセスが
+// 終わるのを待ってから確かめ、npm runの終了コードは0でないことだけを確かめる（setup自身の130・149は、setupを直接
+// 起動する scripts/setup-lock.test.ts で確かめる）。観測した終了コードと、npmが戻ったときに残っていたプロセスの数は
+// diagnosticに出す。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
+test('Ctrl+C（POSIXはプロセスグループへのSIGINT、Windowsは新しいコンソールへのCtrl+C）でnpm run setupを止めると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', async (t) => {
   mode = 'ok';
   const root = makeProject();
   assert.equal((await npm(root, ['run', 'setup'])).status, 0);
@@ -427,22 +428,46 @@ test('Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ci�
   mode = 'hang';
   const before = requests;
   useCache(root, `cache-hang-${counter}`);
-  const { child, done } = startNpm(root, ['run', 'setup']);
-  const deadline = Date.now() + 60_000;
-  while (requests === before) {
-    assert.ok(Date.now() < deadline, 'npm ciが依存の取得を始めなかった');
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  killTree(child, 'SIGINT');
+  const waitForFetch = async () => {
+    const deadline = Date.now() + 60_000;
+    while (requests === before) {
+      assert.ok(Date.now() < deadline, 'npm ciが依存の取得を始めなかった');
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
   // setupはnpm ciの終了を待つ。止まっている取得に応答して、npm ciを終わらせる（入れ終わっても記録は書かない）。
-  await new Promise((r) => setTimeout(r, 200));
-  mode = 'ok';
-  for (const res of held.splice(0)) {
-    res.writeHead(200, { 'content-type': 'application/octet-stream' });
-    res.end(tarball);
+  const releaseHeld = async () => {
+    await new Promise((r) => setTimeout(r, 200));
+    mode = 'ok';
+    for (const res of held.splice(0)) {
+      res.writeHead(200, { 'content-type': 'application/octet-stream' });
+      res.end(tarball);
+    }
+  };
+  let result: Run;
+  if (process.platform === 'win32') {
+    const run = startInNewConsole(process.execPath, [npmCli, 'run', 'setup'], { cwd: root, env: npmEnv(), exchangeParent: work });
+    try {
+      await run.started;
+      await waitForFetch();
+      await run.send('ctrl-c');
+      await releaseHeld();
+      const r = await run.done;
+      assert.equal(r.timedOut, false, `時間切れ: ${r.stderr}`);
+      t.diagnostic(`Windowsのnpm run setupの終了コード: ${String(r.status)}（npmが終わったときに残っていたプロセス: ${r.remainingAtExit}）`);
+      assert.ok(r.status !== null && r.status !== 0, `中断したnpm run setupが成功を返した: ${r.stderr}`);
+      result = { status: r.status, signal: null, stdout: r.stdout, stderr: r.stderr };
+    } finally {
+      run.abort();
+    }
+  } else {
+    const { child, done } = startNpm(root, ['run', 'setup']);
+    await waitForFetch();
+    killTree(child, 'SIGINT');
+    await releaseHeld();
+    result = await done;
+    assert.ok(result.status === 130 || result.signal === 'SIGINT', `中断されていない: ${describe(result)}`);
   }
-  const result = await done;
-  assert.ok(result.status === 130 || result.signal === 'SIGINT', `中断されていない: ${describe(result)}`);
   assert.match(result.stderr, /SIGINT を受けたので中断した/);
   assert.equal(existsSync(join(root, RECORD)), false, '記録は残らない');
   assert.equal(existsSync(join(root, '.kurashi-ledger-setup.lock')), false, '作業中の印は残らない（ADR-0008）');

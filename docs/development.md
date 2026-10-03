@@ -68,11 +68,11 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 
 | 環境 | 飛ばす試験（ファイル・件数・試験の名前） | 理由 | 代わりの確認 |
 | --- | --- | --- | --- |
-| Windows | `scripts/setup-lock.test.ts`の3件（「実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える」「Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える」「SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える」）、`scripts/setup.test.ts`の1件（「Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える」） | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（`kill`は強制終了になる）。`SIGTERM`・`SIGHUP`は、Windowsのsetupが受けるシグナルではない | Windowsの実機のコンソールでのCtrl+CとCtrl+Breakの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
-| Windows | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | Windowsの実機での、印を消せないときのCtrl+Cの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
-| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
+| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」）、`scripts/setup-lock.test.ts`の1件（「実際のCtrl+Cで中断したときに印を消せなければ、130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進む」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで0件、macOS・Linuxのrootで2件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。
+
+Windowsでは、以前は飛ばしていた中断の試験（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)）を、次の方法で実際に実行する（下の「Windowsのコンソールの中断の試験」）。
 
 飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
 

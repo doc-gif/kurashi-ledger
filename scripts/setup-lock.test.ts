@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { recordPath, verifyInstallRecord } from './lib/install-record.ts';
+import { preventDeletion } from '../tests/support/prevent-deletion.ts';
+import { type ConsoleEvent, startInNewConsole } from '../tests/support/windows-console.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const LOCK = '.kurashi-ledger-setup.lock';
@@ -17,6 +19,8 @@ let counter = 0;
 
 const FAKE_NPM = `const fs = require('node:fs');
 const path = require('node:path');
+// Ctrl+Cが届いても自分では止まらないnpm（setupの転送を確かめる。Windowsだけで使う）。
+if (process.env.FAKE_NPM_IGNORE_CTRL_C === '1') process.on('SIGINT', () => {});
 const log = process.env.FAKE_NPM_LOG;
 fs.appendFileSync(log, 'start\\n');
 const go = process.env.FAKE_NPM_GO;
@@ -62,16 +66,20 @@ function makeProject() {
 
 type Run = { status: number | null; signal: NodeJS.Signals | null; stderr: string };
 
-// setup.tsを、合成のnpmをnpm_execpathにして起動する。外側のnpm・NODE_の設定は渡さない。
-function startSetup(root: string, extra: NodeJS.ProcessEnv) {
+// setup.tsに渡す環境変数。合成のnpmをnpm_execpathにする。外側のnpm・NODE_の設定は渡さない。
+function setupEnv(extra: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!/^npm_/i.test(key) && !/^NODE_/i.test(key)) env[key] = value;
   }
-  Object.assign(env, { npm_execpath: fakeNpm, TMPDIR: work, TEMP: work, TMP: work }, extra);
+  return Object.assign(env, { npm_execpath: fakeNpm, TMPDIR: work, TEMP: work, TMP: work }, extra);
+}
+
+// setup.tsを起動する。
+function startSetup(root: string, extra: NodeJS.ProcessEnv) {
   const child = spawn(process.execPath, [join(repoRoot, 'scripts', 'setup.ts')], {
     cwd: root,
-    env,
+    env: setupEnv(extra),
     stdio: ['ignore', 'ignore', 'pipe'],
     detached: process.platform !== 'win32',
   });
@@ -146,23 +154,66 @@ test('強制終了（SIGKILL・Windowsはプロセスツリーの強制終了）
   assert.equal(verifyInstallRecord(p.root).ok, true);
 });
 
-// ---- 実際のシグナル（POSIXだけ）。Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を
-// 送る手段がないので、理由を出してskipし、Windowsの実機で手で確かめる（Issue #19）。片付けの処理そのものは、
-// scripts/install-record.test.tsの単体試験で全OSで確かめている。
-const posixOnly =
-  process.platform === 'win32'
-    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。Windowsの実機で手で確かめる（Issue #19）'
-    : false;
+// ---- 実際のシグナル。POSIXは、killでsetup（かそのプロセスグループ全体）にシグナルを送る。Windowsは、setupを
+// 新しいコンソールで起動し、実際のコンソールの制御イベント（Ctrl+C・Ctrl+Break）をそのコンソールの全員に送る
+// （tests/support/windows-console.ts。Issue #19）。片付けの処理そのものは、scripts/install-record.test.tsの単体試験でも
+// 全OSで確かめている。
 
-async function interruptAndCheck(signal: NodeJS.Signals, whole: boolean, expectedCode: number) {
+type Interrupt = {
+  // POSIX: 送るシグナルと、プロセスグループ全体（端末のCtrl+Cと同じ）か、setupだけか。
+  readonly posix: { readonly signal: NodeJS.Signals; readonly whole: boolean };
+  // Windows: コンソールに送る制御イベントと、合成のnpmがCtrl+Cを無視する（自分では止まらない）か。
+  readonly windows: { readonly event: ConsoleEvent; readonly npmIgnoresCtrlC?: boolean };
+};
+
+// setupの印と記録があるnpm ciの最中に中断し、結果を返す。beforeInterruptは中断の直前に呼ぶ（戻り値で元に戻す）。
+async function interrupt(
+  p: ReturnType<typeof makeProject>,
+  how: Interrupt,
+  beforeInterrupt?: () => () => void,
+): Promise<{ result: Run; signal: NodeJS.Signals }> {
+  const env = { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go };
+  let restore: (() => void) | undefined;
+  try {
+    if (process.platform === 'win32') {
+      const ignores = how.windows.npmIgnoresCtrlC === true;
+      const run = startInNewConsole(process.execPath, [join(repoRoot, 'scripts', 'setup.ts')], {
+        cwd: p.root,
+        env: setupEnv({ ...env, ...(ignores ? { FAKE_NPM_IGNORE_CTRL_C: '1' } : {}) }),
+        exchangeParent: work,
+      });
+      try {
+        await run.started;
+        await waitFor(() => p.starts() === 1, 'npm ciが始まらない');
+        restore = beforeInterrupt?.();
+        await run.send(how.windows.event);
+        const r = await run.done;
+        assert.equal(r.timedOut, false, `時間切れ: ${r.stderr}`);
+        return {
+          result: { status: r.status, signal: null, stderr: r.stderr },
+          signal: how.windows.event === 'ctrl-c' ? 'SIGINT' : 'SIGBREAK',
+        };
+      } finally {
+        run.abort();
+      }
+    }
+    const run = startSetup(p.root, env);
+    await waitFor(() => p.starts() === 1, 'npm ciが始まらない');
+    restore = beforeInterrupt?.();
+    // wholeはCtrl+Cと同じくプロセスグループ全体（合成のnpmにも届く）、そうでなければsetupだけに送る
+    // （setupが猶予のあとで合成のnpmへ転送する）。
+    const pid = run.child.pid as number;
+    process.kill(how.posix.whole ? -pid : pid, how.posix.signal);
+    return { result: await run.done, signal: how.posix.signal };
+  } finally {
+    restore?.();
+  }
+}
+
+async function interruptAndCheck(how: Interrupt, expectedCode: { readonly posix: number; readonly windows: number }) {
   const p = makeProject();
-  const run = startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go });
-  await waitFor(() => p.starts() === 1, 'npm ciが始まらない');
-  // wholeはCtrl+Cと同じくプロセスグループ全体（合成のnpmにも届く）、そうでなければsetupだけに送る
-  // （setupが猶予のあとで合成のnpmへ転送する）。
-  process.kill(whole ? -(run.child.pid as number) : (run.child.pid as number), signal);
-  const result = await run.done;
-  assert.equal(result.status, expectedCode, result.stderr);
+  const { result, signal } = await interrupt(p, how);
+  assert.equal(result.status, process.platform === 'win32' ? expectedCode.windows : expectedCode.posix, result.stderr);
   assert.match(result.stderr, new RegExp(`${signal} を受けたので中断した`));
   assert.equal(existsSync(join(p.root, LOCK)), false, '作業中の印は残らない');
   assert.equal(existsSync(recordPath(p.root)), false, '記録は残らない');
@@ -175,15 +226,52 @@ async function interruptAndCheck(signal: NodeJS.Signals, whole: boolean, expecte
   assert.equal(verifyInstallRecord(p.root).ok, true, '次のsetupは止まらずに進める');
 }
 
-test('実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える', { skip: posixOnly }, async () => {
-  await interruptAndCheck('SIGINT', false, 130);
+test('Ctrl+Cがnpm ciを止めなくても（POSIXはsetupだけへのSIGINT、Windowsはnpmが無視するコンソールのCtrl+C）、猶予のあとでnpmへ転送して終了を待ち、記録も印も残さず130で終える', async () => {
+  await interruptAndCheck(
+    { posix: { signal: 'SIGINT', whole: false }, windows: { event: 'ctrl-c', npmIgnoresCtrlC: true } },
+    { posix: 130, windows: 130 },
+  );
 });
 
-test('Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える', { skip: posixOnly }, async () => {
-  await interruptAndCheck('SIGINT', true, 130);
+test('Ctrl+C（POSIXはプロセスグループ全体へのSIGINT、Windowsは新しいコンソールへのCtrl+C）で、記録も印も残さず130で終える', async () => {
+  await interruptAndCheck({ posix: { signal: 'SIGINT', whole: true }, windows: { event: 'ctrl-c' } }, { posix: 130, windows: 130 });
 });
 
-test('SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える', { skip: posixOnly }, async () => {
-  await interruptAndCheck('SIGTERM', false, 143);
-  await interruptAndCheck('SIGHUP', true, 129);
+test('ほかの終了のシグナル（POSIXはSIGTERMとSIGHUP、WindowsはCtrl+Break）でも、記録も印も残さず128+番号で終える', async () => {
+  // Windowsのsetupが受けるのは、SIGINT（Ctrl+C）とSIGBREAK（Ctrl+Break）だけ（setupSignals）。
+  await interruptAndCheck({ posix: { signal: 'SIGTERM', whole: false }, windows: { event: 'ctrl-break' } }, { posix: 143, windows: 149 });
+  if (process.platform !== 'win32') {
+    await interruptAndCheck({ posix: { signal: 'SIGHUP', whole: true }, windows: { event: 'ctrl-break' } }, { posix: 129, windows: 149 });
+  }
+});
+
+// 印を消せない状態は tests/support/prevent-deletion.ts で作る。rootのユーザーは書込み禁止のディレクトリからも消せる。
+const lockUndeletableSkip =
+  process.platform !== 'win32' && process.getuid?.() === 0
+    ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、印の削除の失敗を再現できない。CIは一般のユーザーで実行する（T05）'
+    : false;
+
+test('実際のCtrl+Cで中断したときに印を消せなければ、130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進む', { skip: lockUndeletableSkip }, async () => {
+  const p = makeProject();
+  const { result, signal } = await interrupt(p, { posix: { signal: 'SIGINT', whole: true }, windows: { event: 'ctrl-c' } }, () =>
+    preventDeletion(p.root, LOCK),
+  );
+  assert.equal(result.status, 130, result.stderr);
+  assert.match(result.stderr, new RegExp(`${signal} を受けたので中断した。依存の導入の記録は残していない。`));
+  assert.match(result.stderr, /印（\.kurashi-ledger-setup\.lock）を消せなかった/);
+  assert.match(result.stderr, /rm \.kurashi-ledger-setup\.lock/);
+  assert.match(result.stderr, /Remove-Item \.kurashi-ledger-setup\.lock/);
+  assert.equal(existsSync(join(p.root, LOCK)), true, '印は残る');
+  assert.equal(existsSync(recordPath(p.root)), false, '記録は残らない');
+
+  writeFileSync(p.go, '');
+  const refused = await startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go }).done;
+  assert.equal(refused.status, 1, refused.stderr);
+  assert.match(refused.stderr, /前の `npm run setup` が強制終了/);
+  assert.equal(p.starts(), 1, '止まったsetupはnpm ciを始めない');
+
+  rmSync(join(p.root, LOCK));
+  const resumed = await startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go }).done;
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(verifyInstallRecord(p.root).ok, true);
 });

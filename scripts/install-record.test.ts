@@ -2,7 +2,6 @@
 // 実際のnpm ciを使う試験は setup.test.ts。
 import assert from 'node:assert/strict';
 import {
-  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -17,6 +16,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
+import { preventDeletion } from '../tests/support/prevent-deletion.ts';
 import {
   type FileIo,
   type NpmCiResult,
@@ -855,15 +855,13 @@ test('記録を書いている最中にシグナルを受けたら、書き終�
   assert.equal(existsSync(join(root, LOCK)), false);
 });
 
-// 印の削除だけを失敗させるには、worktreeの直下を書込み禁止にする。Windowsではこの方法が使えず、
-// rootのユーザーは権限を無視して消せるので、理由を出して飛ばす（処理はOSによらず同じ）。
-// 代わりの確認は docs/development.md の「環境によって飛ばす試験」と、Issue #19（Windowsの実機）。
+// 印の削除だけを失敗させる（tests/support/prevent-deletion.ts）。POSIXはworktreeの直下を書込み禁止にし、Windowsは
+// 印のDELETEと直下のDELETE_CHILDを拒否するACEを付ける（Issue #19）。rootのユーザーは権限を無視して消せるので、
+// 理由を出して飛ばす（処理はOSによらず同じ）。代わりの確認は docs/development.md の「環境によって飛ばす試験」。
 const lockUnlinkSkip =
-  process.platform === 'win32'
-    ? 'Windowsでは、試験の中で印の削除だけを確実に失敗させる方法がない（読取り専用の属性はNode.jsが外して消す）。Windowsの実機で手で確かめる（Issue #19）'
-    : process.getuid?.() === 0
-      ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、削除の失敗を再現できない。CIは一般のユーザーで実行する（T05）'
-      : false;
+  process.platform !== 'win32' && process.getuid?.() === 0
+    ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、削除の失敗を再現できない。CIは一般のユーザーで実行する（T05）'
+    : false;
 
 test('印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する', { skip: lockUnlinkSkip }, async () => {
   // 中断: npm ciの最中にシグナルを受け、片付けの前に印を消せなくなる。
@@ -873,13 +871,13 @@ test('印を消せなくても例外にせず、中断は128+番号のまま、�
   const { result, lines } = runWith(root, interruption, run);
   await fake.started;
   interruption.notify('SIGINT');
-  chmodSync(root, 0o555);
+  const restore = preventDeletion(root, LOCK);
   let code: number;
   try {
     fake.exit({ status: null, signal: 'SIGINT' });
     code = await result;
   } finally {
-    chmodSync(root, 0o755);
+    restore();
   }
   assert.equal(code, 130, lines.join('\n'));
   assert.match(lines.join('\n'), /SIGINT を受けたので中断した。依存の導入の記録は残していない。/);
@@ -892,6 +890,8 @@ test('印を消せなくても例外にせず、中断は128+番号のまま、�
   // 成功: 記録を書いたあとで印を消せなくなる。記録は有効なまま0で終え、印が残ることを伝える。
   const root2 = makeProject();
   const lines2: string[] = [];
+  // 記録を書いたあと（ディレクトリの反映の直後）に、1回だけ印を消せなくする。
+  const blocked: { restore?: () => void } = {};
   let code2: number;
   try {
     code2 = await runSetup({
@@ -900,13 +900,13 @@ test('印を消せなくても例外にせず、中断は128+番号のまま、�
       runNpmCi: () => ({ done: Promise.resolve(fakeSuccessfulCi(root2)) }),
       syncDirectory: (dir) => {
         syncDirectoryEntries(dir);
-        chmodSync(root2, 0o555);
+        blocked.restore ??= preventDeletion(root2, LOCK);
       },
       log: (l) => lines2.push(l),
       error: (l) => lines2.push(l),
     });
   } finally {
-    chmodSync(root2, 0o755);
+    blocked.restore?.();
   }
   assert.equal(code2, 0, lines2.join('\n'));
   assert.match(lines2.join('\n'), /を消せなかった/);
