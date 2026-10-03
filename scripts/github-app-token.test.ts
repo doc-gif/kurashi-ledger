@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createPublicKey, generateKeyPairSync, verify, type KeyObject } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
@@ -23,6 +23,7 @@ import {
   PURPOSES,
   REPOSITORY_NAME,
   TokenError,
+  UNUSED_GIT_GLOBAL_CONFIG,
   UsageError,
   childEnvironment,
   createAppJwt,
@@ -131,7 +132,6 @@ function harness(replies: readonly Reply[], overrides: Partial<Deps> = {}, child
       events.push('rmdir');
       removed.push(path);
     },
-    devNull: '/dev/null',
     runChild: async (command, env, stdin) => {
       events.push('child');
       children.push({ command, env, stdin });
@@ -414,7 +414,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     KL_GITHUB_APP_ID_CODEX: '1',
     UNDEFINED: undefined,
   };
-  const env = childEnvironment(parent, TOKEN, CONFIG_DIR, devNull);
+  const env = childEnvironment(parent, TOKEN, CONFIG_DIR);
   assert.deepEqual(env, {
     PATH: '/usr/bin',
     HOME: '/synthetic/home',
@@ -424,7 +424,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_TERMINAL_PROMPT: '0',
     GCM_INTERACTIVE: 'never',
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: join(CONFIG_DIR, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
     GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'credential.helper',
@@ -440,17 +440,23 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
 test('子の環境の実際のgitは、github.comのHTTPSの資格情報としてAppのトークンを返し、ほかのhostには返さない', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
   try {
-    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: dir }, TOKEN, CONFIG_DIR, devNull);
+    // 利用者の設定（HOMEの.gitconfig）に、保存済みの資格情報を返すhelperがあっても使わない。
+    writeFileSync(join(dir, '.gitconfig'), '[credential]\n\thelper = "!f() { echo username=stored-user; echo password=stored-secret; }; f"\n');
+    const configDir = join(dir, 'gh-config');
+    mkdirSync(configDir);
+    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: dir, USERPROFILE: dir }, TOKEN, configDir);
     const fill = (host: string) =>
       spawnSync('git', ['credential', 'fill'], { cwd: dir, env, input: `protocol=https\nhost=${host}\n\n`, encoding: 'utf8', timeout: 20_000 });
     const github = fill('github.com');
     assert.equal(github.status, 0, github.stderr);
     assert.match(github.stdout, /^username=x-access-token$/m);
     assert.ok(github.stdout.split(/\r?\n/).includes(`password=${TOKEN}`));
+    assert.ok(!github.stdout.includes('stored-secret'), '利用者の設定のhelperを使った');
     // ほかのhostにはhelperがなく、端末にも聞かない（GIT_TERMINAL_PROMPT=0）ので失敗する。
     const other = fill('example.test');
     assert.notEqual(other.status, 0);
     assert.ok(!other.stdout.includes(TOKEN));
+    assert.ok(!other.stdout.includes('stored-secret'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -722,7 +728,7 @@ test('出力を伏せる処理は、長い英数字の並びと既知の秘密�
 });
 
 test('実際の子プロセス: シェルを通さずに起動し、渡した環境だけを見せ、終了コードを返す。見つからないコマンドはENOENT', async () => {
-  const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', GITHUB_TOKEN: 'parent' }, TOKEN, CONFIG_DIR, devNull);
+  const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', GITHUB_TOKEN: 'parent' }, TOKEN, CONFIG_DIR);
   const source = [
     `const ok = process.env.GH_TOKEN === ${JSON.stringify(TOKEN)} && process.env.GITHUB_TOKEN === undefined`,
     `  && process.env.GH_CONFIG_DIR === ${JSON.stringify(CONFIG_DIR)} && process.argv[1] === 'a b;$(x)';`,

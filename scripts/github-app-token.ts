@@ -5,7 +5,7 @@
 // 中核と試験は scripts/lib/github-app-token.ts と scripts/github-app-token.test.ts。
 import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { devNull, tmpdir, userInfo } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { readKeyFileFromDisk, readKeyFromStream, readKeychainKey, run, spawnChild, type ExecFileLike } from './lib/github-app-token.ts';
@@ -26,7 +26,6 @@ process.exitCode = await run(process.argv.slice(2), {
   // ghの空の設定ディレクトリ（mkdtempは所有者だけが使える権限で作る）。子の終了後に、このディレクトリだけを消す。
   makeConfigDir: () => mkdtempSync(join(tmpdir(), 'kl-gh-config-')),
   removeConfigDir: (path) => rmSync(path, { recursive: true, force: true }),
-  devNull,
   runChild: spawnChild,
   stderr: (text) => process.stderr.write(text),
 });

@@ -93,7 +93,7 @@ node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|claude> --purpose <�
 - 動き:
   1. RS256のJWT（`iat`=いま−60秒、`exp`=いま+9分、`iss`=App ID）を`node:crypto`で作り、`POST https://api.github.com/app/installations/<Installation ID>/access_tokens`で発行する。
   2. 応答の権限が要求と完全に一致し（GitHubが必ず加える`metadata: read`のほかは、多くも少なくもない）、repoがこのrepoの1件だけかを確かめる。さらに、発行したトークンで`GET /installation/repositories`を呼び、触れるrepoがこのrepoの1件だけかを確かめる。どれかが違う、または確かめられないときは、トークンを失効させ（`DELETE /installation/token`）、**コマンドを実行せずに**終える。
-  3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境では、`GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、gitの資格情報・SSH・設定に関わる変数を外し、ghには空の一時の設定ディレクトリ（`GH_CONFIG_DIR`）を渡す。gitは利用者・システムの設定を読まず（`GIT_CONFIG_GLOBAL`を空のデバイス、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や`url.*.insteadOf`を使わない）、SSHを使えず（`GIT_SSH_COMMAND=false`）、端末に聞かず、`https://github.com`への資格情報としてだけ`GH_TOKEN`を返すhelperを使う。こうして、子のghとgitがdoc-gifの資格情報に戻れないようにする。
+  3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境では、`GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、gitの資格情報・SSH・設定に関わる変数を外し、ghには空の一時の設定ディレクトリ（`GH_CONFIG_DIR`）を渡す。gitは利用者・システムの設定を読まず（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`、`credential.helper`を空に戻す。macOSの`credential.helper=osxkeychain`や`url.*.insteadOf`を使わない）、SSHを使えず（`GIT_SSH_COMMAND=false`）、端末に聞かず、`https://github.com`への資格情報としてだけ`GH_TOKEN`を返すhelperを使う。こうして、子のghとgitがdoc-gifの資格情報に戻れないようにする。
   4. 子が終わったら、一時の設定ディレクトリを消し、トークンを失効させる（失敗したら標準エラーに伝える。トークンは1時間で失効する）。
 - 出力: このスクリプト自身は標準出力に何も書かない（子の出力はそのまま見える）。エラーは標準エラーに、HTTPの状態とGitHubのメッセージを出す。鍵・JWT・トークンは出さない（既知の値と、数字を含む長い英数字の並びを伏せる）。
 - 終了コード: 子の終了コード（シグナルで終わったら128+番号）。このスクリプト自身の失敗（引数の誤り・発行や確認の失敗）は125で、そのときコマンドは実行していない。コマンドを実行できなければ126、見つからなければ127。

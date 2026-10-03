@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { createPrivateKey, sign, type KeyObject } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs';
 import { constants as osConstants } from 'node:os';
+import { join } from 'node:path';
 
 export const API_ORIGIN = 'https://api.github.com';
 export const API_VERSION = '2022-11-28';
@@ -598,11 +599,14 @@ export async function readKeyFromStream(stream: KeyStream, timeoutMs: number = S
 const REMOVED_ENV = /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST|GH_CONFIG_DIR|GIT_CONFIG.*|GIT_ASKPASS|SSH_ASKPASS|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GCM_.*|KL_GITHUB_APP_.*)$/i;
 export const GIT_CREDENTIAL_HELPER = '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f';
 
+// 利用者の設定（~/.gitconfig）の代わりに読ませる、存在しないファイル（gitは、ない設定ファイルを空として扱う）。
+// 空のデバイス（/dev/null、Windowsの\\.\nul）は、WindowsのgitがEINVALで読めないので使わない。
+export const UNUSED_GIT_GLOBAL_CONFIG = 'git-global-config-unused';
+
 export function childEnvironment(
   parent: Readonly<Record<string, string | undefined>>,
   token: string,
   configDir: string,
-  devNull: string,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(parent)) {
@@ -616,7 +620,7 @@ export function childEnvironment(
     GIT_TERMINAL_PROMPT: '0',
     GCM_INTERACTIVE: 'never',
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: join(configDir, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
     GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'credential.helper',
@@ -682,7 +686,6 @@ export type Deps = {
   readStdin(): Promise<string>;
   makeConfigDir(): string;
   removeConfigDir(path: string): void;
-  readonly devNull: string;
   runChild(command: readonly [string, ...string[]], env: Record<string, string>, stdin: 'inherit' | 'ignore'): Promise<ChildResult>;
   stderr(text: string): void;
   readonly timeoutMs?: number;
@@ -751,7 +754,7 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
   let result: ChildResult;
   try {
     configDir = deps.makeConfigDir();
-    const env = childEnvironment(deps.env, token, configDir, deps.devNull);
+    const env = childEnvironment(deps.env, token, configDir);
     result = await deps.runChild(options.command, env, options.key.kind === 'stdin' ? 'ignore' : 'inherit');
   } catch (error) {
     result = { kind: 'failed', code: 'internal' };
