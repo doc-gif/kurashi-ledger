@@ -184,6 +184,11 @@
       "description": "PR25-D003（Codex 5400697922、Copilot 5400666001のPreviously missed 2件）: ADR-0009の7とsrc/start.tsの冒頭のコメントが、WindowsでもSIGTERMを受けるように読める。実装はWindowsでSIGINT・SIGBREAK・SIGHUPだけを登録する。",
       "state": "resolved",
       "resolution": "ADR-0009の7とsrc/start.tsの冒頭のコメントを、POSIX（SIGINT・SIGTERM・SIGHUP）とWindows（SIGINT・SIGBREAK・SIGHUP）に書き分け、実装と一致させる。"
+    },
+    {
+      "description": "PR25-R009（Codex 5400802594、Copilot 5400795643のPreviously missed）: Node.jsのHTTPの解析器が要求を拒否すると（重複したContent-Length、ヘッダの上限の超過等）、要求の処理に入らず、既定のclientErrorの処理が、必須のヘッダと理由のない400・431を直接書く。upgradeの拒否に続く、応答の経路の2回目の迂回なので、ほかの入口も洗い出した。",
+      "state": "resolved",
+      "resolution": "node:httpのサーバーが応答を書きうる入口を洗い出し、すべてを同じヘッダの定義に通す。(1) request: 既存の出口（writeHead）。(2) upgradeの拒否: 既存（R008）。受け付けたupgradeの101は、開発時の口（T08のViteのHMR）がプロトコルの切替えとして書くもので、文書の応答ではないことをADRに明記する。(3) clientError（解析器の拒否・要求の時間切れ）: 新たに処理する。生の応答は、upgradeの拒否と同じ組み立ての関数（必須のヘッダ・理由の符号・Connection: close）で書き、書き切ってから壊す。すでに応答を書き始めている、または書けない接続には何も書かずに壊す（2つ目の応答を書かない）。状態は解析器の誤りの種類で決める（ヘッダの上限は431、時間切れは408、チャンクの拡張の上限は413、ほかは400）。ログには誤りの符号だけを出し、rawPacket・トークン・cookie・本文を出さない。(4) checkContinue・checkExpectation（Expectのヘッダ）: Node.jsの既定は、ヘッダなしの100 Continueや417を直接書くので、処理を登録し、既存の出口を通して417（理由expectation-not-supported）で拒否する（ブラウザは使わない）。(5) connect（CONNECTの方法）: 処理を登録せず、Node.jsが応答を書かずに接続を閉じる（応答を書かないので契約の対象外。ADRに明記）。(6) dropRequest: maxRequestsPerSocketを設定しないので起きない（ADRに明記）。応答を安全に返せないときは、何も書かずに接続を壊す、とADR-0009の5に書く。試験: 重複したContent-Length、ヘッダの上限の超過、Expectの各要求で、状態・必須のヘッダ・理由・接続の終了・応答が1つだけであること・ログに要求の中身（cookie・トークンの形の値・本文）が出ないこと。"
     }
   ],
   "assessments": [
