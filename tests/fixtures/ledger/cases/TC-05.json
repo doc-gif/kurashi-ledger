@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-05",
+  "title": "追加: 交通費の混在（通勤手当を含む振込と精算の入金）",
+  "consumers": ["T11"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-05-a",
+      "title": "通勤手当を含む給与の振込と、交通費の精算の入金が同じ日にある",
+      "covers": [{"doc": "reconciliation.md", "section": "3"}, {"doc": "records.md", "section": "5"}],
+      "acceptance": ["order-independence", "no-double-income"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-10-24T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_C1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000},
+              "commutingAllowance": {"state": "known", "value": 10000},
+              "commutingAllowanceTaxTreatment": {"state": "known", "value": "non-taxable"},
+              "bankTransferAmount": {"state": "known", "value": 182000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-24T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_C1",
+            "recordType": "bank-deposit",
+            "body": {
+              "accountId": "acct_1",
+              "depositDate": {"state": "known", "value": "2026-10-23"},
+              "amount": {"state": "known", "value": 182000},
+              "payerHint": {"state": "known", "value": "emp_1"},
+              "purpose": {"state": "known", "value": "pay"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-10-24T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_C2",
+            "recordType": "bank-deposit",
+            "body": {
+              "accountId": "acct_1",
+              "depositDate": {"state": "known", "value": "2026-10-23"},
+              "amount": {"state": "known", "value": 5000},
+              "payerHint": {"state": "known", "value": "emp_1"},
+              "purpose": {"state": "known", "value": "reimbursement"},
+              "descriptionText": {"state": "known", "value": "交通費の立替精算（架空）"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-10-24T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_C1",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_C1", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_C1", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 182000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "orderVariants": [["o3", "o2", "o1", "o4"], ["o2", "o1", "o4", "o3"]],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {"values": [{"state": "complete", "knownSum": 187000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "入金額は銀行入金の合計で、給与の振込と精算の両方を含む（182,000 ＋ 5,000）。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "銀行入金amount"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 230000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "支給額は明細のgrossPayだけ。精算の入金5,000は、purposeが何でも給与の集計に入らない。",
+          "cites": [{"doc": "records.md", "section": "5", "quote": "payでも給与の集計には入らない"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "commutingAllowance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 10000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "明細の通勤手当は記載どおり10,000。精算の入金から通勤手当を推測しない。",
+          "cites": [{"doc": "records.md", "section": "4", "quote": "銀行入金の額から、総支給額・控除・振込額を逆算しない"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "unreconciled", "record": "dep_C2"},
+          "expect": {"amount": {"state": "known", "value": 5000}},
+          "reason": "給与以外の入金（経費の精算）は未照合のまま残ってよい。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "給与以外の入金（経費の精算等）が未照合で残ってよい"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "unreconciled", "record": "pay_C1"},
+          "expect": {"amount": {"state": "known", "value": 0}},
+          "reason": "182,000 − 182,000 ＝ 0。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "明細ごとの「未照合の振込額」＝bankTransferAmount"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "duplicateCandidates", "recordType": "bank-deposit"},
+          "expect": {"pairs": []},
+          "reason": "同じ口座・同じ日でも金額が違うので重複の候補にしない。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "銀行入金は口座・入金日・金額"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-05-b",
+      "title": "精算の入金を給与の明細に結んで確定しようとすると過剰配分",
+      "covers": [{"doc": "reconciliation.md", "section": "3"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "TC-05-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-10-24T01:04:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "over-allocation"},
+          "record": {
+            "id": "alc_C2",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_C1", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_C2", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 5000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "unreconciled", "record": "dep_C2"},
+          "expect": {"amount": {"state": "known", "value": 5000}},
+          "reason": "明細の側の上限は振込額182,000で、既存の182,000 ＋ 5,000 ＝ 187,000 ＞ 182,000なので確定できない。精算の入金を給与の振込として扱わない。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "その明細をfromとする確定済みのtransfer-to-depositの合計 ≤ bankTransferAmount"}]
+        }
+      ]
+    }
+  ]
+}

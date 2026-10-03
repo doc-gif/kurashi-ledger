@@ -1,0 +1,1664 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-04d",
+  "title": "遡及訂正(d): 同じ種類・同じ年度の正式通知（表記の違い、発行者不明、別の発行者、3件以上、other、二重登録の類と年度）",
+  "consumers": ["T11", "T18", "T19"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-04d-d1",
+      "title": "表記の違い（発行者の表示だけが違う2件）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_411", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_412", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "同じ種類・同じ年度の通知で、差し替えの指定もdistinctの判断もない類が2つあるので、足さずに要確認（conflict）。発行者の表示は判定に使わない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "2", "quote": "同じ集合に、差し替えの系列の現在の記録を正規とする類が2つ以上あれば、足さずに「要確認」とする"},
+            {"doc": "reconciliation.md", "section": "2", "quote": "発行者の表示（issuerLabel）は表記が揺れ、不明でもありうるので、この判定に使わない"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "同じ発行者の二重登録か、作り直しの指定漏れかを、利用者が確かめる"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d2",
+      "title": "発行者が不明",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_413",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "unknown"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_414",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 84000}}]}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_413", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_414", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "発行者が分からないので別の決定とはみなさない。判断がない2つの類は足さずにconflict。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "2", "quote": "同じ集合に、差し替えの系列の現在の記録を正規とする類が2つ以上あれば、足さずに「要確認」とする"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "発行者が分からないので、別の決定とはみなさない"}
+          ]
+        }
+      ],
+      "acceptance": ["unknown-value"]
+    },
+    {
+      "scenarioId": "EX-04d-d3",
+      "title": "別の発行者（distinctの判断で足す。発行者を統合すると判断が要確認になる）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_415",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 60000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_416",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 30000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_411",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_415", "revision": "current", "line": "whole"}, {"id": "ntc_416", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "年度の途中で転居し、発行者が違う別の決定"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "iss_2", "recordType": "issuer", "revision": 2, "reason": "void", "duplicateOf": {"state": "known", "value": {"id": "iss_1", "revision": "current", "line": "whole"}}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_415", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_416", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "判断がなければ、別の発行者でも足さずに要確認。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "1組でも判断がなければ、どれを足してよいか決まらないので、集合全体を足さずconflictにする"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "判断がなければ「要確認」（incomplete）"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o3",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "利用者がduplicate-reviewでdistinctとした組だけを、別の決定として足す（60,000 ＋ 30,000）。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "利用者がduplicate-reviewの判断でdistinct（別の決定。転居で発行者が違う等）とした組だけを、別の決定として足す"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_411"},
+          "expect": {"premise": "broken"},
+          "reason": "distinctの前提には2件の正規の発行者のIDが入る。iss_2をiss_1の二重登録として取り消すと、ntc_416の発行者の正規のIDがiss_1に変わり、前提が崩れる。",
+          "cites": [
+            {"doc": "examples.md", "section": "EX-04", "quote": "iss_2をiss_1の二重登録として取り消した場合は、前提の正規の発行者のIDが変わるので、判断は要確認になり"},
+            {"doc": "reconciliation.md", "section": "4", "quote": "参照するマスタの正規のIDを含む"}
+          ]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_415", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_416", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "前提が崩れた判断が集合にあるので、集合全体をconflictにし、足さない。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "前提が崩れた判断（要確認）か、残す方がない二重登録が集合にあれば、集合全体をconflictにする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d3b",
+      "title": "別の発行者（発行者のIDを入力誤りとして直すと判断が要確認になる）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_415",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 60000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_416",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 30000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_411",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_415", "revision": "current", "line": "whole"}, {"id": "ntc_416", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "年度の途中で転居し、発行者が違う別の決定"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "ntc_416", "recordType": "official-notice", "revision": 2, "reason": "correct-input-error", "body": {"issuerId": {"state": "known", "value": "iss_1"}}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_411"},
+          "expect": {"premise": "broken"},
+          "reason": "ntc_416のissuerIdをiss_1に直すと、判断の根拠の属性（発行者）が変わるので要確認。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "あとでntc_416のissuerIdをiss_1に直した（入力誤りの訂正）場合や"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_415", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_416", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "決定額は再び足さずにincomplete（conflict）。不足の行の版は、集計を計算した見方で選ばれた版（ntc_416は版2）。",
+          "cites": [
+            {"doc": "examples.md", "section": "EX-04", "quote": "決定額は再び足さずにincomplete（conflict）になる"},
+            {"doc": "common-types.md", "section": "2", "quote": "その整数は、集計を計算した見方（7。現在の見方なら最新の版）で選ばれた参照先の版とする"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d4a",
+      "title": "同じ種類・同じ年度の通知が3件（すべての組を判断した）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o0",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "iss_3", "recordType": "issuer", "body": {"displayName": "架空村", "issuerKind": "municipality"}}
+        },
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_421",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 30000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_422",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 20000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-01T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_423",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空村"},
+              "issuerId": {"state": "known", "value": "iss_3"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 10000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_421",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_421", "revision": "current", "line": "whole"}, {"id": "ntc_422", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "転居による別の決定"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-06-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_422",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_422", "revision": "current", "line": "whole"}, {"id": "ntc_423", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "転居による別の決定"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2026-06-02T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_423",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_421", "revision": "current", "line": "whole"}, {"id": "ntc_423", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "転居による別の決定"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 60000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "3つの類のどの組にも前提を満たすdistinctがあるので、類ごとに1回ずつ足す（30,000 ＋ 20,000 ＋ 10,000）。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "どの2つの類の組にも、類の記録どうしの間に前提を満たすdistinctの判断があるときだけ、類ごとの値を足す"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d4b",
+      "title": "同じ種類・同じ年度の通知が3件（1組が未判断）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o0",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "iss_3", "recordType": "issuer", "body": {"displayName": "架空村", "issuerKind": "municipality"}}
+        },
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_421",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 30000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_422",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 20000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-01T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_423",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空村"},
+              "issuerId": {"state": "known", "value": "iss_3"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 10000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_421",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_421", "revision": "current", "line": "whole"}, {"id": "ntc_422", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "転居による別の決定"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-06-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_422",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_422", "revision": "current", "line": "whole"}, {"id": "ntc_423", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "転居による別の決定"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_421", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_422", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_423", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "ntc_421とntc_423の組に判断がないので、集合全体を足さずconflict。ntc_422だけを足すことも、ntc_421とntc_423を別件とみなすこともしない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "1組でも判断がなければ、どれを足してよいか決まらないので、集合全体を足さずconflictにする"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "ntc_422だけを足す、ntc_421とntc_423も別件とみなす、のどちらもしない"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d4c",
+      "title": "同じ種類・同じ年度の通知が3件（判断が矛盾する）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o0",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "iss_3", "recordType": "issuer", "body": {"displayName": "架空村", "issuerKind": "municipality"}}
+        },
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_421",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 30000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_422",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 20000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-01T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_423",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空村"},
+              "issuerId": {"state": "known", "value": "iss_3"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 10000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_423",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_421", "revision": "current", "line": "whole"}, {"id": "ntc_423", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "別の決定と考えた"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-06-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_421",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_421", "revision": "current", "line": "whole"}, {"id": "ntc_422", "revision": "current", "line": "whole"}],
+              "value": "same",
+              "reasonNote": "同じ通知の二重登録"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2026-06-02T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_422",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_421", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2026-06-02T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_422",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_422", "revision": "current", "line": "whole"}, {"id": "ntc_423", "revision": "current", "line": "whole"}],
+              "value": "same",
+              "reasonNote": "同じ通知の二重登録"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2026-06-02T04:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_423",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_421", "revision": "current", "line": "whole"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_423"},
+          "expect": {"premise": "broken"},
+          "reason": "distinctの判断は、対象が取消されたら要確認。dcs_423は取消したntc_423を対象にする。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "4", "quote": "distinct: 対象が取消・差し替えされたら要確認"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "distinctの判断は、取消したntc_423を対象にするので前提も崩れている"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "decisionPremise", "decision": "dcs_422"},
+          "expect": {"premise": "holds"},
+          "reason": "ntc_422とntc_423は、どちらもduplicateOfをたどって同じ正規の記録ntc_421に着くので、sameの前提を満たす。",
+          "cites": [{"doc": "reconciliation.md", "section": "4", "quote": "一方が他方を指す場合と、両方が同じ記録を指す場合"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_421", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_422", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_423", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "3件は1つの類（正規の記録ntc_421）。その類の集合に前提が崩れた判断（dcs_423）があるので、集合全体をconflictにし、3件とも足さない。missingには集合のすべての記録を挙げる（取消した記録は取消の版）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "前提が崩れた判断（要確認）か、残す方がない二重登録が集合にあれば、集合全体をconflictにする"},
+            {"doc": "reconciliation.md", "section": "7", "quote": "conflictにした集合の集計はincompleteにし、missingに集合のすべての記録を派生キーnotice-duplicate・状態conflictで挙げる"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d5",
+      "title": "種類がotherの通知は決定額の集計に足さない",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_417",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "other",
+              "noticeLabel": "架空の手数料の通知",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 5000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_418",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "other",
+              "noticeLabel": "架空の負担金の通知",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 8000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_417",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_417", "revision": "current", "line": "whole"}, {"id": "ntc_418", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "手数料と負担金の別の通知"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "other", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_417", "revision": 1, "line": "a1"}, "field": {"kind": "record-item", "name": "noticeType"}, "state": "unknown"},
+                  {"ref": {"id": "ntc_418", "revision": 1, "line": "a1"}, "field": {"kind": "record-item", "name": "noticeType"}, "state": "unknown"}
+                ]
+              }
+            ]
+          },
+          "reason": "noticeTypeがotherの通知は種類を見分けるキーがないので足さない（distinctでも13,000にしない）。otherを指定した決定額の集計は合計を返さずincomplete（knownSumは0）で、その年度のotherの通知の決定額の行を、項目noticeType・状態unknownで挙げる。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "2", "quote": "noticeTypeにotherを指定した決定額の集計は、合計を返さずincomplete"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "missingに両方の決定額の行をunknown（項目noticeType）で挙げる"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "otherの通知は、ほかの種類の決定額にも足さない。2件をotherどうしの重複の疑い（conflict）にもしない。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "2件は同じ種類どうしの重複の疑い（conflict）にもしない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d6a",
+      "title": "sameの判断なしの二重登録の取消（類にまとめる）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_419",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o3",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "sameの判断を保存せずにduplicateOfで取り消した記録も、正規の記録ntc_411の類に入る。類は1つなのでntc_411だけを数える（判断のない2つの類としてconflictにしない）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "同じ正規の記録に着く記録は、sameの判断の有無によらず同じ類"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "ntc_411だけを数える。判断のない2つの類としてconflictにしない"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_411", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_412", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_419", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "同じ種類・年度のntc_419が加わると、ntc_411・ntc_412の類とntc_419の類の間にdistinctがないので足さずconflict。ntc_411だけ・ntc_419だけを足すことも、180,000にすることもしない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "1組でも判断がなければ、どれを足してよいか決まらないので、集合全体を足さずconflictにする"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "別件とみなして180,000にすることもしない"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d6b",
+      "title": "残す方がない二重登録",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "ntc_411", "recordType": "official-notice", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "存在しない資料だった"}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ntc_412", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}]
+              }
+            ]
+          },
+          "reason": "ntc_411を二重登録でない取消にすると、ntc_412の鎖は有効な記録に着かない（残す方がない二重登録）。どの類にも入れず、ntc_412自身の種類・年度の集合に入れてconflictで挙げる。集計に戻さず、黙って0件のcompleteにもしない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "9", "quote": "保存のあとで残す方が取消された場合は、どちらの記録も集計に戻さず"},
+            {"doc": "reconciliation.md", "section": "7", "quote": "残す方がない二重登録は、正規の記録がないので、その記録自身のnoticeType・subjectYearの集合に割り当てる"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "ntc_412を集計に戻さず、黙って0件のcompleteにもしない"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d6c",
+      "title": "類は正規の記録の現在の年度の集合1つにだけ入る（取り消した側の年度の誤り、残した側の年度の訂正）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2025}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "body": {"subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2025}}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o3",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "ntc_411・ntc_412の類は、正規のntc_411の年度2026の集合だけに入る（取り消したntc_412自身の年度2025は使わない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "7", "quote": "類の中の取り消した記録の種類・年度は使わない"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o3",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2025}, "to": {"kind": "fiscal", "year": 2025}}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "年度2025の集計には、この類もntc_412も入らない（ntc_411の額を2025と2026で2回数えない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "ntc_411の額を2025と2026で2回数えない"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2025}, "to": {"kind": "fiscal", "year": 2025}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "残した側ntc_411の年度を2025に直すと、類は正規の記録の現在の年度2025の集合に移る。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "類は、正規のntc_411の現在の年度2025の集合に移り、年度2026の集合からは外れる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "年度2026の集計には入らない。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "年度2026の集計には入らない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d6d",
+      "title": "二重登録の取消の鎖（3件で1つの類）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_425",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2027}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_425",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_412", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "ntc_425 → ntc_412 → ntc_411の鎖をたどって同じ正規の記録に着くので1つの類で、年度2026の集合だけに入り、1回だけ数える。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "鎖をたどって同じ正規の記録に着く"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2027}, "to": {"kind": "fiscal", "year": 2027}}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "ntc_425自身の年度2027の集合には入らない。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "ntc_425の種類・年度がどうであっても、ほかの集合には入らない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04d-d6e",
+      "title": "正規の通知の年度が分からない",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "unknown"},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ntc_411", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "subjectYear"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "正規の記録の年度が分からないので類の値はどの年度にも足さず、国保のすべての年度の集計を、ntc_411のsubjectYearを不足として挙げてincompleteにする。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "7", "quote": "正規の記録のsubjectYearがunknown・not-statedなら、その類は年度を決められないので"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "国保のすべての年度の集計がincompleteで、ntc_411のsubjectYearをunknownで挙げる"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2031}, "to": {"kind": "fiscal", "year": 2031}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ntc_411", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "subjectYear"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "ほかの年度（2031）の集計からも外さない。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "その値で対象を除外しない"}]
+        }
+      ],
+      "acceptance": ["unknown-value"]
+    },
+    {
+      "scenarioId": "EX-04d-d6f",
+      "title": "同じ類の2件にdistinctの判断もある（取り消したので前提が崩れる）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-06-01T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_411",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "nhi-premium-determination",
+              "noticeLabel": "国民健康保険料の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市役所"},
+              "issuerId": {"state": "unknown"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年間保険料", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 90000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-06-02T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_412",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "ntc_411", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-06-03T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_419",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "duplicate-review",
+              "targets": [{"id": "ntc_411", "revision": "current", "line": "whole"}, {"id": "ntc_412", "revision": "current", "line": "whole"}],
+              "value": "distinct",
+              "reasonNote": "別の決定と考えた"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "nhi-premium-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_411", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_412", "revision": 2, "line": "whole"}, "field": {"kind": "derived", "key": "notice-duplicate"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "ntc_412を取り消したのでdistinctの前提が崩れていて、手順3でconflict。集合から消してこの判断を見落とさない。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "ntc_412を取り消したので判断の前提が崩れていて、手順3でconflictになる"}]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-04",
+  "title": "追加: 差し替えの系列（取消・取消の取り消し、拒否する形、未確認の系列、把握時点の再現）",
+  "consumers": ["T06", "T11"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-04-a",
+      "title": "差し替えの系列の取消と取消の取り消し（records.mdの10の表）と、保存で拒否する形",
+      "covers": [{"doc": "records.md", "section": "10"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-10-24T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000},
+              "workPeriod": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-10-24T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 231000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S1", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-10-24T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 232000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S2", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-10-25T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_S2", "recordType": "payslip", "revision": 2, "reason": "void"}
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-10-25T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_S3", "recordType": "payslip", "revision": 2, "reason": "void"}
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-10-25T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_S2", "recordType": "payslip", "revision": 3, "reason": "unvoid"}
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-10-25T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_S3", "recordType": "payslip", "revision": 3, "reason": "unvoid"}
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-10-26T01:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "supersede-shape"},
+          "record": {
+            "id": "pay_S4",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 234000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S1", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-10-26T01:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "supersede-shape"},
+          "record": {
+            "id": "pay_S1",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "body": {"supersedes": {"state": "known", "value": {"id": "pay_S3", "revision": "current", "line": "whole"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-10-26T01:02:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "supersede-shape"},
+          "record": {
+            "id": "pay_S1",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "body": {"supersedes": {"state": "known", "value": {"id": "pay_S1", "revision": "current", "line": "whole"}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-10-26T01:03:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "supersede-dimension-mismatch"},
+          "record": {
+            "id": "pay_S6",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 235000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S3", "revision": "current", "line": "whole"}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o03",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 232000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "取消なし: A ← B ← C、現在の記録はC。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "なし | A ← B ← C | C | A、B"}, {"doc": "records.md", "section": "10", "quote": "どの場合も、数えるのは現在の記録1件だけ"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o04",
+          "query": {"kind": "seriesStatus", "record": "pay_S1"},
+          "expect": {"status": "superseded"},
+          "reason": "Bだけを取消すと、CからBを通り過ぎてAに着き、A ← C。現在の記録はC、Aは差し替え済み。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "Bだけ | A ← C（CからBを通り過ぎてAに着く） | C | A"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o04",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 232000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "現在の記録Cだけを数える（AとCを両方数えない）。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "どの場合も、数えるのは現在の記録1件だけ"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "o05",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 230000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "BとCを取消すと関係はなく、Aが現在の記録。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "BとC | なし（取消していない記録はAだけ） | A | なし"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "o06",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 231000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "Bの取消を取り消すと「Cだけ」の行になり、現在の記録はB。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "BとCを取消したあとでBの取消を取り消すと、「Cだけ」の行になり、現在の記録はBになる"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 232000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "Cの取消も取り消すと「なし」の行に戻る。同じ記録を差し替える取消していない記録が2件（分岐）、たどると自分に戻る（循環）、自己参照、差し替えの識別の次元（勤務先）の不一致は保存を拒否する。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "自己参照（supersedesが自分を指す）、循環（たどると自分に戻る）、分岐（同じ記録を差し替える取消していない記録が2件以上）、差し替えの識別の次元の不一致"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "seriesStatus", "record": "pay_S3"},
+          "expect": {"status": "current"},
+          "reason": "鎖の最新が現在の記録。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "その系列の現在の記録とする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-04-b",
+      "title": "未確定の次元を持つ差し替え（未確認の系列）",
+      "covers": [{"doc": "records.md", "section": "10"}],
+      "acceptance": ["unknown-value", "correction"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-10-24T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000},
+              "workPeriod": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-10-24T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 231000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S1", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-10-24T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 232000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S2", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-10-27T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_S7",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "unknown"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 233000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_S3", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-10-28T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_S7", "recordType": "payslip", "revision": 2, "reason": "correct-input-error", "body": {"paymentKind": {"state": "known", "value": "salary"}}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o04",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "pay_S1", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "pay_S2", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "pay_S3", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "pay_S7", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "pay_S7の明細の種類が分からないので差し替えの次元が未確定で、保存は許すが未確認の系列になる。系列のすべての記録を集計から除き、conflictで挙げる（どれか1件を数えない）。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "不一致がなく、未確定の項目が1つでもあれば、保存は許す"}, {"doc": "records.md", "section": "10", "quote": "その系列のすべての記録を、整うまで集計・採用・照合から除き"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o04",
+          "query": {"kind": "seriesStatus", "record": "pay_S3"},
+          "expect": {"status": "unconfirmed-series"},
+          "reason": "系列は未確認の系列。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "整っていない系列として扱う"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 233000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "明細の種類を同じ資料から埋めて一致すると、改訂だけで整った系列になり、現在の記録pay_S7だけを数える。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "後で値が分かって一致すれば、改訂だけで整った系列になる"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-04-c",
+      "title": "把握時点の再現で、把握日が分からない・まだ来ていない記録を含む差し替えの系列",
+      "covers": [{"doc": "records.md", "section": "10"}, {"doc": "common-types.md", "section": "2"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-10-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_A1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 230000},
+              "workPeriod": {"state": "not-stated"}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-01"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-10-21T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_B1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 231000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_A1", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-05"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-10-21T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_C1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 232000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_B1", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-10-21T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_A2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 40000},
+              "workPeriod": {"state": "not-stated"}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-01"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-10-21T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_B2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 41000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_A2", "revision": "current", "line": "whole"}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-10-21T01:05:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_C2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 42000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_B2", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-05"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-10-21T01:06:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_A3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-03-31"},
+              "grossPay": {"state": "known", "value": 10000},
+              "workPeriod": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-10-21T01:07:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_B3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-03-31"},
+              "grossPay": {"state": "known", "value": 11000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_A3", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-01"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-10-21T01:08:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_C3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_3",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-03-31"},
+              "grossPay": {"state": "known", "value": 12000},
+              "workPeriod": {"state": "not-stated"},
+              "supersedes": {"state": "known", "value": {"id": "pay_B3", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-10-05"}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-10-10"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 231000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "Cの把握日（2026-10-20）がDより後で選ばれないが、Cは鎖の最新の側なので解決できない参照は生じない。現在の記録はBで、Bだけを数える。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "Cだけ（把握日がDより後） | なし（Cは鎖の最新の側） | B | Bだけを数える"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-10-10"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "pay_A2", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "pay_C2", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "Bの把握日がunknownで選ばれず、Cのsupersedesが解決できない。系列は未確認の系列になり、AとCを両方除いてconflictで挙げる（AとCを両方数えない）。選ばれないBは、その見方の版がないので不足の行には挙げない（把握日不明として一覧に出す）。",
+          "cites": [
+            {"doc": "records.md", "section": "10", "quote": "Bだけ（把握日がunknown） | Cのsupersedes | なし（未確認の系列） | AとCを両方除いてconflictで挙げる（AとCを両方数えない）"},
+            {"doc": "common-types.md", "section": "7", "quote": "把握日がunknownの改訂は選ばず、該当する記録を「把握日不明」として一覧に出す"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-10-10"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": "2026-03-01", "to": "2026-03-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "pay_B3", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "pay_C3", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "Aの把握日がunknownで、Bのsupersedesが解決できない。Bが何を差し替えたかを、Aを確かめるまで決めない。BとCを除いてconflictで挙げる。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "Aだけ（把握日がunknown） | Bのsupersedes | なし（未確認の系列） | BとCを除いてconflictで挙げる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-10-10"},
+          "query": {"kind": "selectedRevision", "record": "pay_A3"},
+          "expect": {"revision": "none"},
+          "reason": "把握日がunknownの改訂は選ばない。",
+          "cites": [{"doc": "common-types.md", "section": "7", "quote": "把握日がunknownの改訂は選ばず"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 42000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "現在の見方では各記録の最新の改訂を選ぶので、系列は整っていて現在の記録pay_C2だけを数える。",
+          "cites": [{"doc": "common-types.md", "section": "7", "quote": "現在 | 各記録の最新の改訂"}]
+        }
+      ]
+    }
+  ]
+}

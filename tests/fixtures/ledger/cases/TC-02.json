@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-02",
+  "title": "追加: Factの状態・金額の範囲・並びの検査と、集計のoverflow（T06の符号と範囲、合計overflow）",
+  "consumers": ["T06", "T07", "T12"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-02-a",
+      "title": "Factの許す状態、金額の符号と範囲、並びの一意のキー、集計のoverflow",
+      "covers": [{"doc": "common-types.md", "section": "12"}, {"doc": "common-types.md", "section": "4"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-10-24T01:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_V1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "not-applicable"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-10-24T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_V2",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 100000},
+              "commutingAllowance": {"state": "not-applicable", "note": "通勤手当の制度がない"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-10-24T01:02:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_V3",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 100000},
+              "otherEarnings": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-10-24T01:03:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_V4",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 100000},
+              "supersedes": {"state": "unknown"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-10-24T01:04:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_V5",
+            "recordType": "payslip",
+            "body": {"employerId": "emp_1", "paymentKind": {"state": "known", "value": "salary"}, "scheduledPayDate": {"state": "not-applicable"}, "grossPay": {"state": "known", "value": 100000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-10-24T01:05:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {"id": "dep_V1", "recordType": "bank-deposit", "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-10"}, "amount": {"state": "not-applicable"}}}
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-10-24T01:06:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {"id": "dep_V2", "recordType": "bank-deposit", "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-10"}, "amount": {"state": "known", "value": 0}}}
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-10-24T01:07:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {"id": "dep_V3", "recordType": "bank-deposit", "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-10"}, "amount": {"state": "known", "value": -1}}}
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-10-24T01:08:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_V6",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": -1}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-10-24T01:09:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_V7",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 100000},
+              "netPay": {"state": "known", "value": -5000},
+              "yearEndAdjustment": {"state": "known", "value": -3000},
+              "otherEarnings": {"state": "known", "value": [{"lineId": "l1", "label": "過払いの回収", "category": {"state": "known", "value": "other"}, "amount": {"state": "known", "value": -2000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-10-24T01:10:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_V8",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 100000},
+              "otherDeductions": {"state": "known", "value": [{"lineId": "l1", "label": "その他の控除", "amount": {"state": "known", "value": -1}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o12",
+          "at": "2026-10-24T01:11:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_V9",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 1.5}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o13",
+          "at": "2026-10-24T01:12:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_V10",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "grossPay": {"state": "known", "value": 9007199254740992}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o14",
+          "at": "2026-10-24T01:13:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "dep_V4",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-10"}, "amount": {"state": "known", "value": 1000}},
+            "knownOn": {"state": "not-stated"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o15",
+          "at": "2026-10-24T01:14:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "ntc_V1",
+            "recordType": "official-notice",
+            "body": {"noticeType": "insurance-qualification", "noticeLabel": "資格の通知（架空）", "issuerKind": "health-insurer", "subjectYear": {"state": "not-applicable"}, "amounts": {"state": "unknown"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o16",
+          "at": "2026-10-24T01:15:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_V2",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "insurance-qualification",
+              "noticeLabel": "資格の通知（架空）",
+              "issuerKind": "health-insurer",
+              "subjectYear": {"state": "not-applicable"},
+              "amounts": {"state": "known", "value": []}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o17",
+          "at": "2026-10-24T01:16:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "ntc_V3",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "insurance-qualification",
+              "noticeLabel": "資格の通知（架空）",
+              "issuerKind": "health-insurer",
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "金額", "category": {"state": "not-applicable"}, "amount": {"state": "known", "value": 1000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o18",
+          "at": "2026-10-24T01:17:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "ann_V1",
+            "recordType": "annual-document",
+            "body": {"documentType": "withholding-slip", "documentLabel": "源泉徴収票（架空）", "payerEmployerId": "emp_1", "targetYear": 2026, "includedOtherPayers": {"state": "not-stated"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o19",
+          "at": "2026-10-24T01:18:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "list-invalid"},
+          "record": {
+            "id": "ann_V2",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2026,
+              "includedOtherPayers": {"state": "known", "value": [{"payerEmployerId": {"state": "known", "value": "emp_1"}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o20",
+          "at": "2026-10-24T01:19:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "list-invalid"},
+          "record": {
+            "id": "ann_V3",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2026,
+              "includedOtherPayers": {"state": "known", "value": [{"payerEmployerId": {"state": "known", "value": "emp_3"}}, {"payerEmployerId": {"state": "known", "value": "emp_3"}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o21",
+          "at": "2026-10-24T01:20:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "list-invalid"},
+          "record": {"id": "fc_V1", "recordType": "forecast", "body": {"subject": "pay", "employerId": {"state": "known", "value": "emp_1"}, "measure": "gross-pay", "lines": []}}
+        },
+        {
+          "op": "save",
+          "opId": "o22",
+          "at": "2026-10-24T01:21:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "fc_V2",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_1"},
+              "measure": "gross-pay",
+              "lines": [{"lineId": "l1", "expectedMonth": "2026-11", "expectedDate": {"state": "known", "value": "2026-12-01"}, "amount": {"state": "known", "value": 1000}}]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o23",
+          "at": "2026-10-24T01:22:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "dcs_V1",
+            "recordType": "decision",
+            "body": {"decisionType": "tax-year-assertion", "targets": [{"id": "pay_V2", "revision": "current", "line": "whole"}], "value": 2026, "reasonNote": "  "}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o24",
+          "at": "2026-10-24T01:23:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {"id": "emp_V1", "recordType": "employer", "body": {"displayName": "勤務先D", "legalName": {"state": "not-applicable"}}}
+        },
+        {
+          "op": "save",
+          "opId": "o25",
+          "at": "2026-10-24T01:24:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_V5",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-10"}, "amount": {"state": "known", "value": 4503599627370496}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o26",
+          "at": "2026-10-24T01:25:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_V6",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-11"}, "amount": {"state": "known", "value": 4503599627370496}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {"error": "overflow"},
+          "reason": "各入金額は安全な整数の範囲内だが、合計2^53は安全な整数の範囲（2^53−1まで）を超えるので、丸めたり浮動小数にしたりせず誤りとして止める。",
+          "cites": [{"doc": "common-types.md", "section": "4", "quote": "集計の途中や結果がこの範囲を超える場合は誤りとして止め、丸めたり浮動小数にしたりしない"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "netPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": -5000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "差引支給額は符号あり。負の値も記載どおり集計し、0や不明として扱わない。合計の項目は行から計算した値で上書きしない。",
+          "cites": [{"doc": "records.md", "section": "4", "quote": "netPay | Fact<Yen>（符号あり）"}, {"doc": "common-types.md", "section": "4", "quote": "「符号あり」の項目は、資料に負の支払・回収・調整が記載されている場合に使う"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "yearEndAdjustment"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": -3000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "年末調整の過不足は符号あり（負は追加の徴収）。",
+          "cites": [{"doc": "records.md", "section": "4", "quote": "正は本人への還付、負は追加の徴収"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "commutingAllowance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "not-applicable", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "通勤手当はnot-applicableを許す項目。総支給額・入金額・把握日・決定額の分類等は許さない（保存を拒否）。",
+          "cites": [
+            {"doc": "common-types.md", "section": "12", "quote": "給与明細のcommutingAllowance・commutingAllowanceTaxTreatment・incomeTax"},
+            {"doc": "common-types.md", "section": "12", "quote": "この表にないのでnot-applicableを使わない"}
+          ]
+        }
+      ]
+    }
+  ]
+}
