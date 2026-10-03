@@ -1,6 +1,7 @@
 // `npm run check:test-skips -- <npm testの出力のファイル>`: npm testのskipを、docs/development.md の
 // 「環境によって飛ばす試験」の表とこのOSで照合し、結果（skipした試験と理由、diagnostic）を記録する（T05のCI）。
 // 照合は、ファイルごとに、表で飛ばしてよいとした試験の名前の集合と、実際にskipした試験の名前の集合を比べる。
+// 名前で突き合わせるので、表とskipの試験の名前が実行の結果の中で一意であることも確かめる。
 // 一致しない・読めない・理由のないskipがある・失敗や中断やtodoがある・失敗を期待した試験（expectFailure）や
 // 再実行で合格した試験がある・試験が0件のときは、1で終える。
 // GitHub Actionsでは、同じ内容をstep summaryにも書く。
@@ -15,6 +16,7 @@ import {
   skipEnvironment,
   summaryProblems,
   testRoots,
+  uniquenessProblems,
 } from './lib/test-skips.ts';
 
 const outputFile = process.argv[2];
@@ -64,6 +66,9 @@ try {
   );
   problems.push(...summaryProblems(report));
 
+  // 表の試験（どの環境の行のものも）とskipした試験の名前は、実行の結果の中で一意でなければならない。
+  const tableNames = [...table.byEnvironment.values()].flatMap((m) => [...m.values()].flatMap((names) => [...names]));
+  problems.push(...uniquenessProblems(report, [...tableNames, ...report.skipped.map((t) => t.name)]));
   const attributed = attributeSkips(report.skipped, sources);
   problems.push(...attributed.problems);
   const expected = table.byEnvironment.get(env) ?? new Map<string, ReadonlySet<string>>();

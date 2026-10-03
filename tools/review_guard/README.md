@@ -83,6 +83,6 @@ python3 tools/review_guard/guard.py triage --candidates candidates.json
 
 `adapters/github-actions.yml`はテンプレート。このrepoでは、T05で同じ内容を`.github/workflows/ci.yml`の`review plan`・`review tools`のジョブとして配置した（actionの版と`setup-python`を合わせ、3つのOSで試験する）。ほかのrepoへ移すときは、このテンプレートから配置する。
 
-**このテンプレート単独では、PRによる検査の迂回を防げない。** `pull_request`のworkflow自体をPRで変更できるため、base側の検査器を呼ぶstepを削除されれば保証はない。権限を持つ担当がT05/T23で、workflow・検査器・条件・原因台帳の変更の必須レビュー／ruleset等を別途設計・設定し、迂回試験まで確認してから必須ゲートとして扱う。CODEOWNERSファイルだけでは強制にならず、同一アカウントのCOMMENTもGitHub上の独立承認に数えない。今回は権限付きイベントへの切替えや保護設定をしない。
+**このテンプレート単独では、PRによる検査の迂回を防げない。** `pull_request`のworkflow自体をPRで変更できるため、base側の検査器を呼ぶstepを削除されれば保証はない。このrepoでは、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認はPR #18のPR18-O001で待っている）で、T05のマージのあとに実装側が設定する。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。その保護と迂回試験を確認するまでは、必須ゲートとして扱わない。CODEOWNERSファイルだけでは強制にならず、同一アカウントのCOMMENTもGitHub上の独立承認に数えない。今回は権限付きイベントへの切替えや保護設定をしない。
 
 baseの検査器がない初回導入はexit 1で停止し、合格を偽装しない。まずツールを独立レビューでmainへ導入し、その後の別PRでテンプレートを配置する。テンプレートは標準runner・read-only token・秘密なし。製品CIを代用しない。Windows/Actionsの実動作は配置時に確認する。

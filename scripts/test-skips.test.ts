@@ -10,9 +10,11 @@ import {
   compareSkips,
   parseSkipTable,
   parseSpecOutput,
+  resultCount,
   skipEnvironment,
   summaryProblems,
   testRoots,
+  uniquenessProblems,
 } from './lib/test-skips.ts';
 
 const repoRoot = join(import.meta.dirname, '..');
@@ -173,11 +175,59 @@ test('docs/development.mdの実際の表を読め、表の試験はそのファ�
   for (const [file, name] of listed) {
     const path = join(repoRoot, ...file.split('/'));
     assert.ok(existsSync(path), `表のファイルがない: ${file}`);
-    const line = readFileSync(path, 'utf8')
+    const lines = readFileSync(path, 'utf8')
       .split(/\r?\n/)
-      .find((l) => l.includes(`test('${name}'`));
-    assert.ok(line !== undefined, `表の試験が ${file} にない: ${name}`);
-    assert.match(line, /\{ skip: /, `表の試験にskipの指定がない: ${name}`);
+      .filter((l) => l.includes(`test('${name}'`));
+    // 名前で突き合わせるので、表の試験の名前はそのファイルの中で一意でなければならない（PR18-R001）。
+    assert.equal(lines.length, 1, `表の試験が ${file} にちょうど1つない: ${name}`);
+    assert.match(lines[0] ?? '', /\{ skip: /, `表の試験にskipの指定がない: ${name}`);
+  }
+});
+
+test('表やskipの試験の名前が実行の結果で一意でなければ問題にし、同じファイルの同じ名前の試験の間のすり替えを見逃さない', () => {
+  // 表の「同じ名前」の試験が実行され、同じファイルの同じ名前の別の試験がskipされた（すり替え）。
+  const report = parseSpecOutput(
+    [
+      '✔ 同じ名前 (1ms)',
+      '﹣ 同じ名前 (0.1ms) # 合成の理由',
+      '✔ 同じ名前のあとに続く別の名前 (1ms)',
+      '✔ 一意の名前 (1ms)',
+      ...summaryLines({ tests: 4, pass: 3, skipped: 1 }),
+    ].join('\n'),
+  );
+  const sources = new Map([
+    ['scripts/a.test.ts', "test('同じ名前', () => {});\ntest('同じ名前', { skip: '合成の理由' }, () => {});"],
+  ]);
+  // 名前の集合の照合だけでは一致してしまう。
+  const attributed = attributeSkips(report.skipped, sources);
+  assert.deepEqual(compareSkips(new Map([['scripts/a.test.ts', new Set(['同じ名前'])]]), attributed.byFile), []);
+  // 一意性の確認で拒む。前方が同じだけの別の名前は数えない。
+  assert.equal(resultCount(report, '同じ名前'), 2);
+  assert.match(uniquenessProblems(report, ['同じ名前']).join('\n'), /「同じ名前」が、実行の結果に2回ある/);
+  assert.deepEqual(uniquenessProblems(report, ['一意の名前', '同じ名前のあとに続く別の名前']), []);
+});
+
+test('このNode.jsの実際の出力でも、同じファイルの同じ名前の試験の一方がskipされると、一意性の確認で拒む', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kl-skips-'));
+  try {
+    writeFileSync(
+      join(dir, 'same-name.test.mjs'),
+      [
+        "import { test } from 'node:test';",
+        "test('同じ名前の試験', () => {});",
+        "test('同じ名前の試験', { skip: '合成の理由' }, () => {});",
+      ].join('\n'),
+    );
+    const env: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(process.env)) if (!/^NODE_/i.test(key)) env[key] = value;
+    const r = spawnSync(process.execPath, ['--test', 'same-name.test.mjs'], { cwd: dir, env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const report = parseSpecOutput(r.stdout);
+    assert.equal(report.summary.skipped, 1);
+    assert.equal(resultCount(report, '同じ名前の試験'), 2);
+    assert.equal(uniquenessProblems(report, ['同じ名前の試験']).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

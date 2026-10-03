@@ -64,7 +64,7 @@ Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`�
 
 `npm test`は、試験の中で再現できない環境では、次の試験を理由を出して飛ばす（`node --test`の出力に`# SKIP`と理由が出る）。飛ばす試験を増やす・変えるときは、この表と代わりの確認を同じPRで直す。表にない試験のskipや、表にある試験が飛ばされないことは、成功として扱わない。
 
-CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験をファイルに結び付け、ファイルごとに、この表に名前を書いた試験の集合と過不足なく一致するかを照合する（`npm run check:test-skips`。件数が同じでも、別の試験とのすり替えは不一致）。skipごとに理由の文字列があることも確かめ、理由とdiagnosticをrunのSummaryに記録する。理由の文字列の正本は試験のファイルで、照合の期待値には含めない（妥当かどうかは、レビューでこの表の「理由」と読み合わせる）。照合は別の一覧を持たず、この表の2つ目の列（「`ファイル`のN件（「試験の名前」…）」の形）と、表の下の件数の文を読む（件数と名前の数、表と文の合計が食い違っても失敗）。表の書き方を変えるときは、`scripts/lib/test-skips.ts`とその試験を同じPRで直す。
+CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験をファイルに結び付け、ファイルごとに、この表に名前を書いた試験の集合と過不足なく一致するかを照合する（`npm run check:test-skips`。件数が同じでも、別の試験とのすり替えは不一致）。skipごとに理由の文字列があることも確かめ、理由とdiagnosticをrunのSummaryに記録する。理由の文字列の正本は試験のファイルで、照合の期待値には含めない（妥当かどうかは、レビューでこの表の「理由」と読み合わせる）。照合は試験を名前で突き合わせるので、表の試験とskipした試験の名前は、実行の結果の中で一意でなければならない（2回以上現れれば失敗。node:testは同じファイルの中でも同じ名前の試験を許し、出力に場所が出ないため、一意でないと同じ名前の試験の間のすり替えを見分けられない）。照合は別の一覧を持たず、この表の2つ目の列（「`ファイル`のN件（「試験の名前」…）」の形）と、表の下の件数の文を読む（件数と名前の数、表と文の合計が食い違っても失敗）。表の書き方を変えるときは、`scripts/lib/test-skips.ts`とその試験を同じPRで直す。
 
 | 環境 | 飛ばす試験（ファイル・件数・試験の名前） | 理由 | 代わりの確認 |
 | --- | --- | --- | --- |
@@ -126,7 +126,7 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件、失敗を期待した試験（`expectFailure`。要約ではpassに数えられる）、再実行で合格した試験と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
 - 安全: 標準のhosted runner（`ubuntu-latest`・`windows-latest`・`macos-latest`）だけを使う。権限は`contents: read`だけで、secretsを使わず、checkoutの資格情報を残さない（`persist-credentials: false`）。actionはcommitのSHAで固定する。artifactをuploadしない。`pull_request_target`を使わないので、forkからのPRにも、secretsも書込みの権限も渡らない。
 - 時間の上限: `checks`・`browser`は20分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
-- 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定（必須のcheck等）は、2026-10-03の所有者決定で、必須のstatus checkを`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする。どちらもT05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。
+- 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定は、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認はPR #18のPR18-O001で待っている）で、T05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。
 - CIで確かめないもの: Intel Mac・Windows（arm64）、公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）で入れたNode.js（CIは`actions/setup-node`の配布物を使う。ADR-0008の「見抜けないこと」のnpmの組込みの設定は、インストーラでは未確認のまま）、実機のSafari、Windowsのコンソールの制御イベント（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)）。
 - 後続タスクの試験: `scripts/`・`src/`・`tests/`に`*.test.ts`を加えれば`npm test`で、`e2e/`に`*.spec.ts`を加えれば`npm run test:browser`で、3つのOSのCIで実行される。
 

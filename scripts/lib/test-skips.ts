@@ -26,6 +26,8 @@ export type SpecReport = {
   readonly expectedFailures: readonly string[];
   // 再実行（--test-rerun-failures）で合格した試験（「(passed on attempt N)」）。
   readonly rerunPassed: readonly string[];
+  // 要約より前の、試験の結果の行（✔・✖・﹣・⚠で始まる行。前後の空白を除く）。名前の一意性の確認に使う。
+  readonly resultLines: readonly string[];
 };
 
 // 色の制御文字（CSI）。
@@ -61,6 +63,10 @@ export function parseSpecOutput(text: string): SpecReport {
   const diagnostics: string[] = [];
   const expectedFailures: string[] = [];
   const rerunPassed: string[] = [];
+  const resultLines = lines
+    .slice(0, start)
+    .map((l) => l.trim())
+    .filter((l) => /^[✔✖﹣⚠] /.test(l));
   for (const line of lines.slice(0, start)) {
     const skip = /^\s*﹣ (.+?)(?: \(\d+(?:\.\d+)?ms\))? # (.*)$/.exec(line);
     if (skip !== null) {
@@ -84,7 +90,7 @@ export function parseSpecOutput(text: string): SpecReport {
       `「﹣」の行（${skippedTests.length}件）が、要約のskipped（${summary.skipped}）と合わない（出力の形式が変わった可能性）。`,
     );
   }
-  return { summary, skipped: skippedTests, diagnostics, expectedFailures, rerunPassed };
+  return { summary, skipped: skippedTests, diagnostics, expectedFailures, rerunPassed, resultLines };
 }
 
 export type SkipEnvironment = 'windows' | 'posix-root' | 'posix-user';
@@ -256,5 +262,29 @@ export function summaryProblems(report: Pick<SpecReport, 'summary' | 'expectedFa
   if (summary.todo > 0) problems.push(`todoの試験が${summary.todo}件ある（未完成の試験を成功に数えないよう、0件に限る）。`);
   for (const title of report.expectedFailures) problems.push(`失敗を期待した試験（expectFailure）がある。要約ではpassに数えられるが成功としない: ${title}`);
   for (const title of report.rerunPassed) problems.push(`再実行で合格した試験がある: ${title}`);
+  return problems;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 試験の名前が、実行の結果の行に何回現れるか。名前のあとは、時間「 (Nms)」、「 # …」、行末のどれか。
+export function resultCount(report: Pick<SpecReport, 'resultLines'>, name: string): number {
+  const pattern = new RegExp(`^[✔✖﹣⚠] ${escapeRegExp(name)}(?: \\(\\d| #|$)`);
+  return report.resultLines.filter((line) => pattern.test(line)).length;
+}
+
+// 照合は試験を名前で突き合わせるので、表に書いた試験とskipした試験の名前が、実行の結果の中で一意でなければ
+// 失敗にする。node:testは同じファイルの中でも同じ名前の試験を許し、specの出力には場所が出ないので、
+// 一意でないと、表の試験が実行されて同じ名前の別の試験がskipされても、集合の照合では見分けられない（PR18-R001）。
+export function uniquenessProblems(report: Pick<SpecReport, 'resultLines'>, names: Iterable<string>): string[] {
+  const problems: string[] = [];
+  for (const name of new Set(names)) {
+    const count = resultCount(report, name);
+    if (count > 1) {
+      problems.push(`試験の名前「${name}」が、実行の結果に${count}回ある。同じ名前の試験の間のすり替えを見分けられないので、名前を一意にする。`);
+    }
+  }
   return problems;
 }
