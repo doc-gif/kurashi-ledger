@@ -1053,7 +1053,10 @@ function checkAggregate(ctx: CheckCtx, query: Obj, expect: Obj): void {
       // 共通の型の11（契約版2.0）: coverageはannual-valueだけ。payslip-by-income-yearを含むほかのkindはnot-applicable。
       if (kind !== "annual-value" && cs !== "not-applicable") ctx.problems.add(ctx.where, "annual-value以外のcoverageはnot-applicable");
       coverages.add(stableStringify(c));
-    } else if (kind === "annual-value") ctx.problems.add(ctx.where, `values[${i}]: annual-valueのcoverageを書く`);
+    } else if (kind === "annual-value" || kind === "payslip-by-income-year") {
+      // annual-valueはcoverageで元を分け、payslip-by-income-yearは契約版2.0でnot-applicableと決まった（台帳の未決事項2）ので、どちらも書く。
+      ctx.problems.add(ctx.where, `values[${i}]: ${String(kind)}のcoverageを書く`);
+    }
   });
   if (values.length > 1 && coverages.size !== values.length) ctx.problems.add(ctx.where, "coverageで分けた集計値のcoverageが重なる");
 }
@@ -2365,5 +2368,23 @@ test("検査の自己確認: 拡張できる列挙の知らない値は、保存
   // 台帳の場面: EX-05-hの復元は違反なし、TC-02-aのo05dの新しい保存は拒否。
   const h = mutated((copy) => (op(scenario(firstCase(copy, "EX-05"), "EX-05-h"), "o1")["expectedViolations"] = ["value-invalid"]));
   assert.ok(h.some((x) => x.includes("EX-05-h") && x.includes("expectedViolations")), h.join(" / "));
+});
+
+test("検査の自己確認: payslip-by-income-yearの集計の期待値はcoverage（not-applicable）を省けない（共通の型の11）", () => {
+  const p = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    const values = (chk["expect"] as Obj)["values"] as Obj[];
+    for (const v of values) delete v["coverage"];
+  });
+  assert.ok(p.some((x) => x.includes("EX-05-a c05") && x.includes("payslip-by-income-yearのcoverageを書く")), p.join(" / "));
+  const q = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    ((chk["expect"] as Obj)["values"] as Obj[]).forEach((v) => (v["coverage"] = { state: "known", value: "entered-records-only" }));
+  });
+  assert.ok(q.some((x) => x.includes("EX-05-a c05") && x.includes("not-applicable")), q.join(" / "));
 });
 
