@@ -90,7 +90,7 @@ try {
   problems.push(error instanceof Error ? error.message : String(error));
 }
 
-lines.push('', problems.length === 0 ? '照合: 一致（表の件数どおり）。' : '照合: 不一致・読めない。');
+lines.push('', problems.length === 0 ? '照合: 一致（表で飛ばしてよいとした試験と、実際にskipした試験が同じ）。' : '照合: 不一致・読めない。');
 for (const p of problems) lines.push(`- ${p}`);
 const text = `${lines.join('\n')}\n`;
 console.log(text);
