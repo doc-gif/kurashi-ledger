@@ -29,7 +29,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "Propose a design, not an operational migration. Same Codex owns design/implementation; Claude reviews design first.",
+      "reason": "Propose a design, not an operational migration. Same Codex owns design/implementation; Claude reviews design first. Owner clarified: Issue45 completion is implementation/verification/independent review of default-off infrastructure; production installation and live AI/webhook validation are deferred until owner configuration. Other reviews may resume after infrastructure completion.",
       "checks": [
         {
           "id": "dependencies",
