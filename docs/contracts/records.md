@@ -76,7 +76,7 @@
 | `otherDeductions` | `Fact<List<DeductionLine>>` | その他の控除の行。`otherEarnings`と同じく、`known`（空は確かめて行がない）か`unknown`（写していない）だけ |
 | `yearEndAdjustment` | `Fact<Yen>`（符号あり） | 年末調整の過不足。正は本人への還付、負は追加の徴収 |
 | `totalDeductions` | `Fact<Yen>`（0以上） | 控除合計。記載どおり |
-| `netPay` | `Fact<Yen>`（符号あり） | 差引支給額。記載どおり |
+| `netPay` | `Fact<Yen>`（符号あり） | 差引支給額。記載どおり。負は、控除が支給を上回った月（休職中の保険料の本人負担、過払いの回収等） |
 | `bankTransferAmount` | `Fact<Yen>`（0以上） | 振込額。記載どおり。銀行入金の額から埋めない |
 | `supersedes` | `Fact<Ref<Payslip>>` | 再発行された明細の場合だけ、差し替える前の明細（10を参照）。`revision`は`current`（記録どうしの関係。[共通の型](common-types.md)の2）。`known`か`not-applicable`だけで、`unknown`は使わない（[共通の型](common-types.md)の12） |
 
@@ -185,7 +185,7 @@
 | `workPeriod` | `Fact<Period>` | 見込みの対象の勤務期間 |
 | `expectedMonth` | `YearMonth` | 支払・入金の予定月 |
 | `expectedDate` | `Fact<LocalDate>` | 支払・入金の予定日。`known`なら`expectedMonth`の月の日付 |
-| `amount` | `Fact<Yen>`（0以上） | 見込みの金額（`measure`で表す金額） |
+| `amount` | `Fact<Yen>`（範囲は`measure`ごと: `net-pay`は符号あり、ほかは0以上） | 見込みの金額（`measure`で表す金額）。範囲は、その`measure`に対応する実績の該当の金額（[照合の規則](reconciliation.md)の3）と同じで、範囲の外の値は保存しない。負の見込みは、差引支給額が負になる見込み（控除が支給を上回る月）。実績化の符号は同3の「配分の符号」 |
 | `lineStatus` | `open・withdrawn` | 見込みの行が有効か、取り下げたか。取り下げは改訂（`new-information`）で行う |
 
 - 見込みの行の金額は、実績の集計に入らない。見込みの集計には、実績化した分を除いた残りだけが入る（[照合の規則](reconciliation.md)の6）。

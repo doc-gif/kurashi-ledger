@@ -12,7 +12,7 @@
 
 **入力を固める前に止まったrun（1つの規則）:** runは、入力の写し（`inputs`の閉包と必要な写し）を固めたかどうかを`inputStage`（`fixed`・`not-fixed`）に持つ。
 
-- `computed`・`provisional`・`incomplete`は`fixed`だけ。`failed`と`unsupported`は、入力を固める前に止まった場合だけ`not-fixed`にできる（入力の要求の一覧や閉包を作っている途中の異常終了、`target`の地域・年度が対象外で入力の要求の一覧が決まらない等）。
+- `computed`・`provisional`・`incomplete`は`fixed`だけ。`failed`と`unsupported`は、入力を固める前に止まった場合だけ`not-fixed`にできる（入力の要求の一覧や閉包を作っている途中の異常終了、`target`の地域・年度が対象外で入力の要求の一覧が決まらない、`target.scope`が`unknown`で入力の要求が決まらない等）。
 - `not-fixed`のrunは、最小の形で保存する。`inputs`の各並び・`results`・`roundingSteps`・`missingInputs`・`assumptions`は空にし、入力の閉包・必要な写しの集合・結果と丸めの検査をしない（固めていない入力の完全性は確かめられないため）。持つのは、`id`・`createdAt`・`recordedAt`・`recordedSeq`・`calculator`・`appCommit`・`target`・`status`・`inputStage`と、止まった理由（`failed`なら`failure`。どの段階で止まったかを含める。`unsupported`なら`unconfirmedItems`に対象外の理由）と、`ruleSet`・`previousRunId`（[共通の型](common-types.md)の12の表のとおり）だけ。runの履歴の鎖の検査（3）は受ける。結果の項目を持たないので、2の表の「結果の値」は当てはまらない（表示では「入力を固める前に止まった」と示す）。
 - `fixed`のrunは、`failed`・`unsupported`でも、通常の検査（入力の閉包、必要な写しの集合、run内の並び）をすべて受ける。結果の値の扱いは2の表のとおり（`failed`の値は表示・比較に使わない）。
 
@@ -91,7 +91,8 @@
 | `jurisdiction` | `Fact<{ kind: national・prefecture・municipality・insurer, code: Text }>` | 対象の地域・保険者。地域の符号の体系はT14で決める。`known`か`unknown`だけ（国の制度でも`{ kind: national, code }`として`known`にする。[共通の型](common-types.md)の12） |
 | `procedure` | `withholding・year-end-adjustment・tax-return・levy・premium・recognition` | 計算する手続の種類。`withholding`は給与・賞与の支払ごとの源泉徴収、`year-end-adjustment`は年末調整、`tax-return`は確定申告・準確定申告、`levy`は賦課・決定（住民税・国民健康保険料等の年度の額）、`premium`は保険料の月ごとの額、`recognition`は認定・資格の判定。同じ年・年度でも、手続によって使う規則が違いうるため（施行日と年分の適用の違い、月ごとの料率の切り替え等）、年・年度だけで規則を選ばない |
 | `referencePoint` | `Fact<ReferencePoint>` | 規則を選ぶ基準の時点。`ReferencePoint`は`kind`で判別する: `date`（`date: LocalDate`）か`month`（`month: YearMonth`）。手続ごとの意味と形は下の「手続と基準の時点」の表で決め、合わないrunは保存しない。年・年度だけで規則が決まる手続では`not-applicable`。`unknown`なら規則を選べないので、結果の状態は`unsupported`（2）。`not-stated`は使わない |
-| `scopeNote` | `Fact<Text>` | 対象の範囲の補足 |
+| `scope` | `Fact<TargetScope>` | 計算の対象の範囲。`TargetScope`は`kind`で判別する: `all-payers`（runを作ったときの有効な雇用先のすべて）か`payers`（`payers: List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない。正規のIDで書く）。`known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない）。`unknown`なら入力の要求が決まらないので、結果の状態は`unsupported`で、入力を固める前に止まったrun（`not-fixed`）として保存する。下の「対象の範囲」 |
+| `scopeNote` | `Fact<Text>` | 対象の範囲の補足のメモ。入力の要求・runの目的・結果の状態の判定に使わない（範囲は`scope`だけで決める） |
 
 **手続と基準の時点（1つの規則）:** 制度データの版（`ruleSet`）と、入力の要求・結果の項目・丸めの手順は、`target`の年・年度、地域、手続、基準の時点から選ぶ。どの手続・時点でどの規則と版を使うか（施行日・適用の年分・料率の切り替えの月・認定の基準日等）はT14が一次資料で決め、この契約は決めない。`referencePoint`の意味と形は、次の表だけで決める（手続を足す、意味を変えるのは契約の変更）。
 
@@ -103,6 +104,12 @@
 | `levy` | `not-applicable`（賦課の年度は`year`で表す） |
 | `premium` | `month`: 保険料の対象の月 |
 | `recognition` | `date`: 認定・判定の基準の日 |
+
+**対象の範囲（1つの規則）:** 計算の対象の範囲は`scope`だけで表し、入力の要求の導出とrunの目的（3）の両方に、この同じ値を使う。
+- 計算器の版は、許す範囲を決める: `all-payers`だけ（範囲を固定する計算）か、利用者が選ぶ支払者の集合（`payers`）も許すか。許さない範囲の`scope`を持つrunは保存しない。利用者の範囲を`scopeNote`の文だけで表さない（判定に使えないため）。
+- 入力の要求は、`scope`から決める。支払者で絞れる要求（給与明細・年間資料・予測の集計等。[共通の型](common-types.md)の11の許す`scope`の次元に`employerIds`がある`kind`）の`employerIds`は、`payers`ならその支払者、`all-payers`なら空（限定しない）。支払者で絞れない要求（正式通知の決定額等）は`scope`によらない。1の「保存のときの検査」は、この`scope`から求め直した要求の一覧と`inputs.requests`を比べる。
+- 契約版1.0の範囲の次元は支払者だけ（記録は利用者本人のものだけで、世帯員等の記録の型はない）。ほかの次元が必要になったら、その記録の型と一緒に`TargetScope`の`kind`として足す（契約の変更）。
+- 例はEX-04(a)の「対象の範囲が違うrun」。
 
 `Inputs`:
 
@@ -181,7 +188,7 @@
 | 順 | 状態 | 条件 | 結果の値（`results`の`value`） |
 | --- | --- | --- | --- |
 | 1 | `failed` | 計算が異常終了した（ほかの条件が同時に成り立っていても、この状態にする。障害を隠さないため） | 使わない（状態を問わず保存するが、表示・比較に使わない）。監査のために残す |
-| 2 | `unsupported` | 異常終了しておらず、対象の年・年度・地域・手続・基準の時点・範囲に承認済みの規則がない、または`jurisdiction`が`known`でない、または`referencePoint`が`unknown`（規則を選べない） | すべて`unknown`。0にしない |
+| 2 | `unsupported` | 異常終了しておらず、対象の年・年度・地域・手続・基準の時点・範囲に承認済みの規則がない、または`jurisdiction`が`known`でない、または`referencePoint`が`unknown`（規則を選べない）、または`scope`が`unknown`（入力の要求が決まらない） | すべて`unknown`。0にしない |
 | 3 | `incomplete` | 異常終了しておらず、対象に承認済みの規則があり、必要な入力が足りない（`MissingState`のどれかに当たる入力がある。[共通の型](common-types.md)の11） | 不足の影響を受ける項目は`unknown`。`missingInputs`に1件以上挙げる |
 | 4 | `provisional` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定、または`coverage`が`entered-records-only`の年間の値を使った | `known`か`not-applicable`。「暫定」と表示する |
 | 5 | `computed` | 異常終了しておらず、規則があり、必要な入力が足りていて、見込み・仮定・`entered-records-only`の年間の値を使っていない | `known`か`not-applicable`。それでも推計で、正式通知ではない |
@@ -195,10 +202,10 @@
 - **計算runは書き換えない。** 入力の記録が訂正されても、過去のrunの入力（固定した版）と結果は変わらない。
 - 訂正・新しい情報・制度データの更新のあとで計算し直す場合は、新しいrunを作り、`previousRunId`で前のrunを指す。
 
-**runの履歴（1つの規則）:** runの**目的**は、`calculator.id`、`target.year`、`target.jurisdiction`、`target.procedure`、`target.referencePoint`の組とする（`calculator.version`・制度データの版・`scopeNote`は、同じ目的の中で変わってよい。手続や基準の時点が違うrun（月ごとの源泉徴収、年末調整と確定申告等）は、別の目的）。同じ目的のrunは、`previousRunId`でつながった1本の鎖（分岐も合流もない、最初のrunから最新のrunまでの並び）にする。
+**runの履歴（1つの規則）:** runの**目的**は、`calculator.id`、`target.year`、`target.jurisdiction`、`target.procedure`、`target.referencePoint`、`target.scope`の組とする（`calculator.version`・制度データの版・`scopeNote`は、同じ目的の中で変わってよい。手続や基準の時点や範囲が違うrun（月ごとの源泉徴収、年末調整と確定申告、勤務先Aだけと勤務先A・B等）は、別の目的）。`scope`は、`all-payers`は`all-payers`とだけ一致し、`payers`どうしは、新しいrunを保存するときの見方で正規のIDに解決した集合が同じなら一致する。同じ目的のrunは、`previousRunId`でつながった1本の鎖（分岐も合流もない、最初のrunから最新のrunまでの並び）にする。
 
-- 新しいrunの`previousRunId`が`known`なら、次をすべて満たさなければ保存しない: 指すrunが保存済み（新しいrunより`recordedSeq`が小さい。自分自身は指せない）、`calculator.id`・`target.year`・`target.procedure`が同じ、`target.jurisdiction`と`target.referencePoint`が[共通の型](common-types.md)の13の4×4の表で一致（未確定は満たさない。`referencePoint`がどちらも`not-applicable`なら一致）、指すrunを`previousRunId`で指す別のrunがない（同じ目的の最新のrunである）。
-- 新しいrunの`previousRunId`が`not-applicable`なら、同じ目的（`target.jurisdiction`が`known`で、ほかの要素も上の比べ方で一致するもの）のrunがまだない場合だけ保存する（同じ目的に2本目の鎖を作らない）。`target.jurisdiction`が`known`でないrun、`target.referencePoint`が`unknown`のrunは目的が決まらないので、鎖の先頭にも途中にもならず、`previousRunId`は`not-applicable`で、ほかのrunから指されない。
+- 新しいrunの`previousRunId`が`known`なら、次をすべて満たさなければ保存しない: 指すrunが保存済み（新しいrunより`recordedSeq`が小さい。自分自身は指せない）、`calculator.id`・`target.year`・`target.procedure`が同じ、`target.jurisdiction`と`target.referencePoint`が[共通の型](common-types.md)の13の4×4の表で一致（未確定は満たさない。`referencePoint`がどちらも`not-applicable`なら一致）、`target.scope`が上の比べ方で一致（`unknown`は満たさない）、指すrunを`previousRunId`で指す別のrunがない（同じ目的の最新のrunである）。
+- 新しいrunの`previousRunId`が`not-applicable`なら、同じ目的（`target.jurisdiction`が`known`で、ほかの要素も上の比べ方で一致するもの）のrunがまだない場合だけ保存する（同じ目的に2本目の鎖を作らない）。`target.jurisdiction`が`known`でないrun、`target.referencePoint`が`unknown`のrun、`target.scope`が`unknown`のrunは目的が決まらないので、鎖の先頭にも途中にもならず、`previousRunId`は`not-applicable`で、ほかのrunから指されない。
 - 失敗したrun（`failed`）も鎖に入る（監査のため）。最新のrunが`failed`でも、次のrunはそれを指す。
 - この検査と保存は、同じ目的のrunについて1つのtransactionの中で直列に行う（同時に2件が同じrunを指して分岐しないように。T07・T15）。
 - 鎖は保存のときの検査で保たれるので、表示では鎖を最新から`previousRunId`でたどり、1通りの履歴として示す。

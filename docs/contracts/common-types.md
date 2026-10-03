@@ -38,6 +38,7 @@
 | 計算runの`inputs.decisions`の`itemPremisesAtRun`の`item`（`DecisionItem`） | `kind`（同1） |
 | `subjectYear`・`Target.year`の年・年度 | `kind`（`calendar`・`fiscal`） |
 | 計算runの`target.referencePoint`（`ReferencePoint`） | `kind`（`date`・`month`。[計算結果](calculation-results.md)の1） |
+| 計算runの`target.scope`（`TargetScope`） | `kind`（`all-payers`・`payers`。同1の「対象の範囲」） |
 
 新しく2つ以上の型を持つ項目を足すときは、識別子を決めてこの表に加える。
 
@@ -515,7 +516,7 @@
 | 正式通知の`subjectYear` | 下の「`not-applicable`を許す項目」の表の条件に当たらない場合（`amounts`が`unknown`の場合を含む） | `known`・`unknown`・`not-stated`（決定額の集計の軸に使うので`not-applicable`は使わない） |
 | 給与明細の`otherEarnings`・`otherDeductions`、正式通知の`amounts`・`installments`・`statusDates` | いつでも | `known`か`unknown`だけ（下の「並びの空の意味」。資料から写す並び） |
 | 年間資料の`includedOtherPayers` | いつでも | `known`か`unknown`（`unknown`の資料は範囲が確定しない。[照合の規則](reconciliation.md)の5） |
-| 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（正） |
+| 照合配分の`amount` | `transfer-to-deposit`・`forecast-realization`を`confirmed`にする（消し込む場合も） | `known`（0でない。`transfer-to-deposit`は正、`forecast-realization`は実績の該当の金額と同じ符号。[照合の規則](reconciliation.md)の3の「配分の符号」） |
 | 同 | `annual-coverage` | `not-applicable` |
 | 確定の不変条件の上限に使う実績の金額: `forecast-realization`の「実績の該当の金額」（[照合の規則](reconciliation.md)の3。`grossPay`・`netPay`・`bankTransferAmount`・入金の`amount`）と、実績の行を指す場合はその行の`amount` | その実績から`forecast-realization`を`confirmed`にする | `known`（`known`でなければ確定しない。先に実績の記録を訂正するか、予測の行を取り下げる） |
 | 銀行入金の`amount` | その入金への`transfer-to-deposit`、またはその入金からの`forecast-realization`を`confirmed`にする | `known`（入金の側の上限に使う） |
@@ -526,6 +527,7 @@
 | 計算runの`target.jurisdiction` | いつでも | `known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない。`known`でなければ結果の状態は`unsupported`。[計算結果](calculation-results.md)の2） |
 | 計算runの`target.referencePoint` | `procedure`が`levy`以外 | `known`か`unknown`（`not-stated`・`not-applicable`は使わない。`known`の`kind`と意味は[計算結果](calculation-results.md)の1の「手続と基準の時点」の表のとおり。`unknown`なら結果の状態は`unsupported`） |
 | 同 | `procedure`が`levy` | `not-applicable` |
+| 計算runの`target.scope` | いつでも | `known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない。`unknown`なら結果の状態は`unsupported`で、入力を固める前に止まったrun。[計算結果](calculation-results.md)の1の「対象の範囲」） |
 | `RoundingStep`の`ruleRef` | `basis`が`rule`・`input` | `known`（`ruleSetId`・`ruleSetVersion`はrunの`ruleSet`と同じ。`unknown`・`not-stated`は使わない） |
 | 同 | `basis`が`calculator` | `not-applicable` |
 | `RoundingStep`の`methodInput` | `basis`が`input` | `known`（同じrunの`Assumption`で`valueType`が`rounding-method`のものの`key`） |
@@ -585,6 +587,7 @@
 | 照合の判断の`explainedComparisons`（同4） | 利用者の操作が作る | 空を許さない（1件以上） | `field` |
 | `explainedComparisons`の各要素の`coveredPayslips`（同4） | 利用者の操作が作る（判断したときの写し） | 空を許す（結んだ明細がなかった） | 明細の`id` |
 | 集計値の`scope`の`employerIds`・`accountIds`（11） | 利用者の操作が作る | 空は「限定しない」 | `id` |
+| 計算runの`target.scope`の`payers`（[計算結果](calculation-results.md)の1） | 計算器・利用者の操作が作る | 空を許さない（すべての支払者は`all-payers`で表す） | 支払者の正規のID |
 | 集計値の`missing`（11） | アプリが作る | 空は不足がない | `ref`と`field`の組 |
 | 計算runの`results`・`roundingSteps`・`missingInputs`・`unconfirmedItems`・`assumptions`・`adoptions`・`inputs`の各並び（[計算結果](calculation-results.md)の1） | 計算器が作る | 空は該当なし（`results`・`roundingSteps`・`adoptions`・要求の集計に由来する`missingInputs`が空でよいかは、同1の「必要な写しの集合」で決まる） | [計算結果](calculation-results.md)の1の「run内の並びの規則」の表 |
 | `ResultItem`の`explanationRefs`（同1） | 計算器が作る | 空は該当なし | 参照先の`id`と`line`の組 |
