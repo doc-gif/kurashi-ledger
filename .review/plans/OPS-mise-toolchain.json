@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "task_id": "OPS-mise-toolchain",
+  "planned_paths": [
+    "README.md",
+    "docs/development.md",
+    "docs/implementation-tasks.md",
+    "docs/project-status.md",
+    "mise.toml"
+  ],
+  "conflicts": [
+    {
+      "description": "CIはNode.jsを`package.json`の範囲（`>=24.15.0 <25`）の最新で入れ（setup-nodeの`node-version-file: package.json`と`check-latest`）、Pythonは`'3.11'`（検査器が対応する最も古いマイナー）で入れる。miseはmise.tomlの正確な版を入れる。新しい24.xやPythonのパッチが出ると、手元とCIのパッチ版がずれうる。",
+      "state": "resolved",
+      "resolution": "役割を分けて正本を1つずつにする。対応する範囲の正本は従来どおり`package.json`の`devEngines`・`engines`（npmが検査する）と検査器の起動時の検査（3.11以上）で、変えない・緩めない。手元で使う正確な版の正本はmise.toml。setup-node・setup-python（固定したSHAのdist）は`mise.toml`を読めないことをソースで確かめたので、CIは変えない（新しいactionや版を取り出すstepを足さない）。mise.tomlのNode.jsは、決めた時点でCIが入れた版（24.21.0、mainのrun 37111323603）にそろえ、CIのrunのSummaryの版が変わったらmise.tomlを更新する手順をdevelopment.mdに書く。範囲の外の版をmise.tomlに書かない。"
+    },
+    {
+      "description": "`.nvmrc`は`24`（メジャーだけ）で、mise.tomlの正確な版と書き方が違う。",
+      "state": "resolved",
+      "resolution": "ADR-0002は`.nvmrc`をnvm利用者向けの補助と決めている。正確な版を2か所に書くと更新漏れの原因が増えるので、`.nvmrc`は`24`のままにする（nvm install 24は24系の最新を入れ、下限より新しい）。miseは既定で`.nvmrc`を読まず（idiomatic version fileは既定で無効）、mise.tomlを使う。この判断をdevelopment.mdに書く。"
+    },
+    {
+      "description": "PR #25（T26、Open）も`docs/development.md`・`README.md`を変える。",
+      "state": "resolved",
+      "resolution": "変更を「Node.jsの版」「初めて使うとき」の節と、READMEの開発環境の1行に限り、T26の変更箇所（コマンド表・起動）に触れない。後からマージする側が最新mainを取り込んで整合を確かめる（review-prevention.md）。`package.json`・lockfile・CI設定（共有資源）は変えない。"
+    },
+    {
+      "description": "miseの設定ファイルは、内容によっては`mise trust`が要り、worktreeごとにパスが違う。",
+      "state": "resolved",
+      "resolution": "mise.tomlは`[tools]`の版の文字列だけにする（env・tasks・settings・テンプレートを書かない）。miseの文書（cli/trust.md）では、この形は通常のモードでtrustが要らず、trustはworktree間で共有される。paranoidモードではworktreeごとにtrustが要ることもdevelopment.mdに書く。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "追加するのは版の文字列だけのmise.tomlと、手順の文書。個人のパス・ホームディレクトリの実名・秘密・実データを書かない。手順のパスは`~`や`%LOCALAPPDATA%`等の一般的な表記だけにし、所有者の環境に固有の設定（シェルの設定ファイルの中身、mise.local.toml等）はcommitしない。新しい外部サービスへ送るものはない（miseはNode.jsの公式配布物とPythonのビルド済みの配布物を取得するが、repoのデータは送らない）。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "各commitの前に`node scripts/check-public.ts --staged`の終了コードを確かめ、`git diff --cached`で差分を読む。追加するファイルは明示してstageする。PR本文・引継ぎにも個人のパスを書かない。",
+          "expected": "check-publicが0で終わり、差分に個人のパス（/Users/<名前>等）・秘密・実データがない。mise.tomlは[tools]のnode・pythonの版の行だけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "版の指定は共有資源。T28（Node.jsのメジャー更新）の範囲に`.nvmrc`等があるので、mise.tomlも同じ範囲に加えて、メジャー更新で更新漏れが起きないようにする。入口（README・development.md・project-status.md）が同じ手順と正本を指すようにする。予定のタスクの着手条件や依存は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "T28の範囲・共有資源の記載と、PR #25（T26）が変えるファイルを確かめ、mise.tomlをT28の範囲に加える。`package.json`・lockfile・CI設定を差分に含めないことを`git diff --name-only`で確かめる。",
+          "expected": "T28の範囲にmise.tomlがあり、このPRの差分に`package.json`・`package-lock.json`・`.github/`がない。T26との重なりはdevelopment.md・READMEの別の節だけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "README.mdの開発環境、docs/development.mdの「Node.jsの版」「初めて使うとき」「branchとworktree」、docs/project-status.mdの開発環境、tools/review_guard/README.mdのPythonの記載を読み合わせる。mise.tomlの版が`package.json`の範囲に入り、Pythonが3.11以上であることを確かめる。CIの`Quality gate`が3つのOSで成功することを確かめる。",
+          "expected": "すべての入口が、対応する範囲の正本は`package.json`（Python 3.11以上は検査器）、手元の正確な版はmise.toml、と同じことを指す。mise.tomlのnode 24.21.0は`>=24.15.0 <25`を満たし、python 3.11.17は3.11以上。CIのQuality gateが成功する。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    }
+  }
+}
