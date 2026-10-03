@@ -79,9 +79,11 @@
 
 ## T08 — デザイン準拠のUI部品
 
-- 依存: T04、T05、T26。担当: UI。範囲: `src/ui/components/`、token出力。共有資源: 初回UI依存追加（`package.json`の依存とscripts、lockfile）。`package.json`の変更をT26と並行させないため、T26の後に行う。
+- 依存: T01、T04、T05、T26（T01は、Status Badgeの状態を契約の金額・記録の状態に対応付けるため）。担当: UI。範囲: `src/ui/components/`、token出力。共有資源: 初回UI依存追加（`package.json`の依存とscripts、lockfile）。`package.json`の変更をT26と並行させないため、T26の後に行う。
 - 成果物: 3部品とカタログ、Figma nodeとコードの対応。コードで使うtokenはGit管理、Figma変更はレビュー済みPRで反映する一方向の手順。
 - 受入: 金額不明を入力できる。数値0と空欄を区別。フォーカス・エラー関連付け・タブ順が正しく、表示用の値を計算に使わない。
+- 受入: Status Badgeの状態と、T01の契約の金額・記録の状態（unknown / not-stated / not-applicable / known(0)、実績・見込み・正式通知）の対応を決める。not-statedに専用の表示が要るか、実績・見込み・正式通知をどう見分けるかを含め、`design/components.md`と`design/README.md`に記録する。Figmaの部品を変える場合は、`design/README.md`の一方向の更新手順で反映する。
+- 受入: Amount Inputの値（Empty・Amount・Zero・Unknown）とT01の金額の状態の対応を決める。Emptyは保存しない編集中の状態で、独立の状態としても0としても保存しない。保存して再表示した状態が保存した状態と一致し、黙って変わらないことを試験する。保存するときのEmptyを、不明として保存して画面で示すか、エラーで止めるかを決め（項目ごとの規則はT09・T10）、`design/components.md`と`design/README.md`に記録する。
 - 検証: キーボード、アクセシビリティ、代表的なvisual差分と目視。自動スクリーンショットだけでデザイン承認としない。
 - ReactとViteをここで導入する（ADR-0004）。`npm run build`は、ビルドの前に依存の導入の記録がいまのlockfileと実行環境に一致することを確かめ、既存のmanifestを最初に削除し、`dist/`へ出力し終えてから最後にmanifest（commitのSHA・lockfileのハッシュ・Node.jsの版・各ファイルのハッシュ）を書く（ADR-0002）。既存の成果物がある状態からのビルド、途中で止めたビルド（manifestが残らないこと）、作業ツリーに変更がある状態でのビルド（manifestを書かないこと。ビルドの前からある変更と、ビルドの途中で加わって残った変更の両方）を試験する。ビルドの最中に変えて元に戻す意図的な改変は対象外（ADR-0002）。開発時は、ViteをmiddlewareモードでT26のサーバーに組み込み、ブラウザから見えるoriginを1つにする（ADR-0003の10）。開発UIからのトークン交換と状態を変える要求が成功し、Viteの単独の開発サーバーや別のポートからの直接の要求が拒否されること、HMRのWebSocketも同じ検査を通ることを試験する。CORSや認証を開発時だけ無効にしない。開発時のCSPは、応答ごとのnonceをViteの`html.cspNonce`と一致させて、inlineのstyle・scriptを許可する（ADR-0003の7）。実際のCSSとReactの変更がHMRで反映されること、nonceのない・値の合わないinlineのscript・styleが拒否されること、本番のCSPにnonceが含まれないことを試験する。開発時は、Viteが配信するHTMLの`<meta>`にも起動の識別子（ADR-0003の14）を入れ、開発UIからの交換・API要求が成功すること、識別子のない・違う要求が拒否されることを試験する。開発UIはDBを開かない段階から使える。開発時の起動をデータルートの検査に通すのはT09。UIのE2Eは、T05のブラウザ試験の基盤（ChromiumをMac/Windows/Linux、WebKitをMac）に追加する。Firefoxはbest effortとし、必須のE2E対象に含めない（2026-10-02の所有者決定）。
 
