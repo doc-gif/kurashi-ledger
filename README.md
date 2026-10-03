@@ -17,13 +17,14 @@
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
 - CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
 - レビュー運用ツール（Python 3.11以上）は、`python3 -m unittest discover -s tools/review_guard/tests -v`と`python3 -m unittest discover -s .review/tests -v`で検査します（[手順](tools/review_guard/README.md)）。
+- 依存の更新の提案（Dependabot）: npmとGitHub Actionsの新しい版を毎週PRで提案します。提案のPRは計画を含まないのでCIが失敗したままで、そのままマージしません。担当が計画を付けて取り込みます（[手順](docs/development.md)）。
 
 詳しくは[開発環境と作業の規約](docs/development.md)を見てください。
 
 ## 設計資料
 
 - [実装順序・並行作業](docs/implementation-plan.md)
-- [タスク台帳 — T00–T28と任意評価E01](docs/implementation-tasks.md)
+- [タスク台帳 — T00–T32と任意評価E01](docs/implementation-tasks.md)
 - [技術構成の決定（ADR）](docs/adr/README.md)
 - [デザインの基礎・トークン・部品の仕様（Figmaとの対応）](design/README.md)
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)

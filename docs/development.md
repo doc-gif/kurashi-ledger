@@ -147,6 +147,21 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - PRは`.github/PULL_REQUEST_TEMPLATE.md`に沿って書き、作業中はDraftにする。完了したら[PRレビューのループ](pr-review-loop.md)の形式で、40文字のhead/baseのSHAを再取得して引継ぎコメントを書く。
 - レビュー・指摘対応・マージの扱いは、[AGENTS.md](../AGENTS.md)と[GitHub・複数AIの運用](github-agent-operations.md)に従う。
 
+## 依存の更新（Dependabot）
+
+2026-10-03に所有者がDependabotを含めることを承認した（Issue #35。下の「所有者の決定」の3を変えた）。理由と設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)の4.5、設定は`.github/dependabot.yml`。
+
+- 提案: npm（`package.json`とlockfile）とGitHub Actions（`.github/workflows/`のSHAの固定）の新しい版を、毎週月曜日の9時（日本時間）に確かめてPRにする。公開から7日（npmのメジャーは14日）待ってから提案する。npmのminor・patchは1つのPRにまとめ、メジャーは依存ごとのPRにする。`@types/node`のメジャーは、Node.jsのメジャーの更新（T28）と合わせるので提案させない。Pythonの依存の宣言はないので対象にしない。セキュリティ更新（repoの設定で有効にした場合）は、待たずに、別のまとまりのPRになる。
+- **提案のPRはそのままマージしない。** 提案のPRはPRの計画（`.review/plans/`）を含まないので、CIの`review plan`と`Quality gate`が失敗する。これは意図した状態で、例外は作らない。auto-merge・`@dependabot merge`は使わない。Dependabotのbranchへpushしない（ほかの担当のbranchへpushしない規約。Dependabotがbranchを作り直すと、足した変更が消える）。
+- 採用の手順:
+  1. 所有者または調整係が、採用の担当を割り当てる（タスクID`DEPS`。セキュリティ更新を先に割り当てる）。npmの更新は`package.json`とlockfileを変えるので、ほかのタスク（T08等）がそれを使っている間は待つ。
+  2. 担当は、最新のmainから自分のbranch（例: `task/deps-20261012-claude`）を作り、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。
+  3. 計画`.review/plans/DEPS-<日付>.json`を先にcommitする（[修正前の整合確認](review-prevention.md)）。
+  4. 変更の内容（リリースノート）、lockfileの`resolved`が`https://registry.npmjs.org/`だけであること、新しくインストールスクリプトを持つ依存がないこと（lockfileの`hasInstallScript`）、ライセンスを確かめてPRに書く。actionの更新では、新しいSHAが公式のリポジトリのタグを指すことを確かめる。`npm run setup`と3つのOSのCIを通す。
+  5. Draft PR→別の担当の内容レビュー→[AGENTS.md](../AGENTS.md)のマージの条件、の通常の流れで進める。
+  6. 採用のPRがマージされたら、提案のPRに採用のPRのリンクを書いて閉じる。採用しない場合は理由を書いて閉じる。続けて止めたい依存は、`@dependabot ignore`ではなく`.github/dependabot.yml`を変える（設定をレビューに載せるため）。
+- repoの設定（Dependabot alerts・security updates）は、所有者が確かめる（ADR-0010の4.5の「所有者が確かめる設定」）。
+
 ## ライセンス
 
 ライセンスは所有者が選んでいない（未選択）。publicであることは、OSSとして再利用を許諾することではない。所有者が選ぶまで、このプロジェクトをOSSと呼ばず、`package.json`にも`license`欄を書かない。選んだときは、所有者の決定として`README.md`と`docs/project-status.md`に記録し、ライセンスのファイルを加える。
@@ -163,7 +178,7 @@ T00の棚卸し（[ADR一覧](adr/README.md)の「既存設定の棚卸し」）
 | 公開検査のスクリプトとその試験 | 書き直して採用 | 秘密情報や個人のパスを探す考え方を引き継いだ。`evidence`等の名前をどの階層でも拒んでソースの置き場所と衝突する点、合成データの置き場所の例外がない点、`*.age`がない点を直した |
 | コミット前のGitのhook（公開検査） | 不採用（所有者の決定の3） | hookの設定はworktreeの間で共有され、ほかの担当の作業に影響する。手動で`npm run check:public -- --staged`を実行する手順にした |
 | CIのworkflow | 不採用（T05） | CIはT05の範囲。`npm run setup`ではなく`npm ci`を直接使っていて、Node.jsの版も24系の範囲でしか指定していない。T05はADR-0002・ADR-0008に沿って作る |
-| 依存の自動更新の設定 | 不採用（所有者の決定の3） | 自動のPRがlockfile（共有資源）を変え、担当の割当の外で作業が生まれる。依存の更新の運用はT25で決める |
+| 依存の自動更新の設定 | 不採用（所有者の決定の3） | 自動のPRがlockfile（共有資源）を変え、担当の割当の外で作業が生まれる。依存の更新の運用はT25で決める。2026-10-03に、試作とは別に、Dependabotを書き起こして入れた（上の「依存の更新（Dependabot）」） |
 | エディタの設定、改行の正規化の設定 | 不採用 | T02の受入条件に不要。改行の扱いで問題が出たら、T05で判断する |
 | 金額の状態を表すドメインの型とその試験 | 不採用 | 金額の状態（unknown・not-stated・not-applicable・known）の定義はT01の契約、実装はT06の範囲。T06は確定した契約から書き起こす |
 | 制度データ・application層の説明文 | 不採用 | 制度データはT14、層の方針は[architecture.md](architecture.md)にある。置き場所は各タスクで作る |
@@ -178,5 +193,5 @@ T02で所有者の判断を求めた事項について、所有者が2026-10-02�
 | --- | --- | --- |
 | 1 | 固定した版（24.15.0以上）とWindowsでの確認 | ローカルのNode.jsは当面24.14.0のままにする。固定した範囲（`>=24.15.0 <25`）とWindowsでの確認（`npm run setup`・`npm run typecheck`・`npm test`・`npm run build`）は、T05の受入条件に移す（[タスク台帳](implementation-tasks.md)のT05）。T02では、固定した版とWindowsで一度も実行していない |
 | 2 | 元checkoutの未追跡の試作と`node_modules` | 当面残す。T02の統合後に扱いを見直す。削除しない |
-| 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める |
+| 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める。**2026-10-03に、Dependabotの部分を変えた:** 所有者が実装側のチャットでDependabotを含めることを承認した（調整係が中継。Issue #35）。提案のPRは計画を付けた担当のPRで取り込む（上の「依存の更新（Dependabot）」）。Gitのhookは入れないまま。採用の頻度はT25で決める |
 | 4 | `npm run setup`が利用者の`~/.npmrc`を読まないこと | 受け入れる（プロキシや独自のregistryは使っていない）。プロキシが必要になったら、`HTTPS_PROXY`等の環境変数で渡す（上の「npmの設定」） |
