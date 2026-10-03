@@ -74,7 +74,7 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 
 Windowsでは、以前は飛ばしていた中断の5件の試験を、実際のコンソールの制御イベントで実行する（下の「Windowsのコンソールの中断の試験」）。
 
-飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる（管理者のrunnerの`checks (windows)`と、一般のユーザーの`checks (windows, standard user)`。下の「CI」）。
+飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる（管理者のrunnerの`checks (windows)`と、一般のユーザーの`checks (windows, standard user)`。下の「CI」）。2026-10-03の時点では、GitHubのWindowsのrunnerで、管理者でも一時の一般のユーザーでもファイルのsymlinkを作れた（この旨は出なかった）ので、弱めた経路はCIでは通っていない。一般のユーザーのジョブは、symlinkを作れたかをSummaryに出す。
 
 ### Windowsのコンソールの中断の試験
 
