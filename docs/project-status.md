@@ -7,7 +7,7 @@
 - **実装フェーズ**。2026-10-02に製品停止を台帳全体で解除した。着手には所有者または調整係の担当割当が必要。[実装計画](implementation-plan.md)の依存成果物を確認する。予定・ラベル・AIの自己申告は許可ではない。
 - T00はADR、README、状態資料、アーキテクチャ、台帳、計画の整合とT26–T28の設計まで含め、PR #2で完了した。T01/T02/T04はClaude側へ並行割当され、mainに統合済み。T03（#22）とT05（#17）も完了し、mainに統合済み。T05は統合済みT02の上でCIを整備した。
 - 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)を満たした自分のPRだけを実装担当がマージする。T00もこの条件で統合した。
-- 使い方・構成・運用変更ではREADMEも更新し、引継ぎに有無と理由を記す（[AGENTS](../AGENTS.md)）。設計段階の欠陥は同じPRで直し、実装時の確認は担当タスクの受入条件へ渡す。理由を記録し、Copilotの指摘も独立に解消確認する。両立しない要求は所有者判断へ戻す。
+- 使い方・構成・運用変更ではREADMEも更新し、引継ぎに有無と理由を記す（[AGENTS](../AGENTS.md)）。設計段階の欠陥は同じPRで直し、実装時の確認は担当タスクの受入条件へ渡す。理由をスレッドに記録し、Copilotの次のレビューで解消と判断されたかを確かめる（利用枠不足の間は[暫定条件](github-agent-operations.md#merge-conditions)）。両立しない要求は所有者判断へ戻す。
 - 所有者の印と本人確認は[AGENTS](../AGENTS.md)に従う。印だけで権限を広げない。
 - 2026-10-03の決定: 必須チェックはQuality gateのみ、最新base必須、計画検査をgateへ含める。Windows実機の確認3件はT05から[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)へ分離し、T26/T28を止めない。[本人確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/18#issuecomment-5965890988)。repo保護設定の実状態と、workflow等の自己変更による迂回の限界は[レビュー運用](review-prevention.md)を参照する。
 
@@ -23,7 +23,7 @@
 | 開発・CI | [開発環境](development.md)に版・コマンド・OS・ジョブ・証跡の読み方を集約。T02で未実施だった固定Node版と各OSの検証はT05で完了。手元の正確な版は[mise.toml](../mise.toml)、対応する範囲は`package.json`を正本とする（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。開発用試験の成功は製品の検証ではない |
 | Codexレビュー | 受付とPR専用担当に分離。[所有者の直接指示の記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)に基づき5分間隔・専用担当最大10件（受付を除く）。実際の登録・稼働は実行環境で確認 |
 | 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
-| Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。利用権・枠と各PRの実行結果を別途確認 |
+| Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-03は[利用枠不足の応答](https://github.com/doc-gif/kurashi-ledger/pull/40#pullrequestreview-5401246180)があり、所有者が[暫定条件](github-agent-operations.md#merge-conditions)を直接承認した。各headの応答を確認し、枠の復旧時に通常条件へ戻す |
 | 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
 次の着手は計画の依存関係に従う。完了済みのT05はT26/T08が使う試験基盤を提供している。日々の作業一覧をここへ複製しない。作業中Draft、レビュー依頼Open、最新SHAの引継ぎと独立レビューは[PRループ](pr-review-loop.md)に従う。[T00開始プロンプト](first-worker-prompt.md)は歴史的記録で、新規担当への許可ではない。[worktree運用](local-worktrees.md)も確認する。
