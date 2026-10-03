@@ -1,6 +1,6 @@
 # Test strategy
 
-Product tests are not implemented yet. T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). T05 added CI and the browser test base (Playwright; tests live in `e2e/*.spec.ts` and run with `npm run test:browser`). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
+Product tests start with the local HTTP boundary (T26): `src/infrastructure/http/*.test.ts` and `src/start.test.ts` (node:test) and `e2e/http-boundary.spec.ts` (Playwright) cover the checks listed in ADR-0003 for T26 (see ADR-0009). There are no record or calculation tests yet. T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). T05 added CI and the browser test base (Playwright; tests live in `e2e/*.spec.ts` and run with `npm run test:browser`). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
 
 ## Required acceptance cases as features are added
 

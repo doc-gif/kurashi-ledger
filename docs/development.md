@@ -1,8 +1,8 @@
 # 開発環境と作業の規約
 
-T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。CIとブラウザ試験の基盤は、T05（[Issue #17](https://github.com/doc-gif/kurashi-ledger/issues/17)）で加えた。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
+T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果物。CIとブラウザ試験の基盤は、T05（[Issue #17](https://github.com/doc-gif/kurashi-ledger/issues/17)）で、ローカルHTTPサーバーの骨格（`npm start`）は、T26（[Issue #24](https://github.com/doc-gif/kurashi-ledger/issues/24)）で加えた。実行方式と版の方針は[ADR-0002](adr/0002-runtime-and-distribution.md)、依存の導入の記録は[ADR-0008](adr/0008-install-record.md)、公開範囲は[公開範囲と公開前の点検](public-data.md)。
 
-いまあるのは開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIだけで、アプリの起動（T26）、UIのビルド（T08）はまだない。
+いまあるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CI、ローカルHTTPサーバーの骨格とその安全境界の試験（T26。下の「ローカルHTTPサーバー」）。画面（UI）とそのビルド（T08以降）、記録のAPIとDB・データルート（T09以降）はまだない。
 
 ## Node.jsの版
 
@@ -85,9 +85,10 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | --- | --- |
 | `npm run setup` | 依存を導入する。既存の記録を削除し、repoの`.npmrc`と決めた引数だけで`npm ci`を実行し（利用者のnpmrcや`npm_config_`の環境変数は使わない）、成功して導入した木がlockfileと合うときだけ記録を書く（ADR-0008） |
 | `npm run check:install` | 記録が、いまの`package-lock.json`・`package.json`・`.npmrc`とNode.jsの版・OS・CPUに一致し、導入した依存と実行ファイルの本体・リンクが`node_modules`の中の通常のファイルとしてそろっているかを確かめる（ファイルの中身の改ざんまでは確かめない。ADR-0008） |
+| `npm start -- --token-dir <ディレクトリ>` | ローカルHTTPサーバーの骨格を起動する（T26の段階。画面・記録・DBはない。下の「ローカルHTTPサーバー」） |
 | `npm run build` | 記録を確かめる。一致しなければ止まって`npm run setup`を案内する。UIのビルドと配信物のmanifestはT08で加える（いまはビルドする対象がない） |
 | `npm run typecheck` | `tsc --noEmit`による型検査だけを行う（ルートの`tsconfig.json`と、ブラウザ試験の`e2e/tsconfig.json`の2つ。下の「TypeScript」）。JavaScriptは出力しない |
-| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`・`src/`・`tests/`の`*.test.ts`を実行する |
+| `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`・`src/`・`tests/`の`*.test.ts`を実行する（開発用のスクリプトの試験と、`src/`のHTTPの境界の試験） |
 | `npm run test:browser:install` | このOSのブラウザ試験に要るブラウザを入れる（下の「ブラウザ試験」） |
 | `npm run test:browser` | Playwrightのブラウザ試験（`e2e/`の`*.spec.ts`）を実行する |
 | `npm run check:test-skips -- <ファイル>` | CIで使う。保存した`npm test`の出力のskipを、下の「環境によって飛ばす試験」の表とこのOSで照合し、結果を表示する（下の「CI」） |
@@ -115,11 +116,18 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 | --- | --- | --- | --- |
 | Windows | `scripts/setup-lock.test.ts`の3件（「実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える」「Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える」「SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える」）、`scripts/setup.test.ts`の1件（「Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える」） | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（`kill`は強制終了になる）。`SIGTERM`・`SIGHUP`は、Windowsのsetupが受けるシグナルではない | Windowsの実機のコンソールでのCtrl+CとCtrl+Breakの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
 | Windows | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | Windowsの実機での、印を消せないときのCtrl+Cの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
+| Windows | `src/start.test.ts`の1件（「実際のSIGINT・SIGTERMで、待受を止め、一時ファイルを消して0で終わる」） | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C）を送れない（`kill`は強制終了になる）。`SIGTERM`は、Windowsの`npm start`が受けるシグナルではない | 同じ終了の処理をプロセスの中から呼ぶ試験（`src/start.test.ts`の「終了の処理（Ctrl+C等のシグナルで呼ぶもの）は…」。すべてのOSで実行）と、Windowsの実機での起動・終了の実施記録（T13。ADR-0002の「別タスクで行う検証」） |
 | macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで6件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
 
-飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
+飛ばさずに弱めて確かめる箇所は、次の3つ。どれも、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときだけ弱め、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこれらが出たかをそこで確かめる（GitHubのWindowsのrunnerはsymlinkを作れるので、CIでは弱めず、diagnosticは出ない）。skipではないので、上の表と件数の文（`check:test-skips`の照合）には含めない。
+
+- `scripts/install-record.test.ts`: `node_modules`の外の通常のファイルを指す実行ファイルのリンクを、リンクがない場合として確かめる（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、外を指すリンクの場合は、リンクがない場合として確かめた」）。
+- `src/infrastructure/http/launch-file.test.ts`: 一時ファイルの名前に置くリンクを、ファイルのsymlinkの代わりにjunctionで確かめ、壊れたリンクの確認は行わない（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、一時ファイルの名前のリンクはjunctionで確かめた」）。
+- `src/infrastructure/http/static-files.test.ts`: 配信ルートの外を指すリンクを、junction（ディレクトリ）だけで確かめる（diagnostic「Windowsでファイルのsymlinkを作る権限がないため、配信ルートの外を指すファイルのリンクはjunction（ディレクトリ）だけで確かめた」）。
+
+弱めた確認ではないが、OSによって確かめ方が違う箇所が1つある: `src/infrastructure/http/launch-file.test.ts`の「確かめたあとで末端や深い祖先が差し替わると…」で、一時ファイルの作成と権限の変更の間の差し替えは、macOS・Linuxでは差し替えて作成が止まることを、Windowsでは作成中のファイルを開いている間に親のディレクトリの名前を変えられない（OSが差し替えを止める）ことを確かめ、その旨をdiagnosticに残す。
 
 ## npmの設定（`.npmrc`）
 
@@ -142,7 +150,7 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 2. `npm run setup`で導入し直す。
 3. 依存のライセンス・サポート・インストールスクリプトの有無を確かめ、PRに書く。lockfileの`resolved`が`https://registry.npmjs.org/`以外を指していないことも確かめる。
 
-T05で`@playwright/test` 1.63.0を加えた（下の「ブラウザ試験」）。次に`package.json`とlockfileを変えるのはT26。
+T05で`@playwright/test` 1.63.0を加えた（下の「ブラウザ試験」）。T26は`package.json`のscriptsに`start`を加えただけで、依存とlockfileは変えていない。次に`package.json`とlockfileを変えるのはT08。
 
 ## ブラウザ試験（Playwright）
 
@@ -153,7 +161,22 @@ T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004�
 - 手元で動かすとき: `npm run setup`のあと、`npm run test:browser:install`でこのOSに要るブラウザを入れてから、`npm run test:browser`を実行する。ブラウザはPlaywrightの配布元から取得し、Playwrightの既定の場所（利用者のキャッシュ。macOSは`~/Library/Caches/ms-playwright`、Windowsは`%LOCALAPPDATA%\ms-playwright`、Linuxは`~/.cache/ms-playwright`）に入る。`node_modules`の外なので、依存の導入の記録には影響しない。Linuxで足りないOSのライブラリも入れるときは`npm run test:browser:install -- --with-deps`（管理者の権限を使う）。
 - 照合（`e2e/strict-reporter.ts`、分類は`scripts/lib/browser-outcomes.ts`）: 成功として数えるのは、成功を期待して（`expectedStatus`がpassed）実際に合格した試験だけ。Playwrightは`test.fail()`で期待どおり失敗した試験も「期待どおり」（`outcome()`がexpected）として全体をpassedにするが、照合ではこれを成功にしない。期待した失敗、skip、再試行で通った試験（flaky）、中断、時間切れ、未実行、失敗のどれかがある、このOSで必要なブラウザのどれかで成功した試験が0件、またはPlaywright全体の結果がpassedでなければ、全体を失敗にする。この境界は`scripts/browser-outcomes.test.ts`が、分類の単体試験と、実際のPlaywrightで`e2e/reporter-fixtures/`の合成の試験（ブラウザを使わない。`npm test`で全OSで実行）を流して確かめる。いまブラウザ試験で飛ばしてよい試験も、失敗を期待してよい試験もない。加えるときは、照合とこの資料を同じPRで直す。`retries`は0で、CIでは`test.only`を拒む（`forbidOnly`）。試験を集めるだけ（`--list`）のときは、CIの外でだけ照合しない。
 - 設定（`playwright.config.ts`）では、ブラウザの安全上の既定の動き（CSP、HTTPSの検査、要求のヘッダ、権限、プロキシ）を変える設定（`bypassCSP`、`ignoreHTTPSErrors`、`extraHTTPHeaders`等）を使わない。T26のcookieの交換・Origin・`Sec-Fetch-Site`・CSPの試験を、実際のブラウザの動きのまま確かめるため。trace・screenshot・videoは作らない。出力先の`test-results/`は`.gitignore`の対象。
-- いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験はT26、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
+- いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験は`e2e/http-boundary.spec.ts`（T26。下の「ローカルHTTPサーバー」）、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
+
+## ローカルHTTPサーバー（T26）
+
+[ADR-0003](adr/0003-local-http-boundary.md)の境界（ADR-0007のG7）を、Node.js標準の`node:http`だけで`src/infrastructure/http/`に実装した。実装の詳細（起動の識別子のヘッダ、トークンの交換、一時ファイル、本人だけの権限の基準、拒否の応答）は[ADR-0009](adr/0009-local-http-implementation.md)。
+
+いまの`npm start`は、境界の骨格を動かすだけで、画面（UI）・記録のAPI・DBはなく、データルートも開かない。
+
+1. トークンの一時ファイルを置く、本人だけが使えるディレクトリを、repoの外に用意する。macOS・Linuxは`mkdir -m 700 <ディレクトリ>`（macOSで、親から継承した拡張ACLがほかのユーザーに許可していれば拒否されるので、`ls -led <ディレクトリ>`で確かめ、`chmod -N <ディレクトリ>`で消す）。WindowsのPowerShellは、ディレクトリを作ってから`icacls <ディレクトリ> /setowner "${env:USERNAME}"`と`icacls <ディレクトリ> /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F"`（所有者を本人にし、継承を切って本人だけに許可する。管理者として作ると所有者がAdministratorsになることがあるため）。アプリはこのディレクトリを作らず、権限も変えない。リンク・権限の広いディレクトリ・repoの中は拒否する。ディレクトリまでの経路（親や深い祖先）を、ほかのユーザーが差し替えられる場所（ほかのユーザーも書ける共有フォルダーの中等）も拒否するので、ホームやユーザーごとの一時フォルダー（macOSの`$TMPDIR`、Windowsの`%LOCALAPPDATA%\Temp`）、stickyのある`/tmp`の中に作る（ADR-0009の3）。
+2. `npm start -- --token-dir <ディレクトリ>`（WindowsのPowerShellは`npm.cmd start -- --token-dir <ディレクトリ>`）。既定のポートは48720で、`--port <番号>`で変えられる。使用中なら別のポートへ移らずに終了する。`--no-open`でブラウザを自動で開かない。
+3. 起動用の一時ファイル（本人だけが読めるHTML）がブラウザで開き、トークンをcookieに交換して`/`へ移る。いまの`/`は、画面がまだないことを示す案内ページ。自動で開かないときは、表示された起動用のファイルのURLを開く（端末のときは、1回だけ使えるURLも表示する。端末でないときは、ログに残さないためにトークンを表示しない）。
+4. 終了するには、ターミナルでCtrl+Cを押す。実行中の処理（クライアントが途中で切断したものを含む）の完了を待ち、待受を止め、トークンを無効にし、一時ファイルを消して0で終わる。一時ファイルを消せなかった（または置き換わっていた）ときは、そのパスを表示して1で終わるので、中身を確かめて手で消す（中のトークンはもう使えない）。
+
+T09で、`npm start`にデータルートの検査（ADR-0007のG1〜G5）を組み込み、`--token-dir`の代わりに検査に通ったデータルートの`tmp/`を使う。T08で、ビルドしたUIの配信と、開発時のViteの組込み（ADR-0009の6の口）を加える。
+
+試験: `src/infrastructure/http/`と`src/start.ts`の`*.test.ts`（`npm test`）と、`e2e/http-boundary.spec.ts`（`npm run test:browser`）。ADR-0003の「別タスクで行う検証」のうちT26の項目（開発時の構成と二重起動を除く）を確かめる。Windowsで実際のCtrl+Cを送れない試験は、上の「環境によって飛ばす試験」に登録した。
 
 ## CI
 
