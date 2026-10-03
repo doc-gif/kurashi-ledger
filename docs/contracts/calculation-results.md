@@ -91,7 +91,7 @@
 | `jurisdiction` | `Fact<{ kind: national・prefecture・municipality・insurer, code: Text }>` | 対象の地域・保険者。地域の符号の体系はT14で決める。`known`か`unknown`だけ（国の制度でも`{ kind: national, code }`として`known`にする。[共通の型](common-types.md)の12） |
 | `procedure` | `withholding・year-end-adjustment・tax-return・levy・premium・recognition` | 計算する手続の種類。`withholding`は給与・賞与の支払ごとの源泉徴収、`year-end-adjustment`は年末調整、`tax-return`は確定申告・準確定申告、`levy`は賦課・決定（住民税・国民健康保険料等の年度の額）、`premium`は保険料の月ごとの額、`recognition`は認定・資格の判定。同じ年・年度でも、手続によって使う規則が違いうるため（施行日と年分の適用の違い、月ごとの料率の切り替え等）、年・年度だけで規則を選ばない |
 | `referencePoint` | `Fact<ReferencePoint>` | 規則を選ぶ基準の時点。`ReferencePoint`は`kind`で判別する: `date`（`date: LocalDate`）か`month`（`month: YearMonth`）。手続ごとの意味と形は下の「手続と基準の時点」の表で決め、合わないrunは保存しない。年・年度だけで規則が決まる手続では`not-applicable`。`unknown`なら規則を選べないので、結果の状態は`unsupported`（2）。`not-stated`は使わない |
-| `scope` | `Fact<TargetScope>` | 計算の対象の範囲。`TargetScope`は`kind`で判別する: `all-payers`（runを作ったときの有効な雇用先のすべて）か`payers`（`payers: List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない。正規のIDで書く）。`known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない）。`unknown`なら入力の要求が決まらないので、結果の状態は`unsupported`で、入力を固める前に止まったrun（`not-fixed`）として保存する。下の「対象の範囲」 |
+| `scope` | `Fact<TargetScope>` | 計算の対象の範囲。`TargetScope`は`kind`で判別する: `all-payers`（runを作ったときの有効な雇用先のすべて）か`payers`（`payers: List<Id<Employer>>`。空を許さず、同じ支払者を2回含まない。runを保存するときの見方で正規のID（有効な雇用先）だけを書き、二重登録として取り消した雇用先のIDを書いたrunは保存しない。保存したあとは書き換えず、あとの見方で解決し直さない。3の「runの目的の固定」）。`known`か`unknown`だけ（`not-stated`・`not-applicable`は使わない）。`unknown`なら入力の要求が決まらないので、結果の状態は`unsupported`で、入力を固める前に止まったrun（`not-fixed`）として保存する。下の「対象の範囲」 |
 | `scopeNote` | `Fact<Text>` | 対象の範囲の補足のメモ。入力の要求・runの目的・結果の状態の判定に使わない（範囲は`scope`だけで決める） |
 
 **手続と基準の時点（1つの規則）:** 制度データの版（`ruleSet`）と、入力の要求・結果の項目・丸めの手順は、`target`の年・年度、地域、手続、基準の時点から選ぶ。どの手続・時点でどの規則と版を使うか（施行日・適用の年分・料率の切り替えの月・認定の基準日等）はT14が一次資料で決め、この契約は決めない。`referencePoint`の意味と形は、次の表だけで決める（手続を足す、意味を変えるのは契約の変更）。
@@ -105,7 +105,7 @@
 | `premium` | `month`: 保険料の対象の月 |
 | `recognition` | `date`: 認定・判定の基準の日 |
 
-**対象の範囲（1つの規則）:** 計算の対象の範囲は`scope`だけで表し、入力の要求の導出とrunの目的（3）の両方に、この同じ値を使う。
+**対象の範囲（1つの規則）:** 計算の対象の範囲は`scope`だけで表し、入力の要求の導出とrunの目的（3）の両方に、この同じ値を使う。保存した`scope`は、あとの見方で解決し直さない（3の「runの目的の固定」）。
 - 計算器の版は、許す範囲を決める: `all-payers`だけ（範囲を固定する計算）か、利用者が選ぶ支払者の集合（`payers`）も許すか。許さない範囲の`scope`を持つrunは保存しない。利用者の範囲を`scopeNote`の文だけで表さない（判定に使えないため）。
 - 入力の要求は、`scope`から決める。支払者で絞れる要求（給与明細・年間資料・予測の集計等。[共通の型](common-types.md)の11の許す`scope`の次元に`employerIds`がある`kind`）の`employerIds`は、`payers`ならその支払者、`all-payers`なら空（限定しない）。支払者で絞れない要求（正式通知の決定額等）は`scope`によらない。1の「保存のときの検査」は、この`scope`から求め直した要求の一覧と`inputs.requests`を比べる。
 - 契約版1.0の範囲の次元は支払者だけ（記録は利用者本人のものだけで、世帯員等の記録の型はない）。ほかの次元が必要になったら、その記録の型と一緒に`TargetScope`の`kind`として足す（契約の変更）。
@@ -202,7 +202,7 @@
 - **計算runは書き換えない。** 入力の記録が訂正されても、過去のrunの入力（固定した版）と結果は変わらない。
 - 訂正・新しい情報・制度データの更新のあとで計算し直す場合は、新しいrunを作り、`previousRunId`で前のrunを指す。
 
-**runの履歴（1つの規則）:** runの**目的**は、`calculator.id`、`target.year`、`target.jurisdiction`、`target.procedure`、`target.referencePoint`、`target.scope`の組とする（`calculator.version`・制度データの版・`scopeNote`は、同じ目的の中で変わってよい。手続や基準の時点や範囲が違うrun（月ごとの源泉徴収、年末調整と確定申告、勤務先Aだけと勤務先A・B等）は、別の目的）。`scope`は、`all-payers`は`all-payers`とだけ一致し、`payers`どうしは、新しいrunを保存するときの見方で正規のIDに解決した集合が同じなら一致する。同じ目的のrunは、`previousRunId`でつながった1本の鎖（分岐も合流もない、最初のrunから最新のrunまでの並び）にする。
+**runの履歴（1つの規則）:** runの**目的**は、`calculator.id`、`target.year`、`target.jurisdiction`、`target.procedure`、`target.referencePoint`、`target.scope`の組とする（`calculator.version`・制度データの版・`scopeNote`は、同じ目的の中で変わってよい。手続や基準の時点や範囲が違うrun（月ごとの源泉徴収、年末調整と確定申告、勤務先Aだけと勤務先A・B等）は、別の目的）。`scope`は、`all-payers`は`all-payers`とだけ一致し、`payers`どうしは、それぞれのrunに保存した集合がそのまま同じなら一致する（解決し直さない。下の「runの目的の固定」）。同じ目的のrunは、`previousRunId`でつながった1本の鎖（分岐も合流もない、最初のrunから最新のrunまでの並び）にする。
 
 - 新しいrunの`previousRunId`が`known`なら、次をすべて満たさなければ保存しない: 指すrunが保存済み（新しいrunより`recordedSeq`が小さい。自分自身は指せない）、`calculator.id`・`target.year`・`target.procedure`が同じ、`target.jurisdiction`と`target.referencePoint`が[共通の型](common-types.md)の13の4×4の表で一致（未確定は満たさない。`referencePoint`がどちらも`not-applicable`なら一致）、`target.scope`が上の比べ方で一致（`unknown`は満たさない）、指すrunを`previousRunId`で指す別のrunがない（同じ目的の最新のrunである）。
 - 新しいrunの`previousRunId`が`not-applicable`なら、同じ目的（`target.jurisdiction`が`known`で、ほかの要素も上の比べ方で一致するもの）のrunがまだない場合だけ保存する（同じ目的に2本目の鎖を作らない）。`target.jurisdiction`が`known`でないrun、`target.referencePoint`が`unknown`のrun、`target.scope`が`unknown`のrunは目的が決まらないので、鎖の先頭にも途中にもならず、`previousRunId`は`not-applicable`で、ほかのrunから指されない。
@@ -216,9 +216,18 @@
     - **加わった:** 現在の閉包にあり、固定した側の閉包にない記録（runのあとに保存された、要求の対象になる記録・照合配分・照合の判断等）。
     - **外れた:** 固定した側の閉包にあり、現在の閉包にない記録（改訂で要求の対象から外れた記録等）。
     - **版が変わった:** runに固定した記録のうち、現在の版が固定した版と違う記録（根拠の証憑の紐付けを含む。閉包のマスタの改訂・取消・取消の取り消しで、現在の正規のIDがrunの中の解決と違う場合を含む）。
-  - 計算器の版の要求の一覧がrunのあとで変わっても、比べるのは保存した`inputs.requests`の範囲とする（そのrunが使った要求の範囲で変化を示すため）。例はEX-04(a)の「マスタが変わった場合」と、EX-04(c)の「runのあとの変化」。
+  - 計算器の版の要求の一覧がrunのあとで変わっても、比べるのは保存した`inputs.requests`の範囲とする（そのrunが使った要求の範囲で変化を示すため）。現在の閉包を求めるときは、保存した要求のマスタのIDを現在の見方で解決する（変化を示すためだけで、runの中身・目的は変えない。上の「runの目的の固定」）。例はEX-04(a)の「マスタが変わった場合」と、EX-04(c)の「runのあとの変化」。
 - 制度データが更新されても、過去のrunを新しい制度で計算し直して上書きしない。
 - 過去のrunを再現するために必要な情報（入力の版、制度データの版、計算器の版、アプリのcommit）は、バックアップと復元で保たれる（ADR-0006、T12・T15）。
+
+**runの目的の固定（1つの規則）:** runの目的の要素は、そのrunに保存した値だけで決め、あとの見方で解決し直さない。
+- `target`の値（`scope`の`payers`のIDを含む）は、保存したあと書き換えない。`payers`のIDは、そのrunを保存したときの見方で正規のIDだったもので、その解決をrunの中に写して持つことになる（マスタの版を別に固定しなくても、目的が1つに決まる）。
+- 目的の比較（上の`previousRunId`の保存の条件、同じ目的のrunがまだないかの確認）と、鎖の表示は、どれも保存した値どうしをそのまま比べる。後日の二重登録の取消・その取消の取り消しで、過去のrunの目的を分け直したり、別々の鎖を1つの目的にまとめたりしない（2本の鎖が同じ目的になって、次のrunがどちらにもつながる状態を作らないため）。
+- 統合で正規でなくなった雇用先を`payers`に持つ鎖には、新しいrunはつながらない（そのIDを書いたrunは保存しないため）。その鎖は、保存した範囲のまま閉じた鎖として表示する。統合のあとの計算は、正規のIDの範囲の目的の最新のrunを指す（なければ`not-applicable`で始める）。取消を取り消して雇用先が正規に戻れば、そのIDの範囲の目的の最新のrunを指して続けられる。
+- 範囲の雇用先の表示名等を示すときは、そのrunの保存の連番の見方（[共通の型](common-types.md)の7の記録時点の再現）でマスタを読む。`inputs`を持たない`not-fixed`のrunや、範囲の雇用先に明細がないrunでも、目的と表示は保存した値だけで決まる。
+- `all-payers`は種類だけを目的に使う（そのときの有効な雇用先の集合は目的に入れない）。`scope`が`unknown`のrunは、これまでどおり目的が決まらない。
+- 範囲の雇用先が、のちに二重登録として取り消された・取消を取り消された場合は、表示で「範囲の雇用先が変わった」と示す（目的は変えない。上の「入力が変わった」と同じく、そのつど導く）。
+- 例はEX-04(a)の「範囲の雇用先が統合された場合」。
 
 **入力を固める前に止まったrunの例:** 計算runが、入力の要求の一覧を作っている途中で異常終了した。runは`status` `failed`、`inputStage` `not-fixed`、`failure`「入力の要求の一覧を作る途中で停止（段階: 要求の作成）」で、`inputs`・`results`は空のまま保存する（閉包・必要な写しの検査はしない）。入力の写しを固めたあとで丸めの途中に異常終了したrunは、`inputStage` `fixed`で、通常どおり閉包・必要な写しの検査を受けてから`failed`として保存する。
 
