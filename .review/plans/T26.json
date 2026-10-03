@@ -144,6 +144,11 @@
       "description": "Copilot 4172658012: 起動の識別子のmetaの重複の判定で、文字参照の解き方がブラウザと違う。セミコロンのない数値の文字参照（kurashi&#45ledger-launch-id）を解かないので、ブラウザでは同名のmetaなのに重複と判定せず、DOMに2つできる。",
       "state": "resolved",
       "resolution": "属性の値の文字参照を、HTMLの仕様（属性の値の中の規則）と同じに解く: 数値の参照（10進・16進、セミコロンは省略できる。0・範囲外・サロゲートはU+FFFD、0x80〜0x9Fはwindows-1252の対応）と、名前の参照のうち判定に関わりうるもの（amp・lt・gt・quot・aposと、ハイフンに似たdash・hyphen・minus）。名前の参照でセミコロンのないもの（amp・lt・gt・quotの古い形）は、あとに英数字か=が続かないときだけ解く。解いたあとも&を含むmetaのnameは、ブラウザでの値を確かめられないので、配信しない側に倒す。単体試験に加え、ブラウザでsetContentした同じHTMLのDOMの同名のmetaの数と、サーバーの判定（重複として配信しない／配信する）が一致することをe2eで確かめる。"
+    },
+    {
+      "description": "Copilot 5400364350のr4172835301: 通常のHTTPの要求は、要求の対象が/で始まらない形（absolute-form等）を拒否するが、upgradeの経路は確かめずに開発時の口へ渡す。",
+      "state": "resolved",
+      "resolution": "要求の対象の形の検査を、request-checks.tsの1つの関数（origin-formだけを通す）にし、通常のHTTPの要求（静的配信・API・開発時のmiddleware）とupgradeの両方で、処理へ渡す前に使う。回帰試験: upgradeのabsolute-form・authority-form・asterisk-formが、有効なOriginとcookieがあっても拒否され、開発時の口が呼ばれないこと。通常のHTTPのAPI・開発時のmiddlewareのabsolute-formとasterisk-formも拒否されること。"
     }
   ],
   "assessments": [
