@@ -502,6 +502,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CURL_VERBOSE: '1',
     GCM_PROVIDER: 'x',
     NODE_OPTIONS: '--require x',
+    NETRC: '/synthetic/home/owner-netrc',
     KL_GITHUB_APP_ID_CODEX: '1',
     UNDEFINED: undefined,
   };
@@ -619,7 +620,10 @@ test('子の環境の実際のgitは、利用者の.netrcの資格情報を送�
     const netrc = 'machine 127.0.0.1 login owner-login password owner-netrc-secret\n';
     writeFileSync(join(home, '.netrc'), netrc, { mode: 0o600 });
     writeFileSync(join(home, '_netrc'), netrc, { mode: 0o600 });
-    const parent = { PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home };
+    // curl 8.16.0以降のlibcurlは、環境変数NETRCのファイルをHOMEより前に読む。親のNETRCは子に渡さない。
+    const netrcFile = join(dir, 'owner-netrc');
+    writeFileSync(netrcFile, netrc, { mode: 0o600 });
+    const parent = { PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home, NETRC: netrcFile };
     const secretHeader = `Basic ${Buffer.from('owner-login:owner-netrc-secret').toString('base64')}`;
     // 対照: 親の環境（HOMEが利用者のホーム）のgitは、.netrcの資格情報を送る（libcurlがhelperより前に.netrcを読む）。
     const plain: Record<string, string> = { ...parent, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: join(home, 'none') };
@@ -631,6 +635,7 @@ test('子の環境の実際のgitは、利用者の.netrcの資格情報を送�
     const configDir = join(dir, 'gh-config');
     mkdirSync(configDir);
     const env = childEnvironment(parent, TOKEN, configDir);
+    assert.ok(!('NETRC' in env));
     await withAuthServer(async (url, seen) => {
       const code = await gitAsync(env, ['ls-remote', url], dir);
       assert.notEqual(code, 0);
@@ -1225,6 +1230,31 @@ test('実際のプロセスとシグナルで: 子の実行中のSIGINT・SIGTER
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('範囲の不一致で失効の要求が401なら、失効させたとは言わず、すでに無効か一致しないと伝える', async () => {
+  const h = harness([{ status: 201, body: grantedBody('review', { repository_selection: 'all' }) }, { status: 401, body: '{"message":"Bad credentials"}' }]);
+  assert.equal(await run(ARGS, h.deps), EXIT_OWN_FAILURE);
+  const stderr = h.err.join('');
+  assert.match(stderr, /401だった（トークンがすでに無効か、トークンとして一致しない）/);
+  assert.doesNotMatch(stderr, /失効させた/);
+  assertNoSecrets(stderr);
+});
+
+test('発行の要求の途中でシグナルを受けても、発行の要求は中断せず、受け取ったトークンを失効させてから128+番号で終える', async () => {
+  let fire: ((s: NodeJS.Signals) => void) | undefined;
+  const issue: Reply = async (_url, init) => {
+    fire?.('SIGTERM');
+    assert.equal(init.signal.aborted, false, '発行の要求をシグナルで中断した');
+    return { status: 201, text: async () => grantedBody('review') };
+  };
+  const h = harness([issue, REVOKED]);
+  fire = h.fire;
+  assert.equal(await run(ARGS, h.deps), 143);
+  assert.deepEqual(h.children, []);
+  assert.deepEqual(h.events, ['resolve gh', `POST /app/installations/${INSTALLATION_ID}/access_tokens`, 'signal SIGTERM', 'DELETE /installation/token']);
+  assert.equal(h.calls[1]?.init.headers['Authorization'], `Bearer ${TOKEN}`);
+  assertNoSecrets(h.err.join(''));
 });
 
 test('形の検査に通らないトークンも、ヘッダに入れて安全な値なら失効を試み、失効の401はすでに無効として扱う', async () => {

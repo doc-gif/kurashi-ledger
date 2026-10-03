@@ -416,9 +416,13 @@ export async function verifyTokenRepositories(
   return checkOnlyThisRepository(r.repositories, '触れるrepoの確認');
 }
 
-// 失効させる（DELETE /installation/token）。成功ならnull、失敗なら秘密を含まない理由を返す。
-// 401は、トークンがすでに有効でない（失効済み・期限切れ）ので成功と同じに扱う。シグナルでは中断しない。
-export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<string | null> {
+// 失効させる（DELETE /installation/token）。シグナルでは中断しない。
+// - revoked: 204。
+// - already-invalid: 401。トークンがすでに有効でない（失効済み・期限切れ）か、トークンとして一致しない。
+// - failed: それ以外。秘密を含まない理由を持つ。
+export type RevokeResult = { readonly status: 'revoked' | 'already-invalid' } | { readonly status: 'failed'; readonly message: string };
+
+export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs: number): Promise<RevokeResult> {
   try {
     const response = await fetchImpl(`${API_ORIGIN}/installation/token`, {
       method: 'DELETE',
@@ -431,10 +435,19 @@ export async function revokeToken(fetchImpl: FetchLike, token: string, timeoutMs
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
-    return response.status === 204 || response.status === 401 ? null : `トークンを失効できなかった（HTTP ${response.status}）。1時間で失効する。`;
+    if (response.status === 204) return { status: 'revoked' };
+    if (response.status === 401) return { status: 'already-invalid' };
+    return { status: 'failed', message: `トークンを失効できなかった（HTTP ${response.status}）。1時間で失効する。` };
   } catch (error) {
-    return `トークンを失効できなかった（${describeFailure(error)}）。1時間で失効する。`;
+    return { status: 'failed', message: `トークンを失効できなかった（${describeFailure(error)}）。1時間で失効する。` };
   }
+}
+
+// 失敗の経路で、失効の結果を伝える文。
+function revokeSummary(result: RevokeResult): string {
+  if (result.status === 'revoked') return '発行されたトークンは失効させた。';
+  if (result.status === 'already-invalid') return '失効の要求は401だった（トークンがすでに無効か、トークンとして一致しない）。';
+  return result.message;
 }
 
 export async function requestInstallationToken(args: {
@@ -455,7 +468,9 @@ export async function requestInstallationToken(args: {
       method: request.method,
       headers: request.headers,
       body: request.body,
-      signal: requestSignal(args.timeoutMs, args.abort),
+      // 発行の要求はシグナルで中断しない（中断すると、GitHubが発行したトークンを受け取れず失効できない）。
+      // 15秒の上限だけを置き、受け取ったあとで中断を見て、失効させる。
+      signal: AbortSignal.timeout(args.timeoutMs),
       redirect: 'error',
     });
   } catch (error) {
@@ -478,15 +493,19 @@ export async function requestInstallationToken(args: {
   args.secrets.push(token);
   if (!TOKEN_PATTERN.test(token)) {
     // 形が違っても、ヘッダに入れて安全な値（印字できるASCIIだけ）なら、失効を試みる。
-    const revokeProblem = HEADER_SAFE.test(token) ? await revokeToken(args.fetch, token, args.timeoutMs) : 'ヘッダに入れられない値なので失効を試みていない。1時間で失効する。';
-    throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${revokeProblem ?? '発行されたトークンは失効させた。'}`);
+    const revoked = HEADER_SAFE.test(token)
+      ? revokeSummary(await revokeToken(args.fetch, token, args.timeoutMs))
+      : 'ヘッダに入れられない値なので失効を試みていない。1時間で失効する。';
+    throw new TokenError(`GitHubの応答のトークンの形式が違う（使わない）。${revoked}`);
   }
   const problem =
-    checkGrantedScope(parsed, args.purpose) ?? (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
+    (args.abort?.aborted === true ? 'シグナルを受けた' : null) ??
+    checkGrantedScope(parsed, args.purpose) ??
+    (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
   if (problem !== null) {
-    const revokeProblem = await revokeToken(args.fetch, token, args.timeoutMs);
+    const revoked = revokeSummary(await revokeToken(args.fetch, token, args.timeoutMs));
     const shown = sanitize(problem, [...secrets, token]);
-    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${shown}）。${revokeProblem ?? '発行されたトークンは失効させた。'}`);
+    throw new TokenError(`発行されたトークンの範囲が要求と違うので使わない（${shown}）。${revoked}`);
   }
   return token;
 }
@@ -638,15 +657,16 @@ export async function readKeyFromStream(stream: KeyStream, timeoutMs: number = S
 // 子プロセスの環境。親の環境から、GitHubの資格情報と、gitの資格情報・SSH・設定・traceに関わる変数を外し、
 // Appのトークンだけを渡す。
 // - ghは空の一時の設定ディレクトリ（GH_CONFIG_DIR）を使い、保存済みのdoc-gifの資格情報に戻れない。
-// - HOMEも同じ一時のディレクトリにする。gitのlibcurlは資格情報のhelperより前にHOMEの.netrc（_netrc）を読むので、
-//   利用者の.netrcに所有者の資格情報があっても使わない（PR42-R004の系統のN1）。
+// - HOMEも同じ一時のディレクトリにし、NETRCを外す。gitのlibcurlは資格情報のhelperより前に.netrc（_netrc）を読む
+//   （curl 8.16.0以降は、環境変数NETRCのファイルをHOMEより前に読む）ので、利用者の.netrcに所有者の資格情報があっても
+//   使わない（PR42-R004の系統）。NETRCを存在しないパスにすると、Windowsのcurlは_netrcへ戻るので、外す。
 // - gitは利用者・システムの設定（credential.helper=osxkeychain、url.*.insteadOf等）を読まず、SSHを使えず
 //   （GIT_SSH_COMMAND=false）、端末やaskPassで聞かず、github.comへのHTTPSだけ、GH_TOKENを返すhelperで認証する。
 //   repoの設定（.git/config）は読まれるので、資格情報のhelperの一覧を空に戻し、extraheaderを空にし、askPassを空にする
 //   （extraheaderはURLの細かさで選ばれるので、文書のpushのURLと同じ細かさのURLでも空にする）。
 // - traceは外し、残っても資格情報を伏せさせる（GIT_TRACE_REDACT=1）。
 const REMOVED_ENV =
-  /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST|GH_CONFIG_DIR|GH_DEBUG|GIT_CONFIG.*|GIT_ASKPASS|SSH_ASKPASS|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GIT_TRACE.*|GIT_CURL_VERBOSE|GCM_.*|KL_GITHUB_APP_.*|NODE_OPTIONS|HOME)$/i;
+  /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|GH_HOST|GH_CONFIG_DIR|GH_DEBUG|GIT_CONFIG.*|GIT_ASKPASS|SSH_ASKPASS|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GIT_TRACE.*|GIT_CURL_VERBOSE|GCM_.*|KL_GITHUB_APP_.*|NODE_OPTIONS|HOME|NETRC)$/i;
 export const GIT_CREDENTIAL_HELPER = '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f';
 
 // 利用者の設定（~/.gitconfig）の代わりに読ませる、存在しないファイル（gitは、ない設定ファイルを空として扱う）。
@@ -934,8 +954,9 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
     } else {
       deps.stderr(`シグナル（${state.received}）を受けたので、コマンドは実行していない。\n`);
     }
-    const revokeProblem = await revokeToken(deps.fetch, token, deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
-    if (revokeProblem !== null) deps.stderr(`注意: ${revokeProblem}\n`);
+    // 子の中で失効させた場合等の401は、すでに無効なので伝えない。
+    const revoked = await revokeToken(deps.fetch, token, deps.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    if (revoked.status === 'failed') deps.stderr(`注意: ${revoked.message}\n`);
     if (state.received !== null) return exitCodeOfSignal(state.received);
     return result === null ? EXIT_OWN_FAILURE : exitCodeOf(result);
   } finally {
