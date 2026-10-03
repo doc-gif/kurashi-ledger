@@ -4,7 +4,7 @@
 //   （ADR-0009の「見ないもの」）。
 // - Windows: 所有者が実行中のユーザーのSIDで、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）が
 //   実行中のユーザーのSIDだけで、Allow・Deny以外の種類のエントリがないこと。表示名はロケールで変わるので使わず、
-//   SDDL（SIDの文字列）で判定する。読み書きはWindows PowerShell 5.1（Windowsに同梱）の.NETのAPIで行い、
+//   セキュリティ記述子の2進の形から取り出したSIDで判定する。読み書きはWindows PowerShell 5.1（Windowsに同梱）の.NETのAPIで行い、
 //   パスは環境変数で渡す（コマンドの文字列に埋め込まない）。
 // T07（データルートの権限）も同じ基準を使う（ADR-0006の1「権限」）。基準を変えるときは、ADR-0009と両方の試験を
 // 同じPRで直す。
@@ -41,8 +41,19 @@ const POWERSHELL_SCRIPT = [
   '  [System.IO.Directory]::SetAccessControl($p, $sec)',
   '}',
   'if ([System.IO.Directory]::Exists($p)) { $acl = [System.IO.Directory]::GetAccessControl($p) } else { $acl = [System.IO.File]::GetAccessControl($p) }',
-  "$sections = [System.Security.AccessControl.AccessControlSections]'Owner, Access'",
-  '[Console]::Out.Write($user.Value + "`n" + $acl.GetSecurityDescriptorSddlForm($sections))',
+  // SDDLの文字列（GetSecurityDescriptorSddlForm）は、よく知られたアカウントを別名（組込みのAdministratorはLA等）で
+  // 書くので、実行中のユーザーのSIDと比べられない。2進の形から、SIDだけで同じ形の文字列を組み立てる。
+  '$raw = [System.Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(), 0)',
+  "$text = 'O:' + $raw.Owner.Value + 'D:'",
+  "if ($null -eq $raw.DiscretionaryAcl) { $text += 'NO_ACCESS_CONTROL' } else {",
+  '  foreach ($ace in $raw.DiscretionaryAcl) {',
+  '    $kind = $ace.AceType.ToString()',
+  "    if ($kind -eq 'AccessAllowed') { $kind = 'A' } elseif ($kind -eq 'AccessDenied') { $kind = 'D' }",
+  "    if ($ace -is [System.Security.AccessControl.KnownAce]) { $sid = $ace.SecurityIdentifier.Value } else { $sid = 'unknown' }",
+  "    $text += '(' + $kind + ';;;;;' + $sid + ')'",
+  '  }',
+  '}',
+  '[Console]::Out.Write($user.Value + "`n" + $text)',
 ].join('\n');
 
 function powershellPath(): string {
@@ -71,8 +82,9 @@ function runWindowsAcl(path: string, mode: 'read' | 'restrict-file' | 'restrict-
   return { userSid, sddl };
 }
 
-// SDDL（所有者とDACLの部分）を、本人だけの基準で判定する。純粋な関数として試験できるように分けている。
-// 形式: O:<SID>D:<フラグ>(<種類>;<フラグ>;<権限>;<GUID>;<継承GUID>;<SID>)…
+// SDDLの形（所有者とDACLの部分）を、本人だけの基準で判定する。純粋な関数として試験できるように分けている。
+// 形式: O:<SID>D:<フラグ>(<種類>;<フラグ>;<権限>;<GUID>;<継承GUID>;<SID>)…。Windowsでは、上のスクリプトが
+// 別名を使わずにSIDだけで組み立てた同じ形の文字列を渡す（別名やほかのSIDは、実行中のユーザーでないとして拒否する）。
 export function evaluateWindowsSddl(sddl: string, userSid: string): OwnerOnlyCheck {
   const owner = /^O:([^:()]+?)(?=[GDS]:)/.exec(sddl);
   if (owner === null) return { ok: false, reason: '所有者を読めない。' };
