@@ -558,12 +558,14 @@
     "categories": [
       {
         "category": "general",
+        "precedence": 2,
         "ageMin": 16,
         "bornOnOrBefore": "2011-01-01",
         "amount": 380000
       },
       {
         "category": "specific",
+        "precedence": 1,
         "ageMin": 19,
         "ageBelow": 23,
         "bornFrom": "2004-01-02",
@@ -572,12 +574,30 @@
       },
       {
         "category": "elderly-other",
+        "precedence": 1,
+        "requires": [
+          {
+            "input": "cohabitingLinealAscendant",
+            "allowed": [
+              false
+            ]
+          }
+        ],
         "ageMin": 70,
         "bornOnOrBefore": "1957-01-01",
         "amount": 480000
       },
       {
         "category": "elderly-cohabiting-parent",
+        "precedence": 1,
+        "requires": [
+          {
+            "input": "cohabitingLinealAscendant",
+            "allowed": [
+              true
+            ]
+          }
+        ],
         "ageMin": 70,
         "bornOnOrBefore": "1957-01-01",
         "amount": 580000
@@ -618,8 +638,28 @@
           "ref": "nta-ta-1180",
           "location": "同(4)"
         }
+      },
+      {
+        "input": "dependentClaimedByOtherTaxpayer",
+        "subject": "ほかの居住者",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "ほかの居住者が、その年分の申告書等（扶養控除等申告書・確定申告書等）でこの親族を扶養親族としている（所属がほかの人）。2人以上の扶養親族に該当する親族の所属は申告書等の記載で決まる。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-ta-1181",
+          "location": "概要（所属は申告書等で定め、変更は所属の異なる記載をした申告書等の提出による）"
+        }
       }
-    ]
+    ],
+    "categoryRule": {
+      "description": "年齢で当たる区分のうちprecedenceの小さい区分を選ぶ（特定扶養親族と老人扶養親族は一般の控除対象扶養親族より先）。同じ年齢の範囲の区分（老人扶養親族の2つ）は、requiresの入力（同居老親等＝納税者・配偶者の直系尊属で普段同居しているか）で排他に決まる。cohabitingLinealAscendantは70歳以上の親族についてだけ必要",
+      "source": {
+        "ref": "nta-ta-1180",
+        "location": "扶養控除の金額の表と注3・注4"
+      }
+    }
   },
   "specificRelativeDeduction": {
     "description": "特定親族特別控除。12月31日の現況で、生計を一にする年齢19歳以上23歳未満の親族等で、控除対象扶養親族に該当せず、合計所得金額が62万円超123万円以下。年齢はageDeterminationDate（12月31日）現在で、生年月日の範囲はbornFrom〜bornTo。控除対象扶養親族に当たる人には適用しない（excludedIfDependent）。",

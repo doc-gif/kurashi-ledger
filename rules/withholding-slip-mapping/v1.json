@@ -24,20 +24,25 @@
       "field": "paymentAmount",
       "label": "支払金額",
       "meaning": "その年中に支払の確定した給与等（非課税の通勤手当等を除く）の総額。中途就職者で前の支払者の給与等を通算して年末調整した場合は、その給与等を含む。未払の分も含む（内書き）。",
-      "mapping": {
-        "kind": "sum",
-        "payslipItems": [
-          "taxablePay"
-        ]
-      },
-      "condition": {
-        "yearEndAdjustmentStatus": [
-          "adjusted",
-          "not-adjusted",
-          "not-stated",
-          "unknown"
-        ]
-      },
+      "variants": [
+        {
+          "yearEndAdjustmentStatus": [
+            "adjusted",
+            "not-adjusted",
+            "not-stated",
+            "unknown"
+          ],
+          "mapping": {
+            "kind": "sum",
+            "terms": [
+              {
+                "item": "taxablePay",
+                "sign": 1
+              }
+            ]
+          }
+        }
+      ],
       "knownDifferences": [
         "令和7年11月の通勤手当の非課税限度額の引上げ（令和7年4月1日以後に支払われるべき通勤手当に適用）で、年末調整のときに新たに非課税となった通勤手当は、支払金額から除かれる。明細の課税支給額の合計の方が大きくなりうる（mismatch-explainedの候補）。",
         "明細の課税支給額（taxablePay）の記載がない明細はnot-statedで、比較はincompleteになる（総支給額から非課税支給額を引いて補わない）。"
@@ -57,21 +62,55 @@
       "field": "withholdingTax",
       "label": "源泉徴収税額",
       "meaning": "年末調整をした場合は年末調整をした後の所得税及び復興特別所得税の合計額（年調年税額）。年末調整をしない場合はその年中に源泉徴収すべき所得税及び復興特別所得税の合計額（災害による徴収の猶予を受けた税額を除く）。",
-      "mapping": {
-        "kind": "sum",
-        "payslipItems": [
-          "incomeTax"
-        ]
-      },
-      "condition": {
-        "yearEndAdjustmentStatus": [
-          "not-adjusted"
-        ]
-      },
-      "otherwise": {
-        "kind": "not-mapped",
-        "reason": "年末調整をした資料の値は年調年税額で、明細の所得税の合計に年末調整の過不足（yearEndAdjustment）を加減した値になるが、契約版1.0では過不足の記載のない明細はnot-stated（not-applicableを使えない）なので、ほぼすべての比較がincompleteになり、過不足の精算が翌年の明細に回る場合もある。年末調整の有無が分からない資料も、どちらの意味か決まらない。これらは対応表に含めない（比較の状態はrule-pending）。"
-      },
+      "variants": [
+        {
+          "yearEndAdjustmentStatus": [
+            "not-adjusted"
+          ],
+          "mapping": {
+            "kind": "sum",
+            "terms": [
+              {
+                "item": "incomeTax",
+                "sign": 1
+              }
+            ]
+          }
+        },
+        {
+          "yearEndAdjustmentStatus": [
+            "adjusted"
+          ],
+          "mapping": {
+            "kind": "sum",
+            "terms": [
+              {
+                "item": "incomeTax",
+                "sign": 1
+              },
+              {
+                "item": "yearEndAdjustment",
+                "sign": -1
+              }
+            ]
+          },
+          "note": "年調年税額＝結んだ明細の所得税の合計−年末調整の過不足の合計（yearEndAdjustmentは正が還付、負が追加の徴収）。精算のない明細は、契約版1.0のとおりyearEndAdjustmentをnot-applicable（その人にその控除が当てはまらない。common-types.mdの12）として記録でき、集計から除かれる。記載のない明細（not-stated）はincomplete（0とみなさない）。"
+        },
+        {
+          "yearEndAdjustmentStatus": [
+            "not-stated",
+            "unknown"
+          ],
+          "mapping": {
+            "kind": "not-mapped",
+            "reason": "年末調整の有無が分からないと、資料の値が年調年税額か源泉徴収すべき税額の合計かが決まらない。比較の状態はrule-pending。"
+          }
+        }
+      ],
+      "knownDifferences": [
+        "年末調整の過不足の精算が翌年の明細に回る場合（過納額を翌年に還付する、不足額の徴収を翌年1月・2月に繰り延べる等）は、その年の明細の合計と一致しない（mismatch-explainedの候補）。",
+        "明細が年末調整の還付を所得税の欄から差し引いて記載している等、過不足をyearEndAdjustmentに分けて記録できない明細は、記載どおりに写すと不一致になりうる（説明の候補）。"
+      ],
       "sources": [
         {
           "ref": "nta-hotei2025-withholding",
@@ -87,26 +126,40 @@
       "field": "socialInsurancePremiums",
       "label": "社会保険料等の金額",
       "meaning": "給与等から控除した社会保険料の金額、保険料控除申告書に基づいて年末調整で控除した社会保険料の金額、小規模企業共済等掛金の額の合計額。中途就職者で前の支払者の給与等を通算して年末調整した場合は、その給与等から控除した社会保険料等を含む。",
-      "mapping": {
-        "kind": "sum",
-        "payslipItems": [
-          "healthInsurance",
-          "nursingCareInsurance",
-          "pensionInsurance",
-          "employmentInsurance"
-        ]
-      },
-      "condition": {
-        "yearEndAdjustmentStatus": [
-          "adjusted",
-          "not-adjusted",
-          "not-stated",
-          "unknown"
-        ]
-      },
+      "variants": [
+        {
+          "yearEndAdjustmentStatus": [
+            "adjusted",
+            "not-adjusted",
+            "not-stated",
+            "unknown"
+          ],
+          "mapping": {
+            "kind": "sum",
+            "terms": [
+              {
+                "item": "healthInsurance",
+                "sign": 1
+              },
+              {
+                "item": "nursingCareInsurance",
+                "sign": 1
+              },
+              {
+                "item": "pensionInsurance",
+                "sign": 1
+              },
+              {
+                "item": "employmentInsurance",
+                "sign": 1
+              }
+            ]
+          }
+        }
+      ],
       "knownDifferences": [
         "年末調整で申告により控除した社会保険料（国民年金保険料等）と、小規模企業共済等掛金（企業型・個人型の確定拠出年金の掛金を含む）は、資料の値にだけ含まれる。明細のotherDeductionsの行（自由な名前）は対応表に含めない。資料の方が大きくなりうる（mismatch-explainedの候補）。",
-        "介護保険料等の欄がない明細はnot-statedで、比較はincompleteになる（健康保険料と合わせて書かれた明細を0とみなさない）。"
+        "介護保険料等の欄がない明細はnot-statedで、比較はincompleteになる（健康保険料と合わせて書かれた明細を0とみなさない）。その人に当てはまらない保険料は、契約のとおりnot-applicableで記録でき、集計から除かれる。"
       ],
       "sources": [
         {
@@ -119,10 +172,20 @@
       "field": "incomeAfterEmploymentDeduction",
       "label": "給与所得控除後の金額（調整控除後）",
       "meaning": "年末調整をした場合だけ記載。年末調整等のための給与所得控除後の給与等の金額の表から求めた金額（所得金額調整控除の適用があれば控除後）。",
-      "mapping": {
-        "kind": "not-mapped",
-        "reason": "明細の項目の合計ではない（支払者が表から求めた値）。比較の状態はrule-pendingのまま。値の確かめは所得税の計算（jp-income-tax-salary-2025）で行う。"
-      },
+      "variants": [
+        {
+          "yearEndAdjustmentStatus": [
+            "adjusted",
+            "not-adjusted",
+            "not-stated",
+            "unknown"
+          ],
+          "mapping": {
+            "kind": "not-mapped",
+            "reason": "明細の項目の合計ではない（支払者が表から求めた値）。比較の状態はrule-pendingのまま。値の確かめは所得税の計算（jp-income-tax-salary-2025）で行う。"
+          }
+        }
+      ],
       "sources": [
         {
           "ref": "nta-hotei2025-employment-income",
@@ -134,10 +197,20 @@
       "field": "totalIncomeDeductions",
       "label": "所得控除の額の合計額",
       "meaning": "年末調整をした場合だけ記載。社会保険料控除から基礎控除までの所得控除の額の合計額。",
-      "mapping": {
-        "kind": "not-mapped",
-        "reason": "明細の項目の合計ではない（申告書に基づく控除を含む）。比較の状態はrule-pendingのまま。"
-      },
+      "variants": [
+        {
+          "yearEndAdjustmentStatus": [
+            "adjusted",
+            "not-adjusted",
+            "not-stated",
+            "unknown"
+          ],
+          "mapping": {
+            "kind": "not-mapped",
+            "reason": "明細の項目の合計ではない（申告書に基づく控除を含む）。比較の状態はrule-pendingのまま。"
+          }
+        }
+      ],
       "sources": [
         {
           "ref": "nta-hotei2025-deductions",
@@ -145,5 +218,11 @@
         }
       ]
     }
+  ],
+  "allowedStatuses": [
+    "adjusted",
+    "not-adjusted",
+    "not-stated",
+    "unknown"
   ]
 }

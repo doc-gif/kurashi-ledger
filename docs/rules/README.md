@@ -44,7 +44,7 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 | `applies` | 適用の範囲。地域（`jurisdiction`）、対象の年・年度（`year`）、計算の規則なら手続（`procedure`）と基準の時点（`referencePoint`）。計算runの`target`がこのどれかに当たるときだけ、この規則を選ぶ（下の「規則の選び方」） |
 | `sources` | 一次資料のid（manifestの`sources`）。制度データの各値の`source`もこのidを指す |
 | `approval` | 承認の証跡の正本（下の「状態と承認」）。`draft`は「未確認」 |
-| `requiredInputs`（計算の規則） | 手続ごとの必須の入力のパス（`procedures`で手続を限る。`nullable`は`null`を許す、`emptyAllowed`は空の並びを許す）。欠けた・許さない`null`・`unknown`の必須の入力があるrunは`computed`・`provisional`にしない |
+| `requiredInputs`（計算の規則） | 手続ごとの必須の入力のパス（`procedures`で手続を限る。`when`で、ほかの入力の値による条件を付ける（`greaterThan`・`nonEmpty`。条件の値が分からなければ必須）。`nullable`は`null`を許す、`emptyAllowed`は空の並びを許す）。欠けた・許さない`null`・`unknown`の必須の入力があるrunは`computed`・`provisional`にしない |
 | `unsupportedInputs`（計算の規則） | 範囲外の入力の条件（`path`の値が`allowed`にない入力）。当たる入力のrunは、`applies`に当たっても`unsupported`。値が`unknown`なら未対応ではなく不足（`incomplete`） |
 | `autoApply`（帰属の規則） | 規則の根拠で自動に年を決めるか。`false`なら、規則は帰属の根拠を作らない |
 

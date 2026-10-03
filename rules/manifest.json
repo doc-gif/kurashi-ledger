@@ -223,6 +223,17 @@
       "retrievedOn": "2026-10-03"
     },
     {
+      "id": "nta-ta-1181",
+      "title": "タックスアンサーNo.1181 扶養親族が2人以上の納税者の扶養親族に該当する場合",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1181.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
       "id": "nta-shinkoku2025-taxable",
       "title": "令和7年分 確定申告の手引き 手順4「課税される所得金額・課税される所得金額に対する税額」",
       "publisher": "国税庁",
@@ -401,6 +412,7 @@
         "nta-ta-1191",
         "nta-ta-1195",
         "nta-ta-1177",
+        "nta-ta-1181",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
         "nta-shinkoku2025-reconstruction",
@@ -435,7 +447,11 @@
           "path": "otherIncomeDeductions"
         },
         {
-          "path": "incomeAdjustmentEligible"
+          "path": "incomeAdjustmentEligible",
+          "when": {
+            "path": "salaryRevenue",
+            "greaterThan": 8500000
+          }
         },
         {
           "path": "withheldTax"
@@ -452,7 +468,11 @@
           "emptyAllowed": true
         },
         {
-          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld"
+          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
+          "when": {
+            "path": "relatives",
+            "nonEmpty": true
+          }
         }
       ],
       "unsupportedInputs": [
@@ -580,6 +600,7 @@
         "nta-ta-1191",
         "nta-ta-1195",
         "nta-ta-1177",
+        "nta-ta-1181",
         "nta-ta-2260",
         "nta-shinkoku2025-taxable",
         "nta-shinkoku2025-reconstruction",
@@ -613,7 +634,11 @@
           "path": "otherIncomeDeductions"
         },
         {
-          "path": "incomeAdjustmentEligible"
+          "path": "incomeAdjustmentEligible",
+          "when": {
+            "path": "salaryRevenue",
+            "greaterThan": 8500000
+          }
         },
         {
           "path": "withheldTax"
@@ -630,7 +655,11 @@
           "emptyAllowed": true
         },
         {
-          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld"
+          "path": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
+          "when": {
+            "path": "relatives",
+            "nonEmpty": true
+          }
         }
       ],
       "unsupportedInputs": [
