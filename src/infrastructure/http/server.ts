@@ -169,10 +169,11 @@ function validateRoutes(routes: readonly ApiRoute[]): void {
   }
 }
 
+// ログ用のパス。処理の採否によらず、クエリ（?以降）とフラグメント（#以降）を除き、印字できない文字を置き換えて切り詰める。
 function safePath(rawUrl: string | undefined): string {
   const url = rawUrl ?? '';
-  const q = url.indexOf('?');
-  const path = q < 0 ? url : url.slice(0, q);
+  const cut = url.search(/[?#]/);
+  const path = cut < 0 ? url : url.slice(0, cut);
   const printable = path.replace(/[^!-~]/g, '?');
   return printable.length > 200 ? `${printable.slice(0, 200)}…` : printable;
 }
@@ -516,14 +517,18 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   });
 
   // Expectのヘッダ（100-continue等）: Node.jsの既定は、ヘッダなしの100 Continueや417を直接書くので、既存の出口を
-  // 通して417で拒否する（ブラウザは使わない）。本文は読まないので、接続を閉じる。
+  // 通して417で拒否する（ブラウザは使わない。終了中は503 closing）。本文は読まないので、接続を閉じる。
   const rejectExpectation = (req: IncomingMessage, res: ServerResponse): void => {
     const path = safePath(req.url);
     const api = path === '/api' || path.startsWith('/api/');
     enforceResponseHeaders(res, PRODUCTION_CSP);
-    res.on('finish', () => log(`${req.method ?? '?'} ${path} 417 expectation-not-supported`));
+    // 終了中は、ほかの入口と同じく503（closing）を優先する。
+    const rejection: Rejection = shutdown.signal.aborted
+      ? { status: 503, code: 'closing' }
+      : (checkRequestTarget(req.url) ?? { status: 417, code: 'expectation-not-supported' });
+    res.on('finish', () => log(`${req.method ?? '?'} ${path} ${rejection.status} ${rejection.code}`));
     res.setHeader('Connection', 'close');
-    reject(res, { status: 417, code: 'expectation-not-supported' }, api);
+    reject(res, rejection, api);
   };
   server.on('checkContinue', rejectExpectation);
   server.on('checkExpectation', rejectExpectation);

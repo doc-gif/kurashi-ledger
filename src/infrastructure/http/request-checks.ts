@@ -31,7 +31,8 @@ export function checkHost(req: IncomingMessage, expectedHost: string): Rejection
 // （host:port）・asterisk-form（*）は、静的配信・API・開発時のmiddleware・upgradeのどれにも渡さない（ADR-0009の5）。
 // 通常のHTTPの要求とupgradeの両方が、処理へ渡す前にこの関数を使う。
 export function checkRequestTarget(rawUrl: string | undefined): Rejection | undefined {
-  if (rawUrl === undefined || !rawUrl.startsWith('/')) return { status: 400, code: 'bad-request-target' };
+  // フラグメント（#以降）はブラウザが送らないので、含む要求の対象は生の要求として拒否する（トークンの形の値を処理へ渡さない）。
+  if (rawUrl === undefined || !rawUrl.startsWith('/') || rawUrl.includes('#')) return { status: 400, code: 'bad-request-target' };
   return undefined;
 }
 

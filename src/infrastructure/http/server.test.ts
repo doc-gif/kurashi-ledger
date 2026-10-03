@@ -1179,3 +1179,110 @@ test('HTTPの解析器が拒否した要求とExpectの要求にも、必須の�
     tmp.cleanup();
   }
 });
+
+test('フラグメント（#）を含む生の要求の対象は、通常の要求・Expect・upgradeのどれでも400で拒否し、処理に渡さず、#以降をログに出さない', async () => {
+  const tmp = ownerOnlyTempDirectory('fragment');
+  try {
+    const calls: string[] = [];
+    const middlewareCalls: string[] = [];
+    const upgrades: string[] = [];
+    const logs: string[] = [];
+    const dev: LocalServerOptions['dev'] = {
+      middleware(req, res) {
+        middlewareCalls.push(req.url ?? '');
+        res.end('dev');
+      },
+      upgrade(req, socket) {
+        upgrades.push(req.url ?? '');
+        socket.end('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+      },
+    };
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, api: testRoutes(calls), log: (l) => logs.push(l) });
+    try {
+      const cookie = await exchange(server);
+      const secret = 'synthetic-fragment-token-value';
+      const host = `Host: 127.0.0.1:${server.port}\r\n`;
+      const auth = `Origin: ${server.origin}\r\nCookie: ${cookie}\r\nKurashi-Ledger-Launch-Id: ${server.launchId}\r\nSec-Fetch-Site: same-origin\r\n`;
+      const requests = [
+        `GET /launch#${secret} HTTP/1.1\r\n${host}Connection: close\r\n\r\n`,
+        `GET /src/main.ts#${secret} HTTP/1.1\r\n${host}Connection: close\r\n\r\n`,
+        `GET /api/test/state#${secret} HTTP/1.1\r\n${host}${auth}Connection: close\r\n\r\n`,
+        `POST /api/test/mutate#${secret} HTTP/1.1\r\n${host}${auth}Content-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\n\r\n`,
+        `GET /hmr#${secret} HTTP/1.1\r\n${host}${auth}Connection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+      ];
+      for (const request of requests) {
+        const res = await sendRaw(server.port, request);
+        assert.equal(res.status, 400, request.split('\r\n')[0] ?? '');
+        assert.match(res.raw, /\r\nX-Kurashi-Ledger-Reason: bad-request-target\r\n/);
+        assert.equal(res.raw.includes(secret), false);
+      }
+      assert.deepEqual(calls, []);
+      assert.deepEqual(middlewareCalls, []);
+      assert.deepEqual(upgrades, []);
+      assert.ok(logs.length >= requests.length);
+      for (const line of logs) assert.equal(line.includes(secret) || line.includes('#'), false, line);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('終了が始まったあとに既存の接続で届いたExpectの要求には、417ではなく必須のヘッダ付きの503（closing）を返して閉じる', async () => {
+  const tmp = ownerOnlyTempDirectory('close-expect');
+  try {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let started: () => void = () => {};
+    const handlerStarted = new Promise<void>((resolve) => (started = resolve));
+    const api: ApiRoute[] = [
+      {
+        method: 'POST',
+        path: '/api/test/slow',
+        handle: async () => {
+          started();
+          await released;
+          return { status: 200, body: {} };
+        },
+      },
+    ];
+    const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, api });
+    const cookie = await exchange(server);
+    // 稼働中は417。
+    const normal = await sendRaw(server.port, `POST /api/test/slow HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Length: 2\r\nExpect: 100-continue\r\n\r\n`);
+    assert.equal(normal.status, 417);
+    const pending = send(server.port, {
+      method: 'POST',
+      path: '/api/test/slow',
+      headers: sameOriginHeaders(server, { cookie, 'content-type': 'application/json' }),
+      body: '{}',
+    });
+    await handlerStarted;
+    const clients = ['100-continue', 'synthetic'].map((expect) => {
+      const client = connect({ host: '127.0.0.1', port: server.port });
+      client.on('error', () => {});
+      let received = '';
+      client.on('data', (c: Buffer) => (received += c.toString('latin1')));
+      const closed = new Promise<void>((resolve) => client.once('close', () => resolve()));
+      return { client, expect, closed, received: () => received };
+    });
+    await Promise.all(clients.map((c) => new Promise<void>((resolve) => c.client.once('connect', () => resolve()))));
+    for (const c of clients) c.client.write(`POST /api/test/slow HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const closing = server.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const c of clients) c.client.write(`Content-Length: 2\r\nExpect: ${c.expect}\r\n\r\n`);
+    for (const c of clients) {
+      await c.closed;
+      assert.match(c.received(), /^HTTP\/1\.1 503 /, c.expect);
+      assert.match(c.received(), /\r\nX-Kurashi-Ledger-Reason: closing\r\n/, c.expect);
+      assert.match(c.received(), /\r\nCache-Control: no-store\r\n/, c.expect);
+    }
+    release();
+    assert.equal((await pending).status, 200);
+    assert.equal((await closing).launchFile, 'removed');
+  } finally {
+    tmp.cleanup();
+  }
+});
