@@ -1,6 +1,6 @@
 # Test strategy
 
-Product tests are not implemented yet. T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
+Product tests are not implemented yet. T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). T05 added CI and the browser test base (Playwright; tests live in `e2e/*.spec.ts` and run with `npm run test:browser`). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
 
 ## Required acceptance cases as features are added
 
@@ -29,4 +29,4 @@ Include deliberate mutations such as changing `<` to `<=` or moving a rounding s
 
 Use synthetic fixtures in public tests. Do not anonymize private documents merely by removing the name: employer, dates and precise amounts can also identify someone.
 
-Planned CI (T05) will install with `npm run setup` and run type checking, tests and publication checks on standard Ubuntu, Windows and macOS runners. It is not configured yet. Real data must never enter CI or uploaded artifacts.
+CI (T05, `.github/workflows/ci.yml`) installs with `npm run setup` on the pinned Node.js range and runs type checking, `npm test`, the build check, the publication check, the review tool tests and the browser tests (Chromium on Ubuntu, Windows and macOS; WebKit on macOS) on standard GitHub-hosted runners. It compares the skipped tests on each OS with the table in docs/development.md and fails on unexpected skips, failures, cancellations or missing jobs. Node tests added as `*.test.ts` under `scripts/`, `src/` or `tests/`, and browser tests added as `e2e/*.spec.ts`, run on all three systems. A green run does not replace an independent review. CI uses synthetic data only and uploads no artifacts. Real data must never enter CI or uploaded artifacts.

@@ -6,6 +6,8 @@ node_modules/
 /.kurashi-ledger-setup.lock
 dist/
 coverage/
+# ブラウザ試験（Playwright）の出力先（playwright.config.tsのoutputDir）。試験の一時的な結果で、公開しない。
+/test-results/
 .idea/
 *.iml
 .DS_Store

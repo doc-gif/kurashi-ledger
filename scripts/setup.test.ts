@@ -412,10 +412,10 @@ test('node_modulesがリポジトリの外へのリンクなら、setup・check:
 });
 
 // Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を送れないので、理由を出してskipし、
-// T05の受入条件で確かめる。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
+// Windowsの実機で手で確かめる（Issue #19）。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
 const posixOnly =
   process.platform === 'win32'
-    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。T05の受入条件で確かめる'
+    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。Windowsの実機で手で確かめる（Issue #19）'
     : false;
 
 test('Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', { skip: posixOnly }, async () => {

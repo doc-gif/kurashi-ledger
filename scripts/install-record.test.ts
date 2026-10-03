@@ -82,10 +82,14 @@ function lockfileText(packages: Record<string, unknown>): string {
   return `${JSON.stringify(lock, null, 2)}\n`;
 }
 
-// npmと同じ形の実行ファイルのリンク。POSIXでは本体への相対のsymlink、Windowsでは.cmdのshim（通常のファイル）。
+// npmと同じ形の実行ファイルのリンク。POSIXでは本体への相対のsymlink。Windowsでは、npm（cmd-shim）と同じく、
+// 拡張子のないshimと.cmdのshim（どちらも通常のファイル。symlinkを作る権限は要らない）。照合に渡す合成の
+// 実行環境（runtime）はdarwinなので、拡張子のない名前を見る。.cmdのshimだけのときにwin32の実行環境で通ることは、
+// 「入った依存の実行ファイルのリンクが.binになければ、記録を書かない」の試験が全OSで確かめる。
 function linkTool(root: string): void {
   const bin = join(root, 'node_modules', '.bin');
   if (process.platform === 'win32') {
+    writeFileSync(join(bin, 'required-tool'), '#!/bin/sh\nexec node "$(dirname "$0")/../required-dep/cli.js" "$@"\n');
     writeFileSync(join(bin, 'required-tool.cmd'), '@node "%~dp0\\..\\required-dep\\cli.js" %*\r\n');
   } else {
     symlinkSync('../required-dep/cli.js', join(bin, 'required-tool'));
@@ -853,10 +857,10 @@ test('記録を書いている最中にシグナルを受けたら、書き終�
 
 // 印の削除だけを失敗させるには、worktreeの直下を書込み禁止にする。Windowsではこの方法が使えず、
 // rootのユーザーは権限を無視して消せるので、理由を出して飛ばす（処理はOSによらず同じ）。
-// 代わりの確認は docs/development.md の「環境によって飛ばす試験」と、台帳のT05。
+// 代わりの確認は docs/development.md の「環境によって飛ばす試験」と、Issue #19（Windowsの実機）。
 const lockUnlinkSkip =
   process.platform === 'win32'
-    ? 'Windowsでは、試験の中で印の削除だけを確実に失敗させる方法がない（読取り専用の属性はNode.jsが外して消す）。T05で手で確かめる'
+    ? 'Windowsでは、試験の中で印の削除だけを確実に失敗させる方法がない（読取り専用の属性はNode.jsが外して消す）。Windowsの実機で手で確かめる（Issue #19）'
     : process.getuid?.() === 0
       ? 'rootのユーザーは書込み禁止のディレクトリからも消せるので、削除の失敗を再現できない。CIは一般のユーザーで実行する（T05）'
       : false;
