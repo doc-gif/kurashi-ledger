@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "title": "共通の設定（examples.mdの「共通の設定」）。すべての場面は、この保存だけをしたデータベースから始める",
   "cites": [
     {"doc": "examples.md", "section": "共通の設定", "quote": "表示名「勤務先A」。本業"},
@@ -46,15 +46,19 @@
   ],
   "illustrativeRules": {
     "EX-06-mapping": {
-      "description": "EX-06の例示の比較の対応表。T14が承認した対応表ではない。年間資料の項目と、比べる明細の項目の合計",
+      "description": "EX-06の例示の比較の対応表。T14が承認した対応表ではない。年間資料の項目と、比べる明細の項目の合計（pairs）と、明細の合計では比べない項目（notCompared。契約版2.0の比較の状態not-compared）。どちらにもない項目は対応表がない（rule-pending）",
       "pairs": [
         {"annual": "paymentAmount", "payslip": "taxablePay"},
         {"annual": "withholdingTax", "payslip": "incomeTax"}
       ],
-      "cites": [{"doc": "examples.md", "section": "EX-06", "quote": "説明のために次の対応表を仮に使う。実際の対応ではない"}]
+      "notCompared": ["incomeAfterEmploymentDeduction"],
+      "cites": [
+        {"doc": "examples.md", "section": "EX-06", "quote": "説明のために次の対応表を仮に使う。実際の対応ではない"},
+        {"doc": "examples.md", "section": "EX-06", "quote": "incomeAfterEmploymentDeduction | 比べない（明細の項目の合計に当たる値がない。比較の状態はnot-compared）"}
+      ]
     },
     "EX-05-scheduled-pay-date-year": {
-      "description": "EX-05の例示の帰属の規則（支払予定日の年を所得の年とする）。T14が承認した規則ではない",
+      "description": "EX-05の例示の帰属の規則（帰属の区分ordinaryの明細に、支払予定日の年を所得の年とする規則として当てはめる。区分がunknownの明細には当てはめず、有効な利用者の指定がある明細では使わない）。T14が承認した規則ではない",
       "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "この規則は例示であり、実際の規則はT14が一次資料で決める"}]
     }
   },

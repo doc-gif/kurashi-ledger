@@ -242,6 +242,8 @@ export const BODY: Readonly<Record<RecordType, Readonly<Record<string, Spec>>>> 
     periodLabel: fact(text),
     workPeriod: fact({ t: "period" }, WITH_NA),
     scheduledPayDate: fact(localDate),
+    // 帰属の区分（記録の型の4。拡張できる列挙。共通の型の1）。knownかunknownだけ（共通の型の12）。
+    incomeTimingKind: fact(enm("ordinary"), KNOWN_UNKNOWN),
     grossPay: fact(yen("nonneg")),
     taxablePay: fact(yen("nonneg")),
     nonTaxablePay: fact(yen("nonneg")),

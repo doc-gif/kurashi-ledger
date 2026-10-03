@@ -104,7 +104,7 @@ const ACCEPTANCE_TAGS: readonly string[] = [
 const USAGES = ["not-used", "unresolved", "duplicate-voided", "voided", "superseded", "stale", "needs-recheck", "valid"];
 const MISSING_STATES = ["unknown", "not-stated", "undetermined", "conflict", "adoption-needed", "partial-scope", "rule-pending"];
 const AGG_STATES = ["complete", "incomplete", "not-applicable", "no-records"];
-const COMPARISON_STATES = ["rule-pending", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
+const COMPARISON_STATES = ["rule-pending", "not-compared", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
 const SELECTIONS = ["annual-document", "entered-payslips", "no-annual-document", "adoption-needed"];
 const SERIES_STATUSES = ["current", "superseded", "unconfirmed-series", "voided", "not-in-view"];
 const ROUNDING_METHODS = ["floor", "ceil", "half-up", "half-down"];
@@ -116,6 +116,7 @@ const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: re
   "annual-adoption": { states: ["adoption-needed"], ref: ["employer"] },
   "annual-scope": { states: ["partial-scope"], ref: ["annual-document"] },
   "annual-mapping": { states: ["rule-pending"], ref: ["employer"] },
+  "annual-no-counterpart": { states: ["unknown"], ref: ["employer"] },
   "notice-duplicate": { states: ["conflict"], ref: ["official-notice"] },
   "supersede-series": { states: ["conflict"], ref: ["payslip", "annual-document", "official-notice"] },
   "forecast-remaining": { states: ["unknown"], ref: ["forecast"], line: "line" },
@@ -1048,7 +1049,8 @@ function checkAggregate(ctx: CheckCtx, query: Obj, expect: Obj): void {
       checkFact(ctx, c, SPECS.enm("annual-document", "entered-records-only"), `values[${i}].coverage`);
       const cs = factStateOf(c);
       if (cs !== "known" && cs !== "not-applicable") ctx.problems.add(ctx.where, `values[${i}].coverageはknownかnot-applicable`);
-      if (kind !== "annual-value" && kind !== "payslip-by-income-year" && cs !== "not-applicable") ctx.problems.add(ctx.where, "所得の年の軸以外のcoverageはnot-applicable");
+      // 共通の型の11（契約版2.0）: coverageはannual-valueだけ。payslip-by-income-yearを含むほかのkindはnot-applicable。
+      if (kind !== "annual-value" && cs !== "not-applicable") ctx.problems.add(ctx.where, "annual-value以外のcoverageはnot-applicable");
       coverages.add(stableStringify(c));
     } else if (kind === "annual-value") ctx.problems.add(ctx.where, `values[${i}]: annual-valueのcoverageを書く`);
   });
@@ -1546,7 +1548,7 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
 export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[] {
   const problems = new Problems();
   const common = files.commonSetup;
-  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== "1.0") problems.add("common-setup", "schemaVersion 1・contractVersion 1.0");
+  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== "2.0") problems.add("common-setup", "schemaVersion 1・contractVersion 2.0");
   const commonReplay = replayOps(common["operations"], "common", newState(), 0, "common-setup", problems);
   const commonState = commonReplay.state;
   const commonCount = commonState.seq;
@@ -1566,7 +1568,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
     if (typeof caseId !== "string" || file !== `cases/${caseId}.json`) problems.add(file, "caseIdとファイル名が合わない");
     if (caseIds.has(String(caseId))) problems.add(file, "caseIdが重なる");
     caseIds.add(String(caseId));
-    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== "1.0") problems.add(file, "schemaVersion 1・contractVersion 1.0");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== "2.0") problems.add(file, "schemaVersion 1・contractVersion 2.0");
     if (typeof data["title"] !== "string" || data["title"] === "") problems.add(file, "titleがない");
     const consumers = data["consumers"];
     if (!Array.isArray(consumers) || consumers.length === 0 || !consumers.every((c) => typeof c === "string" && /^T\d{2}$/.test(c))) problems.add(file, "consumersはタスクIDの並び");

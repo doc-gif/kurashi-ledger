@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-04c",
   "title": "遡及訂正(c): 正式通知の変更（差し替え）と、決定額を使う計算runの根",
   "consumers": ["T06", "T11", "T15", "T18"],

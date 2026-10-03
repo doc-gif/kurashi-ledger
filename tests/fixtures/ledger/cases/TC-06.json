@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-06",
   "title": "追加: 丸めの計算と丸めの記録の検査（架空の計算器。制度の丸め方ではない）",
   "consumers": ["T15", "T16"],

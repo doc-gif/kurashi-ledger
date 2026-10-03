@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-07",
   "title": "予測の一部を実績化する（消込、使えない関係、取り下げ、識別の次元、配分の符号）",
   "consumers": ["T06", "T11", "T15", "T20"],

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-02",
   "title": "追加: Factの状態・金額の範囲・並びの検査と、集計のoverflow（T06の符号と範囲、合計overflow）",
   "consumers": ["T06", "T07", "T12"],
@@ -88,6 +88,39 @@
             "id": "pay_V5",
             "recordType": "payslip",
             "body": {"employerId": "emp_1", "paymentKind": {"state": "known", "value": "salary"}, "scheduledPayDate": {"state": "not-applicable"}, "grossPay": {"state": "known", "value": 100000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05b",
+          "at": "2026-10-24T01:04:30.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_VK1",
+            "recordType": "payslip",
+            "body": {"employerId": "emp_1", "paymentKind": {"state": "known", "value": "salary"}, "scheduledPayDate": {"state": "known", "value": "2026-10-23"}, "grossPay": {"state": "known", "value": 100000}, "incomeTimingKind": {"state": "not-stated"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05c",
+          "at": "2026-10-24T01:04:40.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "pay_VK2",
+            "recordType": "payslip",
+            "body": {"employerId": "emp_1", "paymentKind": {"state": "known", "value": "salary"}, "scheduledPayDate": {"state": "known", "value": "2026-10-23"}, "grossPay": {"state": "known", "value": 100000}, "incomeTimingKind": {"state": "not-applicable"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05d",
+          "at": "2026-10-24T01:04:50.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "pay_VK3",
+            "recordType": "payslip",
+            "body": {"employerId": "emp_1", "paymentKind": {"state": "known", "value": "bonus"}, "scheduledPayDate": {"state": "known", "value": "2026-10-23"}, "grossPay": {"state": "known", "value": 100000}, "incomeTimingKind": {"state": "known", "value": "officer-bonus"}}
           }
         },
         {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-04b",
   "title": "遡及訂正(b): 後の給与で支払った遡及差額と、参照の粒度",
   "consumers": ["T06", "T11"],

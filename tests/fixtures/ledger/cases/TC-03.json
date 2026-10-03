@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-03",
   "title": "追加: 分からない値で絞り込まない（PR11-R006の規則）",
   "consumers": ["T06", "T11"],
@@ -304,7 +304,7 @@
             "axis": "income-year",
             "scope": {"employerIds": ["emp_3"], "accountIds": [], "from": 2025, "to": 2025}
           },
-          "expect": {"values": [{"state": "no-records", "knownSum": 0, "missing": []}]},
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "pay_U5の候補は2026年以降なので、2025年の一覧に入らない（startが分かっている側は狭めてよい）。",
           "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "勤務期間 | workPeriodが重なるすべての年"}]
         },
@@ -322,7 +322,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [{"ref": {"id": "pay_U5", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+                "coverage": {"state": "not-applicable"}, "missing": [{"ref": {"id": "pay_U5", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
               }
             ]
           },
@@ -343,7 +343,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [
+                "coverage": {"state": "not-applicable"}, "missing": [
                   {"ref": {"id": "pay_U3", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
                   {"ref": {"id": "pay_U4", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
                 ]

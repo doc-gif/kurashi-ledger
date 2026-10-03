@@ -67,6 +67,8 @@ function conditionalDefault(type: RecordType, field: string, body: Obj): unknown
     if (field === "explainedComparisons") return t === "mismatch-explanation" ? NO_DEFAULT : na;
   }
   if (type === "forecast" && field === "accountId") return body["subject"] === "deposit" ? NO_DEFAULT : na;
+  // 合成例の読み方の6（契約版2.0）: 給与明細の帰属の区分は、書いていなければknownのordinary（通常の給与等）。
+  if (type === "payslip" && field === "incomeTimingKind") return { state: "known", value: "ordinary" };
   return undefined;
 }
 
