@@ -24,10 +24,11 @@
       "id": "PR2-R003",
       "invariant_id": "INV-TASKS",
       "cause_key": "dependency-before-consumer",
-      "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。",
+      "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197"
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
       ]
     },
     {
@@ -75,10 +76,11 @@
       "id": "PR2-R008",
       "invariant_id": "INV-TASKS",
       "cause_key": "entrypoint-order",
-      "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
+      "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
       ]
     },
     {
@@ -434,7 +436,8 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
-        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279"
+        "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530273"
       ]
     },
     {
@@ -480,6 +483,135 @@
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
         "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974"
+      ]
+    },
+    {
+      "id": "PR10-R001",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "focus-target-per-element",
+      "lesson": "フォーカスの表示と状態は値ではなくフォーカスできる要素ごとに定め、表示しない要素（不明を許さない項目のチェックボックス等）へのフォーカス状態を組合せから除く。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245148",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167691997"
+      ]
+    },
+    {
+      "id": "PR10-R002",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "design-implementation-correspondence",
+      "lesson": "Figma・トークン・CSS・外部の形式の対応は、実装で同じ表示を再現できる方式・寸法の定義・検証条件として一意に書き、「1対1」や標準への準拠などの主張は実物と照合する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245244",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245294",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394218551"
+      ]
+    },
+    {
+      "id": "PR10-R003",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "unknown-state-accessibility-semantics",
+      "lesson": "不明の値とError・Disabled等の状態の組合せごとに、読み上げ・エラー文の関連付け・保存時のフォーカス先を定め、共通の規則と矛盾させないか、その組合せを無効にする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394143877",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530172",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167923590"
+      ]
+    },
+    {
+      "id": "PR10-R004",
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+      ]
+    },
+    {
+      "id": "PR10-R101",
+      "invariant_id": "INV-RECORDS",
+      "cause_key": "ui-contract-state-mapping",
+      "lesson": "UI部品の値の状態（空欄・金額・0・不明）は契約の金額の状態へ一意に対応付け、保存しない編集中の状態を決め、保存して再表示した状態が黙って変わらないようにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395958798"
+      ]
+    },
+    {
+      "id": "PR12-R001",
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "setup-worktree-exclusion",
+      "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+      ]
+    },
+    {
+      "id": "PR12-R002",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "public-path-exception-scope",
+      "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+      ]
+    },
+    {
+      "id": "PR12-R101",
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "cleanup-failure-path-contract",
+      "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+      ]
+    },
+    {
+      "id": "PR12-R102",
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "install-record-verification-scope",
+      "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+      ]
+    },
+    {
+      "id": "PR12-R103",
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+      ]
+    },
+    {
+      "id": "PR12-R104",
+      "invariant_id": "INV-ROOT",
+      "cause_key": "destructive-op-follows-link",
+      "lesson": "削除や上書きの前に対象とその親をlstatで確かめ、symlink・junctionをたどってリポジトリ外や別worktreeのファイルを変更しない。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957"
       ]
     }
   ]
