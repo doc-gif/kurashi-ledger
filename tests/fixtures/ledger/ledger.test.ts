@@ -104,7 +104,7 @@ const ACCEPTANCE_TAGS: readonly string[] = [
 const USAGES = ["not-used", "unresolved", "duplicate-voided", "voided", "superseded", "stale", "needs-recheck", "valid"];
 const MISSING_STATES = ["unknown", "not-stated", "undetermined", "conflict", "adoption-needed", "partial-scope", "rule-pending"];
 const AGG_STATES = ["complete", "incomplete", "not-applicable", "no-records"];
-const COMPARISON_STATES = ["rule-pending", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
+const COMPARISON_STATES = ["rule-pending", "not-compared", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
 const SELECTIONS = ["annual-document", "entered-payslips", "no-annual-document", "adoption-needed"];
 const SERIES_STATUSES = ["current", "superseded", "unconfirmed-series", "voided", "not-in-view"];
 const ROUNDING_METHODS = ["floor", "ceil", "half-up", "half-down"];
@@ -116,6 +116,7 @@ const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: re
   "annual-adoption": { states: ["adoption-needed"], ref: ["employer"] },
   "annual-scope": { states: ["partial-scope"], ref: ["annual-document"] },
   "annual-mapping": { states: ["rule-pending"], ref: ["employer"] },
+  "annual-no-counterpart": { states: ["unknown"], ref: ["employer"] },
   "notice-duplicate": { states: ["conflict"], ref: ["official-notice"] },
   "supersede-series": { states: ["conflict"], ref: ["payslip", "annual-document", "official-notice"] },
   "forecast-remaining": { states: ["unknown"], ref: ["forecast"], line: "line" },
@@ -344,9 +345,12 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
   }
   // 照合配分の行を指す参照は、参照先の現在の版にある、その項目が指せる種類の行だけ（共通の型の2）。
   // 給与明細で指せるのは支給の行（otherEarnings）だけ、予測は見込みの行（lines）だけ。控除の行（otherDeductions）は指せない。
+  // 行の実在を確かめるのは、配分の版1と、from・toを直前の版から変える改訂だけ（取消・取消の取り消し・却下等では確かめない。所有者の決定（2026-10-03））。
   if (rec["recordType"] === "allocation" && isObj(rec["body"])) {
+    const prevBody = prev !== undefined && isObj(prev["body"]) ? prev["body"] : undefined;
     for (const end of ["from", "to"]) {
       const ref = rec["body"][end];
+      if (prevBody !== undefined && stableStringify(prevBody[end]) === stableStringify(ref)) continue;
       if (isObj(ref) && typeof ref["id"] === "string" && typeof ref["line"] === "string" && ref["line"] !== "whole") {
         const target = latest(state, ref["id"]);
         if (target !== undefined && !referableLineIds(target).has(ref["line"])) codes.add("ref-target-invalid");
@@ -514,7 +518,8 @@ function replayOps(
           const rseen = state.writeRequests.get(rwrid);
           if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
           else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }) });
-          for (const v of checkRecordStatic(rec)) {
+          // 復元は読取の検査（拡張できる列挙の知らない値は違反にしない。共通の型の1）。新しい保存の拒否はsaveの検査（TC-02-aのo05d）。
+          for (const v of checkRecordStatic(rec, "read")) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
@@ -869,6 +874,68 @@ interface CheckCtx {
   where: string;
   problems: Problems;
   commonCount: number;
+  // 場面のrules.comparisonMappingが指す例示の対応表（noneならundefined）。比較の期待値と対応表の整合に使う。
+  comparisonMapping?: ComparisonMapping | undefined;
+}
+
+// 例示の比較の対応表（common-setup.jsonのillustrativeRules）。照合の規則の5の「比較の対応表の形」: 項目ごとに比べるか比べないか。
+interface ComparisonMapping {
+  compared: ReadonlySet<string>;
+  notCompared: ReadonlySet<string>;
+}
+
+const ILLUSTRATIVE_RULE_NAMES = ["EX-06-mapping", "EX-05-scheduled-pay-date-year"];
+
+// illustrativeRulesの形（PR36-R006）: 名前の一覧、説明と引用、対応表のpairs・notComparedの項目・一意性・排他性。
+export function checkIllustrativeRules(rules: unknown, docs: ContractDocs, problems: Problems): ComparisonMapping | undefined {
+  const where = "common-setup illustrativeRules";
+  if (!isObj(rules)) {
+    problems.add(where, "illustrativeRulesがobjectではない");
+    return undefined;
+  }
+  const names = Object.keys(rules).sort();
+  if (stableStringify(names) !== stableStringify([...ILLUSTRATIVE_RULE_NAMES].sort())) problems.add(where, `例示の規則の名前が${ILLUSTRATIVE_RULE_NAMES.join("・")}と違う: ${names.join(",")}`);
+  for (const name of names) {
+    const r = rules[name];
+    const w = `${where}.${name}`;
+    if (!isObj(r)) {
+      problems.add(w, "objectではない");
+      continue;
+    }
+    if (typeof r["description"] !== "string" || r["description"].trim() === "") problems.add(w, "descriptionが空");
+    if (!Array.isArray(r["cites"]) || r["cites"].length === 0) problems.add(w, "citesがない");
+    checkCites(r["cites"], docs, w, problems);
+  }
+  const m = rules["EX-06-mapping"];
+  if (!isObj(m)) return undefined;
+  const w = `${where}.EX-06-mapping`;
+  const compared = new Set<string>();
+  const pairs = m["pairs"];
+  if (!Array.isArray(pairs) || pairs.length === 0) problems.add(w, "pairsが空でない並びではない");
+  else
+    pairs.forEach((pr, i) => {
+      if (!isObj(pr) || Object.keys(pr).sort().join(",") !== "annual,payslip") {
+        problems.add(w, `pairs[${i}]は{ annual, payslip }`);
+        return;
+      }
+      const a = String(pr["annual"]);
+      if (!ANNUAL_AMOUNT_ITEMS.includes(a)) problems.add(w, `pairs[${i}].annualが年間資料の金額の項目名ではない: ${a}`);
+      if (!PAYSLIP_AMOUNT_ITEMS.includes(String(pr["payslip"]))) problems.add(w, `pairs[${i}].payslipが給与明細の金額の項目名ではない: ${String(pr["payslip"])}`);
+      if (compared.has(a)) problems.add(w, `pairsで年間資料の項目${a}が重なる`);
+      compared.add(a);
+    });
+  const notCompared = new Set<string>();
+  const nc = m["notCompared"];
+  if (!Array.isArray(nc)) problems.add(w, "notComparedが並びではない（なければ空の並び）");
+  else
+    nc.forEach((x, i) => {
+      const a = String(x);
+      if (!ANNUAL_AMOUNT_ITEMS.includes(a)) problems.add(w, `notCompared[${i}]が年間資料の金額の項目名ではない: ${a}`);
+      if (notCompared.has(a)) problems.add(w, `notComparedで${a}が重なる`);
+      if (compared.has(a)) problems.add(w, `${a}がpairsとnotComparedの両方にある（比べるか比べないかはどちらか1つ）`);
+      notCompared.add(a);
+    });
+  return { compared, notCompared };
 }
 
 function requireRecord(ctx: CheckCtx, id: unknown, types?: readonly RecordType[]): void {
@@ -1048,9 +1115,13 @@ function checkAggregate(ctx: CheckCtx, query: Obj, expect: Obj): void {
       checkFact(ctx, c, SPECS.enm("annual-document", "entered-records-only"), `values[${i}].coverage`);
       const cs = factStateOf(c);
       if (cs !== "known" && cs !== "not-applicable") ctx.problems.add(ctx.where, `values[${i}].coverageはknownかnot-applicable`);
-      if (kind !== "annual-value" && kind !== "payslip-by-income-year" && cs !== "not-applicable") ctx.problems.add(ctx.where, "所得の年の軸以外のcoverageはnot-applicable");
+      // 共通の型の11（契約版2.0）: coverageはannual-valueだけ。payslip-by-income-yearを含むほかのkindはnot-applicable。
+      if (kind !== "annual-value" && cs !== "not-applicable") ctx.problems.add(ctx.where, "annual-value以外のcoverageはnot-applicable");
       coverages.add(stableStringify(c));
-    } else if (kind === "annual-value") ctx.problems.add(ctx.where, `values[${i}]: annual-valueのcoverageを書く`);
+    } else if (kind === "annual-value" || kind === "payslip-by-income-year") {
+      // annual-valueはcoverageで元を分け、payslip-by-income-yearは契約版2.0でnot-applicableと決まった（台帳の未決事項2）ので、どちらも書く。
+      ctx.problems.add(ctx.where, `values[${i}]: ${String(kind)}のcoverageを書く`);
+    }
   });
   if (values.length > 1 && coverages.size !== values.length) ctx.problems.add(ctx.where, "coverageで分けた集計値のcoverageが重なる");
 }
@@ -1232,6 +1303,15 @@ function checkOne(ctx: CheckCtx, check: Obj): void {
       if (!ANNUAL_AMOUNT_ITEMS.includes(String(query["field"]))) ctx.problems.add(ctx.where, "比較のfieldが年間資料の金額の項目名ではない");
       if (!COMPARISON_STATES.includes(String(expect["state"]))) ctx.problems.add(ctx.where, "比較の状態が表にない");
       if ("difference" in expect) checkFact(ctx, expect["difference"], SPECS.yen("signed"), "difference");
+      {
+        // 比較の状態と、場面が使う対応表の整合（照合の規則の5の表の順1・2）。対応表がない場面（none）は、どの項目もrule-pending。
+        const field = String(query["field"]);
+        const st = String(expect["state"]);
+        const m = ctx.comparisonMapping;
+        const want = m === undefined || (!m.compared.has(field) && !m.notCompared.has(field)) ? "rule-pending" : m.notCompared.has(field) ? "not-compared" : undefined;
+        if (want !== undefined && st !== want) ctx.problems.add(ctx.where, `対応表から、${field}の比較の状態は${want}`);
+        if (want === undefined && (st === "rule-pending" || st === "not-compared")) ctx.problems.add(ctx.where, `対応表が${field}を比べると定めているのに${st}`);
+      }
       return;
     case "adoption":
       if (!isCalendarYear(query["year"])) ctx.problems.add(ctx.where, "yearの形");
@@ -1543,14 +1623,18 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
   }
 }
 
+// 台帳が対象にする契約版（docs/test-oracles/README.md）。共通の設定・ケース・制度のケースのすべてで同じ値にする。
+const LEDGER_CONTRACT_VERSION = "2.0";
+
 export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[] {
   const problems = new Problems();
   const common = files.commonSetup;
-  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== "1.0") problems.add("common-setup", "schemaVersion 1・contractVersion 1.0");
+  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add("common-setup", `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
   const commonReplay = replayOps(common["operations"], "common", newState(), 0, "common-setup", problems);
   const commonState = commonReplay.state;
   const commonCount = commonState.seq;
   checkCites(common["cites"], docs, "common-setup", problems);
+  const ex06Mapping = checkIllustrativeRules(common["illustrativeRules"], docs, problems);
   const covered = new Set<string>();
   if (!Array.isArray(common["coverageExceptions"])) problems.add("common-setup", "coverageExceptionsが並びではない（例外がなければ空の並び）");
   const exceptions = Array.isArray(common["coverageExceptions"]) ? common["coverageExceptions"] : [];
@@ -1566,7 +1650,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
     if (typeof caseId !== "string" || file !== `cases/${caseId}.json`) problems.add(file, "caseIdとファイル名が合わない");
     if (caseIds.has(String(caseId))) problems.add(file, "caseIdが重なる");
     caseIds.add(String(caseId));
-    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== "1.0") problems.add(file, "schemaVersion 1・contractVersion 1.0");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     if (typeof data["title"] !== "string" || data["title"] === "") problems.add(file, "titleがない");
     const consumers = data["consumers"];
     if (!Array.isArray(consumers) || consumers.length === 0 || !consumers.every((c) => typeof c === "string" && /^T\d{2}$/.test(c))) problems.add(file, "consumersはタスクIDの並び");
@@ -1643,7 +1727,8 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
         }
         if (typeof ch["reason"] !== "string" || ch["reason"].length < 10) problems.add(cw, "理由（reason）がない");
         checkCites(ch["cites"], docs, cw, problems);
-        checkOne({ state: st, where: cw, problems, commonCount }, ch);
+        const scRules = isObj(sc["rules"]) ? sc["rules"] : {};
+        checkOne({ state: st, where: cw, problems, commonCount, comparisonMapping: scRules["comparisonMapping"] === "EX-06-mapping" ? ex06Mapping : undefined }, ch);
       }
     }
   }
@@ -1656,7 +1741,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
   // 制度のケース
   if (files.regime.length === 0) problems.add("regime", "制度のケースのファイルがない");
   for (const { file, data } of files.regime) {
-    if (data["schemaVersion"] !== 1) problems.add(file, "schemaVersion 1");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     const list = data["cases"];
     if (!Array.isArray(list) || list.length === 0) problems.add(file, "casesがない");
     else {
@@ -2315,3 +2400,97 @@ test("台帳のIDの接頭辞は契約の表と同じ", () => {
   assert.ok(isIdOf("pay_101", "pay"));
   assert.ok(!isIdOf("pay_", "pay"));
 });
+
+test("検査の自己確認: 共通の設定・ケース・制度のケースの契約版が台帳の契約版と違えば見つける", () => {
+  assert.deepEqual(mutated(() => undefined), []);
+  const regime = mutated((copy) => {
+    const r = copy.regime[0];
+    assert.ok(r);
+    r.data["contractVersion"] = "1.0";
+  });
+  assert.ok(regime.some((x) => x.startsWith("regime/") && x.includes("contractVersion")), regime.join(" / "));
+  const kase = mutated((copy) => (firstCase(copy, "EX-01")["contractVersion"] = "1.0"));
+  assert.ok(kase.some((x) => x.includes("EX-01") && x.includes("contractVersion")), kase.join(" / "));
+  const common = mutated((copy) => (copy.commonSetup["contractVersion"] = "1.0"));
+  assert.ok(common.some((x) => x.startsWith("common-setup") && x.includes("contractVersion")), common.join(" / "));
+});
+
+test("検査の自己確認: 拡張できる列挙の知らない値と知らない項目は、保存の検査では違反、読取・復元の検査では違反でなく、値を書き換えない（共通の型の1）", () => {
+  const record = expandRecord(
+    {
+      id: "pay_X1",
+      recordType: "payslip",
+      body: {
+        employerId: "emp_1",
+        paymentKind: { state: "known", value: "bonus" },
+        incomeTimingKind: { state: "known", value: "officer-bonus" },
+        resolutionDate: { state: "known", value: "2026-12-10" },
+        scheduledPayDate: { state: "known", value: "2026-12-25" },
+        grossPay: { state: "known", value: 200000 },
+      },
+    },
+    { scenarioId: "self-check", opId: "o1", previous: undefined },
+  );
+  const kind = (record["body"] as Obj)["incomeTimingKind"];
+  assert.deepEqual(kind, { state: "known", value: "officer-bonus" });
+  // 共通の型の1の「読む処理が知らない項目」: 新しいマイナー版の項目も書き換えずに持つ。
+  assert.deepEqual((record["body"] as Obj)["resolutionDate"], { state: "known", value: "2026-12-10" });
+  const save = checkRecordStatic(record, "save");
+  assert.ok(save.some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")), JSON.stringify(save));
+  assert.ok(save.some((v) => v.code === "shape" && v.path.includes("resolutionDate")), JSON.stringify(save));
+  // 読取でも、Factの形でない知らない項目は違反のまま。
+  const notFact = { ...record, body: { ...(record["body"] as Obj), resolutionDate: "2026-12-10" } };
+  assert.ok(checkRecordStatic(notFact, "read").some((v) => v.path.includes("resolutionDate")));
+  assert.deepEqual(checkRecordStatic(record, "read"), []);
+  // 読取でも、拡張できない列挙の知らない値と、空の文字列は違反のまま。
+  const body = record["body"] as Obj;
+  const notOpen = { ...record, body: { ...body, paymentKind: { state: "known", value: "officer-bonus" } } };
+  assert.ok(checkRecordStatic(notOpen, "read").some((v) => v.code === "value-invalid" && v.path.includes("paymentKind")));
+  const empty = { ...record, body: { ...body, incomeTimingKind: { state: "known", value: "" } } };
+  assert.ok(checkRecordStatic(empty, "read").some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")));
+  // 台帳の場面: EX-05-hの復元は違反なし、TC-02-aのo05dの新しい保存は拒否。
+  const h = mutated((copy) => (op(scenario(firstCase(copy, "EX-05"), "EX-05-h"), "o1")["expectedViolations"] = ["value-invalid"]));
+  assert.ok(h.some((x) => x.includes("EX-05-h") && x.includes("expectedViolations")), h.join(" / "));
+});
+
+test("検査の自己確認: payslip-by-income-yearの集計の期待値はcoverage（not-applicable）を省けない（共通の型の11）", () => {
+  const p = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    const values = (chk["expect"] as Obj)["values"] as Obj[];
+    for (const v of values) delete v["coverage"];
+  });
+  assert.ok(p.some((x) => x.includes("EX-05-a c05") && x.includes("payslip-by-income-yearのcoverageを書く")), p.join(" / "));
+  const q = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    ((chk["expect"] as Obj)["values"] as Obj[]).forEach((v) => (v["coverage"] = { state: "known", value: "entered-records-only" }));
+  });
+  assert.ok(q.some((x) => x.includes("EX-05-a c05") && x.includes("not-applicable")), q.join(" / "));
+});
+
+test("検査の自己確認: 例示の対応表の形・項目・一意性・排他性・引用と、比較の期待値との整合（PR36-R006）", () => {
+  const mapping = (copy: LedgerFiles): Obj => (copy.commonSetup["illustrativeRules"] as Obj)["EX-06-mapping"] as Obj;
+  const cases: [string, (copy: LedgerFiles) => void, string][] = [
+    ["notCompared を消す", (c) => delete mapping(c)["notCompared"], "EX-06-c5 c01"],
+    ["notCompared に未知の項目", (c) => ((mapping(c)["notCompared"] as unknown[]).push("unknownItem")), "notCompared[1]"],
+    ["notCompared の重複", (c) => ((mapping(c)["notCompared"] as unknown[]).push("incomeAfterEmploymentDeduction")), "重なる"],
+    ["pairs と notCompared の両方", (c) => ((mapping(c)["notCompared"] as unknown[]).push("paymentAmount")), "両方"],
+    ["pairs の未知の明細の項目", (c) => (((mapping(c)["pairs"] as Obj[])[0] as Obj)["payslip"] = "unknownItem"), "pairs[0].payslip"],
+    ["pairs の重複", (c) => (mapping(c)["pairs"] as Obj[]).push({ annual: "paymentAmount", payslip: "grossPay" }), "重なる"],
+    ["対応表の引用の誤り", (c) => (((mapping(c)["cites"] as Obj[])[0] as Obj)["quote"] = "契約にない語句"), "EX-06-mapping"],
+    ["例示の規則の名前の欠け", (c) => delete (c.commonSetup["illustrativeRules"] as Obj)["EX-05-scheduled-pay-date-year"], "名前"],
+    ["対応表で比べる項目を比べないとして期待する", (c) => {
+      const chk = (scenario(firstCase(c, "EX-06"), "EX-06-a")["checks"] as Obj[]).find((x) => x["checkId"] === "c01");
+      assert.ok(chk);
+      chk["expect"] = { state: "not-compared" };
+    }, "EX-06-a c01"],
+  ];
+  for (const [name, f, word] of cases) {
+    const p = mutated(f);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+

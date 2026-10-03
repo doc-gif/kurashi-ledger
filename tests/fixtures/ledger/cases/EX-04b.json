@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-04b",
   "title": "遡及訂正(b): 後の給与で支払った遡及差額と、参照の粒度",
   "consumers": ["T06", "T11"],
@@ -150,9 +150,9 @@
           "checkId": "c05",
           "afterOp": "end",
           "query": {"kind": "attribution", "payslip": "pay_402"},
-          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2026}]},
-          "reason": "所得の年は明細全体で1つ（行ごとの帰属は持たない）。根拠がないのでundetermined。候補の年は、支払予定日2026、勤務期間2026、行l1の期間2026-04-01〜06-20（2026）で、2026だけ。",
-          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "行ごとの帰属は持たず（明細全体で1つ）"}, {"doc": "examples.md", "section": "EX-04", "quote": "pay_402全体で1つ"}]
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "所得の年は明細全体で1つ（行ごとの帰属は持たない）。根拠がないのでundetermined。pay_402は遡及差額の行を持つので、帰属の区分はunknown（読み方の既定。役員賞与と遡及差額はいまは対象外でordinaryにできない）。区分が分からないので、候補の年は帰属の区分の次元からすべての年（支払予定日・勤務期間・行の期間の2026に狭めない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "行ごとの帰属は持たず（明細全体で1つ）"}, {"doc": "examples.md", "section": "EX-04", "quote": "pay_402全体で1つ"}, {"doc": "examples.md", "section": "EX-04", "quote": "pay_402は遡及差額の行を持つので、帰属の区分はunknown"}, {"doc": "reconciliation.md", "section": "8", "quote": "incomeTimingKindがunknown（この版が知らない値を含む）ならすべての年"}]
         }
       ]
     },

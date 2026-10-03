@@ -31,6 +31,7 @@
 - アプリの実装: 2026-10-02に、T01・T02・T04から始めた。T01・T02・T04はmainに統合した。2026-10-03に所有者がT05（CIとブラウザ試験の基盤、#17）を割り当てた（T02の上に積む選択をしたが、同じ日にT02が統合されたので、mainから作業した）。
 - Figma: 基礎と最初の3部品を作成済み（T04、#7）。トークン・ID対応表・部品の仕様は[design/](../design/README.md)。ファイルのURLは公開しない。
 - OpenFisca: 調査候補、採用未決定。
+- 契約: 契約版2.0（[#32](https://github.com/doc-gif/kurashi-ledger/issues/32)で1.0から見直した。変更は[契約](contracts/README.md)の「変更の履歴」）。2026-10-03の所有者の決定: 役員賞与と昇給の遡及差額は、いまは製品の対象外とし、あとで足せる拡張点（給与明細の帰属の区分）だけを用意する。T14（PR #29）の契約への候補とT03の台帳の未決事項を、この見直しにまとめる。
 - 実行方式、UI、DBドライバ、配布方式、データの保管先、共通の安全確認: T00で決定した（[ADR-0002〜0007](adr/README.md)）。
 - ライセンス: 未選択。publicであることだけでOSSの再利用許諾を意味しない。
 - 開発環境（T02、#9）: Node.jsの版の固定（24系の24.15.0以上）、`npm run setup`と依存の導入の記録、型検査、開発用の試験（`npm test`）、公開検査（`npm run check:public`）、`.gitignore`の修正。手順は[開発環境](development.md)と[公開範囲と公開前の点検](public-data.md)。固定した版とMac/Windows/Linuxでの実行は、所有者の決定でT05の受入条件にし、T05のCIで行う（T02では固定版とWindowsで実行していない）。2026-10-03の所有者決定で、手元のNode.jsとPythonの正確な版はルートの`mise.toml`（mise）で管理する（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)。対応する範囲の正本は`package.json`のまま。手順は[開発環境](development.md)の「miseで版をそろえる」）。

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-05",
   "title": "追加: 交通費の混在（通勤手当を含む振込と精算の入金）",
   "consumers": ["T11"],

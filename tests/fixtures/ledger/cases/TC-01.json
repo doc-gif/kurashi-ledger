@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-01",
   "title": "追加: 改訂のモデルと保存の検査（T06の改訂競合・存在しない参照・不正期間）",
   "consumers": ["T06", "T07", "T09"],

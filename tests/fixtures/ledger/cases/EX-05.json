@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-05",
   "title": "年またぎ（4つの日付と所得の年への帰属）",
   "consumers": ["T11", "T14", "T16"],
@@ -240,7 +240,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 50000,
-                "missing": [
+                "coverage": {"state": "not-applicable"}, "missing": [
                   {"ref": {"id": "pay_501", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
                   {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
                 ]
@@ -264,7 +264,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [{"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+                "coverage": {"state": "not-applicable"}, "missing": [{"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
               }
             ]
           },
@@ -477,7 +477,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [
+                "coverage": {"state": "not-applicable"}, "missing": [
                   {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
                   {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
                 ]
@@ -552,7 +552,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [{"ref": {"id": "pay_504", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+                "coverage": {"state": "not-applicable"}, "missing": [{"ref": {"id": "pay_504", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
               }
             ]
           },
@@ -576,7 +576,7 @@
             "axis": "income-year",
             "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2025, "to": 2025}
           },
-          "expect": {"values": [{"state": "no-records", "knownSum": 0, "missing": []}]},
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "改訂のあとは2025年が候補にないので、2025年の一覧は空で、記録もないので記録なし。",
           "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]
         }
@@ -631,7 +631,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [
+                "coverage": {"state": "not-applicable"}, "missing": [
                   {"ref": {"id": "pay_501", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
                   {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "conflict"},
                   {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
@@ -656,7 +656,7 @@
               {
                 "state": "incomplete",
                 "knownSum": 0,
-                "missing": [
+                "coverage": {"state": "not-applicable"}, "missing": [
                   {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "conflict"},
                   {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
                 ]
@@ -693,7 +693,7 @@
             "axis": "income-year",
             "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2026, "to": 2026}
           },
-          "expect": {"values": [{"state": "complete", "knownSum": 280000, "missing": []}]},
+          "expect": {"values": [{"state": "complete", "knownSum": 280000, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "例示の規則では、pay_501は2026（規則）、pay_502は2026（年間資料と規則が一致）でdetermined。所得の年の集計は2026が280,000でcomplete。この規則は例示で、実際の規則はT14が決める。",
           "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "所得の年の集計は2026が280,000、2027が50,000でcompleteになる"}]
         },
@@ -706,7 +706,7 @@
             "axis": "income-year",
             "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2027, "to": 2027}
           },
-          "expect": {"values": [{"state": "complete", "knownSum": 50000, "missing": []}]},
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "pay_503は2027（規則）。",
           "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "pay_503は2027（規則）"}]
         },
@@ -717,6 +717,507 @@
           "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
           "reason": "年間資料と規則の年が一致するのでdetermined。",
           "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "pay_502は2026（年間資料と規則が一致）"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-f",
+      "title": "帰属の区分が分からない明細（例示の規則があっても当てはめず、候補の年をすべての年にする）。区分を確かめると規則で決まる",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-12-26T02:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_505",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "incomeTimingKind": {"state": "unknown"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-21"}, "end": {"state": "known", "value": "2026-12-20"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+              "grossPay": {"state": "known", "value": 30000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2027-01-10T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_505",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-01-10"},
+            "changeNote": {"state": "known", "value": "就業規則の支給日を確かめた"},
+            "body": {"incomeTimingKind": {"state": "known", "value": "ordinary"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o1",
+          "query": {"kind": "attribution", "payslip": "pay_505"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "帰属の区分がunknownなので、例示の規則（区分ordinaryの規則）を当てはめない。年間資料・利用者の指定もなく根拠が0件でundetermined。区分が分からないと所得の年を決める時期の日付が分からないので、候補の年は帰属の区分の次元からすべての年（支払予定日・勤務期間の2026に狭めない）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "incomeTimingKindがunknown（この版が知らない値を含む）ならすべての年"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "T14の承認前と、区分がunknown（この版が知らない値を含む）の明細では使わない"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "上の例示の規則が承認されていても、区分がunknownの明細には当てはめない（黙って2026年にしない）"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o1",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_505", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "帰属未判定のpay_505は候補の年に2026を含むので、2026年の所得の年の集計はincompleteで、pay_505をundeterminedで挙げる。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "所得の年の集計は、2026年も2027年（とほかのすべての年）もincompleteで、missingにpay_505をundeterminedで挙げる"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o1",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_505", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "候補の年はすべての年なので、2027年の集計にもpay_505を不足として挙げる（2027年をno-recordsに見せない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "所得の年の集計は、2026年も2027年（とほかのすべての年）もincompleteで"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_505"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
+          "reason": "区分をordinaryに改訂したので、例示の規則（支払予定日2026-12-25の年）が根拠になり、ほかの根拠もないのでdetermined（2026）。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "例示の規則が承認されていればdetermined（2026。根拠: 規則）になる"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 30000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_505は2026に帰属し、ほかに帰属未判定の明細はない。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "根拠がすべて同じ年"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_505は2026に決まり、2027年の対象の記録も不足もないのでno-records（0円と表示しない）。",
+          "cites": [{"doc": "common-types.md", "section": "11", "quote": "「記録なし」。0円と表示しない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-g",
+      "title": "利用者の指定が規則に優先する（例示の規則が支払予定日の年2027を返しても、指定の2026で決まる）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2027-01-09T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_506",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "bonus"},
+              "workPeriod": {"state": "not-stated"},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-08"},
+              "grossPay": {"state": "known", "value": 100000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2027-01-20T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_502",
+            "recordType": "decision",
+            "body": {
+              "decisionType": "tax-year-assertion",
+              "targets": [{"id": "pay_506", "revision": "current", "line": "whole"}],
+              "value": 2026,
+              "reasonNote": "勤務先の説明: 定められた支給日は2026-12-10で、未払いのまま後日支給された"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o1",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2027}},
+          "reason": "指定の前は、区分ordinary（読み方の既定）の明細に例示の規則を当てはめ、支払予定日2027-01-08の年2027がただ1つの根拠。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "例示の規則は明細の支払予定日の年（2027）を返す"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
+          "reason": "有効なtax-year-assertion（2026）があるので規則の根拠（2027）は使わず、根拠は利用者の指定だけでdetermined（2026）。conflictにしない（規則の2027は指定で上書きした規則として併記する）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "有効な（前提を満たす）tax-year-assertionが1件以上ある明細では、規則の根拠を使わない"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "pay_506の帰属はdetermined（2026。根拠: 利用者の指定。指定で上書きした規則の2027を併記する）で、conflictにしない"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 100000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_506は2026に帰属する。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "根拠がすべて同じ年"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_506は2026に決まったので、2027年の集計には入らない。",
+          "cites": [{"doc": "common-types.md", "section": "11", "quote": "「記録なし」。0円と表示しない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-g2",
+      "title": "指定の前提が崩れたら、規則に戻さずundetermined",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-g",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2027-01-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_506",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "支払予定日を写し誤った"},
+            "body": {"scheduledPayDate": {"state": "known", "value": "2027-01-07"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "支払予定日（帰属の候補の年の表の次元に使う項目）が判断のあとで変わったので、dcs_502の前提が崩れる。前提の崩れた指定があるので順1でundetermined（規則の2027に戻さない）。候補の年は、勤務期間がnot-stated（期間そのものが分からない）なのですべての年。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "前提が崩れた指定、またはその見方で解決できない指定がある明細は、下の表の順1でundeterminedにする（規則の根拠に戻さず"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "期間そのものがunknown・not-statedならすべての年"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "規則の2027に戻さずundeterminedにする"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_506", "revision": 2, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "帰属未判定のpay_506は候補の年に2027を含むので、2027年の集計はincomplete。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-g3",
+      "title": "指定は年間資料の根拠には優先しない（資料の年2027と指定の2026が食い違えばconflict）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-g",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2028-01-31T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ann_505",
+            "recordType": "annual-document",
+            "body": {
+              "documentType": "withholding-slip",
+              "documentLabel": "給与所得の源泉徴収票（架空）",
+              "payerEmployerId": "emp_1",
+              "targetYear": 2027,
+              "includedOtherPayers": {"state": "known", "value": []}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2028-01-31T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_505",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_505", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_506", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "conflict", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "根拠は年間資料（2027）と利用者の指定（2026。規則は指定で使わない）で、年が分かれるのでconflict。指定は年間資料の根拠を上書きしない。候補の年は勤務期間がnot-statedなのですべての年。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "年間資料の根拠は上書きしない"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "根拠の年が2つ以上の異なる年に分かれる"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "年間資料（2027）と指定（2026）が食い違うのでconflictになる（指定は年間資料には優先しない）"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-g4",
+      "title": "指定のあとで帰属の区分を改訂すると指定の前提が崩れ、規則に戻さずundetermined",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-g",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2027-01-22T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_506",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-01-22"},
+            "changeNote": {"state": "known", "value": "勤務先の説明で区分を確かめ直す"},
+            "body": {"incomeTimingKind": {"state": "unknown"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_506"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "帰属の区分は帰属の候補の年の表の次元に使う項目なので、指定（dcs_502）のあとで区分を改訂すると、指定の前提が崩れる。前提の崩れた指定があるので順1でundetermined（規則にも戻さない。区分がunknownなので規則も当てはまらない）。候補の年は区分がunknown・勤務期間がnot-statedなのですべての年。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "4", "quote": "支払予定日・勤務期間・行の並びと行の期間・帰属の区分）が、判断を保存したあとで変わったら要再確認"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "前提が崩れた指定、またはその見方で解決できない指定がある明細は、下の表の順1でundeterminedにする（規則の根拠に戻さず"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "帰属の区分を改訂する等でdcs_502の前提が崩れたら、規則の2027に戻さずundeterminedにする"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_506", "revision": 2, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "帰属未判定のpay_506は候補の年に2026を含むので、2026年の集計はincomplete（指定の2026で数えたままにしない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-h",
+      "title": "復元で入った、この版が知らない帰属の区分の値と、知らない項目（新しいマイナー版の時期の日付resolutionDate）は、読取の検査の違反にせず（expectedViolationsは空）、値を書き換えずに持つ。区分はunknownと同じに扱い、知らない項目は判定に使わない（規則を当てはめず、候補の年はすべての年。save-checkのconflictにしない）。新しい保存の拒否はTC-02-aのo05d",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2027-01-10T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": [],
+          "records": [
+            {
+              "id": "pay_507",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_1",
+                "paymentKind": {"state": "known", "value": "bonus"},
+                "incomeTimingKind": {"state": "known", "value": "officer-bonus"}, "resolutionDate": {"state": "known", "value": "2026-12-10"},
+                "workPeriod": {"state": "not-applicable"},
+                "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+                "grossPay": {"state": "known", "value": 200000}
+              }
+            }
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_507"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "officer-bonusは契約版2.0が並べていない区分の値（新しい版で足した区分でありうる）。拡張できる列挙の知らない値はunknownと同じに扱うので、例示の規則（区分ordinaryの規則）を当てはめず、根拠が0件でundetermined。候補の年は帰属の区分の次元からすべての年（支払予定日の2026に狭めない）。ordinaryに読み替えない。知らない項目resolutionDate（2026-12-10）は判定に使わない（項目がないものとして扱う）ので、候補の年を2026に狭めない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "1", "quote": "すべての判定で、そのFactの状態がunknownの場合と同じに扱う"},
+            {"doc": "common-types.md", "section": "1", "quote": "0・対象外・既定の値（ordinary等）に読み替えない"},
+            {"doc": "reconciliation.md", "section": "8", "quote": "incomeTimingKindがunknown（この版が知らない値を含む）ならすべての年"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "pay_507", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "income-year"},
+                    "state": "undetermined"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "候補の年はすべての年なので、2027年の集計にもpay_507をundeterminedで挙げる。知らない区分の値は保存の検査のすり抜け（save-checkのconflict）とはみなさないので、状態はundetermined。",
+          "cites": [
+            {"doc": "common-types.md", "section": "1", "quote": "9の「保存の検査をすり抜けたデータ」（conflictで挙げる）とはみなさず、この規則で扱う"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "保存の検査をすり抜けたデータとしてconflictにはしない"}
+          ]
         }
       ]
     }

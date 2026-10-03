@@ -1,6 +1,6 @@
 # 合成データと期待結果の台帳
 
-T03「合成データと期待結果の台帳」の成果物。関連Issue: [#22](https://github.com/doc-gif/kurashi-ledger/issues/22)。対象の契約は[記録・照合・計算結果の契約](../contracts/README.md)の契約版`1.0`。
+T03「合成データと期待結果の台帳」の成果物。関連Issue: [#22](https://github.com/doc-gif/kurashi-ledger/issues/22)。対象の契約は[記録・照合・計算結果の契約](../contracts/README.md)の契約版`2.0`（1.0から、[#32](https://github.com/doc-gif/kurashi-ledger/issues/32)の見直しで上げた。下の「未決事項」の「契約版2.0での扱い」）。
 
 この台帳は、契約の合成例（EX-01〜EX-09）と、T01のレビューで固めた規則を、試験の入力と期待値として読める形にしたもの。T06（記録ドメイン）・T11（照合）が主に使い、T07・T09・T12・T14・T15以降も一部を使う。期待値はすべて契約の本文から導いたもので、実装の出力を正解にしていない（実装はまだない）。期待値の正しさは、実装していない別の担当がレビューで確かめる。
 
@@ -22,7 +22,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 - **契約の本文から導く。** 各検査（`checks`の要素）に、理由（`reason`）と、契約の節と語句の引用（`cites`）を付ける。引用は`{ doc, section, quote }`で、`section`は見出しの番号（`2`、`11`）か合成例のID（`EX-04`）か見出しの文字（`共通の設定`）。台帳の検査は、引用の語句がその節に実在することを確かめる（Markdownの記号と空白を除いて比べる）。契約が変わって語句がなくなると試験が失敗するので、その検査の期待値を導き直す（下の「契約が変わったとき」）。
 - **規則がまだないものは「規則がない」状態で期待する。** T14が承認する前の比較の対応表と帰属の規則は、場面の`rules`を`none`にして、契約の「規則がまだないとき」（`rule-pending`・`undetermined`）を期待する。合成例が説明のために仮に使う規則（EX-06の例示の対応表、EX-05の「支払予定日の年」）は、`common-setup.json`の`illustrativeRules`に名前を付けて置き、それを使う場面だけ`rules`で指定する。どちらもT14が承認した規則ではない。
-- **契約が決めていないものは検査しない。** 期待に書かない項目は検査しない（unasserted）。集計値の`excludedCount`は書かない。`payslip-by-income-year`の`coverage`も書かない（下の「未決事項」）。契約が状態を1つに決めていない値は、決まっている範囲だけを書く（例: 振込額が記載なしの明細の未照合の振込額は`notKnown`）。
+- **契約が決めていないものは検査しない。** 期待に書かない項目は検査しない（unasserted）。集計値の`excludedCount`は書かない（契約版2.0で数え方が決まったが、台帳の期待値はまだ足していない。下の「未決事項」）。`payslip-by-income-year`の`coverage`は、契約版2.0で`not-applicable`に決まったので書く。契約が状態を1つに決めていない値は、決まっている範囲だけを書く（`unreconciled`の`{ notKnown: true }`。振込額が記載なしの明細の未照合の振込額は、契約版2.0で`not-stated`に決まったので状態を書く。EX-02-d）。
 - **並びは集合として比べる。** 期待の中の並び（`missing`、`pairs`、閉包の記録、`versionChanged`等）は、特に書かない限り順序を問わない。契約が順序を決める場合（共通の型の11の「並べる順序」）も、台帳では順序を検査しない。
 - 場面の操作は、共通の設定だけを保存したデータベースから始める（場面は互いに独立）。保存の連番の期待は、共通の設定の保存の数を`N`として`N+k`と書く（examples.mdの「保存の連番と時点の書き方」と同じ）。
 
@@ -39,13 +39,13 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | EX-04b | EX-04 (b) | 遡及差額、参照の粒度（記録全体の関係はwholeだけ） | T06・T11 |
 | EX-04c | EX-04 (c) | 正式通知の差し替え、未確認の差し替え、決定額の行は1行、決定額を使うrunの根と閉包、runのあとの変化、取消した橋の記録 | T06・T11・T15・T18 |
 | EX-04d | EX-04 (d) | 同じ種類・同じ年度の通知（表記の違い・発行者不明・別の発行者・3件以上・other）、二重登録の類と年度 | T11・T18・T19 |
-| EX-05 | EX-05 | 年またぎ、4つの日付、帰属と候補の年、根拠の食い違い、例示の規則 | T11・T14・T16 |
-| EX-06 | EX-06 | 年間資料の採用・比較・不一致・説明、範囲の一部だけの集計、coverage、対応表がない場合、runの採用の写し | T11・T14・T15 |
-| EX-07 | EX-07 | 予測の実績化、消込、使えない関係、取り下げ、行IDの予約、識別の次元、配分の符号、runの閉包 | T06・T11・T15・T20 |
+| EX-05 | EX-05 | 年またぎ、4つの日付、帰属と候補の年、根拠の食い違い、例示の規則、帰属の区分が分からない明細・この版が知らない区分の値（候補の年はすべての年）、規則より優先する利用者の指定（年間資料とは`conflict`、支払予定日や区分の改訂で前提が崩れたら`undetermined`） | T11・T14・T16 |
+| EX-06 | EX-06 | 年間資料の採用・比較・不一致・説明、範囲の一部だけの集計、coverage、対応表がない場合、明細の合計では比べない項目（`not-compared`・`annual-no-counterpart`）、runの採用の写し | T11・T14・T15 |
+| EX-07 | EX-07 | 予測の実績化、消込、使えない関係、取り下げ、行IDの予約、識別の次元、配分の符号、runの閉包、行が消えた配分の却下・取消（行の実在は作成とfrom・toの変更だけで確かめる） | T06・T11・T15・T20 |
 | EX-08 | EX-08 | 金額の4つの状態、新しい情報による変化と把握時点の再現 | T06・T10・T12 |
 | EX-09 | EX-09 | 雇用条件の期間の重なり（不明な境界） | T06・T17 |
 | TC-01 | 共通の型の2・7・9 | 改訂の競合、理由と状態の遷移、存在しない参照、不正な期間、把握日とAsia/Tokyoの日付、取消の先、変えられない項目 | T06・T07・T09 |
-| TC-02 | 共通の型の4・12 | Factの許す状態、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
+| TC-02 | 共通の型の4・12 | Factの許す状態（帰属の区分は`known`・`unknown`だけで、並べていない値と、`ordinary`の明細の遡及差額の行も拒否）、行IDの予約語`whole`（保存の拒否と、復元で入った場合の`save-check`）、検査を通した改訂による回復（回復の前の時点はincompleteのまま）、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
 | TC-03 | 共通の型の5、照合の規則の2・8 | 分からない値で絞り込まない（日付・明細の種類・行の並び・結んだ入金の日付・期間の端） | T06・T11 |
 | TC-04 | 記録の型の10 | 差し替えの系列の取消と取消の取り消し、拒否する形（自己参照・循環・分岐・次元の不一致）、未確認の系列、把握時点の再現 | T06・T11 |
 | TC-05 | 照合の規則の3、記録の型の5 | 通勤手当を含む振込と精算の入金の混在 | T11 |
@@ -74,7 +74,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ### ケースと場面
 
-ケースのファイルは`{ schemaVersion: 1, contractVersion: "1.0", caseId, title, consumers, scenarios }`。場面は次の項目を持つ。
+ケースのファイルは`{ schemaVersion: 1, contractVersion: "2.0", caseId, title, consumers, scenarios }`。場面は次の項目を持つ。
 
 | 項目 | 意味 |
 | --- | --- |
@@ -82,7 +82,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | `title` | 場面の説明 |
 | `covers` | 契約のどの節を扱うか（`{ doc, section, subsection? }`。examples.mdの小見出しは`(a)`や`手順1:`のように書く） |
 | `acceptance` | 受入条件のタグ（任意） |
-| `rules` | `{ comparisonMapping: none・EX-06-mapping, attribution: none・EX-05-scheduled-pay-date-year }` |
+| `rules` | `{ comparisonMapping: none・EX-06-mapping, attribution: none・EX-05-scheduled-pay-date-year }`。`EX-06-mapping`は、比べる項目の組（`pairs`）と、明細の合計では比べない項目（`notCompared`）を持つ。`EX-05-scheduled-pay-date-year`は、帰属の区分が`ordinary`の明細にだけ当てはめる（契約版2.0の照合の規則の8） |
 | `baseScenario` | 同じケースの先に書いた場面のID（任意）。その場面の操作のあとに、この場面の`operations`を続ける（検査と`orderVariants`は引き継がない） |
 | `operations` | 操作の並び（下の表） |
 | `orderVariants` | 入力順を入れ替えた並び（任意）。すべての操作が`accepted`の場面だけに書く。どの並びで実行しても、`afterOp`が`end`の検査は同じ結果になる |
@@ -94,7 +94,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | --- | --- | --- |
 | `save` | 記録の改訂1件の保存。`at`は注入する時計の値（記録日時）。`record`は省略した項目を既定で補う（下）。改訂は`baseRevision`（省略時は`revision`−1）を基にする | `accepted`（`recordedSeq`の期待を書いてよい）、`rejected`（`reason`）、`replayed`（同じ`writeRequestId`・同じ内容。`of`は最初の操作）、`existing-returned`（同じ`importKey`。`record`は返す記録） |
 | `saveEvidenceFile` | 証憑ファイルの保存（改訂を持たない） | `accepted`、`existing-returned`（同じ`sha256`） |
-| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く | `restored` |
+| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く（読取の検査。拡張できる列挙のこの契約版が知らない値は違反にしない。共通の型の1。新しい保存の`save`は、並べていない値を`value-invalid`で拒否する） | `restored` |
 | `saveRun` | 計算runの保存。`run`は射影（下の「runの射影」） | `accepted`、`rejected`（`reason`） |
 
 拒否された保存は記録を作らず、保存の連番も使わない。記録のIDは、試験で注入するID生成器が返す値として扱う。拒否された新規の保存と同じIDで、あとで保存し直す場面がある（拒否された保存は記録を作らないので、一度使ったIDの再利用にはならないと読む。下の「未決事項」）。
@@ -105,7 +105,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 - 改訂の共通の形: `revision` 1、`reason` `create`、`status`は理由から（`void`なら`voided`、ほかは`active`）、`duplicateOf`・`importKey`は`not-applicable`（`entryChannel` `manual`）、`changeNote`は`unknown`、`writeRequestId`は`w-<scenarioId>-<opId>`（同じ操作の再送は同じキー）。`restoreUnchecked`で置く改訂は、1つの操作で複数の改訂を置くので、改訂ごとに`w-<scenarioId>-<opId>-<記録のID>-v<版>`にする（`writeRequestId`はデータベース全体で予約するキーなので重ねない。台帳の検査が重なりを見つける）。`knownOn`は、`create`・`new-information`では`unknown`、`correct-input-error`・`void`・`unvoid`では直前の改訂から引き継ぐ。
 - 版2以上の改訂の`body`は、直前の採用された改訂の`body`に、書いた項目だけを差し替えたもの（取消・取消の取り消しは何も書かない）。
-- `body`の`Fact`の項目: 「〜の場合だけ」の項目（照合配分の`settlesForecastLine`・`confirmedAgainst`、`annual-coverage`の`amount`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`）は、その場合でなければ`not-applicable`、その場合なら省略できない。`supersedes`は`not-applicable`。資料から写す並び（`otherEarnings`・`otherDeductions`・`amounts`・`installments`・`statusDates`）は`known`の空、`includedOtherPayers`は`unknown`。ほかは`unknown`。
+- `body`の`Fact`の項目: 給与明細の帰属の区分`incomeTimingKind`は、遡及差額の行（分類`retroactive-adjustment`）を持つ明細は`unknown`、ほかは`known`の`ordinary`（examples.mdの「読み方」の6。区分が分からない明細の場面は`unknown`と書く）。「〜の場合だけ」の項目（照合配分の`settlesForecastLine`・`confirmedAgainst`、`annual-coverage`の`amount`、照合の判断の`scope`・`explainedComparisons`、予測の`accountId`）は、その場合でなければ`not-applicable`、その場合なら省略できない。`supersedes`は`not-applicable`。資料から写す並び（`otherEarnings`・`otherDeductions`・`amounts`・`installments`・`statusDates`）は`known`の空、`includedOtherPayers`は`unknown`。ほかは`unknown`。
 - `Fact`でない項目: 文字列（表示名・表題・行の名前・`reasonNote`）は`合成`、予測の行の`lineStatus`は`open`。ほかは省略できない。
 
 補ったあとの記録は、契約の保存の条件を満たさなければならない（台帳の検査が確かめる）。
@@ -196,11 +196,12 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 `npm test`（`tests/**/*.test.ts`）に含まれ、CI（T05）がmacOS・Windows・Linuxで実行する。単独では`node --test tests/fixtures/ledger/ledger.test.ts`で実行できる。確かめること:
 
-- ファイルの形、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
+- ファイルの形、共通の設定・ケース・制度のケースの契約版（`contractVersion`。台帳の対象の契約版と同じ）、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
 - 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。二重登録の取消の残す方（`duplicateOf`）が、取消しておらず、整った差し替えの系列の現在の記録であること（未確認の系列や、自己参照・循環を含む系列の記録は残す方にできない）。現在の見方（検査の`view`を省略、または`kind`が`current`）の`seriesStatus`の期待値が、`afterOp`の時点の最新の改訂から系列の補助で導いた状態（`voided`・`unconfirmed-series`・`superseded`・`current`）と一致すること。時点を指定した見方（`record-seq`・`record-time`・`known-on`）の期待値と`not-in-view`は、最新の状態と比べない（その見方の改訂を選んで導くのはT06）。ほかの検査で台帳の状態を使うのは、記録・版・行・runが`afterOp`の時点で実在することの確認だけで、見方から導く値を最新の状態と比べない。差し替えの系列の判定は、runの射影の不足の判断・`duplicateOf`の残す方・`seriesStatus`のどれでも、同じ1つの補助（記録の型の10の1〜5）の結果だけを使い、入口ごとに食い違わせない。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
 - 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、集計の要求のscopeが許す次元（`forecast-remaining`で口座を許すのは`deposit-amount`だけ。拒否を期待する検査は`{ error: rejected-request }`で書ける）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形、採用の写しの形等。期待の中の並びのobjectでない要素は、位置を示して問題にする。
-- 照合配分が行を指す参照は、その項目が指せる種類の行に実在すること（給与明細は支給の行`otherEarnings`だけで、控除の行は指せない。予測は見込みの行）。
+- 照合配分が行を指す参照は、その項目が指せる種類の行に実在すること（給与明細は支給の行`otherEarnings`だけで、控除の行は指せない。予測は見込みの行）。確かめるのは配分の版1と、`from`・`to`を直前の版から変える改訂だけ（共通の型の2）。
+- 例示の規則（`illustrativeRules`）の名前・説明・引用と、比較の対応表の`pairs`・`notCompared`の項目・一意性・排他性。比較の期待値の状態が、場面の対応表と合うこと（対応表にない項目は`rule-pending`、`notCompared`の項目は`not-compared`）。
 - 引用の語句が契約の節に実在すること、examples.mdのEX-NNの見出しと小見出しをすべての場面のどれかが扱うこと、受入条件のタグをそれぞれ1つ以上の場面が持つこと、制度のケースの必須の項目。
 - 検査そのものが誤りを見逃さないことを、台帳を写して壊した版で確かめる。
 
@@ -212,7 +213,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 ## 未決事項
 
-契約が一通りに決めていない、または台帳で解釈を選んだもの。期待値では検査しないか、解釈を理由に書いた。所有者・契約の担当（T01の後続の契約の変更）・T06・T11の判断を求める。
+契約版1.0が一通りに決めていなかった、または台帳で解釈を選んだもの。下の1〜11は契約版1.0のときの記録で、契約版2.0での扱いは、この節の最後の「契約版2.0での扱い」を正とする（決まったものは契約の節を正とする）。
 
 1. **集計値の`excludedCount`:** 「対象外・取消・差し替え済みで除いた件数」の「対象外」が、`not-applicable`の項目を持つ記録（状態の表では対象の記録に数える）を含むか、`missing`に挙げた記録を含むかが決まっていない。台帳では検査しない。
 2. **`payslip-by-income-year`の`coverage`:** 共通の型の11の`coverage`は「所得の年の軸の年間の値」の説明で、所得の年ごとの明細の合計（`payslip-by-income-year`）のcoverageが`entered-records-only`か`not-applicable`かが読み取れない。台帳では検査しない。
@@ -225,3 +226,22 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 9. **拒否された新規の保存のID:** 契約は「一度使ったIDは、取消のあとも再利用しない」と定める。拒否された保存は記録を作らないので、そのIDを、あとの保存し直しで使ってよいと読んだ（EX-04a、EX-04b、EX-04c、TC-01）。使えないとする場合は、場面のIDを分ける。
 10. **拒否の理由の名前:** 台帳の名前は提案で、T06・T11が実装の名前を決めたら対応表を置く。
 11. **制度のケースの年の種類:** 勤務先の保険料（`premium`）と認定（`recognition`）の対象の年の種類はT14が一次資料で決める。
+
+### 契約版2.0での扱い
+
+[#32](https://github.com/doc-gif/kurashi-ledger/issues/32)（契約の見直し）で、上の1〜11を次のとおり扱った。台帳の期待値を直したもの以外は、後続（T03の追従、T06・T11の実装）で検査を足す。
+
+| 番号 | 扱い | 契約の節 | 台帳 |
+| --- | --- | --- | --- |
+| 1 | 契約で決めた。「対象外」は`not-applicable`の項目の記録。`missing`に挙げた記録は数えない。取消・差し替え済みは、日付の軸の値と範囲の次元が`known`で範囲に入るものだけ（所得の年の軸では数えない） | 共通の型の11の「除いた件数」 | まだ検査しない（後続） |
+| 2 | 契約で決めた。`coverage`は`annual-value`だけで、`payslip-by-income-year`は`not-applicable` | 共通の型の11の`coverage` | 所得の年の集計の検査に`coverage`を書いた |
+| 3 | 契約で決めた。振込額・入金額と同じ状態（記載なしは`not-stated`）。振込がない明細は`not-applicable`、使えない配分があれば`unknown` | 照合の規則の3の「照合の残高」の表 | EX-02-dを`not-stated`にした |
+| 4 | 契約で決めた。判断全体の前提は資料と範囲の条件だけで、項目の値が変わってもほかの項目と判断全体は崩れない（台帳の読み方どおり） | 照合の規則の4の`mismatch-explanation` | 変更なし（EX-06-c3） |
+| 5 | 契約で決めた。候補を抑えるのは前提を満たす`distinct`だけで、前提が崩れた`same`の組は候補に出る（台帳の読み方どおり） | 照合の規則の7 | 変更なし（EX-03-a） |
+| 6 | 契約で決めた。要求の`scope`が指す雇用先・口座は、記録がなくても閉包の根に入る | 計算結果の1の「要求の範囲のマスタ」 | まだ検査しない（後続。EX-04a-a5に`inputsRecords`を足せる） |
+| 7 | 契約で決めた。差し替え済みの類はどの集合にも割り当てないので`missing`に挙げない | 照合の規則の7 | まだ検査しない（後続。EX-04c-c4） |
+| 8 | 契約で決めた。選ばれた改訂より版が大きい改訂に把握日が`unknown`のものがある記録を、`id`・選ばれた版・選ばなかった版で出す | 共通の型の7の「把握日不明の一覧」 | まだ検査しない（後続。TC-04-c） |
+| 9 | 契約で決めた。拒否された保存のIDは使ったことにならない（台帳の読み方どおり） | 共通の型の2 | 変更なし |
+| 10 | 契約の範囲外。拒否の理由の名前は台帳の名前を共通の語とし、T06・T11が足した名前を台帳の表に足す | — | T06（#28）・T11 |
+| 11 | 契約の範囲外。勤務先の保険料・認定の年の種類はT14が一次資料で決める | — | T14（#27） |
+

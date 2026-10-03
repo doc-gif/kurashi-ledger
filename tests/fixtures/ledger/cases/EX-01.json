@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-01",
   "title": "銀行入金だけを記録し、後から明細を追加する",
   "consumers": ["T06", "T09", "T11"],
@@ -103,7 +103,7 @@
         {"checkId": "c05", "afterOp": "o1",
          "query": {"kind": "aggregate", "key": {"kind": "payslip-by-income-year", "item": "grossPay"}, "axis": "income-year",
            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}},
-         "expect": {"values": [{"state": "no-records", "knownSum": 0, "missing": []}]},
+         "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
          "reason": "所得の年の明細の合計の採用元は帰属の年が決まった給与明細。明細がなく、帰属未判定の一覧も空なので記録なし。入金は所得の年の集計に入らない。",
          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "所得の年ごとの明細の合計"},
                    {"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]},
@@ -152,7 +152,7 @@
         {"checkId": "c13", "afterOp": "end",
          "query": {"kind": "aggregate", "key": {"kind": "payslip-by-income-year", "item": "grossPay"}, "axis": "income-year",
            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": 2026, "to": 2026}},
-         "expect": {"values": [{"state": "incomplete", "knownSum": 0, "missing": [
+         "expect": {"values": [{"state": "incomplete", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": [
            {"ref": {"id": "pay_101", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]}]},
          "reason": "帰属が決まった明細はないのでknownSumは0。pay_101は帰属未判定で候補の年に2026を含むので、2026の集計に不足として挙がり、incompleteになる（規則の承認前に年の合計をcompleteに見せない）。",
          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "規則の承認前に、あとで帰属しうる年の集計をcompleteに見せないため"}]}

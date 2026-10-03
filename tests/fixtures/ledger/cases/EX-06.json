@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-06",
   "title": "年間資料と月次資料（採用・比較・不一致・範囲の一部の集計）",
   "consumers": ["T11", "T14", "T15"],
@@ -637,7 +637,7 @@
           "expect": {"state": "mismatch-unresolved", "difference": {"state": "known", "value": 50000}},
           "reason": "年間資料150,000と結んだ明細の課税支給額の合計100,000が異なり、説明の判断がない。差（年間資料 − 明細の合計）は50,000。",
           "cites": [
-            {"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで異なり、上の6に当たらない（判断がない、または前提が崩れている）"},
+            {"doc": "reconciliation.md", "section": "5", "quote": "両方がknownで異なり、上の8に当たらない（判断がない、または前提が崩れている）"},
             {"doc": "reconciliation.md", "section": "5", "quote": "差（年間資料 − 明細の合計）を、比較の状態とともに表示する"}
           ]
         },
@@ -1196,7 +1196,7 @@
           "cites": [
             {"doc": "calculation-results.md", "section": "1", "quote": "年間資料が複数の支払者を範囲に含む場合は、従来どおり、範囲と同じ集合のpayersを持つスナップショット1つで表し"},
             {"doc": "examples.md", "section": "EX-06", "quote": "必要な（年、支払者）の組は（2026、A）と（2026、C）で、選択はどちらもann_602"},
-            {"doc": "reconciliation.md", "section": "5", "quote": "結んだ明細が0件（上の2に当たらない。確定済みの関係が実際にない）"}
+            {"doc": "reconciliation.md", "section": "5", "quote": "結んだ明細が0件（上の4に当たらない。確定済みの関係が実際にない）"}
           ]
         },
         {
@@ -1206,6 +1206,111 @@
           "expect": {"adoptions": []},
           "reason": "年間の値を要求しないrunでは必要な集合が空。スナップショットを足すと多いので保存しない。",
           "cites": [{"doc": "calculation-results.md", "section": "1", "quote": "annual-valueの要求がなければ空"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c5",
+      "title": "明細の合計では比べない項目（例示の対応表）はnot-compared、対応表にない項目はrule-pending",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "incomeAfterEmploymentDeduction"},
+          "expect": {"state": "not-compared"},
+          "reason": "例示の対応表がincomeAfterEmploymentDeductionを明細の合計では比べないと定めているので、結び付けや値によらずnot-compared（rule-pendingでも不一致でもない）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "対応表が、その資料のその項目を明細の合計では比べないと定めている"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "ann_603のこの項目の比較の状態は、結び付けや値によらずnot-compared"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "comparison", "annualDocument": "ann_603", "field": "totalIncomeDeductions"},
+          "expect": {"state": "rule-pending"},
+          "reason": "例示の対応表はtotalIncomeDeductionsを定めていない（比べるとも比べないとも）ので、対応表がまだないrule-pending。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "どちらも定めていない項目は、対応表がまだない"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "totalIncomeDeductionsは例示の対応表にないのでrule-pending"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-06-c4-nc",
+      "title": "入力済みの明細を選んだ支払者で、明細の合計では比べない項目の年間の値は示せない（annual-no-counterpart）",
+      "covers": [{"doc": "examples.md", "section": "EX-06", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "EX-06-mapping", "attribution": "none"},
+      "baseScenario": "EX-06-c4",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "incomeAfterEmploymentDeduction"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "emp_2", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "annual-no-counterpart"},
+                    "state": "unknown"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "選択はentered-payslipsで、対応表がこの項目を明細の合計では比べないと定めているので、明細から示せない。値を足さず、支払者をannual-no-counterpart・unknownで挙げてincomplete（0円にも記録なしにもしない）。範囲のどの支払者の値も足せないのでcoverageはnot-applicable。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "missingに派生キーannual-no-counterpart（refは支払者）を状態unknownで挙げ、incompleteにする"},
+            {"doc": "common-types.md", "section": "11", "quote": "範囲のすべての支払者が値を足せない場合は、coverage not-applicableの集計値を1つ返す"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "missingに勤務先B（emp_2）を派生キーannual-no-counterpart・状態unknownで挙げる"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "annual-value", "item": "totalIncomeDeductions"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {
+                    "ref": {"id": "emp_2", "revision": 1, "line": "whole"},
+                    "field": {"kind": "derived", "key": "annual-mapping"},
+                    "state": "rule-pending"
+                  }
+                ]
+              }
+            ]
+          },
+          "reason": "対応表にない項目は規則がまだないので、annual-mapping・rule-pendingで挙げてincomplete。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "5", "quote": "missingに派生キーannual-mapping（refは支払者）を状態rule-pendingで挙げ、incompleteにする"},
+            {"doc": "examples.md", "section": "EX-06", "quote": "totalIncomeDeductionsはannual-mapping・rule-pendingで挙げる"}
+          ]
         }
       ]
     }

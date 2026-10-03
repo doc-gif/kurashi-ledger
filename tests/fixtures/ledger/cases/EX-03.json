@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-03",
   "title": "同じ日・同じ金額の別件（再送、二重登録、取消と取消の取り消し、雇用先の二重登録、分類だけの訂正、取込のキー）",
   "consumers": ["T06", "T09", "T11"],

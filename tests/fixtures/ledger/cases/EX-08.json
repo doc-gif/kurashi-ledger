@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-08",
   "title": "金額の4つの状態",
   "consumers": ["T06", "T10", "T12"],
