@@ -8,7 +8,22 @@
     "docs/project-status.md",
     "docs/test-oracles/README.md",
     "docs/testing.md",
-    "src/domain/records/*"
+    "src/domain/records/aggregate.ts",
+    "src/domain/records/effective.ts",
+    "src/domain/records/fact.ts",
+    "src/domain/records/ids.ts",
+    "src/domain/records/index.ts",
+    "src/domain/records/ledger.ts",
+    "src/domain/records/masters.ts",
+    "src/domain/records/oracle.test.ts",
+    "src/domain/records/reasons.ts",
+    "src/domain/records/records.test.ts",
+    "src/domain/records/save.ts",
+    "src/domain/records/schema.ts",
+    "src/domain/records/series.ts",
+    "src/domain/records/validate.ts",
+    "src/domain/records/values.ts",
+    "src/domain/records/views.ts"
   ],
   "conflicts": [],
   "assessments": [
