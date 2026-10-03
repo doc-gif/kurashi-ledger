@@ -30,6 +30,11 @@
       "description": "mainがPR #12（T02）の統合で4a8667bへ進んだ。AGENTS.mdに、commitの前に`npm run check:public -- --staged`を実行する規則が加わった。作業環境のNode.js 24.14.0では、devEnginesの検査でnpmのスクリプトが止まる（docs/development.mdの既知の制約）。",
       "state": "resolved",
       "resolution": "履歴を書き換えずにmainをmergeする。新しいbaseの条件・台帳は8f0e492と同じで、選ばれる条件・シナリオ・contextも変わらないため、base_shaだけを更新する。公開検査は依存のないスクリプトなので、npmを通さず`node scripts/check-public.ts --staged`で各commitの前に実行し、版の制約と実行方法を引継ぎに書く（固定版での確認はT05）。"
+    },
+    {
+      "description": "CodexのPR16-R001（review 5398413357）とCopilot（discussion_r4171162468）: PR12-R104の教訓「対象とその親をlstatで確かめ」では、root/link/parent/recordのように深い祖先がリンクの場合を見逃し、教訓を再利用すると境界外の変更を防げない。",
+      "state": "resolved",
+      "resolution": "PR12-R104の教訓を、信頼した実体のルートから対象までの経路のすべての要素を確かめる（または解決後の実体が許可した範囲の中にあることを確かめる）条件へ直し、対象と直近の親だけでは足りないことも書く。ID・原因キー・出典は変えない。T02の実装が満たすことや、確認と操作の間の競合の防止は台帳で保証しない。深い祖先がリンクの反例を静的に照合し、ほかの教訓にも対象・親だけの経路の検査がないかを確かめ、あれば同じく直す。"
     }
   ],
   "assessments": [
@@ -57,8 +62,8 @@
         },
         {
           "id": "trust",
-          "method": "差分が.review/findings.jsonと本計画だけであることを三点diffで確かめ、base側の検査器でguard.py checkとci.pyを実行する。教訓に解消状態・対応commit・accepted・所有者判断を書いていないことを目視する。",
-          "expected": "条件・検査器・試験は変わらず、ci.pyはpolicy_changesなし・ledger_changed=trueを報告する。checkのmetadata-completeは記入の充足だけを示し、台帳の内容はCodexの独立レビューを受ける。"
+          "method": "差分が.review/findings.jsonと本計画だけであることを三点diffで確かめ、base側の検査器でguard.py checkとci.pyを実行する。教訓に解消状態・対応commit・accepted・所有者判断を書いていないことを目視する。 PR12-R104の教訓を、深い祖先がリンク（root/link/parent/record）の反例で静的に照合し、ほかの教訓にも対象・親だけを確かめる経路の検査がないことを確かめる。",
+          "expected": "条件・検査器・試験は変わらず、ci.pyはpolicy_changesなし・ledger_changed=trueを報告する。checkのmetadata-completeは記入の充足だけを示し、台帳の内容はCodexの独立レビューを受ける。 反例でも教訓の条件に従えば境界外の変更を止められ、対象・親だけで足りると読める教訓は残らない。"
         }
       ]
     },
