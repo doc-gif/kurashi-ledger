@@ -42,20 +42,28 @@ export interface SeriesAnalysis {
   readonly problems: readonly SeriesProblem[];
 }
 
-type SupersedesTarget = { readonly kind: "none" } | { readonly kind: "ref"; readonly id: string } | { readonly kind: "invalid" };
+// supersedesの読み方。形の崩れた値（knownでrevisionが整数・lineが行ID・余分な項目、not-applicableなのに値がある等）は、
+// 関係がないものとはみなさず「invalid」にする。そのとき読み取れる参照先のIDがあれば残し、どの経路でもその記録と同じ系列に
+// 入れて、系列全体を整っていない系列にする（古い資料を独立の現在の記録にしない。Copilot r4173261559）。
+type SupersedesTarget = { readonly kind: "none" } | { readonly kind: "ref"; readonly id: string } | { readonly kind: "invalid"; readonly id: string | undefined };
 
 function supersedesOf(rev: Revision): SupersedesTarget {
   const f = bodyOf(rev)["supersedes"];
   const st = stateOf(f);
-  if (st === "not-applicable") return { kind: "none" };
-  if (st === "known") {
-    const v = (f as { value?: unknown }).value;
-    if (typeof v === "object" && v !== null) {
-      const r = v as { id?: unknown; line?: unknown; revision?: unknown };
-      if (typeof r.id === "string" && r.line === "whole" && r.revision === "current") return { kind: "ref", id: r.id };
-    }
+  const v = typeof f === "object" && f !== null && Object.hasOwn(f, "value") ? (f as { value?: unknown }).value : undefined;
+  const r = typeof v === "object" && v !== null ? (v as { id?: unknown; line?: unknown; revision?: unknown }) : undefined;
+  const id = typeof r?.id === "string" ? r.id : undefined;
+  const keys = typeof f === "object" && f !== null ? Object.keys(f).filter((k) => k !== "state" && k !== "note") : [];
+  if (st === "not-applicable" && keys.length === 0) return { kind: "none" };
+  if (st === "known" && r !== undefined && id !== undefined && r.line === "whole" && r.revision === "current" && Object.keys(r).length === 3 && keys.length === 1) {
+    return { kind: "ref", id };
   }
-  return { kind: "invalid" };
+  return { kind: "invalid", id };
+}
+
+// supersedesがつなぐ先のID（正しい参照か、形の崩れた参照で読み取れるID）。
+function linkedId(s: SupersedesTarget): string | undefined {
+  return s.kind === "none" ? undefined : s.id;
 }
 
 class UnionFind {
@@ -145,8 +153,8 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
     problems.push({ kind: "save-check", ids: [id] });
     for (const r of revisionsOf(ledger, id)) {
       if (r.revision > sel.revision) continue;
-      const s = supersedesOf(r);
-      if (s.kind === "ref") uf.union(id, s.id);
+      const target = linkedId(supersedesOf(r));
+      if (target !== undefined) uf.union(id, target);
     }
   }
   for (const x of ids) {
@@ -159,6 +167,7 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
       if (s.kind === "invalid") {
         problems.push({ kind: "invalid-reference", ids: [...visited] });
         for (const v of visited) uf.union(x, v);
+        if (s.id !== undefined) uf.union(x, s.id);
         break;
       }
       const y = s.id;
@@ -200,8 +209,8 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
   for (const u of ids) {
     if (selected.get(u) !== undefined) continue;
     for (const r of revisionsOf(ledger, u)) {
-      const s = supersedesOf(r);
-      if (s.kind === "ref") uf.union(u, s.id);
+      const target = linkedId(supersedesOf(r));
+      if (target !== undefined) uf.union(u, target);
     }
   }
   // 2. 分岐（同じ記録を差し替える取消していない記録が2件以上）と、取消していない記録どうしの循環。

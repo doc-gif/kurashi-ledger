@@ -97,8 +97,10 @@ export function dependentViolations(ledger: Ledger, view: ResolvedView): Depende
     for (let j = i + 1; j < terms.length; j += 1) {
       const a = terms[i];
       const b = terms[j];
-      if (a === undefined || b === undefined || a.employer === undefined || a.employer !== b.employer) continue;
-      if (intervalsOverlap(a.interval, b.interval)) out.push({ kind: "employment-term-overlap", ids: [a.id, b.id], detail: a.employer });
+      // 雇用先が分からない（形の崩れた参照・有効なマスタに解決できない）雇用条件は、どの雇用先の雇用条件とも同じ雇用先で
+      // ありうるものとして判定する（重ならないとは決めない。共通の型の5。Copilot r4173261559の監査）。
+      if (a === undefined || b === undefined || (a.employer !== undefined && b.employer !== undefined && a.employer !== b.employer)) continue;
+      if (intervalsOverlap(a.interval, b.interval)) out.push({ kind: "employment-term-overlap", ids: [a.id, b.id], detail: a.employer ?? b.employer ?? "unknown" });
     }
   }
   for (const id of checkSubjectIds(ledger, "annual-document", view, series)) {

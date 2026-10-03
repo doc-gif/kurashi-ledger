@@ -978,3 +978,64 @@ test("PR28-R009: 行IDのwholeは予約語として受け付けず、記録全�
   rejected(keep, "value-invalid");
   assert.equal(keep.ledger, r);
 });
+
+test("Copilot r4173261559: 形の崩れたknownのsupersedesを関係がないものとせず、古い資料も新しい資料も数えない", () => {
+  const grossOct = (ledger: Ledger) => aggregateRecords(ledger, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  const bad = (value: Obj): Obj => ({ supersedes: { state: "known", value } });
+  for (const value of [
+    { id: "pay_a", revision: 1, line: "whole" },
+    { id: "pay_a", revision: "current", line: "l1" },
+    { id: "pay_a", revision: "current", line: "whole", extra: 1 },
+    { id: "pay_a" },
+  ]) {
+    // 起点: 新しい資料Bのsupersedesが形の崩れた参照（復元）。
+    let l = setup();
+    l = ok(save(l, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+    l = restore(l, [payslip("pay_b", { grossPay: { state: "known", value: 200 }, ...bad(value) })]);
+    const out = grossOct(l);
+    assert.ok(out.ok, JSON.stringify(value));
+    if (out.ok) {
+      assert.equal(out.values[0].state, "incomplete", JSON.stringify(value));
+      assert.equal(out.values[0].knownSum, 0, JSON.stringify(value));
+      assert.deepEqual([...new Set(out.values[0].missing.map((m) => m.ref.id))].sort(), ["pay_a", "pay_b"], JSON.stringify(value));
+    }
+    assert.equal(analyzeSeries(l, "payslip", CURRENT).status.get("pay_a"), "unconfirmed-series", JSON.stringify(value));
+  }
+  // 取消した橋のsupersedesが形の崩れた参照（A ← B（取消、形の崩れた参照） ← C）。
+  let g = setup();
+  g = ok(save(g, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+  g = restore(g, [payslip("pay_b", { grossPay: { state: "known", value: 150 }, ...bad({ id: "pay_a", revision: 1, line: "whole" }) }), { id: "pay_b", recordType: "payslip", revision: 2, reason: "void" }]);
+  g = restore(g, [payslip("pay_c", { grossPay: { state: "known", value: 200 }, supersedes: { state: "known", value: { id: "pay_b", revision: "current", line: "whole" } } })]);
+  const bridged = grossOct(g);
+  assert.ok(bridged.ok && bridged.values[0].state === "incomplete" && bridged.values[0].knownSum === 0, JSON.stringify(bridged));
+  // not-applicableなのに参照の値を持つ形の崩れた差し替えも、関係がないものとしない。
+  let n = setup();
+  n = ok(save(n, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+  n = restore(n, [payslip("pay_b", { grossPay: { state: "known", value: 200 }, supersedes: { state: "not-applicable", value: { id: "pay_a", revision: "current", line: "whole" } } })]);
+  const na = grossOct(n);
+  assert.ok(na.ok && na.values[0].knownSum === 0 && na.values[0].state === "incomplete", JSON.stringify(na));
+  // 正しい差し替えは、これまでどおり新しい資料だけを数える。
+  let ok2 = setup();
+  ok2 = ok(save(ok2, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+  ok2 = ok(save(ok2, payslip("pay_b", { grossPay: { state: "known", value: 200 }, supersedes: { state: "known", value: { id: "pay_a", revision: "current", line: "whole" } } }), T0));
+  const good = grossOct(ok2);
+  assert.ok(good.ok && good.values[0].state === "complete" && good.values[0].knownSum === 200, JSON.stringify(good));
+});
+
+test("Copilot r4173261559の監査: 形の崩れたduplicateOfの取消は除く根拠にせず、雇用先が分からない雇用条件とは重なりを判定する", () => {
+  // 形の崩れたduplicateOfを持つ取消（復元）は、取消として除かず、save-checkのconflictにする。
+  let l = setup();
+  l = restore(l, [deposit("dep_a", { state: "known", value: 100 }), { id: "dep_a", recordType: "bank-deposit", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "dep_b", revision: 1, line: "whole" } } }]);
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_a@2:save-check:conflict"] });
+  // 雇用先が文字列でない（形の崩れた参照の）復元した雇用条件があると、期間が重なる新規の雇用条件は、どの雇用先でも拒否する。
+  let t = setup();
+  t = restore(t, [{ id: "term_x", recordType: "employment-term", body: { employerId: 123, applicablePeriod: { start: { state: "known", value: "2026-01-01" }, end: { state: "known", value: "2026-12-31" } } } }]);
+  const seq = t.saves.length;
+  const term = (start: string, end: string): Obj => ({ id: "term_y", recordType: "employment-term", body: { employerId: "emp_2", applicablePeriod: { start: { state: "known", value: start }, end: { state: "known", value: end } } } });
+  const overlap = save(t, term("2026-06-01", "2026-06-30"), T0);
+  rejected(overlap, "employment-term-overlap");
+  assert.equal(overlap.ledger, t);
+  assert.equal(overlap.ledger.saves.length, seq);
+  // 期間が重ならない雇用条件は受け付ける。
+  ok(save(t, term("2027-01-01", "2027-12-31"), T0));
+});
