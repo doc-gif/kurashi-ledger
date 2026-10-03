@@ -139,10 +139,28 @@ jobs:
           python-version: '3.11'
       - name: Validate the catalog and the ledger
         run: python -E -s tools/review_guard/guard.py validate
-      - name: Test the generic tool
-        run: python -E -s -m unittest discover -s tools/review_guard/tests -v
-      - name: Test the repository routing
-        run: python -E -s -m unittest discover -s .review/tests -v
+      # unittestは、0件・skip・期待した失敗（expectedFailure）でも0で終わるので、要約の行も照合する
+      # （ブラウザ試験のPR18-R002と同じ穴を塞ぐ）。
+      - name: Test the generic tool and the repository routing
+        run: |
+          set -o pipefail
+          strict_unittest() {
+            local log="$RUNNER_TEMP/unittest-$1.txt"
+            if ! python -E -s -m unittest discover -s "$2" -v 2>&1 | tee "$log"; then
+              echo "::error::$2 の試験が失敗した"
+              return 1
+            fi
+            if grep -Eq '^Ran 0 tests' "$log"; then
+              echo "::error::$2 の試験が0件"
+              return 1
+            fi
+            if grep -Eq '^(OK|FAILED) \(.*(skipped|expected failures|unexpected successes)=' "$log"; then
+              echo "::error::$2 に、skip・期待した失敗・予期しない成功のどれかがある（成功として扱わない）"
+              return 1
+            fi
+          }
+          strict_unittest tool tools/review_guard/tests
+          strict_unittest routing .review/tests
 
   # tools/review_guard/adapters/github-actions.yml の計画の検査を配置したもの。baseのcheckoutの検査器だけを
   # 実行し、PRのコード（candidate）は実行しない。PRのときだけ動く。

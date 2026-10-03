@@ -106,7 +106,7 @@ T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004�
 - 試験は`e2e/`の`*.spec.ts`に置く。`node --test`の試験（`*.test.ts`）とは別で、`npm test`では実行しない。
 - ブラウザは`e2e/browsers.ts`の1か所で決める。ChromiumをmacOS・Windows・Linux、WebKitをmacOSで実行する（PlaywrightのWindows・LinuxのWebKitはSafariの代わりにならない）。Firefoxは必須の対象に含めない（ADR-0004）。
 - 手元で動かすとき: `npm run setup`のあと、`npm run test:browser:install`でこのOSに要るブラウザを入れてから、`npm run test:browser`を実行する。ブラウザはPlaywrightの配布元から取得し、Playwrightの既定の場所（利用者のキャッシュ。macOSは`~/Library/Caches/ms-playwright`、Windowsは`%LOCALAPPDATA%\ms-playwright`、Linuxは`~/.cache/ms-playwright`）に入る。`node_modules`の外なので、依存の導入の記録には影響しない。Linuxで足りないOSのライブラリも入れるときは`npm run test:browser:install -- --with-deps`（管理者の権限を使う）。
-- 照合（`e2e/strict-reporter.ts`）: このOSで必要なブラウザのどれかで実行した試験が0件、skipした試験、再試行で通った試験があれば、試験が通っていても失敗にする。いまブラウザ試験で飛ばしてよい試験はない。飛ばす試験を加えるときは、照合とこの資料を同じPRで直す。`retries`は0で、CIでは`test.only`を拒む（`forbidOnly`）。試験を集めるだけ（`--list`）のときは、CIの外でだけ照合しない。
+- 照合（`e2e/strict-reporter.ts`、分類は`scripts/lib/browser-outcomes.ts`）: 成功として数えるのは、成功を期待して（`expectedStatus`がpassed）実際に合格した試験だけ。Playwrightは`test.fail()`で期待どおり失敗した試験も「期待どおり」（`outcome()`がexpected）として全体をpassedにするが、照合ではこれを成功にしない。期待した失敗、skip、再試行で通った試験（flaky）、中断、時間切れ、未実行、失敗のどれかがある、このOSで必要なブラウザのどれかで成功した試験が0件、またはPlaywright全体の結果がpassedでなければ、全体を失敗にする。この境界は`scripts/browser-outcomes.test.ts`が、分類の単体試験と、実際のPlaywrightで`e2e/reporter-fixtures/`の合成の試験（ブラウザを使わない。`npm test`で全OSで実行）を流して確かめる。いまブラウザ試験で飛ばしてよい試験も、失敗を期待してよい試験もない。加えるときは、照合とこの資料を同じPRで直す。`retries`は0で、CIでは`test.only`を拒む（`forbidOnly`）。試験を集めるだけ（`--list`）のときは、CIの外でだけ照合しない。
 - 設定（`playwright.config.ts`）では、ブラウザの安全上の既定の動き（CSP、HTTPSの検査、要求のヘッダ、権限、プロキシ）を変える設定（`bypassCSP`、`ignoreHTTPSErrors`、`extraHTTPHeaders`等）を使わない。T26のcookieの交換・Origin・`Sec-Fetch-Site`・CSPの試験を、実際のブラウザの動きのまま確かめるため。trace・screenshot・videoは作らない。出力先の`test-results/`は`.gitignore`の対象。
 - いまの試験（`e2e/browser-base.spec.ts`）は、基盤が各ブラウザで動くことの確認だけ（日本語のページの表示と、試験の中で127.0.0.1に立てた一時のサーバーとのcookieの往復。合成の固定の文字列だけ）。アプリのサーバーと境界の試験はT26、UIのE2EはT08以降が加える。実機のSafariでの確認は、ADR-0004のとおりリリースの前に手で行う。
 
@@ -118,12 +118,12 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 | --- | --- | --- |
 | `checks` | Linux・Windows・macOS | `package.json`の`devEngines.runtime`の範囲で最新のNode.jsを入れ（`actions/setup-node`の`node-version-file`。npm自身もdevEnginesで版を検査する）、`npm run setup`→`check:install`→`typecheck`→`npm test`→skipの照合（`check:test-skips`）→`build`と、`check:public`を実行する |
 | `browser` | Linux・Windows・macOS | `npm run setup`→`test:browser:install`→`test:browser`（ChromiumをすべてのOS、WebKitをmacOS） |
-| `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`） |
+| `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`）。unittestは0件・skip・期待した失敗でも0で終わるので、要約の行にそれらがあれば失敗にする |
 | `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの）。計画のないPRや、baseを取り込んでいないPRでは失敗する。Quality gateに含めることは、2026-10-03の所有者決定で承認された |
 | `Quality gate` | Linux | 上のすべてのジョブの結果をまとめる。どれかが失敗・中断・skip（欠けた）なら失敗にする（pushのときは、`review plan`がskipであることを求める）。PRでは、試験したmerge commitの親が、PRのbaseとheadのSHAであることを確かめる |
 
 - 結果の読み方: 各runのSummaryに、`npm test`の件数とskipした試験・理由・diagnostic・表との照合（OSごと、Node.jsの版つき）、ブラウザごとの結果、Quality gateの判定と、試験したcommit・PRのhead・baseのSHAが出る。レビューでは、最新のheadとbaseに対応するrunかを、このSHAで確かめる。runのあとでbaseが進んだ場合、その結果は古いbaseに対するものなので、baseを取り込んでやり直す。
-- 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
+- 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件、失敗を期待した試験（`expectFailure`。要約ではpassに数えられる）、再実行で合格した試験と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
 - 安全: 標準のhosted runner（`ubuntu-latest`・`windows-latest`・`macos-latest`）だけを使う。権限は`contents: read`だけで、secretsを使わず、checkoutの資格情報を残さない（`persist-credentials: false`）。actionはcommitのSHAで固定する。artifactをuploadしない。`pull_request_target`を使わないので、forkからのPRにも、secretsも書込みの権限も渡らない。
 - 時間の上限: `checks`・`browser`は20分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
 - 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定（必須のcheck等）は、2026-10-03の所有者決定で、必須のstatus checkを`Quality gate`だけにし、「Require branches to be up to date before merging」を有効にする。どちらもT05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。

@@ -1,7 +1,8 @@
 // `npm run check:test-skips -- <npm testの出力のファイル>`: npm testのskipを、docs/development.md の
 // 「環境によって飛ばす試験」の表とこのOSで照合し、結果（skipした試験と理由、diagnostic）を記録する（T05のCI）。
 // 照合は、ファイルごとに、表で飛ばしてよいとした試験の名前の集合と、実際にskipした試験の名前の集合を比べる。
-// 一致しない・読めない・理由のないskipがある・失敗や中断やtodoがある・試験が0件のときは、1で終える。
+// 一致しない・読めない・理由のないskipがある・失敗や中断やtodoがある・失敗を期待した試験（expectFailure）や
+// 再実行で合格した試験がある・試験が0件のときは、1で終える。
 // GitHub Actionsでは、同じ内容をstep summaryにも書く。
 import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -61,7 +62,7 @@ try {
     `- 表（docs/development.md「環境によって飛ばす試験」）でこの環境に期待するskip: ${table.stated[env]}件`,
     '',
   );
-  problems.push(...summaryProblems(s));
+  problems.push(...summaryProblems(report));
 
   const attributed = attributeSkips(report.skipped, sources);
   problems.push(...attributed.problems);

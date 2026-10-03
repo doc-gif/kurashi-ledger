@@ -22,6 +22,10 @@ export type SpecReport = {
   readonly summary: TestSummary;
   readonly skipped: readonly SkippedTest[];
   readonly diagnostics: readonly string[];
+  // expectFailure（Node.js 24.14以上）で期待どおり失敗した試験。要約ではpassに数えられる。
+  readonly expectedFailures: readonly string[];
+  // 再実行（--test-rerun-failures）で合格した試験（「(passed on attempt N)」）。
+  readonly rerunPassed: readonly string[];
 };
 
 // 色の制御文字（CSI）。
@@ -29,8 +33,10 @@ const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 const SUMMARY_KEYS = ['tests', 'suites', 'pass', 'fail', 'cancelled', 'skipped', 'todo'] as const;
 
 // node --testのspecの出力を読む。要約は最後の「ℹ tests」〜「ℹ duration_ms」の8行。diagnosticも「ℹ 」で
-// 始まるので、末尾から探した最後の並びを要約とする。skipとtodoの行は「﹣ 名前 (時間ms) # 理由」の形
-// （時間は0のとき出ない）。todoが0件のときだけ、「﹣」の行をすべてskipとして読める（照合ではtodoを0件に限る）。
+// 始まるので、末尾から探した最後の並びを要約とする。skipの行は「﹣ 名前 (時間ms) # 理由」の形（時間は0のとき
+// 出ない）。todoの行は「✔」か「⚠」で始まり「# 理由」で終わるので「﹣」には含まれない（照合ではtodoを0件に限る）。
+// expectFailureで期待どおり失敗した試験は「✔ 名前 (時間ms) # EXPECTED FAILURE」で、要約ではpassに数えられるので、
+// 行から集めて照合で問題にする（PR18-R002と同じ穴）。再実行で合格した試験の「(passed on attempt N)」も集める。
 export function parseSpecOutput(text: string): SpecReport {
   const lines = text.replace(ANSI, '').split(/\r?\n/);
   let end = -1;
@@ -53,6 +59,8 @@ export function parseSpecOutput(text: string): SpecReport {
 
   const skippedTests: SkippedTest[] = [];
   const diagnostics: string[] = [];
+  const expectedFailures: string[] = [];
+  const rerunPassed: string[] = [];
   for (const line of lines.slice(0, start)) {
     const skip = /^\s*﹣ (.+?)(?: \(\d+(?:\.\d+)?ms\))? # (.*)$/.exec(line);
     if (skip !== null) {
@@ -60,14 +68,23 @@ export function parseSpecOutput(text: string): SpecReport {
       continue;
     }
     const diagnostic = /^\s*ℹ (.*)$/.exec(line);
-    if (diagnostic !== null) diagnostics.push(diagnostic[1] ?? '');
+    if (diagnostic !== null) {
+      diagnostics.push(diagnostic[1] ?? '');
+      continue;
+    }
+    const result = /^\s*[✔✖] (.+)$/.exec(line);
+    if (result !== null) {
+      const title = result[1] ?? '';
+      if (title.endsWith(' # EXPECTED FAILURE')) expectedFailures.push(title);
+      if (/ \(passed on attempt \d+\)/.test(title)) rerunPassed.push(title);
+    }
   }
-  if (skippedTests.length !== summary.skipped + summary.todo) {
+  if (skippedTests.length !== summary.skipped) {
     throw new Error(
-      `「﹣」の行（${skippedTests.length}件）が、要約のskipped（${summary.skipped}）とtodo（${summary.todo}）の合計と合わない（出力の形式が変わった可能性）。`,
+      `「﹣」の行（${skippedTests.length}件）が、要約のskipped（${summary.skipped}）と合わない（出力の形式が変わった可能性）。`,
     );
   }
-  return { summary, skipped: skippedTests, diagnostics };
+  return { summary, skipped: skippedTests, diagnostics, expectedFailures, rerunPassed };
 }
 
 export type SkipEnvironment = 'windows' | 'posix-root' | 'posix-user';
@@ -228,12 +245,16 @@ export function compareSkips(
   return problems;
 }
 
-// 失敗・中断・todo・0件の試験も、成功に見えないように問題として返す。
-export function summaryProblems(summary: TestSummary): string[] {
+// 失敗・中断・todo・0件の試験、期待した失敗（expectFailure）、再実行での合格も、成功に見えないように問題として返す。
+// 期待した失敗と再実行での合格は、要約ではpassに数えられる。
+export function summaryProblems(report: Pick<SpecReport, 'summary' | 'expectedFailures' | 'rerunPassed'>): string[] {
+  const { summary } = report;
   const problems: string[] = [];
   if (summary.tests === 0) problems.push('試験が1件も実行されていない。');
   if (summary.fail > 0) problems.push(`失敗した試験が${summary.fail}件ある。`);
   if (summary.cancelled > 0) problems.push(`中断した試験が${summary.cancelled}件ある。`);
-  if (summary.todo > 0) problems.push(`todoの試験が${summary.todo}件ある（skipと見分けられないので、照合では0件に限る）。`);
+  if (summary.todo > 0) problems.push(`todoの試験が${summary.todo}件ある（未完成の試験を成功に数えないよう、0件に限る）。`);
+  for (const title of report.expectedFailures) problems.push(`失敗を期待した試験（expectFailure）がある。要約ではpassに数えられるが成功としない: ${title}`);
+  for (const title of report.rerunPassed) problems.push(`再実行で合格した試験がある: ${title}`);
   return problems;
 }

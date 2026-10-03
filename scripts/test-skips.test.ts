@@ -42,11 +42,18 @@ test('specの出力から、要約・skipした試験と理由・diagnosticを�
     '✔ 親 (0.3ms)',
     'ℹ symlinkを作れないので弱めて確かめた',
     '試験が標準出力へ書いた行',
-    ...summaryLines({ tests: 4, pass: 2, skipped: 2 }),
+    '✔ 失敗を期待した試験 (0.4ms) # EXPECTED FAILURE',
+    '✔ 再実行で通った試験 (0.4ms) (passed on attempt 2)',
+    '⚠ 未完成の試験 (0.1ms) # あとで書く',
+    '✔ 名前の途中に # EXPECTED FAILURE がある試験 (0.1ms)',
+    ...summaryLines({ tests: 8, pass: 6, skipped: 2, todo: 1 }),
     '',
   ].join('\r\n');
   const report = parseSpecOutput(text);
-  assert.deepEqual(report.summary, { tests: 4, suites: 0, pass: 2, fail: 0, cancelled: 0, skipped: 2, todo: 0 });
+  assert.deepEqual(report.summary, { tests: 8, suites: 0, pass: 6, fail: 0, cancelled: 0, skipped: 2, todo: 1 });
+  // todoの行は「﹣」でないので、skipに数えない。
+  assert.deepEqual(report.expectedFailures, ['失敗を期待した試験 (0.4ms) # EXPECTED FAILURE']);
+  assert.deepEqual(report.rerunPassed, ['再実行で通った試験 (0.4ms) (passed on attempt 2)']);
   assert.deepEqual(report.skipped, [
     { name: '飛ばす試験', reason: 'Windowsでは送れない' },
     { name: '入れ子の試験', reason: 'rootでは再現できない' },
@@ -80,6 +87,9 @@ test('このNode.jsの実際のnode --testの出力を読める（npm testと同
         "test('通る試験', (t) => { t.diagnostic('合成のdiagnostic'); });",
         "test('飛ばす試験', { skip: '合成の理由' }, () => {});",
         "test('親', async (t) => { await t.test('入れ子の飛ばす試験', { skip: '入れ子の理由' }, () => {}); });",
+        // 期待どおり失敗する試験とtodoは、要約ではpass・todoに数えられ、npm testは0で終わる。照合はこれを問題にする。
+        "test('失敗を期待する試験', { expectFailure: true }, () => { throw new Error('合成の失敗'); });",
+        "test('未完成の試験', { todo: '合成のtodo' }, () => { throw new Error('合成の失敗'); });",
       ].join('\n'),
     );
     // 試験の実行中に受け継ぐNODE_TEST_CONTEXT等を外し、npm testと同じく端末でない出力先へ書かせる。
@@ -88,13 +98,20 @@ test('このNode.jsの実際のnode --testの出力を読める（npm testと同
     const r = spawnSync(process.execPath, ['--test', 'sample.test.mjs'], { cwd: dir, env, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const report = parseSpecOutput(r.stdout);
-    assert.equal(report.summary.tests, 4);
+    assert.equal(report.summary.tests, 6);
     assert.equal(report.summary.skipped, 2);
+    assert.equal(report.summary.todo, 1);
+    assert.equal(report.summary.fail, 0);
     assert.deepEqual(report.skipped, [
       { name: '飛ばす試験', reason: '合成の理由' },
       { name: '入れ子の飛ばす試験', reason: '入れ子の理由' },
     ]);
     assert.deepEqual(report.diagnostics, ['合成のdiagnostic']);
+    assert.equal(report.expectedFailures.length, 1);
+    assert.match(report.expectedFailures[0] ?? '', /^失敗を期待する試験 .*# EXPECTED FAILURE$/);
+    const problems = summaryProblems(report);
+    assert.ok(problems.some((p) => p.includes('expectFailure')), problems.join('\n'));
+    assert.ok(problems.some((p) => p.includes('todo')), problems.join('\n'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -205,13 +222,21 @@ test('ファイルごとに、表の試験の名前の集合と実際のskipの�
   assert.match(compareSkips(expected, new Map([['a', [skip('A', ' '), skip('B')]]])).join(), /理由の文字列がない/);
 });
 
-test('失敗・中断・todo・0件の試験を問題にする', () => {
+test('失敗・中断・todo・0件・期待した失敗・再実行での合格を問題にする', () => {
   const ok = { tests: 3, suites: 0, pass: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0 };
-  assert.deepEqual(summaryProblems(ok), []);
-  assert.equal(summaryProblems({ ...ok, tests: 0, pass: 0 }).length, 1);
-  assert.equal(summaryProblems({ ...ok, fail: 1 }).length, 1);
-  assert.equal(summaryProblems({ ...ok, cancelled: 1 }).length, 1);
-  assert.equal(summaryProblems({ ...ok, todo: 1 }).length, 1);
+  const report = (summary: typeof ok, expectedFailures: string[] = [], rerunPassed: string[] = []) => ({
+    summary,
+    expectedFailures,
+    rerunPassed,
+  });
+  assert.deepEqual(summaryProblems(report(ok)), []);
+  assert.equal(summaryProblems(report({ ...ok, tests: 0, pass: 0 })).length, 1);
+  assert.equal(summaryProblems(report({ ...ok, fail: 1 })).length, 1);
+  assert.equal(summaryProblems(report({ ...ok, cancelled: 1 })).length, 1);
+  assert.equal(summaryProblems(report({ ...ok, todo: 1 })).length, 1);
+  // 要約がすべて成功でも、期待した失敗・再実行での合格があれば問題にする。
+  assert.match(summaryProblems(report(ok, ['x # EXPECTED FAILURE'])).join(), /expectFailure/);
+  assert.match(summaryProblems(report(ok, [], ['y (passed on attempt 2)'])).join(), /再実行/);
 });
 
 test('環境を、Windows・macOSとLinuxのroot・一般のユーザーに分ける', () => {
