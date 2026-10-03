@@ -1,6 +1,6 @@
 # ADR-0005: SQLiteドライバ
 
-- 状態: Proposed（このPRがmainに統合された時点でAcceptedとみなす）
+- 状態: Accepted（T00のPR #2でmainに統合。docs/adr/README.mdの規則により、次にこのADRを変更したT02のPR #12で状態欄を直した）
 - 日付: 2026-10-02
 - 関連: T00（Issue #1）、ADR-0002、ADR-0006。スキーマ・migration・Repositoryの実装はT07、バックアップ・復元はT12。
 
@@ -28,7 +28,7 @@
 
 | 候補 | 状態（2026-10-02） | 判断 |
 | --- | --- | --- |
-| `node:sqlite` | Node 24.15.0以上・26でStability 1.2（Release candidate）。フラグは不要。実験的機能の警告はRelease candidateへの変更時に削除された（Node 26.10.0のソースで確認。実行時の確認はT02）。同梱のSQLiteは3.53.4（v24.21.0・v26.10.0）。ライセンスは、Node.js本体がMIT、同梱のSQLiteがパブリックドメイン。`backup()`、`timeout`、`defensive`、BigIntでの読込を備える。transactionの補助関数はない | **採用**。依存ゼロ。ネイティブアドオンのABIや導入の問題がない |
+| `node:sqlite` | Node 24.15.0以上・26でStability 1.2（Release candidate）。フラグは不要。実験的機能の警告はRelease candidateへの変更時に削除された（Node 26.10.0のソースで確認。実行時の確認は、T02で試験を作り、固定版での実行はT05）。同梱のSQLiteは3.53.4（v24.21.0・v26.10.0）。ライセンスは、Node.js本体がMIT、同梱のSQLiteがパブリックドメイン。`backup()`、`timeout`、`defensive`、BigIntでの読込を備える。transactionの補助関数はない | **採用**。依存ゼロ。ネイティブアドオンのABIや導入の問題がない |
 | better-sqlite3 13.x | MITライセンス。v13からN-APIで、Mac（x64・arm64）とWindows（x64・arm64）の構築済みバイナリをnpmパッケージに同梱。13.0.0・13.0.1にはWindowsでビルドが走る不具合があり、13.0.2で修正。`db.transaction()`あり。npmの保守者は1名 | 代替として保持 |
 | sqlite3（node-sqlite3） | リポジトリがアーカイブ済みで、READMEに「保守されていない」と明記 | 見送り |
 | @libsql/client | ネイティブパッケージの構築済みバイナリにWindows arm64がない。新機能は別製品（Turso）へ移行中 | 見送り |
@@ -45,7 +45,8 @@
 
 ## 別タスクで行う検証
 
-- T02: 固定した版で`node:sqlite`を読み込んでも警告が出ないこと。Mac/Windows/Linuxでの動作確認。
+- T02: 固定した版で`node:sqlite`を読み込んでも警告が出ないことを確かめる試験を作る（`scripts/runtime.test.ts`）。
+- T05: その試験を含む試験を、固定版のNode.jsでMac/Windows/LinuxのCIで実行し、成功させる（2026-10-02の所有者決定でT02から移した。T02では固定版とWindowsで実行していない）。
 - T07: migration前の退避（ADR-0006）、transaction、途中失敗時の巻き戻し、`timeout`、`defensive`、`foreign_keys`、`application_id`・`user_version`、スキーマ版が新しすぎるDBを開かないこと。
 - T12: `backup()`と`VACUUM INTO`による退避、`integrity_check`、別環境への復元。
 

@@ -1,6 +1,6 @@
 # Test strategy
 
-This publication contains specifications only; no executable tests are included. Earlier local bootstrap experiments are unreviewed inputs to T02, not a working or validated application.
+Product tests are not implemented yet. T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
 
 ## Required acceptance cases as features are added
 
@@ -27,4 +27,4 @@ Include deliberate mutations such as changing `<` to `<=` or moving a rounding s
 
 Use synthetic fixtures in public tests. Do not anonymize private documents merely by removing the name: employer, dates and precise amounts can also identify someone.
 
-Planned CI will run type checking, tests and publication checks on standard Ubuntu, Windows and macOS runners. It is not configured in this documentation-only publication. Real data must never enter CI or uploaded artifacts.
+Planned CI (T05) will install with `npm run setup` and run type checking, tests and publication checks on standard Ubuntu, Windows and macOS runners. It is not configured yet. Real data must never enter CI or uploaded artifacts.
