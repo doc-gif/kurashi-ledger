@@ -24,7 +24,7 @@
 | 年間の支払金額・源泉徴収税額等 | 採用した年間資料の該当項目。年間資料がない場合と、採用の判断で明細を選んだ場合は、その年に帰属する明細の、比較の対応表で対応する項目の合計（5） | `income-year` | 採用しなかった側 |
 | 所得の年ごとの明細の合計 | 帰属の年が決まった給与明細（8） | `income-year` | 帰属が決まらない明細（別に一覧を出す） |
 | 見込み | 予測の行の残り（6） | `expected-month` | 実績化した分 |
-| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行。`noticeType`ごとに集計する（`other`の通知は足さない。下の共通の条件） | `subject-year` | 計算run、給与明細の控除、種類（`noticeType`）の違う通知 |
+| 正式通知の決定額 | 差し替えられていない正式通知の`amounts`のうち、`category`が`annual-total`の行（1件の通知に1行だけ。[記録の型](records.md)の8。2行以上ある通知は足さずに`conflict`。[共通の型](common-types.md)の9の「保存の検査をすり抜けたデータ」）。`noticeType`ごとに集計する（`other`の通知は足さない。下の共通の条件） | `subject-year` | 計算run、給与明細の控除、種類（`noticeType`）の違う通知 |
 | 推計 | 集計しない。計算runごとの結果（[計算結果](calculation-results.md)の1の`results`）をそのまま示す | — | 正式通知、ほかの計算run |
 
 共通の条件:
