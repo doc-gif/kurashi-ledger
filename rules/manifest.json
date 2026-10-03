@@ -52,6 +52,16 @@
       "retrievedOn": "2026-10-03"
     },
     {
+      "id": "nta-nencho2026-computer",
+      "title": "令和8年分 年末調整のしかた（源泉徴収義務者の方用情報）「電子計算機等による年末調整」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/204.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
       "id": "nta-2026kiso-qa",
       "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
       "publisher": "国税庁",
@@ -445,6 +455,7 @@
         "nta-nencho2026-tax",
         "nta-nencho2026-table",
         "nta-nencho2026-rates",
+        "nta-nencho2026-computer",
         "nta-ta-1410",
         "nta-ta-1411",
         "nta-ta-1199",

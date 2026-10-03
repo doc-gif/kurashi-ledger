@@ -10,10 +10,16 @@
       "ref": "nta-nencho2026-table",
       "location": "47〜54ページの表と備考"
     },
-    "crossCheckSource": {
-      "ref": "nta-ta-1410",
-      "location": "給与所得控除の表と注（660万円未満は別表第五による）"
-    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-ta-1410",
+        "location": "給与所得控除の表と注（660万円未満は別表第五による）"
+      },
+      {
+        "ref": "nta-nencho2026-computer",
+        "location": "1 給与所得控除後の給与等の金額の計算 ⑴年調給与額の算出・⑵計算式の表と注1〜4（220万円以上660万円未満は4,000円刻みの各階級の最低金額による）"
+      }
+    ],
     "ranges": [
       {
         "from": 0,
