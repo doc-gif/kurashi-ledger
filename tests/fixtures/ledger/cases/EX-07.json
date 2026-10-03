@@ -2234,6 +2234,218 @@
           "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "予測の側では残りだけが見込みの集計に入る"}]
         }
       ]
+    },
+    {
+      "scenarioId": "EX-07-e",
+      "title": "行が消えた照合配分は、行の実在を確かめない却下・取消で片付けられる。行のない作成と、行のないtoへの変更は拒否",
+      "covers": [{"doc": "common-types.md", "section": "2"}, {"doc": "reconciliation.md", "section": "9"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-12-01T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_741",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 20000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-01T03:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_741",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 20000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "accountId": {"state": "known", "value": "acct_1"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-01T03:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_741",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "dep_741", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_741", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": 20000},
+              "settlesForecastLine": {"state": "unknown"},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-12-01T03:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_742",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "dep_741", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_741", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": 20000},
+              "settlesForecastLine": {"state": "unknown"},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-12-02T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_741",
+            "recordType": "forecast",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-12-02"},
+            "changeNote": {"state": "known", "value": "見込みの行l2を消した"},
+            "body": {
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2026-12-02T03:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_741",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-12-02"},
+            "changeNote": {"state": "known", "value": "見込みの行が消えたので却下"},
+            "body": {"allocationStatus": "rejected"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2026-12-02T03:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "alc_741", "recordType": "allocation", "revision": 3, "reason": "void", "changeNote": {"state": "known", "value": "配分を作ったのが誤り"}}
+        },
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2026-12-02T03:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "alc_741", "recordType": "allocation", "revision": 4, "reason": "unvoid", "changeNote": {"state": "known", "value": "取消を取り消す"}}
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2026-12-02T03:04:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-target-invalid"},
+          "record": {
+            "id": "alc_743",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "dep_741", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_741", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": 20000},
+              "settlesForecastLine": {"state": "unknown"},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-12-02T03:05:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-target-invalid"},
+          "record": {
+            "id": "alc_742",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "行を選び直す"},
+            "body": {"to": {"id": "fc_741", "revision": "current", "line": "l3"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-12-02T03:06:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_742",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "行を選び直す"},
+            "body": {"to": {"id": "fc_741", "revision": "current", "line": "l1"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_741"},
+          "expect": {"usage": "not-used"},
+          "reason": "行l2が消えたあとでも、却下（rejected）への改訂・取消・取消の取り消しはfrom・toを変えないので行の実在を確かめず、保存できる。取消の取り消しのあとも却下のままなので使わない（not-used）。",
+          "cites": [
+            {"doc": "common-types.md", "section": "2", "quote": "取消・取消の取り消し・却下（rejected）への改訂等、その参照を変えない改訂では、行の実在を確かめない"},
+            {"doc": "reconciliation.md", "section": "9", "quote": "rejectedへの改訂と取消は、from・toを変えないので行の実在を確かめない"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o9",
+          "query": {"kind": "allocationUsage", "allocation": "alc_742"},
+          "expect": {"usage": "not-used"},
+          "reason": "行l2を指す新しい配分の作成（o9）と、toを存在しない行l3へ変える改訂（o10）は、参照を新しく保存するので行の実在を確かめ、拒否する。alc_742は候補（proposed）のままで使わない。",
+          "cites": [{"doc": "common-types.md", "section": "2", "quote": "関係の記録の版1と、その参照を直前の版から変える改訂だけ"}]
+        }
+      ]
     }
   ]
 }

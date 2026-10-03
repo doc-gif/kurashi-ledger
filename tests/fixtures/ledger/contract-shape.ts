@@ -571,6 +571,11 @@ export function checkRef(
   else if (line === "whole" && l !== "whole") out.add("ref-granularity", `${path}.line`, `記録全体の関係で行を指す: ${String(l)}`);
 }
 
+function isFactShaped(v: unknown): boolean {
+  if (!isObj(v) || typeof v["state"] !== "string" || !(FACT_STATES as readonly string[]).includes(v["state"])) return false;
+  return v["state"] !== "known" || "value" in v;
+}
+
 function checkObject(fields: Readonly<Record<string, Spec>>, v: unknown, path: string, out: Out): void {
   if (!isObj(v)) {
     out.add("shape", path, "objectではない");
@@ -581,7 +586,11 @@ function checkObject(fields: Readonly<Record<string, Spec>>, v: unknown, path: s
   }
   for (const k of Object.keys(v)) {
     const s = fields[k];
-    if (s === undefined) out.add("shape", `${path}.${k}`, "表にない項目");
+    if (s === undefined) {
+      // 共通の型の1の「読む処理が知らない項目」: 読取・復元では、Factの形の知らない項目（新しいマイナー版で足した項目）を違反にせず、値を書き換えない。
+      if (out.mode === "read" && isFactShaped(v[k])) continue;
+      out.add("shape", `${path}.${k}`, "表にない項目");
+    }
     else checkValue(s, v[k], `${path}.${k}`, out);
   }
 }
@@ -845,9 +854,9 @@ export function checkEvidenceFile(file: unknown): Violation[] {
       id: id(EVIDENCE_FILE_PREFIX),
       sha256: text,
       byteSize: { t: "minutes" },
-      mediaType: text,
+      mediaType: nonEmptyText,
       originalFileName: text,
-      storageName: text,
+      storageName: nonEmptyText,
       importedAt: text,
     },
     file,

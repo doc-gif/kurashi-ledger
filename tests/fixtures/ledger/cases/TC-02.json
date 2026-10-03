@@ -547,6 +547,75 @@
           ]
         }
       ]
+    },
+    {
+      "scenarioId": "TC-02-b2",
+      "title": "検査を通して保存した改訂で回復する（行IDを直す訂正）。回復の前の時点の見方はincompleteのまま",
+      "covers": [{"doc": "common-types.md", "section": "9"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "TC-02-b",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-26T00:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_W1",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "行IDを直す"},
+            "body": {
+              "otherEarnings": {
+                "state": "known",
+                "value": [{"lineId": "l1", "label": "手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 5000}}]
+              }
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 105000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "版2は検査を通して保存した改訂（checked）で、静的な検査と版1からの遷移（correct-input-error、行IDwholeを消してl1を足す。l1は予約されていない）を満たす。履歴の検査は版2から当てるので、版1の不正（行IDのwhole）は履歴で要確認として残るが、集計を止めない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "9", "quote": "Cより前の改訂は、Rの判定に使わない"},
+            {"doc": "common-types.md", "section": "2", "quote": "利用者が行IDを直す改訂（correct-input-error）を検査を通して保存すれば"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "view": {"kind": "record-seq", "seq": "N+1"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_W1", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "save-check"}, "state": "conflict"}]
+              }
+            ]
+          },
+          "reason": "回復した改訂より前の時点（連番N+1、復元だけの時点）では、選ばれる版1はuncheckedで不正なので、従来どおり保存の検査をすり抜けたデータ。過去の時点の状態を、あとの回復で書き換えない。",
+          "cites": [{"doc": "common-types.md", "section": "9", "quote": "過去の時点の状態を、あとの回復で書き換えない"}]
+        }
+      ]
     }
   ]
 }
