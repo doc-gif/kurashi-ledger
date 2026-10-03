@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "8f0e492597cda43a82f03cf0e75423d18a7de908",
+  "base_sha": "4a8667ba7dfa5b7bd55625bb7ea2bed96bfdc126",
   "task_id": "OPS-LEDGER-PR10-PR12",
   "planned_paths": [
     ".review/findings.json"
@@ -12,9 +12,9 @@
       "resolution": "PR #14と同じ約束にする。CodexのIDはそのまま使い、Copilotだけの原因はPR10-R101・PR12-R101以降の番号帯を使う。規約は書式と同じ原因の集約だけを定めるので、約束はPR本文に書き、規約文書は変更しない。"
     },
     {
-      "description": "PR #12はOpenで、取得の後にも新しいレビューが付きうる。台帳は解消状態の正本ではない。",
+      "description": "PR #12は作業の開始時にOpenで、取得の後にも新しいレビューが付きうる。その後、PR #12は4a8667bでマージされた。台帳は解消状態の正本ではない。",
       "state": "resolved",
-      "resolution": "取得時点（2026-10-03T01:18Z、PR #12のhead b6447f4）までの指摘だけを対象とし、PR本文と引継ぎに書く。引継ぎの直前に全ページを取り直し、新しい指摘があれば同じ手順で加える。その後の指摘は後の作業で追加する。台帳には解消状態・対応commit・所有者判断の記録（T04-VISUAL-ACCEPTANCE、T02-VALIDATION-DEFER）を書かない。"
+      "resolution": "最初の取得（2026-10-03T01:18Z、PR #12のhead b6447f4）のあと、引継ぎの直前に全ページを取り直した。新しいのはCodexのaccepted（review 5398309457、追加の指摘なし）だけで、PR #12はそのheadのままマージされたので、取得は完了とする。acceptedは解消の確認で原因の証拠ではないため、出典には加えない。台帳には解消状態・対応commit・所有者判断の記録（T04-VISUAL-ACCEPTANCE、T02-VALIDATION-DEFER）を書かない。"
     },
     {
       "description": "条件の一覧（invariants.json）には、UIの部品の状態・フォーカス・読み上げ・デザインと実装の対応を直接扱う条件がない。",
@@ -25,6 +25,11 @@
       "description": "PR #10・#12のCopilot指摘には、既存の台帳の原因（PR2-R003の依存の順序、PR2-R008の入口の整合、PR11-R108の正本の手書きの繰り返し）と同じものがある。",
       "state": "resolved",
       "resolution": "triageとレビュー側の意味の照合の方針に従い、新しいIDを作らず既存の項目へ出典を足し、必要なら教訓に1文を追記する。triageは原因キーの一致だけを見るので、意味の照合の判断はPR本文に列挙して別担当のレビューに委ねる。"
+    },
+    {
+      "description": "mainがPR #12（T02）の統合で4a8667bへ進んだ。AGENTS.mdに、commitの前に`npm run check:public -- --staged`を実行する規則が加わった。作業環境のNode.js 24.14.0では、devEnginesの検査でnpmのスクリプトが止まる（docs/development.mdの既知の制約）。",
+      "state": "resolved",
+      "resolution": "履歴を書き換えずにmainをmergeする。新しいbaseの条件・台帳は8f0e492と同じで、選ばれる条件・シナリオ・contextも変わらないため、base_shaだけを更新する。公開検査は依存のないスクリプトなので、npmを通さず`node scripts/check-public.ts --staged`で各commitの前に実行し、版の制約と実行方法を引継ぎに書く（固定版での確認はT05）。"
     }
   ],
   "assessments": [
