@@ -94,7 +94,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | --- | --- | --- |
 | `save` | 記録の改訂1件の保存。`at`は注入する時計の値（記録日時）。`record`は省略した項目を既定で補う（下）。改訂は`baseRevision`（省略時は`revision`−1）を基にする | `accepted`（`recordedSeq`の期待を書いてよい）、`rejected`（`reason`）、`replayed`（同じ`writeRequestId`・同じ内容。`of`は最初の操作）、`existing-returned`（同じ`importKey`。`record`は返す記録） |
 | `saveEvidenceFile` | 証憑ファイルの保存（改訂を持たない） | `accepted`、`existing-returned`（同じ`sha256`） |
-| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く | `restored` |
+| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く（読取の検査。拡張できる列挙のこの契約版が知らない値は違反にしない。共通の型の1。新しい保存の`save`は、並べていない値を`value-invalid`で拒否する） | `restored` |
 | `saveRun` | 計算runの保存。`run`は射影（下の「runの射影」） | `accepted`、`rejected`（`reason`） |
 
 拒否された保存は記録を作らず、保存の連番も使わない。記録のIDは、試験で注入するID生成器が返す値として扱う。拒否された新規の保存と同じIDで、あとで保存し直す場面がある（拒否された保存は記録を作らないので、一度使ったIDの再利用にはならないと読む。下の「未決事項」）。
@@ -196,7 +196,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 `npm test`（`tests/**/*.test.ts`）に含まれ、CI（T05）がmacOS・Windows・Linuxで実行する。単独では`node --test tests/fixtures/ledger/ledger.test.ts`で実行できる。確かめること:
 
-- ファイルの形、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
+- ファイルの形、共通の設定・ケース・制度のケースの契約版（`contractVersion`。台帳の対象の契約版と同じ）、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
 - 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。二重登録の取消の残す方（`duplicateOf`）が、取消しておらず、整った差し替えの系列の現在の記録であること（未確認の系列や、自己参照・循環を含む系列の記録は残す方にできない）。現在の見方（検査の`view`を省略、または`kind`が`current`）の`seriesStatus`の期待値が、`afterOp`の時点の最新の改訂から系列の補助で導いた状態（`voided`・`unconfirmed-series`・`superseded`・`current`）と一致すること。時点を指定した見方（`record-seq`・`record-time`・`known-on`）の期待値と`not-in-view`は、最新の状態と比べない（その見方の改訂を選んで導くのはT06）。ほかの検査で台帳の状態を使うのは、記録・版・行・runが`afterOp`の時点で実在することの確認だけで、見方から導く値を最新の状態と比べない。差し替えの系列の判定は、runの射影の不足の判断・`duplicateOf`の残す方・`seriesStatus`のどれでも、同じ1つの補助（記録の型の10の1〜5）の結果だけを使い、入口ごとに食い違わせない。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
 - 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、集計の要求のscopeが許す次元（`forecast-remaining`で口座を許すのは`deposit-amount`だけ。拒否を期待する検査は`{ error: rejected-request }`で書ける）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形、採用の写しの形等。期待の中の並びのobjectでない要素は、位置を示して問題にする。

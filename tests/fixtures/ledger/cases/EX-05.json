@@ -1148,7 +1148,7 @@
     },
     {
       "scenarioId": "EX-05-h",
-      "title": "復元で入った、この版が知らない帰属の区分の値は、unknownと同じに扱う（規則を当てはめず、候補の年はすべての年。conflictにしない）",
+      "title": "復元で入った、この版が知らない帰属の区分の値は、読取の検査の違反にせず（expectedViolationsは空）、値を書き換えずにunknownと同じに扱う（規則を当てはめず、候補の年はすべての年。save-checkのconflictにしない）。新しい保存の拒否はTC-02-aのo05d",
       "covers": [{"doc": "examples.md", "section": "EX-05"}],
       "acceptance": ["unknown-value"],
       "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
@@ -1158,7 +1158,7 @@
           "opId": "o1",
           "at": "2027-01-10T00:00:00.000Z",
           "expect": {"outcome": "restored"},
-          "expectedViolations": ["value-invalid"],
+          "expectedViolations": [],
           "records": [
             {
               "id": "pay_507",

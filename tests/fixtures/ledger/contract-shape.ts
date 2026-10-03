@@ -77,7 +77,7 @@ const KNOWN_NA: readonly FactState[] = ["known", "not-applicable"];
 export type Spec =
   | { t: "text" }
   | { t: "nonEmptyText" }
-  | { t: "enum"; values: readonly string[] }
+  | { t: "enum"; values: readonly string[]; open?: boolean }
   | { t: "id"; prefix: string }
   | { t: "yen"; sign: "nonneg" | "pos" | "signed" }
   | { t: "localDate" }
@@ -101,6 +101,8 @@ const localDate: Spec = { t: "localDate" };
 const calendarYear: Spec = { t: "calendarYear" };
 const lineId: Spec = { t: "lineId" };
 const enm = (...values: string[]): Spec => ({ t: "enum", values });
+// 拡張できる列挙（共通の型の1）。保存では並べた値だけを許し、読取・復元では知らない値を違反にしない（値は書き換えない）。
+const openEnm = (...values: string[]): Spec => ({ t: "enum", values, open: true });
 const id = (prefix: string): Spec => ({ t: "id", prefix });
 const yen = (sign: "nonneg" | "pos" | "signed"): Spec => ({ t: "yen", sign });
 const fact = (of: Spec, states: readonly FactState[] = DEFAULT): Spec => ({ t: "fact", of, states });
@@ -243,7 +245,7 @@ export const BODY: Readonly<Record<RecordType, Readonly<Record<string, Spec>>>> 
     workPeriod: fact({ t: "period" }, WITH_NA),
     scheduledPayDate: fact(localDate),
     // 帰属の区分（記録の型の4。拡張できる列挙。共通の型の1）。knownかunknownだけ（共通の型の12）。
-    incomeTimingKind: fact(enm("ordinary"), KNOWN_UNKNOWN),
+    incomeTimingKind: fact(openEnm("ordinary"), KNOWN_UNKNOWN),
     grossPay: fact(yen("nonneg")),
     taxablePay: fact(yen("nonneg")),
     nonTaxablePay: fact(yen("nonneg")),
@@ -400,8 +402,16 @@ export function isAnyRecordId(v: unknown): v is string {
   return typeof v === "string" && RECORD_TYPES.some((t) => isIdOf(v, PREFIX[t]));
 }
 
+// 検査の場面（共通の型の1の「拡張できる列挙」）: saveは新しい保存の検査、readは読取・復元（新しい契約版のデータを読む等）。
+// 違いは、拡張できる列挙の並べていない値（空でない文字列）をreadでは違反にしないことだけ。ほかの違反はどちらでも同じ。
+export type CheckMode = "save" | "read";
+
 class Out {
   readonly list: Violation[] = [];
+  readonly mode: CheckMode;
+  constructor(mode: CheckMode = "save") {
+    this.mode = mode;
+  }
   add(code: StaticCode, path: string, message: string): void {
     this.list.push({ code, path, message });
   }
@@ -419,6 +429,7 @@ function checkValue(spec: Spec, v: unknown, path: string, out: Out): void {
       else if (v.trim() === "") out.add("value-invalid", path, "空の文字列");
       return;
     case "enum":
+      if (typeof v === "string" && !spec.values.includes(v) && spec.open === true && out.mode === "read" && v.length > 0) return;
       if (typeof v !== "string" || !spec.values.includes(v)) out.add("value-invalid", path, `列挙にない値: ${String(v)}`);
       return;
     case "id":
@@ -587,8 +598,8 @@ function requireStates(v: unknown, allowed: readonly FactState[], path: string, 
 }
 
 // 共通の型の9の改訂の共通の形と、12の「knownが必要な項目」「not-applicableを許す項目」のうち、記録1件で決まる条件。
-export function checkRecordStatic(record: unknown): Violation[] {
-  const out = new Out();
+export function checkRecordStatic(record: unknown, mode: CheckMode = "save"): Violation[] {
+  const out = new Out(mode);
   if (!isObj(record)) {
     out.add("shape", "$", "記録がobjectではない");
     return out.list;

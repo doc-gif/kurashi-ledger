@@ -515,7 +515,8 @@ function replayOps(
           const rseen = state.writeRequests.get(rwrid);
           if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
           else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }) });
-          for (const v of checkRecordStatic(rec)) {
+          // 復元は読取の検査（拡張できる列挙の知らない値は違反にしない。共通の型の1）。新しい保存の拒否はsaveの検査（TC-02-aのo05d）。
+          for (const v of checkRecordStatic(rec, "read")) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
@@ -1545,10 +1546,13 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
   }
 }
 
+// 台帳が対象にする契約版（docs/test-oracles/README.md）。共通の設定・ケース・制度のケースのすべてで同じ値にする。
+const LEDGER_CONTRACT_VERSION = "2.0";
+
 export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[] {
   const problems = new Problems();
   const common = files.commonSetup;
-  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== "2.0") problems.add("common-setup", "schemaVersion 1・contractVersion 2.0");
+  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add("common-setup", `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
   const commonReplay = replayOps(common["operations"], "common", newState(), 0, "common-setup", problems);
   const commonState = commonReplay.state;
   const commonCount = commonState.seq;
@@ -1568,7 +1572,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
     if (typeof caseId !== "string" || file !== `cases/${caseId}.json`) problems.add(file, "caseIdとファイル名が合わない");
     if (caseIds.has(String(caseId))) problems.add(file, "caseIdが重なる");
     caseIds.add(String(caseId));
-    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== "2.0") problems.add(file, "schemaVersion 1・contractVersion 2.0");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     if (typeof data["title"] !== "string" || data["title"] === "") problems.add(file, "titleがない");
     const consumers = data["consumers"];
     if (!Array.isArray(consumers) || consumers.length === 0 || !consumers.every((c) => typeof c === "string" && /^T\d{2}$/.test(c))) problems.add(file, "consumersはタスクIDの並び");
@@ -1658,7 +1662,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
   // 制度のケース
   if (files.regime.length === 0) problems.add("regime", "制度のケースのファイルがない");
   for (const { file, data } of files.regime) {
-    if (data["schemaVersion"] !== 1) problems.add(file, "schemaVersion 1");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     const list = data["cases"];
     if (!Array.isArray(list) || list.length === 0) problems.add(file, "casesがない");
     else {
@@ -2317,3 +2321,49 @@ test("台帳のIDの接頭辞は契約の表と同じ", () => {
   assert.ok(isIdOf("pay_101", "pay"));
   assert.ok(!isIdOf("pay_", "pay"));
 });
+
+test("検査の自己確認: 共通の設定・ケース・制度のケースの契約版が台帳の契約版と違えば見つける", () => {
+  assert.deepEqual(mutated(() => undefined), []);
+  const regime = mutated((copy) => {
+    const r = copy.regime[0];
+    assert.ok(r);
+    r.data["contractVersion"] = "1.0";
+  });
+  assert.ok(regime.some((x) => x.startsWith("regime/") && x.includes("contractVersion")), regime.join(" / "));
+  const kase = mutated((copy) => (firstCase(copy, "EX-01")["contractVersion"] = "1.0"));
+  assert.ok(kase.some((x) => x.includes("EX-01") && x.includes("contractVersion")), kase.join(" / "));
+  const common = mutated((copy) => (copy.commonSetup["contractVersion"] = "1.0"));
+  assert.ok(common.some((x) => x.startsWith("common-setup") && x.includes("contractVersion")), common.join(" / "));
+});
+
+test("検査の自己確認: 拡張できる列挙の知らない値は、保存の検査では違反、読取・復元の検査では違反でなく、値を書き換えない（共通の型の1）", () => {
+  const record = expandRecord(
+    {
+      id: "pay_X1",
+      recordType: "payslip",
+      body: {
+        employerId: "emp_1",
+        paymentKind: { state: "known", value: "bonus" },
+        incomeTimingKind: { state: "known", value: "officer-bonus" },
+        scheduledPayDate: { state: "known", value: "2026-12-25" },
+        grossPay: { state: "known", value: 200000 },
+      },
+    },
+    { scenarioId: "self-check", opId: "o1", previous: undefined },
+  );
+  const kind = (record["body"] as Obj)["incomeTimingKind"];
+  assert.deepEqual(kind, { state: "known", value: "officer-bonus" });
+  const save = checkRecordStatic(record, "save");
+  assert.ok(save.some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")), JSON.stringify(save));
+  assert.deepEqual(checkRecordStatic(record, "read"), []);
+  // 読取でも、拡張できない列挙の知らない値と、空の文字列は違反のまま。
+  const body = record["body"] as Obj;
+  const notOpen = { ...record, body: { ...body, paymentKind: { state: "known", value: "officer-bonus" } } };
+  assert.ok(checkRecordStatic(notOpen, "read").some((v) => v.code === "value-invalid" && v.path.includes("paymentKind")));
+  const empty = { ...record, body: { ...body, incomeTimingKind: { state: "known", value: "" } } };
+  assert.ok(checkRecordStatic(empty, "read").some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")));
+  // 台帳の場面: EX-05-hの復元は違反なし、TC-02-aのo05dの新しい保存は拒否。
+  const h = mutated((copy) => (op(scenario(firstCase(copy, "EX-05"), "EX-05-h"), "o1")["expectedViolations"] = ["value-invalid"]));
+  assert.ok(h.some((x) => x.includes("EX-05-h") && x.includes("expectedViolations")), h.join(" / "));
+});
+
