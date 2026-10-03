@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "6c98de74e9987403fdc3658bcc67c8da723ba39a",
   "task_id": "OPS-github-app-reviewer",
   "planned_paths": [
     ".review/findings.json",
+    "AGENTS.md",
     "README.md",
     "SECURITY.md",
     "docs/development.md",
@@ -62,6 +63,11 @@
       "description": "事前の独立レッドチームの2回目（76e3622、記録: https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565）: N1（P2）gitのlibcurlが~/.netrcをhelperより前に読み、pushが所有者の資格情報を黙って使いうる。P3: A1〜A3・A5・E8（子のgitに残るrepoの設定・askPass・trace）、B1（PRのcheckoutの外で実行、コマンドを発行の前に解決）、C1・C2・C4〜C6（シグナル・失効）、D1（ps ewwで見える）、E1〜E6（文書・試験・計画）。後へ回す: A4、B2、C3、E7。",
       "state": "resolved",
       "resolution": "全体の方針は変えない（Appの身元で行う操作は、そのトークンが確かにあるときだけ行い、ほかの資格情報に戻らない。行ったあとで身元を確かめる。トークンは発行から失効まで、シグナルを含むどの終わり方でも失効を試みる）。回帰・所有者の決定との衝突はない。N1: レッドチームの案（pushのURLに利用者名 x-access-token を入れる）は、そのURLの文字列が公開検査のメールアドレスの規則に当たる。公開検査の規則を、検査を通すためだけに変えない（docs/public-data.md）ので、より強い別の方法をとる: 子の環境のHOMEを、ghの一時の設定ディレクトリ（空、所有者だけが使える）にする。libcurlは.netrcをHOMEから探すので、利用者の.netrc・_netrcを読まない（ほかの利用者の設定（~/.gitconfig等）も読まない）。文書のpushのURLは利用者名なしのまま（範囲を限ったhelperが当たる）。127.0.0.1の合成のサーバーと合成のHOMEで、親の環境では.netrcの資格情報が送られ（対照）、子の環境では送られないことを、実際のgitで試験する。文書とSECURITY.mdの主張を、確かめた範囲に狭める。A1: http.https://github.com/.extraheader と、文書のpushのURL（https://github.com/doc-gif/kurashi-ledger.git）と同じ細かさのURLの extraheader を空にする（実際のgitで、repoの設定のより細かいURLの値が残らないことを確かめた。利用者名付きのURLの設定は、利用者名のないURLには当たらない）。A2: core.askPassを空にする。A3: GIT_TRACE*・GIT_CURL_VERBOSE・GH_DEBUGを外し、GIT_TRACE_REDACT=1にする。A5: 確認のコマンドを、同じ子の環境での git config --includes --get-regexp にする。E8: 一時のrepoにrepoの設定のhelper・extraheader・askPassを置き、子の環境で外れることを試験する。B1: コマンドを発行の前に絶対パスへ解決し（PATHの相対の項目は使わない。Windowsでは.exe・.comだけ）、見つからなければ発行せずに127。文書は、ghはrepoの外で--repo付き、gitのpushは自分のworktreeで確認のコマンドのあとで、と書く。C1・C2: 発行の直前から失効の完了まで、SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK（OSにあるものだけ）を受け、子があれば転送し（SIGINTも）、発行・確認の要求を中断し、トークンがあれば失効させてから128+番号で終える。SIGKILL等で強制終了されたときは失効できない（1時間で失効する）ことを文書に書く。C4: 実際のプロセスとシグナルで、転送と、子の実行中・確認の途中のシグナルのあとの失効を試験する（POSIXだけ。Windowsでは別のプロセスへシグナルを送れないので、skipの表に加える）。C5: 形の検査に通らなくても、ヘッダに入れて安全な値（印字できるASCII、8192文字まで）なら失効を試みる。失効の応答の401は、すでに無効として扱う。C6: statelessの形の失効は未確認として列挙し、実際の鍵での確認に、子の中で失効させてから401になることを確かめる手順を加える。D1: 子の環境のGH_TOKENは同じユーザーのps ewwで見えること、子にenv・gh auth token・--show-tokenを渡さないことを書く。E1: implement-workflowsが要る場面（workflowの変更を含むmainを取り込んだmergeのpush等）を書き、mergeとupdate-branchを未確認に加える。E2: 迂回試験の4・5・9・10は所有者が行う。PUTの前に試験用のrulesetの対象がruleset-test/**だけで、idが24409165でないことを確かめる。片付けはrulesetを先に、branchを後に。合成のworkflowのpushでrunを起動しない。E3: 信頼した写しは、git merge-base --is-ancestorでmainに含まれることを確かめ、git cat-file blobで取り出し、NODE_OPTIONSを外して実行する。E4: Issue #41の7(c)を過去形にし、accountの説明をos.userInfo()に直す。E5: 文書の検査の除外を、背景の1行だけに狭め、例がすべて信頼した写しのパスと ' -- ' を使うことの試験を加える。E6: 計画の評価を、子プロセスの形・終了コード・/dev/nullをやめたこと等、今の実装に合わせて書き直す。後へ回すもの: A4（同じユーザーの環境変数を信頼する前提）とB2はレッドチームの判断で文書に記載だけ行い、コードの対策は所有者の判断（別のmacOSユーザー等）に回す。C3はレッドチームの判断で範囲外。E7は、N1をPR42-R004の出典に加える形で台帳に記録する（新しい原因IDは作らない。同じ原因のため）。"
+    },
+    {
+      "description": "PR #40（OPS-WRITING）が6c98de7でmainに入り、AI向けの規約を集約した（AGENTS.mdを英語の短い入口にし、マージ条件の正本を docs/github-agent-operations.md#merge-conditions に置き、Copilotの利用枠不足の暫定条件をそこに書き、external-worker.mdを英語にし、project-status.mdを表にした）。#42はexternal-worker.mdとproject-status.mdで競合した。",
+      "state": "resolved",
+      "resolution": "mainをmergeで取り込み、#40の構造と正本を優先した。external-worker.mdは#40の版に、英語の短い節（GitHub identity）だけを加えた。project-status.mdは#40の表に1行（AIのGitHub App）だけを加えた。pr-review-loop.mdとgithub-agent-operations.mdの#42の追記は、#40の短い書き方に合わせて縮め、詳しい規則は docs/github-apps.md へのリンクにした。マージ条件とCopilotの暫定条件は、#42では書き直さず、正本（#merge-conditions）へのリンクにした（docs/github-apps.md のレビューの節）。#40の完了で、後へ回していたAGENTS.mdからの参照を加えた（英語の2文。AppはAIの身元、写しから実行、ほかのAIの鍵を読まない、自分のPRを承認しない）。開いているPRとの重なりを確かめ直した: #38（T23）・#37・#36・#33・#29・#28・#25が、implementation-tasks.md・project-status.md・development.md・AGENTS.md・github-agent-operations.md・findings.jsonを変える。#42の変更はどれも短い追記で、後でマージする側が照合する。#44（計画の表）は計画の書式を版2にする予定で、このPRの計画は、#44の検査器でも通るよう、版1のまま boundaries と variant_analysis を加えた。"
     }
   ],
   "assessments": [
@@ -542,5 +548,238 @@
         }
       ]
     }
-  }
+  },
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "コマンドの引数と環境変数（--agent・--purpose・ID・--key-*・`--`のあとのコマンド、KL_GITHUB_APP_*）",
+      "data": "AIの選択、用途、App ID・Installation ID、鍵の場所、実行するコマンド",
+      "trust": "partially-trusted",
+      "control": "parseArgsで決めた値だけを受け付け、IDは数字だけ、拒んだ値は表示しない。コマンドは発行の前にPATHの絶対パスの場所だけから解決し、相対パスを拒む（見つからなければ127で発行しない）"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "鍵の取り出し（キーチェーンの/usr/bin/security、--key-file、--key-stdin）",
+      "data": "Appの秘密鍵（PEMまたはそのbase64）",
+      "trust": "trusted",
+      "control": "securityを決めた引数でシェルなしに呼び60秒で打ち切る。鍵ファイルは開く前にlstatで通常のファイルに限り、O_NOFOLLOW・O_NONBLOCKで開き、fstatで置き換え・権限・所有者を確かめる。標準入力は端末を拒み16KiB・10秒まで。中身はエラーに出さない"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "api.github.comへの要求（発行・確認・失効）",
+      "data": "JWT、installation token",
+      "trust": "trusted",
+      "control": "宛先は固定、redirect: 'error'、15秒の上限、シグナルで中断（失効を除く）"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "GitHubの応答（発行・repoの一覧・失効・エラーのメッセージ）",
+      "data": "トークン、権限、repoの一覧、メッセージ",
+      "trust": "partially-trusted",
+      "control": "トークンの形（ghs_、文字、長さ）、権限の完全一致（Object.hasOwn）、repoの一覧と触れるrepoの確認。違えば失効させて子を起動しない。メッセージは既知の秘密と長い英数字を伏せる"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "子プロセスの環境（childEnvironment）",
+      "data": "GH_TOKENとghとgitの設定",
+      "trust": "partially-trusted",
+      "control": "資格情報・trace・askPass・NODE_OPTIONS等を外し、HOMEとGH_CONFIG_DIRを空の一時のディレクトリにし、gitの利用者・システムの設定を読ませず、repoの設定のhelper・extraheader・askPassを打ち消す。SSHを止める"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "子が読むrepoの設定（カレントディレクトリの.git/config）",
+      "data": "credential.helper、http.*.extraheader、url.*.insteadOf、core.askPass",
+      "trust": "untrusted",
+      "control": "helper・extraheader・askPassは子の環境で打ち消す（実際のgitで試験）。insteadOfは外せないので、pushの前に子と同じ環境で表示して確かめる手順を文書に書く。ghはrepoの外で--repo付きで使う"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "標準エラーと標準出力",
+      "data": "エラーの文",
+      "trust": "trusted",
+      "control": "親は標準出力に書かない。標準エラーは、鍵・JWT・トークン（得た直後から）を伏せる"
+    },
+    {
+      "id": "B8",
+      "direction": "entry",
+      "location": "シグナル（SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK）",
+      "data": "中断",
+      "trust": "partially-trusted",
+      "control": "発行から失効まで受け、子へ転送し、要求を中断し、失効させてから128+番号で終える"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "Appの身元で行うつもりの操作が、Appのトークンを得られない・使えないときに、ほかの保存済みの資格情報（doc-gif）で行われる経路",
+      "places": [
+        {
+          "location": "文書の例（docs/github-apps.md、pr-review-loop、external-worker、AGENTS.md、SECURITY）",
+          "result": "すべて子プロセスの形。シェルの変数で受ける形がないことと、例が信頼した写し・env -u NODE_OPTIONS・` -- `を使うことを試験で確かめる"
+        },
+        {
+          "location": "子のgh（GITHUB_TOKEN、gh auth、GH_HOST）",
+          "result": "外す・空のGH_CONFIG_DIR"
+        },
+        {
+          "location": "子のgit（osxkeychain、利用者の.gitconfig、repoの設定のhelper、.netrc、SSH、askPass、extraheader）",
+          "result": "打ち消す（実際のgitと127.0.0.1の合成のサーバーで試験）。repoの設定のinsteadOfはpushの前の確認の手順"
+        },
+        {
+          "location": "発行の失敗・範囲の不一致・シグナル・コマンドが見つからない",
+          "result": "子を起動しない（125・128+番号・127）"
+        },
+        {
+          "location": "投稿・push・PRの作成のあとの身元",
+          "result": "文書の手順で.user.login・activityのactor・PRのauthorを確かめる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "rulesetの主張と迂回試験が、前提の書き漏れや実際の設定の変更を伴う",
+      "places": [
+        {
+          "location": "docs/github-apps.md の ruleset",
+          "result": "『もう一方のAIか所有者だけ』を前提付きにし、doc-gifで作ったPRの場合を試験に加えた"
+        },
+        {
+          "location": "迂回試験",
+          "result": "ruleset-test/**と試験用のrulesetだけ。PUTの前にidと対象を確かめる。mainへマージしない。片付けはruleset、branchの順"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "縮小を要求した資格情報の権限・範囲を確かめられないまま使う",
+      "places": [
+        {
+          "location": "checkGrantedScope・checkOnlyThisRepository・verifyTokenRepositories",
+          "result": "完全一致・一覧の欠落で失敗・触れるrepoの確認。失効させて子を起動しない"
+        },
+        {
+          "location": "トークンの形の誤り",
+          "result": "使わない。ヘッダに入れて安全な値なら失効を試みる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "鍵やトークンを扱う道具・その設定を、レビューされていないコードや設定から実行・読込みする",
+      "places": [
+        {
+          "location": "スクリプトの実行場所",
+          "result": "信頼した写し（merge-base --is-ancestorで確かめ、cat-file blobで取り出す）。全入口に記載"
+        },
+        {
+          "location": "NODE_OPTIONS・PATHの相対の項目・カレントディレクトリのrepoの設定",
+          "result": "例はenv -u NODE_OPTIONS、相対のPATHを使わない、repoの設定は打ち消す・確かめる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "秘密（鍵・JWT・トークン）が出力・ディスク・ほかのプロセスに出る",
+      "places": [
+        {
+          "location": "標準出力・標準エラー",
+          "result": "親は標準出力に書かない。トークンは得た直後から伏せる（数字のない番兵・statelessの形で試験）"
+        },
+        {
+          "location": "ディスク",
+          "result": "書かない。一時の設定ディレクトリは子の後に消す"
+        },
+        {
+          "location": "子の環境（ps eww）",
+          "result": "同じユーザーからは見える。限界として文書に書いた（子にenvやgh auth tokenを渡さない）"
+        },
+        {
+          "location": "公開検査",
+          "result": "base64のPEMやJWTを見つけないことを文書に書いた。検査器の変更は後続"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "同じ事実（Appの状況、rulesetの設定、マージ条件、Copilotの暫定条件）を書く入口の重複・矛盾。#40の正本との不一致",
+      "places": [
+        {
+          "location": "AGENTS.md・CLAUDE.md・copilot-instructions.md（#40の版）",
+          "result": "AGENTS.mdに参照を2文加えた。CLAUDE.mdとcopilot-instructions.mdは変えない（正本へのリンクで足りる）"
+        },
+        {
+          "location": "github-agent-operations.md（マージ条件の正本）",
+          "result": "#42は1文だけ。マージ条件・暫定条件は書き直さない"
+        },
+        {
+          "location": "pr-review-loop.md・external-worker.md・project-status.md",
+          "result": "#40の短い書き方・英語・表に合わせて縮め、詳細はdocs/github-apps.mdへのリンク"
+        },
+        {
+          "location": "docs/github-apps.md・SECURITY.md・Issue #41",
+          "result": "2つのAppの作成済み、Checks・Commit statusesの追加済み、rulesetの削除の制限・強制pushの禁止の追加済み、承認の規則は確認待ち、で一致"
+        },
+        {
+          "location": "mergeの競合の解消が前の修正に与える影響",
+          "result": "PR42-R002（状況の一致）、R004（例の形）、R006（写しから実行）の記述は、縮めた入口にも残る（文書の検査の試験で確かめる）。#40の暫定条件の文言を#42で言い換えていない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "検証が固定の版・対象のOSで成り立たない、または試験の飛ばしが表と合わない",
+      "places": [
+        {
+          "location": "Windows（FIFO・ファイルのsymlink・シグナル）",
+          "result": "skipの表に2件（理由と代わりの確認）。Windowsのgitの/dev/nullの不具合はCIで見つけて直した"
+        },
+        {
+          "location": "依存・版",
+          "result": "変えない（Node.jsの組込みだけ）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "保存先の排他",
+      "places": [
+        {
+          "location": "scripts/github-app-token.ts・lib",
+          "result": "データルートとlockに触れない（非該当）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "別名の経路で範囲外のファイルを読む",
+      "places": [
+        {
+          "location": "--key-file",
+          "result": "symlink・FIFO・ディレクトリを開く前に拒み、開いた後の置き換えを拒む（実際のファイルで試験）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "DB・journal・manifest",
+      "places": [
+        {
+          "location": "変更したファイル全体",
+          "result": "触れない（非該当）"
+        }
+      ]
+    }
+  ]
 }
