@@ -80,19 +80,19 @@
         {
           "id": "recovery",
           "method": "scripts/install-record.test.tsで、片付けの関数とシグナルの受付を直接呼ぶ単体試験（全OS）を行う: npmの子の実行中・開始前・記録の書込み中にシグナルを受けたとき、子の終了を待ち（届かなければ転送し）、記録と一時ファイルを残さず自分の印だけを消して128+番号を返すこと。scripts/setup-lock.test.tsで、POSIXでは合成のnpmが止まっている間に実際のSIGINT・SIGTERMを送る（setupだけ、プロセスグループ全体）。強制終了（SIGKILL）では印が残り、次のsetupが何も変えずに止まり、印を消すと進めることも確かめる。",
-          "expected": "Ctrl+C等の終了のシグナルでは印も記録も残らず、終了コードは128+番号（SIGINTは130）で、次のsetupは止まらずに進める。成功の確定（最後の照合のあとの確認）より後に届いたシグナルでは記録を残したまま成功で終える（ADR-0008に記載）。強制終了では印が残り、次のsetupは止まって確かめ方・消し方を表示する。Windowsで実際のCtrl+C（コンソールの制御イベント）を送る試験はできないので、T05の受入条件で確かめる（試験はWindowsでは理由を出してskipする）。"
+          "expected": "Ctrl+C等の終了のシグナルでは印も記録も残らず、終了コードは128+番号（SIGINTは130）で、次のsetupは止まらずに進める。成功の確定（最後の照合のあとの確認）より後に届いたシグナルでは記録を残したまま成功で終える（ADR-0008に記載）。強制終了では印が残り、次のsetupは止まって確かめ方・消し方を表示する。Windowsで実際のCtrl+C（コンソールの制御イベント）を送る試験はできないので、T05の受入条件で確かめる（試験はWindowsでは理由を出してskipする）。 印を消せない場合は、終了コードを変えずに、印が残ったことと消し方を表示する（POSIXの試験。Windowsとrootでは飛ばし、T05で手で確かめる）。"
         }
       ]
     },
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "公開する差分は、開発用の設定・スクリプト・文書と、合成の試験データだけ。秘密情報の見本は試験の中で文字列を分割して組み立てる。試験は127.0.0.1の合成registryと一時ディレクトリを使い、利用者のnpmの設定・キャッシュを使わない。新しい外部サービスは加えない（依存は公開のnpm registryから取得）。 main（3c4d1dd、PR #10のT04）を取り込んだあと、design/README.mdの画像のcommitの条件を、T02の.gitignoreの例外（design/の.png・.jpg・.jpeg）と、追加するときの点検（docs/public-data.mdの5: 合成であること、メタデータ、写り込み、ファイル名）に合わせる。点検は緩めない。",
+      "reason": "公開する差分は、開発用の設定・スクリプト・文書と、合成の試験データだけ。秘密情報の見本は試験の中で文字列を分割して組み立てる。試験は127.0.0.1の合成registryと一時ディレクトリを使い、利用者のnpmの設定・キャッシュを使わない。新しい外部サービスは加えない（依存は公開のnpm registryから取得）。 main（3c4d1dd、PR #10のT04）を取り込んだあと、design/README.mdの画像のcommitの条件を、T02の.gitignoreの例外（design/の.png・.jpg・.jpeg）と、追加するときの点検（docs/public-data.mdの5: 合成であること、メタデータ、写り込み、ファイル名）に合わせる。点検は緩めない。 調整係の依頼（2026-10-03）で、除外する種類を1つの規則で広げる: 実データになりうるが、ソース・文書・設定に要らない形式（png・jpg・jpeg・heic以外のラスター画像、Word等の文書、表計算・表形式、金融機関の明細の書き出し、メールの書き出し、アーカイブ・圧縮、鍵の入れ物）を、.gitignoreと公開検査の両方で、どの階層でも大文字小文字を区別せずに除外する。ソース・文書・設定に要る形式（json・md・svg・ts・txt・xml等）は除外しない（理由と、それらで残る抜けはdocs/public-data.mdに書く）。例外の場所の種類は増やさない（tests/fixtures/はcsv・pdf・png・jpg・jpeg、design/はpng・jpg・jpegのまま）。",
       "checks": [
         {
           "id": "public",
-          "method": "npm run check:public相当（node scripts/check-public.ts --stagedと全件）、個人のパス・メール・トークン・鍵の形のgrep、差分の目視を、commitのたびに行う。 design/README.mdの画像の条件が、docs/public-data.mdの5と.gitignoreの例外に一致するかを読み比べる。",
-          "expected": "実データ・秘密・個人のパスの当たりなし（規則の定義、合成の見本、プレースホルダ、example.comだけ）。試験の前後で利用者のnpmのキャッシュとOSの一時ディレクトリに残るものがない。"
+          "method": "npm run check:public相当（node scripts/check-public.ts --stagedと全件）、個人のパス・メール・トークン・鍵の形のgrep、差分の目視を、commitのたびに行う。 design/README.mdの画像の条件が、docs/public-data.mdの5と.gitignoreの例外に一致するかを読み比べる。 除外する拡張子ごとに、直下・深い階層・大文字の名前・同じ名前のディレクトリと、例外の場所（tests/fixtures/・design/）の中の見本を作り、pathFindingsとgit check-ignore（core.ignorecase=false）の両方で確かめる。",
+          "expected": "実データ・秘密・個人のパスの当たりなし（規則の定義、合成の見本、プレースホルダ、example.comだけ）。試験の前後で利用者のnpmのキャッシュとOSの一時ディレクトリに残るものがない。 除外する拡張子は、どの階層でも、大文字でも、例外の場所の中でも拒否され、例外の場所の決めた種類だけが許される。.gitignoreと公開検査が食い違わない。json・md・svg・ts等は拒否されない。"
         }
       ]
     },
@@ -125,8 +125,8 @@
         },
         {
           "id": "artifact",
-          "method": "ADR-0008の書き方と試験を読み、記録の書込み（一時ファイル→名前変更）・削除（unlink）・node_modulesのリンクの拒否の試験を実行する。 同時に2つのsetupを起動する試験（合成のnpm）も実行する。 終了のシグナルを受けたときの片付け（記録・一時ファイル・自分の印）を、単体試験とPOSIXの実際のシグナルの試験で確かめる。",
-          "expected": "既存の非空のnode_modulesはnpm ciが消してから入れ直す。setupの途中終了では記録の名前に不完全なファイルが残らない。ディレクトリの反映に失敗したら記録を消す。manifestはT08で作り、T02では作らない。 同じworktreeで2つのsetupが同時に依存を入れ替えることはない（2つ目は依存を変える前に止まる）。 終了のシグナルで中断したsetupは、記録も一時ファイルも残さない。"
+          "method": "ADR-0008の書き方と試験を読み、記録の書込み（一時ファイル→名前変更）・削除（unlink）・node_modulesのリンクの拒否の試験を実行する。 同時に2つのsetupを起動する試験（合成のnpm）も実行する。 終了のシグナルを受けたときの片付け（記録・一時ファイル・自分の印）を、単体試験とPOSIXの実際のシグナルの試験で確かめる。 環境によって飛ばす試験（Windowsでの実際のシグナル4件と印の削除の失敗1件、POSIXのrootでの印の削除の失敗1件）と、Windowsで弱めて確かめる箇所（ファイルのsymlinkを作れないとき）を、理由とともに試験とdocs/development.mdに書き、T05の手での確認に加える。",
+          "expected": "既存の非空のnode_modulesはnpm ciが消してから入れ直す。setupの途中終了では記録の名前に不完全なファイルが残らない。ディレクトリの反映に失敗したら記録を消す。manifestはT08で作り、T02では作らない。 同じworktreeで2つのsetupが同時に依存を入れ替えることはない（2つ目は依存を変える前に止まる）。 終了のシグナルで中断したsetupは、記録も一時ファイルも残さない。 skipはすべて理由付きで、件数を引継ぎに書き、T05の手での確認と1対1で対応する。skipで成功に見せない。"
         }
       ]
     },
@@ -189,12 +189,12 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T02はpackage.jsonとlockfileを最初に作り、T05→T26→T08の順の引継ぎ（実装計画）を変えない。固定版とMac/Windows/Linuxでの確認は、所有者の決定（2026-10-02）でT05の受入条件に移し、ADR-0002・ADR-0005・ADR一覧・台帳のT02/T05節を合わせた。mainへ入ったPR #4（#6の決定を含む）を取り込み、状態資料・README・AGENTS・Copilotの指示を同じ状態に合わせる。移行用の計画で、実装前に計画したものではない。 main（3c4d1dd、PR #10のT04）を履歴を書き換えずに取り込み、T04の決定（T08の依存にT01、Status Badge・Amount Inputの受入条件、Figmaの作成済み）とT02の変更の両方を残す。",
+      "reason": "T02はpackage.jsonとlockfileを最初に作り、T05→T26→T08の順の引継ぎ（実装計画）を変えない。固定版とMac/Windows/Linuxでの確認は、所有者の決定（2026-10-02）でT05の受入条件に移し、ADR-0002・ADR-0005・ADR一覧・台帳のT02/T05節を合わせた。mainへ入ったPR #4（#6の決定を含む）を取り込み、状態資料・README・AGENTS・Copilotの指示を同じ状態に合わせる。移行用の計画で、実装前に計画したものではない。 main（3c4d1dd、PR #10のT04）を履歴を書き換えずに取り込み、T04の決定（T08の依存にT01、Status Badge・Amount Inputの受入条件、Figmaの作成済み）とT02の変更の両方を残す。 環境によって飛ばす試験を、台帳のT05とADR一覧のT05行の手での確認に加える（調整係の依頼、2026-10-03）。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "台帳のT02・T05・T26・T08節、実装計画の共有資源の順、ADR-0002・ADR-0005・ADR一覧の「別タスクで行う検証」を読み比べる。",
-          "expected": "依存の追加はTypeScriptと@types/nodeだけ。T05の受入条件に固定版とMac/Windows/Linuxでのsetup・型検査・試験・buildの成功が入り、ADRと台帳で担当が一致する。ほかのタスクの共有資源は変えない。"
+          "method": "台帳のT02・T05・T26・T08節、実装計画の共有資源の順、ADR-0002・ADR-0005・ADR一覧の「別タスクで行う検証」を読み比べる。 試験のskipの一覧（docs/development.md）と、台帳のT05・ADR一覧のT05行の手での確認を読み比べる。",
+          "expected": "依存の追加はTypeScriptと@types/nodeだけ。T05の受入条件に固定版とMac/Windows/Linuxでのsetup・型検査・試験・buildの成功が入り、ADRと台帳で担当が一致する。ほかのタスクの共有資源は変えない。 T02で飛ばす試験は、すべてT05の手での確認かCIでの実行に対応する。"
         },
         {
           "id": "entrypoints",
