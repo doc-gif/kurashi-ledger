@@ -11,6 +11,7 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 | 固定するメジャー | Node.js 24（LTS、Krypton） |
 | 下限 | 24.15.0（`package.json`の`devEngines.runtime`と`engines`は`>=24.15.0 <25`） |
 | `.nvmrc` | `24`（nvmは範囲を書けないので、メジャーだけを書く。下限より古い24.xを選ぶとnpmが止まる） |
+| `mise.toml`（手元の正確な版） | Node.js `24.21.0`、Python `3.11.17`（下の「miseで版をそろえる」） |
 
 選んだ理由（確認日: 2026-10-03）:
 
@@ -22,13 +23,57 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 
 版が合わないと、npmは`npm ci`・`npm run`の前に`EBADDEVENGINES`で止まる。`--force`で検査を外さない（`npm run setup`は`--force`を拒む）。
 
-既知の制約: T02の作業環境のMac（Node.js 24.14.0）では、この版の検査でnpmのスクリプト（`npm run setup`等）が止まる。Node.jsを24.15.0以上に更新するまで続く。所有者は当面更新しないと決め、固定した版での確認はT05のCIで行う（下の「所有者の決定」の1と「CI」）。
+既知の制約: T02の作業環境のMac（Node.js 24.14.0）では、この版の検査でnpmのスクリプト（`npm run setup`等）が止まる。Node.jsを24.15.0以上に更新するまで続く。所有者は当面更新しないと決め、固定した版での確認はT05のCIで行う（下の「所有者の決定」の1と「CI」）。2026-10-03に所有者は、Node.jsとPythonの版をmiseで管理すると決めた（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。miseを入れて下の「miseで版をそろえる」を行えば、この制約はなくなる。
+
+### 版の正本の役割
+
+| 何を決めるか | 正本 | 検査 |
+| --- | --- | --- |
+| Node.jsの対応する範囲 | `package.json`の`devEngines.runtime`・`engines`（`>=24.15.0 <25`） | npmが`npm ci`・`npm run`の前に検査する（`EBADDEVENGINES`） |
+| Pythonの対応する範囲 | 検査器（`tools/review_guard`）の起動時の検査（3.11以上） | 3.11未満なら起動しない |
+| 手元で使う正確な版 | `mise.toml`（`[tools]`の`node`・`python`） | miseが入れて切り替える。範囲の外の版は書かない |
+| CIで使う版 | `.github/workflows/ci.yml`。Node.jsは`package.json`の範囲の最新（`node-version-file: package.json`と`check-latest`）、Pythonは`'3.11'`（対応する最も古いマイナー） | runのSummaryとログに版が出る |
+
+mise.tomlの版の理由（確認日: 2026-10-03）:
+
+- Node.js `24.21.0`: いまのCIが`package.json`の範囲から入れる版（mainのrun [37111323603](https://github.com/doc-gif/kurashi-ledger/actions/runs/37111323603)で、Linux・Windows・macOSとも`v24.21.0`）。24系の最新（2026-09-07、Active LTS）で、下限の24.15.0以上。手元とCIを同じパッチ版にして、依存の導入の記録（Node.jsの版は完全一致で比べる。ADR-0008）とCIの結果を読み合わせやすくする。
+- Python `3.11.17`: CIの`'3.11'`と同じマイナー（検査器が対応する最も古い版）で、3.11系の最新のセキュリティ修正版。miseは既定でビルド済みの配布物（python-build-standalone）を入れ、2026-10-01の配布物にmacOS（arm64）用の3.11.17がある。CIのパッチ版はrunnerのキャッシュで決まり、OSごとに違う（上のrunで、Linuxは3.11.16、macOS・Windowsは3.11.9）。検査器は標準ライブラリだけを使うので、パッチ版の違いは問題にしない。
+
+CIは変えない。固定したSHAの`actions/setup-node`・`actions/setup-python`は`mise.toml`の形式を解釈しない（どちらも配布物のソースで確かめた。setup-nodeが解釈するのは`package.json`と1行に版を書くファイル（`.nvmrc`・`.tool-versions`等）、setup-pythonは`.tool-versions`・`pyproject.toml`・`Pipfile`と1行に版を書くファイル）。CIでmise.tomlを読むには、新しいaction（`jdx/mise-action`等）か版を取り出すstepが要り、workflowの変更が増える割に、上の範囲の検査は変わらないため。CIのNode.jsは範囲の最新を入れ続けるので、新しい24.xが出ると手元とCIのパッチ版がずれる。そのときは、CIのrunのSummaryの版を見て、`mise.toml`の`node`を同じ版へ上げるPRを出す（`package.json`の範囲は変えない）。メジャー更新はT28で、`mise.toml`もその範囲に含む。
+
+`.nvmrc`は`24`のままにする。ADR-0002のとおりnvm利用者向けの補助で、正確な版を2か所に書くと更新漏れが増えるため。`nvm install 24`は24系の最新を入れるので下限を満たす。miseは既定で`.nvmrc`を読まず（mise.tomlを使う）、両方があっても衝突しない。
+
+## miseで版をそろえる
+
+[mise](https://mise.jdx.dev)は、ディレクトリごとに決めた版のツールを入れて切り替える。repoのルートの`mise.toml`に書いた版のNode.jsとPythonを使う。miseは任意で、公式のインストーラやnvm等で同じ範囲の版を入れてもよい（ADR-0002）。
+
+### macOS
+
+1. miseを入れる: `brew install mise`
+2. シェルで有効にする（zshの例）: `echo 'eval "$(mise activate zsh)"' >> ~/.zshrc`を1回だけ実行し、新しいターミナルを開く（または`source ~/.zshrc`）。nvmも使っている場合は、この行がnvmの読込みより後になるようにする（`>>`で末尾に足せばそうなる）。
+3. worktreeのルートで`mise install`を実行する。Node.js（公式の配布物）とPythonが、miseの置き場所（`~/.local/share/mise/installs`）に入る。repoの中には何も書かない。
+4. 確かめる: そのworktreeの中で`node -v`が`v24.21.0`、`python --version`が`Python 3.11.17`になる（`python3`も同じ）。どこから動いているかは`mise ls --current`や`which node`で確かめる。
+5. `npm run setup`を実行する（Node.jsを入れ替えたので、依存を導入し直す。ADR-0008）。
+
+`mise.toml`の版が変わったとき（branchの切り替えやmainの取り込みを含む）は、`mise install`のあと`npm run setup`をやり直す。
+
+`mise.toml`は`[tools]`の版の文字列だけを書いているので、miseの通常のモードでは`mise trust`は要らない。miseのparanoidモードを使っている場合は、ファイルを読んでから`mise trust`を実行する。env・tasks等を`mise.toml`に足すと、trustが要るようになるので足さない。個人の上書き（`mise.local.toml`等）や、シェルの設定はcommitしない。
+
+### Windows
+
+Windowsでは、ADR-0002のとおり公式のインストーラを勧める。Node.jsは`mise.toml`と同じ版の`.msi`を入れ、Pythonはpython.orgのインストーラで3.11以上を入れ、入れたマイナーを指定したランチャー（`py -3.11`、3.13を入れたなら`py -3.13`）で動かす。先にそのコマンドの`--version`で3.11以上であることを確かめてから、[CLI手順](../tools/review_guard/README.md)の`python3`をそのコマンドに読み替える。公式のインストーラで入れたNode.jsはCIでは確かめていない（下の「CI」）。
+
+miseもWindowsに対応している（`winget install jdx.mise`）。ただし、PowerShellの`mise activate pwsh`はプロファイル（スクリプト）から読み込む必要があり、このrepoでは実行ポリシーを変えないので使わない。代わりにshimのディレクトリ（`%LOCALAPPDATA%\mise\shims`）を利用者のPATHに加える方法があるが、shimは`node.exe`・`npm.exe`等の実行ファイルで、この資料の`npm.cmd`の指示とどう組み合わさるかを含め、このrepoでは確かめていない（CIでも確かめていない）。使う場合は、`mise install`のあと`node -v`・`npm.cmd -v`（使えなければ`npm -v`）・`python --version`で版を確かめる。
+
+### worktreeとの関係
+
+miseは、いまのディレクトリから親へたどって`mise.toml`を探す。`mise.toml`はcommitしてあるので、最新の`origin/main`から作ったworktreeはどれも同じ版を使い、worktreeごとの設定は要らない。入れたNode.jsとPythonはmiseの置き場所に1つずつ入り、worktreeの間で共有される（`node_modules`と依存の導入の記録は、従来どおりworktreeごとに`npm run setup`で作る）。branchごとに`mise.toml`の版が違えば、そのworktreeではその版を使う（入っていなければ、そのworktreeで`mise install`を実行する）。
 
 ## 初めて使うとき
 
 macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポリシーを変えず、`npm`の代わりに`npm.cmd`を使う（ADR-0002）。
 
-1. Gitと、上の版のNode.jsを入れる（公式インストーラ、またはnvm等のバージョン管理ツール）。
+1. Gitと、上の版のNode.jsを入れる（mise（上の「miseで版をそろえる」）、公式インストーラ、またはnvm等のバージョン管理ツール）。レビュー運用ツールを動かすときは、Python 3.11以上も入れる（miseなら一緒に入る）。
 2. 作業用のworktree（下の「branchとworktree」）で`npm run setup`を実行する。中で`npm ci`を実行し、成功したときだけ依存の導入の記録を書く。
 3. `npm run typecheck`、`npm test`、`npm run check:public`が通ることを確かめる。ブラウザ試験を手元で動かすときは、下の「ブラウザ試験」。
 
@@ -137,6 +182,7 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - branch名は`task/<タスクID>-<担当名>`（例: `task/T02-claude`）。1タスクにつき実装担当1名・branch 1本。
 - 大文字と小文字だけが違うbranch名を作らない。MacとWindowsのファイルシステムでは、同じ名前として衝突する。
 - worktreeごとに`npm run setup`を実行する。`node_modules`と記録はworktreeごとに別で、ほかのworktreeのものを使い回さない。
+- miseの`mise.toml`はrepoにあるので、どのworktreeでも同じ版のNode.jsとPythonを使う（上の「worktreeとの関係」）。
 - 試験や開発で使うデータは合成データだけ。実データのデータルート（ADR-0006）を開かない。
 
 ## commit・Issue・PR・引継ぎ
@@ -195,3 +241,5 @@ T02で所有者の判断を求めた事項について、所有者が2026-10-02�
 | 2 | 元checkoutの未追跡の試作と`node_modules` | 当面残す。T02の統合後に扱いを見直す。削除しない |
 | 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める。**2026-10-03に、Dependabotの部分を変えた:** 所有者が実装側のチャットでDependabotを含めることを承認した（調整係が中継。Issue #35）。提案のPRは計画を付けた担当のPRで取り込む（上の「依存の更新（Dependabot）」）。Gitのhookは入れないまま。採用の頻度はT25で決める |
 | 4 | `npm run setup`が利用者の`~/.npmrc`を読まないこと | 受け入れる（プロキシや独自のregistryは使っていない）。プロキシが必要になったら、`HTTPS_PROXY`等の環境変数で渡す（上の「npmの設定」） |
+
+2026-10-03に所有者が実装側のチャットで、このrepoのNode.jsとPythonの版をmiseで管理すると決めた（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。上の1の「ローカルのNode.jsは当面24.14.0のまま」は、所有者がmiseを入れるまでの扱いになる。
