@@ -34,6 +34,11 @@
       "description": "PR33-R001（Codexのレビュー5400986412、head deb35fb）: 実際のnpm（npm-cli.js run setup、cmd.exeを含む）を通す試験は通常のCtrl+Cだけで、#19の条件2（Ctrl+Break）と条件3（印を消せないCtrl+C）はsetupの直接起動と合成のnpmだけで確かめていた。通常のCtrl+Cでsetup自身（130）とnpm経由（1、子が残る）の差が観測されたので、直接起動の結果を残る2条件の代わりにできない。",
       "state": "resolved",
       "resolution": "scripts/setup.test.tsで、実際のnpm run setupを止める試験を共通の手順にし、Ctrl+Break（POSIXは同じ位置づけのプロセスグループへのSIGTERM）と、印を消せないときのCtrl+C（POSIXは書込み禁止、Windowsは削除の共有を許さずに開いたまま。rootでは飛ばす）を加える。どれも、コンソール（POSIXはプロセスグループ）のすべてのプロセスが終わるのを待ってから、setupの表示（受けたシグナル、印を消せないときは印が残ったことと消し方）、記録・印の有無、check:install、次のsetup（印を消したあと）とその後のcheck:installを確かめる。npm runの終了コードは、POSIXは128+番号かシグナル、Windowsは0でないことを確かめ、観測した終了コードとnpmが終わった時点で残っていたプロセスの数をdiagnosticに出す（Windowsの終了コード1と残るプロセスの扱いは所有者の判断待ちなので、その値を期待値として固定しない）。setup自身の130・149の厳密な試験（setup-lock.test.ts）は維持する。管理者と一般のユーザーの両方のCIで実行される。setupの動きは変えない。"
+    },
+    {
+      "description": "PR33-R001の残件（Codexのレビュー5401183438、head c4adc4f）: 期待と違う結果（実際のnpm run setupの終了コードと、npmが終わった時点で残っていたプロセス）が、正本のIssue #19に記録されていない。これまでの指摘（PR33-R001、Copilot 4173462487）と、調整係の指示（setupを変えない、終了コードの扱いは所有者の判断待ち）を合わせて読み、食い違いがないことを確かめた。観測の記録は判断を先取りしない。",
+      "state": "resolved",
+      "resolution": "コードと期待値は変えない。Issue #19に、#19の記録の様式に沿って、対象SHA（head c4adc4f、base 1d513e7）、CIのリンク、Windowsの版・Node.js・npmの版、setup自身の結果（130・149、印を消せないときの表示）、実際のnpm run経由の3つの結果（終了コード1／3221225786／1、npmが終わったときに残っていたプロセス3／1／3、全部が終わったあとの印・記録・案内・再実行の結果）を記録する。npm.cmdのY/Nの対話は未確認、終了コードの扱いは所有者の判断待ち（未決）と明記する。期待値の変更・setupの修正・Issueの閉鎖はしない。引継ぎにそのコメントのリンクを書く。"
     }
   ],
   "assessments": [
