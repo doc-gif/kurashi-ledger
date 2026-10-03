@@ -1,0 +1,2239 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-07",
+  "title": "予測の一部を実績化する（消込、使えない関係、取り下げ、識別の次元、配分の符号）",
+  "consumers": ["T06", "T11", "T15", "T20"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-07-a",
+      "title": "月ごとの見込みと、届いた実績（消し込み）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-09-30T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l3",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            },
+            "knownOn": {"state": "known", "value": "2026-09-30"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_701",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 48000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-01T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_701",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_701", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 48000},
+              "settlesForecastLine": {"state": "known", "value": true},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": -2000}},
+          "reason": "消し込む配分（settlesForecastLineがtrue）があるので残りは0。見込みとの差は実績の配分の合計 − 予測の金額 ＝ 48,000 − 50,000 ＝ −2,000。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "6", "quote": "確定済みの配分のうち、settlesForecastLineがtrueのものがある: 残りは0（消込）"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "48,000（消込） | 0 | −2,000"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l2"},
+          "expect": {"remaining": {"state": "known", "value": 50000}},
+          "reason": "配分がないので予測の金額のまま。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "予測の金額の絶対値 − 確定済みの配分の絶対値の合計"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-11", "to": "2026-11"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "l1は消し込んだので残り0として数える（対象に残し0として数えるので記録なしではない）。実績48,000と見込み50,000を両方数えない。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "complete 0（l1は消し込んだので残り0として数える）"}, {"doc": "common-types.md", "section": "11", "quote": "0として数えるのは、対象にあって値がknownの0の記録"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-12", "to": "2026-12"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "l2の残り50,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "見込み（勤務先B、予定月 2026-12） | 50,000"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-01", "to": "2026-12"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "2026年の予定月の見込みは、l1の残り0とl2の残り50,000で50,000（l1・l2の全額100,000にしない）。実績と合わせて表示するときは、実績48,000（pay_701）と見込み50,000を並べ「見込みを含む」と表示する。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "6", "quote": "実績化した分は、実績の記録の側で集計に入る。予測の側では残りだけが見込みの集計に入る"},
+            {"doc": "reconciliation.md", "section": "2", "quote": "実績と、予測の行の全額を足さない（残りだけを足す）"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "2026年を 48,000 ＋ 100,000（l1・l2の全額）＝ 148,000 にしない"}
+          ]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 48000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "実績は実績の記録の側で数える。予測を書き換えない。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "実績化した分は、実績の記録の側で集計に入る。予測の側では残りだけが見込みの集計に入る"}, {"doc": "examples.md", "section": "EX-07", "quote": "fc_701を書き換えない"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": ["acct_2"], "from": "2026-11", "to": "2026-11"}
+          },
+          "expect": {"error": "rejected-request"},
+          "reason": "給与の総支給額の見込み（gross-pay）の集計で許すscopeの次元はemployerIdsだけ。口座を指定した要求は、黙って無視せず拒否する（口座で絞れるのはdeposit-amountの見込みだけ）。",
+          "cites": [
+            {"doc": "common-types.md", "section": "11", "quote": "gross-pay・net-pay・bank-transferはemployerIds。deposit-amountはemployerIdsとaccountIds"},
+            {"doc": "common-types.md", "section": "11", "quote": "許す次元以外の次元に空でない値を指定した要求は、黙って無視せず拒否する"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-a2",
+      "title": "行IDの予約は同じ親の記録の全改訂の中だけ",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-09-30T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l3",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            },
+            "knownOn": {"state": "known", "value": "2026-09-30"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-15T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-10-15"},
+            "body": {
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-10-16T03:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "line-id-reused"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "revision": 3,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-10-16"},
+            "body": {
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l3",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 40000}
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-10-16T03:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "revision": 3,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-10-16"},
+            "body": {
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l4",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 40000}
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-10-16T03:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_702",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "unknown"},
+                  "amount": {"state": "known", "value": 60000}
+                }
+              ],
+              "basis": {"state": "known", "value": "contract"},
+              "basisNote": {"state": "known", "value": "年末の臨時業務の報酬 60,000"}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2027-01", "to": "2027-01"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 100000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "消した行l3の行IDは同じ記録の後の改訂で別の行に使わない（拒否）。新しい行はl4で保存できる。別の記録fc_702の行IDl1は、fc_701のl1と同じでよい。予定月2027-01の見込みはfc_701のl4（40,000）とfc_702のl1（60,000）で100,000。",
+          "cites": [{"doc": "common-types.md", "section": "2", "quote": "改訂で消した行の行IDは、その記録の後の改訂で、別の行に再び使わない"}, {"doc": "common-types.md", "section": "2", "quote": "別の記録が同じ行ID（l1等）を使うことは許す"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-a3",
+      "title": "予測を使うrunの閉包（逆向きの参照）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-07-a",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "runClosure", "roots": {"requests": [], "assumptionRefs": [{"id": "fc_701", "revision": 1, "line": "l2"}, {"id": "fc_701", "revision": 1, "line": "l3"}]}},
+          "expect": {
+            "records": [{"id": "fc_701", "revision": 1}, {"id": "pay_701", "revision": 1}, {"id": "emp_2", "revision": 1}],
+            "allocations": [{"id": "alc_701", "revision": 1, "usageAtRun": "valid"}],
+            "decisions": []
+          },
+          "reason": "根は仮定の参照（fc_701のl2・l3）。fc_701が閉包に入るので、その行をtoとするalc_701（valid）を逆向きの参照として加え、順方向にalc_701のfromのpay_701と雇用先emp_2をたどる。alc_701を省いたrunは保存しない（runの中ではl1の残りが50,000に見えてしまう）。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "予測 | その行をtoとする照合配分 | 予測の行の残り"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "fc_701、alc_701（valid）、pay_701、emp_2"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "省くと、runの中ではl1の残りが50,000に見え"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-a4",
+      "title": "二重登録の明細から実績化していた場合（使えない関係）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-09-30T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l3",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            },
+            "knownOn": {"state": "known", "value": "2026-09-30"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_701",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 48000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-01T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_706",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 48000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-12-01T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_701",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_706", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_701", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 48000},
+              "settlesForecastLine": {"state": "known", "value": true},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-12-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_706", "recordType": "payslip", "revision": 2, "reason": "void", "duplicateOf": {"state": "known", "value": {"id": "pay_701", "revision": "current", "line": "whole"}}}
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2026-12-02T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_701",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "正規の明細に結び直す"},
+            "body": {"from": {"id": "pay_701", "revision": "current", "line": "whole"}, "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o5",
+          "query": {"kind": "allocationUsage", "allocation": "alc_701"},
+          "expect": {"usage": "duplicate-voided"},
+          "reason": "参照先pay_706が二重登録として取り消されたので、要確認（二重登録の取消）。使えない関係で、関係がないとはみなさない。自動では結び直さない。",
+          "cites": [{"doc": "reconciliation.md", "section": "9", "quote": "参照先が二重登録として取消されている（最新の改訂がvoidでduplicateOfがknown）"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o5",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "unknown"}},
+          "reason": "使えない関係があるので、l1の残りはunknown（50,000に戻さない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "残りはunknown（使えない配分を除いた残りを示さない"}, {"doc": "examples.md", "section": "EX-07", "quote": "unknown（50,000に戻さない）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o5",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-11", "to": "2026-11"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "fc_701", "revision": 1, "line": "l1"}, "field": {"kind": "derived", "key": "forecast-remaining"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "見込みの集計はincompleteで、fc_701のl1をunknownで挙げる。実績48,000（pay_701）と見込み50,000を両方数えない。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "missingにfc_701のl1をunknownで挙げる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_701"},
+          "expect": {"usage": "valid"},
+          "reason": "利用者がalc_701のfromを正規の記録pay_701に変え、確定の条件を検査し直すと有効。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "利用者がalc_701を改訂してfromをpay_701（正規の記録）に変え"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": -2000}},
+          "reason": "結び直した有効な配分で、l1は再び消込（残り0、見込みとの差−2,000）になる。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "有効 | 0（消込） | 0"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-a5",
+      "title": "存在しない明細から実績化していた場合（二重登録でない取消は関係がないものとして除く）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-09-30T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_701",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l2",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                  "expectedMonth": "2026-12",
+                  "expectedDate": {"state": "known", "value": "2026-12-31"},
+                  "amount": {"state": "known", "value": 50000}
+                },
+                {
+                  "lineId": "l3",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "known", "value": "2027-01-29"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            },
+            "knownOn": {"state": "known", "value": "2026-09-30"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_706",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 48000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-01T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_701",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_706", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_701", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 48000},
+              "settlesForecastLine": {"state": "known", "value": true},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-12-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "pay_706", "recordType": "payslip", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "存在しない明細の誤った取込"}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_701"},
+          "expect": {"usage": "voided"},
+          "reason": "二重登録でない取消をした記録は存在しない取引なので、配分は無効（要確認）で、関係がないものとして除く。",
+          "cites": [{"doc": "reconciliation.md", "section": "9", "quote": "4（二重登録でない取消）だけを「関係がない」として計算から除く"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 50000}},
+          "reason": "実績化はなかったので、l1の残りは50,000に戻る（正しい）。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "l1の残りは50,000に戻る（実績化はなかったので、正しい）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-11", "to": "2026-11"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "l1の残り50,000。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "予測の側では残りだけが見込みの集計に入る"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-a6",
+      "title": "確定の検査を通らずに入った配分（真偽のunknownをfalseにしない）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(a)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2027-01-10T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": ["fact-state-not-allowed"],
+          "records": [
+            {
+              "id": "fc_701",
+              "recordType": "forecast",
+              "body": {
+                "subject": "pay",
+                "employerId": {"state": "known", "value": "emp_2"},
+                "measure": "gross-pay",
+                "lines": [
+                  {
+                    "lineId": "l1",
+                    "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+                    "expectedMonth": "2026-11",
+                    "expectedDate": {"state": "known", "value": "2026-11-30"},
+                    "amount": {"state": "known", "value": 50000}
+                  },
+                  {
+                    "lineId": "l2",
+                    "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+                    "expectedMonth": "2026-12",
+                    "expectedDate": {"state": "known", "value": "2026-12-31"},
+                    "amount": {"state": "known", "value": 50000}
+                  },
+                  {
+                    "lineId": "l3",
+                    "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                    "expectedMonth": "2027-01",
+                    "expectedDate": {"state": "known", "value": "2027-01-29"},
+                    "amount": {"state": "known", "value": 50000}
+                  }
+                ],
+                "basis": {"state": "known", "value": "user-estimate"},
+                "basisNote": {"state": "known", "value": "月50,000程度"}
+              },
+              "knownOn": {"state": "known", "value": "2026-09-30"}
+            },
+            {
+              "id": "pay_701",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_2",
+                "paymentKind": {"state": "known", "value": "salary"},
+                "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+                "grossPay": {"state": "known", "value": 48000},
+                "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+              }
+            },
+            {
+              "id": "alc_701",
+              "recordType": "allocation",
+              "body": {
+                "kind": "forecast-realization",
+                "allocationStatus": "confirmed",
+                "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+                "to": {"id": "fc_701", "revision": "current", "line": "l1"},
+                "amount": {"state": "known", "value": 48000},
+                "settlesForecastLine": {"state": "unknown"},
+                "proposedBy": "user",
+                "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+              }
+            }
+          ]
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2027-01-10T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_701",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "new-information",
+            "changeNote": {"state": "known", "value": "消し込むと決めた"},
+            "body": {"settlesForecastLine": {"state": "known", "value": true}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o1",
+          "query": {"kind": "allocationUsage", "allocation": "alc_701"},
+          "expect": {"usage": "stale"},
+          "reason": "確定済みなのにsettlesForecastLineがunknownで、確定の条件を満たさないので要確認（古いデータ）。使えない関係になる。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "9", "quote": "settlesForecastLine（forecast-realization）がknownでない"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "alc_701の使われ方は「要確認（古いデータ）」で、使えない関係になる"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o1",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "unknown"}},
+          "reason": "unknownをfalseとみなして残り50,000 − 48,000 ＝ 2,000を示さない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "5", "quote": "trueとしてもfalseとしても扱わない"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "unknownをfalseとみなして、残り 50,000 − 48,000 ＝ 2,000 を示さない"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": -2000}},
+          "reason": "利用者がsettlesForecastLineを決めて確かめ直すと有効に戻る。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "利用者がsettlesForecastLineを決めて確かめ直すと、有効に戻る"}]
+        }
+      ],
+      "acceptance": ["unknown-value"]
+    },
+    {
+      "scenarioId": "EX-07-b",
+      "title": "一部だけ支払われた見込みと、1件の実績で複数の行を実績化",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-07-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2027-01-30T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_702",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "unknown"},
+                  "amount": {"state": "known", "value": 60000}
+                }
+              ],
+              "basis": {"state": "known", "value": "contract"},
+              "basisNote": {"state": "known", "value": "年末の臨時業務の報酬 60,000"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2027-01-30T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_702",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-29"},
+              "grossPay": {"state": "known", "value": 75000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+              "otherEarnings": {"state": "known", "value": [{"lineId": "l2", "label": "臨時業務手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 25000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2027-01-30T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_702",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_702", "revision": "current", "line": "l2"},
+              "to": {"id": "fc_702", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 25000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2027-01-30T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_703",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_702", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_701", "revision": "current", "line": "l3"},
+              "amount": {"state": "known", "value": 50000},
+              "settlesForecastLine": {"state": "known", "value": true},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_702", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 35000}},
+          "reason": "消し込まない配分25,000だけなので、残りは60,000 − 25,000 ＝ 35,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "60,000 | 25,000（消し込まない） | 35,000"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_701", "line": "l3"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": 0}},
+          "reason": "pay_702全体から50,000を消し込む。確定の条件は、pay_702からの配分の合計25,000（行l2を指すものを含む）＋ 50,000 ＝ 75,000 ≤ 総支給額75,000、行l2を指す配分25,000 ≤ 行の金額25,000。",
+          "cites": [
+            {"doc": "examples.md", "section": "EX-07", "quote": "pay_702からの配分の合計 25,000 ＋ 50,000 ＝ 75,000 ≤ 総支給額 75,000"},
+            {"doc": "reconciliation.md", "section": "3", "quote": "実績の行を指すものを含む"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2027-01", "to": "2027-01"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 35000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "予定月2027-01の見込みは、fc_701のl3の残り0とfc_702のl1の残り35,000。実績75,000と合わせると110,000（見込みを含む）。l3の実績化を忘れて75,000と50,000を両方足さない。",
+          "cites": [
+            {"doc": "examples.md", "section": "EX-07", "quote": "実績 75,000（pay_702）＋ 見込み 35,000（fc_702のl1の残り）＝ 110,000（「見込みを含む」）"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "pay_702の総支給額75,000と、fc_701のl3の50,000を両方足さない"}
+          ]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2027-01-01", "to": "2027-01-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 75000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "実績はpay_702の75,000。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "実績化した分は、実績の記録の側で集計に入る。予測の側では残りだけが見込みの集計に入る"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-b2",
+      "title": "残りは支払わないと分かり、消し込む",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-07-b",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2027-03-10T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_702",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-03-10"},
+            "changeNote": {"state": "known", "value": "勤務先Bから残りは支払わないと連絡"},
+            "body": {"settlesForecastLine": {"state": "known", "value": true}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_702", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": -35000}},
+          "reason": "消し込むと残りは0、見込みとの差は25,000 − 60,000 ＝ −35,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "fc_702のl1の残りは0、見込みとの差は −35,000になる"}]
+        }
+      ],
+      "acceptance": ["correction"]
+    },
+    {
+      "scenarioId": "EX-07-b3",
+      "title": "見込みの行を取り下げた場合（判定の順序）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(b)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-07-b",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2027-03-10T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_702",
+            "recordType": "forecast",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-03-10"},
+            "body": {
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+                  "expectedMonth": "2027-01",
+                  "expectedDate": {"state": "unknown"},
+                  "amount": {"state": "known", "value": 60000},
+                  "lineStatus": "withdrawn"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2027-03-10T03:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "confirm-condition-unmet"},
+          "record": {
+            "id": "alc_702",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "new-information",
+            "changeNote": {"state": "known", "value": "確かめ直し"},
+            "body": {"confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 2}}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_702"},
+          "expect": {"usage": "needs-recheck"},
+          "reason": "確定に使う項目（予測の行の状態）が変わったので要再確認。withdrawnのままでは確かめ直せない（openであることが確定の条件）。記録は消さず表示し続ける。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "openであること（withdrawnの行には確定しない"}, {"doc": "examples.md", "section": "EX-07", "quote": "withdrawnのままでは確かめ直せない"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_702", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}},
+          "reason": "取り下げた行の残りは、配分の使われ方を調べる前に（手順1で）knownの0に決まる。使えない関係の手順2で止まらない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "6", "quote": "行のlineStatusがwithdrawn: 残りはknownの0"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "knownの0（手順1。使えない関係の手順2より先に調べるので、unknownのまま止まらない）"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "gross-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2027-01", "to": "2027-01"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "取り下げた行を対象に残し0として数える（no-recordsにしない）。fc_701のl3も消込で0。実績化した25,000を見込みとしても数えない。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "complete 0。取り下げた行l1を対象に残し、0として数える"}, {"doc": "common-types.md", "section": "11", "quote": "取り下げた予測の行の残り"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-07-c",
+      "title": "識別の次元の比較（Factと Factでない値、payerHint）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-12-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_701",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 48000},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-12-01T02:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_711",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-12-01T02:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_712",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_1"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-12-01T02:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_713",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "unknown"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-12-01T02:05:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_714",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "not-stated"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-12-01T02:06:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "fc_715",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "not-applicable"},
+              "measure": "gross-pay",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 50000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-12-01T02:07:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_711",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_711", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-12-01T02:08:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-mismatch"},
+          "record": {
+            "id": "alc_712",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_712", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-12-01T02:09:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_722",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_712", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-12-01T02:10:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-undetermined"},
+          "record": {
+            "id": "alc_713",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_713", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-12-01T02:11:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-undetermined"},
+          "record": {
+            "id": "alc_714",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_701", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_714", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o12",
+          "at": "2026-12-01T02:12:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_721",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o13",
+          "at": "2026-12-01T02:13:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_731",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o14",
+          "at": "2026-12-01T02:14:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_732",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_1"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o15",
+          "at": "2026-12-01T02:15:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_733",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "unknown"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o16",
+          "at": "2026-12-01T02:16:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_734",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o17",
+          "at": "2026-12-01T02:17:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "fact-state-not-allowed"},
+          "record": {
+            "id": "fc_735",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "not-applicable"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o18",
+          "at": "2026-12-01T02:18:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_731",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_721", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_731", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o19",
+          "at": "2026-12-01T02:19:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-mismatch"},
+          "record": {
+            "id": "alc_732",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_721", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_732", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o20",
+          "at": "2026-12-01T02:20:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-undetermined"},
+          "record": {
+            "id": "alc_733",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_721", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_733", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o21",
+          "at": "2026-12-01T02:21:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-undetermined"},
+          "record": {
+            "id": "alc_734",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_721", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_734", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o22",
+          "at": "2026-12-01T02:22:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_741",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}, "payerHint": {"state": "known", "value": "emp_2"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o23",
+          "at": "2026-12-01T02:23:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_741",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o24",
+          "at": "2026-12-01T02:24:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_742",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}, "payerHint": {"state": "known", "value": "emp_1"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o25",
+          "at": "2026-12-01T02:25:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_742",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o26",
+          "at": "2026-12-01T02:26:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_743",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}, "payerHint": {"state": "unknown"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o27",
+          "at": "2026-12-01T02:27:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_743",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o28",
+          "at": "2026-12-01T02:28:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_744",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}, "payerHint": {"state": "known", "value": "emp_1"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o29",
+          "at": "2026-12-01T02:29:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_744",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "not-applicable"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o30",
+          "at": "2026-12-01T02:30:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_745",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-11-30"}, "amount": {"state": "known", "value": 30000}, "payerHint": {"state": "known", "value": "emp_2"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o31",
+          "at": "2026-12-01T02:31:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_745",
+            "recordType": "forecast",
+            "body": {
+              "subject": "deposit",
+              "employerId": {"state": "unknown"},
+              "measure": "deposit-amount",
+              "lines": [
+                {
+                  "lineId": "l1",
+                  "workPeriod": {"state": "unknown"},
+                  "expectedMonth": "2026-11",
+                  "expectedDate": {"state": "known", "value": "2026-11-30"},
+                  "amount": {"state": "known", "value": 30000}
+                }
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"},
+              "accountId": {"state": "known", "value": "acct_2"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o32",
+          "at": "2026-12-01T02:32:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_741",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_741", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_741", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o33",
+          "at": "2026-12-01T02:33:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-mismatch"},
+          "record": {
+            "id": "alc_742",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_742", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_742", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o34",
+          "at": "2026-12-01T02:34:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_743",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_743", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_743", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o35",
+          "at": "2026-12-01T02:35:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_744",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_744", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_744", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o36",
+          "at": "2026-12-01T02:36:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "identity-dimension-undetermined"},
+          "record": {
+            "id": "alc_745",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "dep_745", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_745", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": 1000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_711"},
+          "expect": {"usage": "valid"},
+          "reason": "給与の予測のemployerId（known 勤務先B）と明細のemployerId（Factでない値はknownとして当てはめる）が一致。勤務先Aは不一致で確定を拒否（候補としては保存できる）、unknown・not-statedは未確定で確定しない。給与の予測ではnot-applicableを使えないので予測の保存も拒否。",
+          "cites": [
+            {"doc": "common-types.md", "section": "13", "quote": "Factでない値（Id、CalendarYear、列挙等。記録のemployerId・accountId、年間資料のtargetYear等）は、その値を持つknownとして当てはめる"},
+            {"doc": "reconciliation.md", "section": "3", "quote": "給与の予測: 一致すること（4×4の表。予測のemployerIdがunknown・not-statedなら未確定で、確定しない）"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "給与の予測ではnot-applicableは使えないので、予測の保存のときにも拒否される"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_722"},
+          "expect": {"usage": "not-used"},
+          "reason": "不一致の組も候補（proposed）としては保存でき、使わない。",
+          "cites": [{"doc": "common-types.md", "section": "13", "quote": "確定を拒否する（候補としては保存できる）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_731"},
+          "expect": {"usage": "valid"},
+          "reason": "入金の予測のaccountId（known 口座2）と入金の口座2が一致。口座1は不一致、unknown・not-statedは未確定、not-applicableは入金の予測では使えない。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "subjectがdepositなら、一致すること（4×4の表。予測のaccountIdが分からなければ未確定で、確定しない）"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_741"},
+          "expect": {"usage": "valid"},
+          "reason": "予測のemployerIdとpayerHintが両方knownで同じ。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "確定できる（同じ）"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_743"},
+          "expect": {"usage": "valid"},
+          "reason": "payerHintは推定の項目なので4×4の表を使わず、unknownなら比べない（それだけで確定を止めない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "確定できる（payerHintは推定なので比べない。それだけで確定を止めない）"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_744"},
+          "expect": {"usage": "valid"},
+          "reason": "予測のemployerIdがnot-applicable（勤務先に結び付けない）なら比べない。予測のemployerIdがunknownの入金の予測は確定しない（勤務先が決まっていない予測を実績化しない）。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "予測のemployerIdがnot-applicableなら比べない"}, {"doc": "reconciliation.md", "section": "3", "quote": "勤務先が決まっていない予測を、分からないまま実績化しない"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_711", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 49000}},
+          "reason": "確定したalc_711（1,000、消し込まない）だけを引いた残り。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "予測の金額の絶対値 − 確定済みの配分の絶対値の合計"}]
+        }
+      ],
+      "acceptance": ["unknown-value"]
+    },
+    {
+      "scenarioId": "EX-07-d",
+      "title": "差引支給額が負の見込みと実績（配分の符号）",
+      "covers": [{"doc": "examples.md", "section": "EX-07", "subsection": "(d)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-11-30T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "fc_704",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "net-pay",
+              "lines": [
+                {"lineId": "l1", "workPeriod": {"state": "unknown"}, "expectedMonth": "2026-12", "expectedDate": {"state": "unknown"}, "amount": {"state": "known", "value": -10000}},
+                {"lineId": "l2", "workPeriod": {"state": "unknown"}, "expectedMonth": "2027-01", "expectedDate": {"state": "unknown"}, "amount": {"state": "known", "value": 30000}}
+              ],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "休職中は控除が支給を上回る"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-11-30T03:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "value-invalid"},
+          "record": {
+            "id": "fc_799",
+            "recordType": "forecast",
+            "body": {
+              "subject": "pay",
+              "employerId": {"state": "known", "value": "emp_2"},
+              "measure": "gross-pay",
+              "lines": [{"lineId": "l1", "workPeriod": {"state": "unknown"}, "expectedMonth": "2026-12", "expectedDate": {"state": "unknown"}, "amount": {"state": "known", "value": -10000}}],
+              "basis": {"state": "known", "value": "user-estimate"},
+              "basisNote": {"state": "known", "value": "月50,000程度"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_707",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+              "grossPay": {"state": "known", "value": 0},
+              "totalDeductions": {"state": "known", "value": 12000},
+              "netPay": {"state": "known", "value": -12000},
+              "bankTransferAmount": {"state": "not-applicable", "note": "振込がない"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2027-01-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_708",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-25"},
+              "grossPay": {"state": "known", "value": 0},
+              "totalDeductions": {"state": "known", "value": 5000},
+              "netPay": {"state": "known", "value": -5000},
+              "bankTransferAmount": {"state": "not-applicable", "note": "振込がない"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2027-01-26T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_707",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_707", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": -6000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2027-01-26T01:02:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "over-allocation"},
+          "record": {
+            "id": "alc_718",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_707", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": -7000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2027-01-26T01:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_708",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "pay_707", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l1"},
+              "amount": {"state": "known", "value": -7000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2027-01-26T01:04:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_708",
+            "recordType": "allocation",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "body": {"amount": {"state": "known", "value": -6000}, "allocationStatus": "confirmed", "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2027-01-26T01:05:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "allocation-sign"},
+          "record": {
+            "id": "alc_719",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_708", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": -5000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2027-01-26T01:06:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_709",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "proposed",
+              "from": {"id": "pay_708", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": -5000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2027-01-26T01:07:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "allocation-sign"},
+          "record": {
+            "id": "alc_710",
+            "recordType": "allocation",
+            "body": {
+              "kind": "forecast-realization",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_708", "revision": "current", "line": "whole"},
+              "to": {"id": "fc_704", "revision": "current", "line": "l2"},
+              "amount": {"state": "known", "value": 5000},
+              "settlesForecastLine": {"state": "known", "value": false},
+              "proposedBy": "user",
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o4",
+          "query": {"kind": "forecastLine", "forecast": "fc_704", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": -10000}},
+          "reason": "net-payの見込みは符号あり（負の見込みは保存できる）。gross-payの見込みは0以上なので−10,000は拒否される。",
+          "cites": [{"doc": "records.md", "section": "7", "quote": "net-payは符号あり、ほかは0以上"}, {"doc": "examples.md", "section": "EX-07", "quote": "拒否（gross-payの見込みは0以上。実績の該当の金額grossPayと同じ範囲）"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o5",
+          "query": {"kind": "forecastLine", "forecast": "fc_704", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": -4000}},
+          "reason": "実績・見込み・配分がどれも負で確定できる（絶対値6,000 ≤ 12,000）。残りの絶対値は10,000 − 6,000、符号は見込みと同じ負で−4,000（＋4,000や＋16,000にしない）。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "6", "quote": "残りの符号は予測の金額と同じ"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "l1の残りを、見込み −10,000 から配分 −6,000 を引いて −4,000 とする以外の符号"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o5",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "net-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-12", "to": "2026-12"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": -4000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "見込みの集計は残りを符号のまま足す（負を0や不明として扱わない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-07", "quote": "負の差引支給額を0や「不明」として扱わない"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_704", "line": "l1"},
+          "expect": {"remaining": {"state": "known", "value": 0}, "difference": {"state": "known", "value": -2000}},
+          "reason": "−7,000の確定は、同じ実績への配分の絶対値の合計13,000 ＞ 12,000で過剰配分として拒否（候補としては保存できる）。−6,000に直すと確定でき（12,000 ≤ 12,000）、絶対値10,000 − 12,000が0以下なので消込とみなし残りは0。見込みとの差は−12,000 − (−10,000) ＝ −2,000。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "3", "quote": "上限との比較は絶対値で行う"},
+            {"doc": "reconciliation.md", "section": "6", "quote": "絶対値が0以下になれば残りは0（消込とみなす）とし"},
+            {"doc": "examples.md", "section": "EX-07", "quote": "見込みとの差は −2,000（配分の合計 −12,000 − 見込み −10,000）"}
+          ]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {"kind": "forecastLine", "forecast": "fc_704", "line": "l2"},
+          "expect": {"remaining": {"state": "known", "value": 30000}},
+          "reason": "l2は見込みが正で実績が負なので、符号の違う配分は確定しない（候補として保存し「要確認（符号が違う）」）。実績の負と符号が違う＋5,000の配分も拒否。l2の残りは変わらない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "3", "quote": "予測の行の金額がknownで0でなければ、配分はその符号と同じときだけ確定する"},
+            {"doc": "reconciliation.md", "section": "3", "quote": "forecast-realizationのamountは0でなく、実績の該当の金額（実績の行を指す場合はその行のamount）と同じ符号"}
+          ]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {"kind": "allocationUsage", "allocation": "alc_709"},
+          "expect": {"usage": "not-used"},
+          "reason": "符号の違う配分は候補としてだけ保存できる。",
+          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "符号の違う配分は、候補（proposed）としては保存でき"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "netPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-12-01", "to": "2026-12-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": -12000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "差引支給額は符号ありで、負の値も記載どおり集計する。",
+          "cites": [{"doc": "records.md", "section": "4", "quote": "負は、控除が支給を上回った月"}]
+        },
+        {
+          "checkId": "c08",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "forecast-remaining", "forecastMeasure": "net-pay"},
+            "axis": "expected-month",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-12", "to": "2026-12"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "l1は消込とみなして残り0なので、予定月2026-12の見込みは0（completeの0円）。",
+          "cites": [{"doc": "reconciliation.md", "section": "6", "quote": "予測の側では残りだけが見込みの集計に入る"}]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1180 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-04c",
+  "title": "遡及訂正(c): 正式通知の変更（差し替え）と、決定額を使う計算runの根",
+  "consumers": ["T06", "T11", "T15", "T18"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-04c-c1",
+      "title": "正式通知の変更（差し替え）と、把握時点の再現",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-05-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_401",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-05-15"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 120000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年6月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年7月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年8月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年9月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2026年10月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2026年11月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2026年12月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年1月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年2月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i10", "label": "2027年3月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i11", "label": "2027年4月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i12", "label": "2027年5月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              }
+            },
+            "knownOn": {"state": "known", "value": "2026-05-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-06-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_410",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-06-25"},
+              "residentTax": {"state": "known", "value": 10000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-07-25T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_411",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-07-24"},
+              "residentTax": {"state": "known", "value": 10000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-08-14T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-08-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_412",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-08-25"},
+              "residentTax": {"state": "known", "value": 10000}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 111000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "ntc_402はntc_401と差し替えの識別の次元（issuerId・noticeType・subjectYear）がすべて一致するので差し替えとして保存でき、決定額は現在の記録ntc_402のannual-totalの行だけ（120,000 ＋ 111,000にしない）。",
+          "cites": [
+            {"doc": "records.md", "section": "10", "quote": "正式通知 | issuerId、noticeType、subjectYear"},
+            {"doc": "reconciliation.md", "section": "2", "quote": "差し替えられていない正式通知のamountsのうち、categoryがannual-totalの行"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "決定額を 120,000 ＋ 111,000 にしない"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-08-01"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 120000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "把握時点の再現（2026-08-01）では、ntc_402の把握日2026-08-14はまだ来ていないので選ばれない。選ばれない記録は鎖の最新の側だけなので解決できない参照は生じず、まだ把握していない変更通知は前の通知を差し替えない。ntc_401が有効。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "まだ把握していない新しい資料は前の資料を差し替えない"}, {"doc": "examples.md", "section": "EX-04", "quote": "ntc_402の把握日 2026-08-14 はまだ来ていないので、ntc_401が有効"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "seriesStatus", "record": "ntc_401"},
+          "expect": {"status": "superseded"},
+          "reason": "前の通知は取消さず、差し替え済みとして履歴に残す。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "発行者が作り直した資料 | 新しい記録とsupersedes | 前の記録として残る（取消しない）"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "seriesStatus", "record": "ntc_402"},
+          "expect": {"status": "current"},
+          "reason": "鎖の最新が現在の記録。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "その系列の現在の記録とする"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "residentTax"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-06-01", "to": "2026-08-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 30000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "明細の控除（住民税）は決定額とは別の集計で、足さない。",
+          "cites": [{"doc": "records.md", "section": "8", "quote": "通知の金額と、給与明細の控除額（住民税・保険料）は別の集計で、足さない"}, {"doc": "examples.md", "section": "EX-04", "quote": "明細の控除30,000を決定額に足さない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04c-c2",
+      "title": "差し替えの識別の次元（不一致は拒否、未確定は未確認の系列）",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-05-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_401",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-05-15"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 120000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年6月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年7月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年8月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年9月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2026年10月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2026年11月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2026年12月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年1月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年2月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i10", "label": "2027年3月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i11", "label": "2027年4月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i12", "label": "2027年5月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              }
+            },
+            "knownOn": {"state": "known", "value": "2026-05-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-08-14T03:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "supersede-dimension-mismatch"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空町"},
+              "issuerId": {"state": "known", "value": "iss_2"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-08-14T03:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-granularity"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "a1"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-08-14T03:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-08-15T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "発行者の登録を入れ忘れた"},
+            "body": {"issuerId": {"state": "known", "value": "iss_1"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o4",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "ntc_401", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"},
+                  {"ref": {"id": "ntc_402", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "supersede-series"}, "state": "conflict"}
+                ]
+              }
+            ]
+          },
+          "reason": "issuerIdが別の発行者の差し替えは不一致で拒否、行を指すsupersedesは粒度で拒否される。issuerIdが不明のままなら未確定の次元だけを持つので保存は許し、未確認の差し替えとして両方の通知を集計から除き、conflictで挙げる。",
+          "cites": [
+            {"doc": "records.md", "section": "10", "quote": "不一致の項目が1つでもあれば、保存を拒否する"},
+            {"doc": "records.md", "section": "10", "quote": "前の記録も新しい記録も黙って集計から外さず、両方を除いてconflictで挙げる"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "issuerIdが不明のままなら、未確認の差し替えとして両方の通知が集計から除かれ、conflictで挙がる"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o4",
+          "query": {"kind": "seriesStatus", "record": "ntc_402"},
+          "expect": {"status": "unconfirmed-series"},
+          "reason": "未確定の次元を持つ関係を含む系列は未確認の系列。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "未確定の次元を持つ関係（未確認の差し替え）を含む系列"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 111000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "issuerIdを改訂で埋めて一致すると、改訂だけで整った系列になる。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "後で値が分かって一致すれば、改訂だけで整った系列になる"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04c-c3",
+      "title": "決定額の行は1件の通知に1行だけ、決定額の写し誤りは改訂で直す",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(c)"}],
+      "acceptance": ["correction"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-05-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_401",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-05-15"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 120000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年6月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年7月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年8月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年9月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2026年10月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2026年11月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2026年12月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年1月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年2月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i10", "label": "2027年3月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i11", "label": "2027年4月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i12", "label": "2027年5月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              }
+            },
+            "knownOn": {"state": "known", "value": "2026-05-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-08-14T03:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "list-invalid"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {
+                "state": "known",
+                "value": [
+                  {"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}},
+                  {"lineId": "a2", "label": "年税額（再掲）", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}
+                ]
+              },
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-08-14T03:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 11100}}]},
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-08-16T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "決定額を写し誤った"},
+            "body": {
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]}
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o3",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 11100, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "1件の通知に決定額の行（annual-total）は1行だけなので、2行を保存しようとすると拒否される。1行で保存した値を集計する。",
+          "cites": [{"doc": "records.md", "section": "8", "quote": "categoryがannual-totalの行は、1件の通知に1行だけ（2行目を保存しようとしたら拒否する）"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 111000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "決定額の写し誤りは、ntc_402の改訂（correct-input-error）で直し、新しい通知の記録は作らない。",
+          "cites": [{"doc": "examples.md", "section": "EX-04", "quote": "ntc_402の改訂（correct-input-error）で直す。新しい通知の記録は作らない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04c-c4",
+      "title": "決定額を使う計算runの根（入力の要求）と、runのあとの変化",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(c)"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-05-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_401",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-05-15"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 120000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年6月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年7月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年8月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年9月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2026年10月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2026年11月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2026年12月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年1月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年2月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i10", "label": "2027年3月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i11", "label": "2027年4月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i12", "label": "2027年5月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              }
+            },
+            "knownOn": {"state": "known", "value": "2026-05-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-08-14T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-08-20T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_405",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "税額の通知（架空・年度の記載が読めない）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "issuedDate": {"state": "known", "value": "2026-06-01"},
+              "subjectYear": {"state": "unknown"},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 100000}}]}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-08-20T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_409",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "scheduledPayDate": {"state": "known", "value": "2026-07-24"},
+              "grossPay": {"state": "known", "value": 230000}
+            }
+          }
+        },
+        {
+          "op": "saveRun",
+          "opId": "o5",
+          "at": "2026-08-21T00:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "run-closure-mismatch"},
+          "run": {
+            "id": "run_418",
+            "createdAt": "2026-08-21T00:00:00.000Z",
+            "calculator": {"id": "calc-fixture-resident", "version": "1"},
+            "calculatorAllowsPayers": false,
+            "target": {
+              "year": {"kind": "fiscal", "year": 2026},
+              "jurisdiction": {"state": "known", "value": {"kind": "municipality", "code": "fixture-municipality"}},
+              "procedure": "levy",
+              "referencePoint": {"state": "not-applicable"},
+              "scope": {"state": "known", "value": {"kind": "all-payers"}},
+              "scopeNote": {"state": "not-applicable"}
+            },
+            "status": "incomplete",
+            "inputStage": "fixed",
+            "previousRunId": {"state": "not-applicable"},
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                "axis": "subject-year",
+                "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+              }
+            ],
+            "inputsRecords": [{"id": "ntc_401", "revision": 1}, {"id": "ntc_402", "revision": 1}, {"id": "iss_1", "revision": 1}]
+          }
+        },
+        {
+          "op": "saveRun",
+          "opId": "o6",
+          "at": "2026-08-21T00:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "run-closure-mismatch"},
+          "run": {
+            "id": "run_419",
+            "createdAt": "2026-08-21T00:01:00.000Z",
+            "calculator": {"id": "calc-fixture-resident", "version": "1"},
+            "calculatorAllowsPayers": false,
+            "target": {
+              "year": {"kind": "fiscal", "year": 2026},
+              "jurisdiction": {"state": "known", "value": {"kind": "municipality", "code": "fixture-municipality"}},
+              "procedure": "levy",
+              "referencePoint": {"state": "not-applicable"},
+              "scope": {"state": "known", "value": {"kind": "all-payers"}},
+              "scopeNote": {"state": "not-applicable"}
+            },
+            "status": "incomplete",
+            "inputStage": "fixed",
+            "previousRunId": {"state": "not-applicable"},
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                "axis": "subject-year",
+                "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+              }
+            ],
+            "inputsRecords": [
+              {"id": "ntc_401", "revision": 1},
+              {"id": "ntc_402", "revision": 1},
+              {"id": "ntc_405", "revision": 1},
+              {"id": "iss_1", "revision": 1},
+              {"id": "pay_409", "revision": 1},
+              {"id": "emp_1", "revision": 1}
+            ]
+          }
+        },
+        {
+          "op": "saveRun",
+          "opId": "o7",
+          "at": "2026-08-21T00:02:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "run-closure-mismatch"},
+          "run": {
+            "id": "run_420",
+            "createdAt": "2026-08-21T00:02:00.000Z",
+            "calculator": {"id": "calc-fixture-resident", "version": "1"},
+            "calculatorAllowsPayers": false,
+            "target": {
+              "year": {"kind": "fiscal", "year": 2026},
+              "jurisdiction": {"state": "known", "value": {"kind": "municipality", "code": "fixture-municipality"}},
+              "procedure": "levy",
+              "referencePoint": {"state": "not-applicable"},
+              "scope": {"state": "known", "value": {"kind": "all-payers"}},
+              "scopeNote": {"state": "not-applicable"}
+            },
+            "status": "incomplete",
+            "inputStage": "fixed",
+            "previousRunId": {"state": "not-applicable"},
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                "axis": "subject-year",
+                "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+              }
+            ],
+            "inputsRecords": [{"id": "ntc_401", "revision": 1}, {"id": "ntc_402", "revision": 1}, {"id": "ntc_405", "revision": 1}, {"id": "iss_1", "revision": 1}],
+            "explanationRefs": [{"id": "pay_409", "revision": 1}]
+          }
+        },
+        {
+          "op": "saveRun",
+          "opId": "o8",
+          "at": "2026-08-21T00:03:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "run": {
+            "id": "run_403",
+            "createdAt": "2026-08-21T00:03:00.000Z",
+            "calculator": {"id": "calc-fixture-resident", "version": "1"},
+            "calculatorAllowsPayers": false,
+            "target": {
+              "year": {"kind": "fiscal", "year": 2026},
+              "jurisdiction": {"state": "known", "value": {"kind": "municipality", "code": "fixture-municipality"}},
+              "procedure": "levy",
+              "referencePoint": {"state": "not-applicable"},
+              "scope": {"state": "known", "value": {"kind": "all-payers"}},
+              "scopeNote": {"state": "not-applicable"}
+            },
+            "status": "incomplete",
+            "inputStage": "fixed",
+            "previousRunId": {"state": "not-applicable"},
+            "requests": [
+              {
+                "kind": "aggregate",
+                "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                "axis": "subject-year",
+                "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+              }
+            ],
+            "inputsRecords": [{"id": "ntc_401", "revision": 1}, {"id": "ntc_402", "revision": 1}, {"id": "ntc_405", "revision": 1}, {"id": "iss_1", "revision": 1}]
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2026-09-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_406",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空・別送）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "unknown"},
+              "issuedDate": {"state": "known", "value": "2026-08-25"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 105000}}]}
+            },
+            "knownOn": {"state": "known", "value": "2026-09-01"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-09-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_405",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-09-02"},
+            "changeNote": {"state": "known", "value": "発行者に問い合わせ、年度2027と分かった"},
+            "body": {"subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2027}}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-09-03T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "表題を写し誤った"},
+            "body": {"noticeLabel": "特別徴収税額の変更通知書（架空・表題を訂正）"}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o4",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 111000,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ntc_405", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "subjectYear"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "ntc_405は同じ種類で年度が分からないので、年度2026の集合から外さず不足として挙げる（類の値は足さない）。年度2026の類はntc_401〜ntc_402の系列の現在の記録ntc_402だけなので、分かっている分は111,000。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "2", "quote": "正規の通知のsubjectYearがunknown・not-statedの場合は、その種類のすべての年度の集計に、同じように不足として挙げる"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "決定額はntc_405の年度が不明なのでincomplete"}
+          ]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o4",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2027}, "to": {"kind": "fiscal", "year": 2027}}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "ntc_405", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "subjectYear"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "年度が分からない通知は、ほかの年度の集計からも外さない（分からない値で絞り込まない）。年度2027には足せる類がないのでknownSumは0。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "集合を絞り込む判定では、使う値がunknown・not-statedなら、その値で対象を除外しない"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o4",
+          "query": {
+            "kind": "runClosure",
+            "roots": {
+              "requests": [
+                {
+                  "kind": "aggregate",
+                  "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                  "axis": "subject-year",
+                  "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+                }
+              ],
+              "assumptionRefs": []
+            }
+          },
+          "expect": {
+            "records": [{"id": "ntc_401", "revision": 1}, {"id": "ntc_402", "revision": 1}, {"id": "ntc_405", "revision": 1}, {"id": "iss_1", "revision": 1}],
+            "allocations": [],
+            "decisions": []
+          },
+          "reason": "根は、要求（住民税の決定額・年度2026）の対象になりうる記録すべてで、年度2026のntc_401・ntc_402と、年度が分からないので外せないntc_405。順方向に、通知が参照する発行者iss_1をたどる。要求の外の給与明細pay_409は根にも閉包にも入らない。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "要求ごとに、データベース全体から、その要求の対象になりうる記録をすべて根にする"},
+            {"doc": "calculation-results.md", "section": "1", "quote": "次元（日付・年度・支払者・口座等）がunknown・not-statedで対象から外せない記録も含める"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "ntc_401・ntc_402（年度2026）と、年度が分からないので外せないntc_405"}
+          ]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "o8",
+          "query": {"kind": "runChain", "run": "run_403"},
+          "expect": {"chain": ["run_403"]},
+          "reason": "ntc_405を省いたrun（不足を0件として計算できてしまう）、要求の外のpay_409をinputsに足したrun、explanationRefsでpay_409を指すrunは、どれも必要な閉包と一致しないので保存しない。閉包どおりのrun_403は保存できる。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "inputsの3つの並びが、必要な閉包と記録も版も過不足なく一致すること"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "省くと、不足を0件としてcomputedにできてしまう"}
+          ]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "o9",
+          "query": {"kind": "runInputChange", "run": "run_403"},
+          "expect": {"added": ["ntc_406"], "removed": [], "versionChanged": []},
+          "reason": "同じ種類・年度2026の通知ntc_406を新しく保存すると、保存したinputs.requestsから求め直した現在の閉包に加わる。固定した記録の版を比べるだけでは見つからない。",
+          "cites": [{"doc": "calculation-results.md", "section": "3", "quote": "現在の閉包にあり、固定した側の閉包にない記録"}, {"doc": "examples.md", "section": "EX-04", "quote": "固定した記録の版を比べるだけでは見つからない"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "o10",
+          "query": {"kind": "runInputChange", "run": "run_403"},
+          "expect": {"added": ["ntc_406"], "removed": ["ntc_405"], "versionChanged": ["ntc_405"]},
+          "reason": "ntc_405を年度2027と確かめて改訂すると、年度2026の要求の対象でも、閉包の通知と同じ年度でもなくなるので外れる。版も変わった。runのmissingInputsがntc_405を指していても、導いた結果の参照は根にしないので、外れたことを示せる。",
+          "cites": [{"doc": "calculation-results.md", "section": "3", "quote": "固定した側の閉包にあり、現在の閉包にない記録"}, {"doc": "examples.md", "section": "EX-04", "quote": "導いた結果の参照は根にしないので、外れたことを示せる"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "runInputChange", "run": "run_403"},
+          "expect": {"added": ["ntc_406"], "removed": ["ntc_405"], "versionChanged": ["ntc_405", "ntc_402"]},
+          "reason": "ntc_402の表題の写し誤りを直すと、固定した版1と現在の版2が違うので「版が変わった」。run_403の中身と結果は変わらない（並びは集合として比べる）。",
+          "cites": [{"doc": "calculation-results.md", "section": "3", "quote": "runに固定した記録のうち、現在の版が固定した版と違う記録"}, {"doc": "examples.md", "section": "EX-04", "quote": "run_403の中身と結果は、あとで何が起きても変わらない"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-04c-c5",
+      "title": "取消した変更通知を橋にした差し替えの系列と、runの閉包",
+      "covers": [{"doc": "examples.md", "section": "EX-04", "subsection": "(c)"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-05-21T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_401",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の決定通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-05-15"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 120000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年6月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年7月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年8月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年9月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2026年10月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2026年11月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2026年12月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年1月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年2月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i10", "label": "2027年3月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i11", "label": "2027年4月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i12", "label": "2027年5月分", "amount": {"state": "known", "value": 10000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              }
+            },
+            "knownOn": {"state": "known", "value": "2026-05-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-07-14T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_403",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空・1回目）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-07-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 115000}}]},
+              "supersedes": {"state": "known", "value": {"id": "ntc_401", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-07-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-08-14T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "ntc_402",
+            "recordType": "official-notice",
+            "body": {
+              "noticeType": "resident-tax-determination",
+              "noticeLabel": "特別徴収税額の変更通知書（架空）",
+              "issuerKind": "municipality",
+              "issuerLabel": {"state": "known", "value": "架空市"},
+              "issuerId": {"state": "known", "value": "iss_1"},
+              "issuedDate": {"state": "known", "value": "2026-08-10"},
+              "subjectYear": {"state": "known", "value": {"kind": "fiscal", "year": 2026}},
+              "incomeYear": {"state": "known", "value": 2025},
+              "amounts": {"state": "known", "value": [{"lineId": "a1", "label": "年税額", "category": {"state": "known", "value": "annual-total"}, "amount": {"state": "known", "value": 111000}}]},
+              "installments": {
+                "state": "known",
+                "value": [
+                  {"lineId": "i01", "label": "2026年9月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i02", "label": "2026年10月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i03", "label": "2026年11月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i04", "label": "2026年12月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i05", "label": "2027年1月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i06", "label": "2027年2月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i07", "label": "2027年3月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i08", "label": "2027年4月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}},
+                  {"lineId": "i09", "label": "2027年5月分", "amount": {"state": "known", "value": 9000}, "collectionMethod": {"state": "known", "value": "special"}}
+                ]
+              },
+              "supersedes": {"state": "known", "value": {"id": "ntc_403", "revision": "current", "line": "whole"}}
+            },
+            "knownOn": {"state": "known", "value": "2026-08-14"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-08-20T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "ntc_403", "recordType": "official-notice", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "存在しない通知を入力していた"}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "seriesStatus", "record": "ntc_403"},
+          "expect": {"status": "voided"},
+          "reason": "取消した記録は差し替えの関係に現れない。ntc_402からntc_403を通り過ぎてntc_401に着くので、ntc_402がntc_401を差し替える。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "取消した記録は通り過ぎて"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "seriesStatus", "record": "ntc_401"},
+          "expect": {"status": "superseded"},
+          "reason": "ntc_401はntc_402に差し替えられている。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "Bだけ | A ← C（CからBを通り過ぎてAに着く）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+            "axis": "subject-year",
+            "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 111000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "数えるのは現在の記録ntc_402の1件だけ。",
+          "cites": [{"doc": "records.md", "section": "10", "quote": "どの場合も、数えるのは現在の記録1件だけ"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "runClosure",
+            "roots": {
+              "requests": [
+                {
+                  "kind": "aggregate",
+                  "key": {"kind": "notice-determination", "noticeType": "resident-tax-determination", "category": "annual-total"},
+                  "axis": "subject-year",
+                  "scope": {"employerIds": [], "accountIds": [], "from": {"kind": "fiscal", "year": 2026}, "to": {"kind": "fiscal", "year": 2026}}
+                }
+              ],
+              "assumptionRefs": []
+            }
+          },
+          "expect": {
+            "records": [{"id": "ntc_401", "revision": 1}, {"id": "ntc_403", "revision": 2}, {"id": "ntc_402", "revision": 1}, {"id": "iss_1", "revision": 1}],
+            "allocations": [],
+            "decisions": []
+          },
+          "reason": "取消したntc_403も閉包に入る。取消した記録は系列の橋なので、除くとntc_402からntc_401へたどれず、現在の記録を再現できない。版はrunを作るときに選ばれる版2（取消）。",
+          "cites": [
+            {"doc": "calculation-results.md", "section": "1", "quote": "取消した記録は差し替えの系列・二重登録の鎖の橋になり、除くとその先へたどれなくなるため"},
+            {"doc": "examples.md", "section": "EX-04", "quote": "変更通知ntc_403を取消していた場合も、ntc_403は閉包に入る"}
+          ]
+        }
+      ]
+    }
+  ]
+}

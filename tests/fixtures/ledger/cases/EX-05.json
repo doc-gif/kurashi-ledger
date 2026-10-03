@@ -1,0 +1,724 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-05",
+  "title": "年またぎ（4つの日付と所得の年への帰属）",
+  "consumers": ["T11", "T14", "T16"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-05-a",
+      "title": "年またぎ（勤務期間・支払予定日・入金日・税務上の帰属を分ける。T14の規則の承認前）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "acceptance": ["order-independence"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-12-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_501",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-21"}, "end": {"state": "known", "value": "2026-12-20"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+              "grossPay": {"state": "known", "value": 230000},
+              "bankTransferAmount": {"state": "known", "value": 182000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-26T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_501",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-12-25"}, "amount": {"state": "known", "value": 182000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-26T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_501",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_501", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_501", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 182000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2027-01-05T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_502",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-31"},
+              "grossPay": {"state": "known", "value": 50000},
+              "bankTransferAmount": {"state": "known", "value": 45000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2027-01-05T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_502",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2027-01-04"}, "amount": {"state": "known", "value": 45000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2027-01-05T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_502",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_502", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_502", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 45000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2027-01-30T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_503",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-29"},
+              "grossPay": {"state": "known", "value": 50000},
+              "bankTransferAmount": {"state": "known", "value": 45000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2027-01-30T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_503",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2027-01-29"}, "amount": {"state": "known", "value": 45000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2027-01-30T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_503",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_503", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_503", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 45000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2027-01-31T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "ann_501", "recordType": "annual-document", "body": {"documentType": "withholding-slip", "documentLabel": "給与所得の源泉徴収票（架空）", "payerEmployerId": "emp_2", "targetYear": 2026}}
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2027-01-31T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_504",
+            "recordType": "allocation",
+            "body": {
+              "kind": "annual-coverage",
+              "allocationStatus": "confirmed",
+              "from": {"id": "ann_501", "revision": "current", "line": "whole"},
+              "to": {"id": "pay_502", "revision": "current", "line": "whole"},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "orderVariants": [["o10", "o4", "o7", "o1", "o2", "o5", "o8", "o11", "o9", "o6", "o3"], ["o7", "o8", "o9", "o4", "o5", "o6", "o10", "o11", "o1", "o2", "o3"]],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}},
+          "expect": {"values": [{"state": "complete", "knownSum": 182000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "入金日の軸ではdep_501（2026-12-25）だけが2026。dep_502は明細の支給日が2026-12-31でも入金日が2027-01-04なので2027に入る。",
+          "cites": [{"doc": "records.md", "section": "11", "quote": "入金日 | 銀行入金depositDate | 口座に入った日 | 入金の集計"}, {"doc": "examples.md", "section": "EX-05", "quote": "182,000（dep_501）"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": [], "from": "2027-01-01", "to": "2027-12-31"}},
+          "expect": {"values": [{"state": "complete", "knownSum": 90000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "dep_502 ＋ dep_503 ＝ 90,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "90,000（dep_502 ＋ dep_503）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": [], "accountIds": [], "from": "2026-01-01", "to": "2026-12-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 280000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "支払予定日の軸ではpay_501（2026-12-25）とpay_502（2026-12-31）が2026。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "280,000（pay_501 ＋ pay_502）"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": [], "accountIds": [], "from": "2027-01-01", "to": "2027-12-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "pay_503（2027-01-29）だけが2027。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "50,000（pay_503）"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 50000,
+                "missing": [
+                  {"ref": {"id": "pay_501", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
+                  {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
+                ]
+              }
+            ]
+          },
+          "reason": "帰属が決まった明細はpay_502（根拠: 年間資料ann_501の2026）の50,000だけ。帰属未判定で候補の年に2026を含むpay_501（支払予定日・勤務期間・結んだ入金がすべて2026）とpay_503（勤務期間が2026と重なる）を不足に挙げる。",
+          "cites": [{"doc": "reconciliation.md", "section": "2", "quote": "帰属の年が決まった給与明細"}, {"doc": "examples.md", "section": "EX-05", "quote": "帰属が決まった明細はpay_502の50,000（根拠: 年間資料ann_501）"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [{"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+              }
+            ]
+          },
+          "reason": "帰属が決まった明細はない。pay_503の候補の年は2026と2027（支払予定日・結んだ入金）なので2027の集計にも挙がる。pay_501の候補は2026だけなので入らない。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "年Y・支払者の範囲Sの一覧には、Sの明細のうち、帰属の候補の年にYを含むものを入れる"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_501"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2026}]},
+          "reason": "根拠（年間資料・利用者の指定・承認済みの規則）がない。候補は支払予定日2026、勤務期間2026、結んだ入金dep_501の2026。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "pay_501の候補は2026（支払予定日・勤務期間・結んだ入金dep_501）"}]
+        },
+        {
+          "checkId": "c08",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_502"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
+          "reason": "確定済みのannual-coverageで結んだ年間資料ann_501のtargetYear 2026が根拠。入金日（2027-01-04）だけを根拠に2027年の所得にしない。",
+          "cites": [
+            {"doc": "reconciliation.md", "section": "8", "quote": "確定済みのannual-coverage（9で除かれていないもの）で結んだ年間資料（取消・差し替えされていない）のtargetYear"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "pay_502を、入金日（2027-01-04）だけを根拠に2027年の所得にしない"}
+          ]
+        },
+        {
+          "checkId": "c09",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_503"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2027}]},
+          "reason": "候補は勤務期間の2026と、支払予定日・結んだ入金dep_503の2027。勤務期間（2026年12月）だけを根拠に2026年の所得にしない。",
+          "cites": [
+            {"doc": "examples.md", "section": "EX-05", "quote": "pay_503の候補は2026（勤務期間）と2027（支払予定日・結んだ入金dep_503）"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "pay_503を、勤務期間（2026年12月）だけを根拠に2026年の所得にしない"}
+          ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-b",
+      "title": "年間資料がない場合、入金日の年も候補に入る（あとで規則が入金日を使っても2027年をcompleteに見せない）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-12-26T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_501",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-21"}, "end": {"state": "known", "value": "2026-12-20"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-25"},
+              "grossPay": {"state": "known", "value": 230000},
+              "bankTransferAmount": {"state": "known", "value": 182000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-12-26T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_501",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-12-25"}, "amount": {"state": "known", "value": 182000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-26T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_501",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_501", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_501", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 182000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2027-01-05T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_502",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-11-01"}, "end": {"state": "known", "value": "2026-11-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-12-31"},
+              "grossPay": {"state": "known", "value": 50000},
+              "bankTransferAmount": {"state": "known", "value": 45000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2027-01-05T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_502",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2027-01-04"}, "amount": {"state": "known", "value": 45000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2027-01-05T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_502",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_502", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_502", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 45000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o7",
+          "at": "2027-01-30T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_503",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-29"},
+              "grossPay": {"state": "known", "value": 50000},
+              "bankTransferAmount": {"state": "known", "value": 45000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o8",
+          "at": "2027-01-30T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_503",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2027-01-29"}, "amount": {"state": "known", "value": 45000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o9",
+          "at": "2027-01-30T01:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "alc_503",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "confirmed",
+              "from": {"id": "pay_503", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_503", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 45000},
+              "confirmedAgainst": {"state": "known", "value": {"fromRevision": 1, "toRevision": 1}},
+              "proposedBy": "user"
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_502"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2027}]},
+          "reason": "ann_501がなければpay_502も根拠がなくundetermined。候補は2026（支払予定日・勤務期間）と2027（結んだ入金dep_502の入金日2027-01-04）。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "仮にann_501がなければ、pay_502もundeterminedになり、候補は2026（支払予定日・勤務期間）と2027"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [
+                  {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
+                  {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
+                ]
+              }
+            ]
+          },
+          "reason": "pay_502が2027年の集計にも不足として挙がる。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "2027年の集計にもpay_502が不足として挙がる"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-c",
+      "title": "勤務期間全体が分からない明細（年またぎ）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "acceptance": ["unknown-value"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_504",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "unknown"},
+              "scheduledPayDate": {"state": "known", "value": "2027-01-29"},
+              "grossPay": {"state": "known", "value": 50000}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2027-02-10T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_504",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2027-02-10"},
+            "changeNote": {"state": "known", "value": "勤務先に勤務期間を確かめた"},
+            "body": {"workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-12-01"}, "end": {"state": "known", "value": "2026-12-31"}}}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o1",
+          "query": {"kind": "attribution", "payslip": "pay_504"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "勤務期間が分からないことを「期間がない」とはみなさず、候補を絞り込まない。候補の年はすべての年。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "期間そのものがunknown・not-statedならすべての年"}, {"doc": "examples.md", "section": "EX-05", "quote": "pay_504の帰属の候補の年はすべての年になり"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o1",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2025, "to": 2025}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [{"ref": {"id": "pay_504", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}]
+              }
+            ]
+          },
+          "reason": "候補がすべての年なので、2025年（とほかのすべての年）の所得の年の集計もincompleteで、pay_504をundeterminedとして挙げる。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "2026年と2027年（とほかのすべての年）の所得の年の集計はincompleteのまま"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_504"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2027}]},
+          "reason": "勤務期間が2026-12-01〜12-31と分かって改訂すると、候補は2026年（勤務期間）と2027年（支払予定日）に狭まる。所得の年をここで決めるわけではない。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "候補は2026年（勤務期間）と2027年（支払予定日）に狭まる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": 2025, "to": 2025}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "missing": []}]},
+          "reason": "改訂のあとは2025年が候補にないので、2025年の一覧は空で、記録もないので記録なし。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "一覧が空でなければ、年Y・範囲Sの所得の年の集計はincompleteにする"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-d",
+      "title": "根拠が食い違う場合（年間資料と利用者の指定）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "baseScenario": "EX-05-a",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o12",
+          "at": "2027-02-01T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dcs_501",
+            "recordType": "decision",
+            "body": {"decisionType": "tax-year-assertion", "targets": [{"id": "pay_502", "revision": "current", "line": "whole"}], "value": 2027, "reasonNote": "入金が2027年だった"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o13",
+          "at": "2027-02-02T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "dcs_501", "recordType": "decision", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "入金日だけでは根拠にならない"}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o12",
+          "query": {"kind": "attribution", "payslip": "pay_502"},
+          "expect": {"state": "conflict", "year": {"state": "unknown"}, "candidateYears": [{"from": 2026, "to": 2027}]},
+          "reason": "年間資料（2026）と利用者の指定（2027）が食い違うのでconflict（所得の年は不明）。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "根拠の年が2つ以上の異なる年に分かれる"}, {"doc": "examples.md", "section": "EX-05", "quote": "pay_502の帰属はconflict（所得の年は不明）になる"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o12",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [
+                  {"ref": {"id": "pay_501", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"},
+                  {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "conflict"},
+                  {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
+                ]
+              }
+            ]
+          },
+          "reason": "conflictの明細は根拠に現れたすべての年の一覧に入る。2026の集計はpay_502を数えずincomplete。",
+          "cites": [{"doc": "reconciliation.md", "section": "8", "quote": "conflictの明細は、根拠に現れたすべての年の一覧に入る"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o12",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "missing": [
+                  {"ref": {"id": "pay_502", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "conflict"},
+                  {"ref": {"id": "pay_503", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "income-year"}, "state": "undetermined"}
+                ]
+              }
+            ]
+          },
+          "reason": "2027の集計にもpay_502をconflictで挙げる。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "所得の年の集計は2026と2027のどちらもincompleteになり、missingにpay_502をconflictで挙げる"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_502"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
+          "reason": "利用者がdcs_501を取消すと、年間資料だけが根拠になりdetermined（2026）に戻る。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "利用者がdcs_501を取消すと、determined（2026）に戻る"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "EX-05-e",
+      "title": "規則が承認された場合（例示の規則: 支払予定日の年を所得の年とする）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-a",
+      "operations": [],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2026, "to": 2026}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 280000, "missing": []}]},
+          "reason": "例示の規則では、pay_501は2026（規則）、pay_502は2026（年間資料と規則が一致）でdetermined。所得の年の集計は2026が280,000でcomplete。この規則は例示で、実際の規則はT14が決める。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "所得の年の集計は2026が280,000、2027が50,000でcompleteになる"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-by-income-year", "item": "grossPay"},
+            "axis": "income-year",
+            "scope": {"employerIds": ["emp_1", "emp_2"], "accountIds": [], "from": 2027, "to": 2027}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 50000, "missing": []}]},
+          "reason": "pay_503は2027（規則）。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "pay_503は2027（規則）"}]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_502"},
+          "expect": {"state": "determined", "year": {"state": "known", "value": 2026}},
+          "reason": "年間資料と規則の年が一致するのでdetermined。",
+          "cites": [{"doc": "examples.md", "section": "EX-05", "quote": "pay_502は2026（年間資料と規則が一致）"}]
+        }
+      ]
+    }
+  ]
+}

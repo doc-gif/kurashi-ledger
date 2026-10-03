@@ -13,7 +13,7 @@
 いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CI、ローカルHTTPサーバーの骨格（`npm start`）とその安全境界の試験です。画面（UI）とそのビルド、記録・計算の機能、DBはまだありません。
 
 - Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
-- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトとHTTPの境界の試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
+- `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験、合成データの台帳の検査と、HTTPの境界の試験）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
 - `npm start -- --token-dir <本人だけが使えるディレクトリ>`（T26の段階のローカルHTTPサーバー。`127.0.0.1`だけで待ち受け、起動用のファイルからcookieに交換して、画面がまだないことを示す案内ページを開きます。Ctrl+Cで終了。ディレクトリの用意とポートの指定は[開発環境](docs/development.md)の「ローカルHTTPサーバー」）。
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
 - CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
@@ -35,6 +35,7 @@
 - [ローカルのworktree・branch運用](docs/local-worktrees.md)
 - [アーキテクチャ](docs/architecture.md)
 - [記録・照合・計算結果の契約（契約版1.0、合成例）](docs/contracts/README.md)
+- [合成データと期待結果の台帳（T03）](docs/test-oracles/README.md)
 - [テスト方針](docs/testing.md)
 - [開発環境と作業の規約（Node.jsの版、`npm run setup`、ブラウザ試験、CI）](docs/development.md)
 - [公開範囲と公開前の点検](docs/public-data.md)

@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "EX-08",
+  "title": "金額の4つの状態",
+  "consumers": ["T06", "T10", "T12"],
+  "scenarios": [
+    {
+      "scenarioId": "EX-08-a",
+      "title": "金額の4つの状態（値あり・不明・記載なし・対象外）と、新しい情報による状態の変化",
+      "covers": [{"doc": "examples.md", "section": "EX-08"}],
+      "acceptance": ["unknown-value", "correction"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o1",
+          "at": "2026-10-28T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_801",
+            "recordType": "payslip",
+            "knownOn": {"state": "known", "value": "2026-10-28"},
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-09-01"}, "end": {"state": "known", "value": "2026-09-30"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-10-30"},
+              "grossPay": {"state": "known", "value": 33000},
+              "commutingAllowance": {"state": "not-applicable", "note": "勤務先Bに通勤手当の制度がない"},
+              "incomeTax": {"state": "unknown", "note": "該当部分が読めない"},
+              "residentTax": {"state": "known", "value": 0},
+              "healthInsurance": {"state": "not-applicable", "note": "term_2で社会保険に加入していない"},
+              "employmentInsurance": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-11-27T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_802",
+            "recordType": "payslip",
+            "knownOn": {"state": "known", "value": "2026-11-27"},
+            "body": {
+              "employerId": "emp_2",
+              "paymentKind": {"state": "known", "value": "salary"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-01"}, "end": {"state": "known", "value": "2026-10-31"}}},
+              "scheduledPayDate": {"state": "known", "value": "2026-11-30"},
+              "grossPay": {"state": "known", "value": 33000},
+              "commutingAllowance": {"state": "not-applicable", "note": "勤務先Bに通勤手当の制度がない"},
+              "incomeTax": {"state": "known", "value": 3000},
+              "residentTax": {"state": "known", "value": 0},
+              "healthInsurance": {"state": "not-applicable", "note": "term_2で社会保険に加入していない"},
+              "employmentInsurance": {"state": "not-stated"}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-12-05T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_801",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-12-05"},
+            "changeNote": {"state": "known", "value": "勤務先Bの回答"},
+            "body": {"employmentInsurance": {"state": "not-applicable", "note": "勤務先Bの回答: 雇用保険に加入していない"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o4",
+          "at": "2026-12-05T03:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_802",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-12-05"},
+            "changeNote": {"state": "known", "value": "勤務先Bの回答"},
+            "body": {"employmentInsurance": {"state": "not-applicable", "note": "勤務先Bの回答: 雇用保険に加入していない"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o5",
+          "at": "2026-12-05T03:02:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "term_2",
+            "recordType": "employment-term",
+            "revision": 2,
+            "reason": "new-information",
+            "knownOn": {"state": "known", "value": "2026-12-05"},
+            "changeNote": {"state": "known", "value": "勤務先Bの回答"},
+            "body": {"employmentInsurance": {"state": "known", "value": "not-enrolled"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o6",
+          "at": "2027-01-05T03:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_801",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_2", "depositDate": {"state": "known", "value": "2026-12-31"}, "amount": {"state": "known", "value": 30000}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 66000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "2件とも値あり。33,000 ＋ 33,000。",
+          "cites": [{"doc": "examples.md", "section": "EX-08", "quote": "総支給額 | complete | 66,000"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "incomeTax"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 3000,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_801", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "incomeTax"}, "state": "unknown"}]
+              }
+            ]
+          },
+          "reason": "不明は0として足さず不足として数える。分かっている分は3,000で、「3,000円」の合計としては表示しない（入力済み3,000円・不明1件）。",
+          "cites": [
+            {"doc": "common-types.md", "section": "5", "quote": "値がある、またはありうるが、分からない"},
+            {"doc": "common-types.md", "section": "11", "quote": "「入力済み1,500円（不明1件）」"},
+            {"doc": "examples.md", "section": "EX-08", "quote": "所得税の集計を「3,000円」と表示しない"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "residentTax"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "明細に「住民税 0」と記載されているのは値ありの0。0も値で、不明と表示しない。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "0も値（known(0)）"}, {"doc": "examples.md", "section": "EX-08", "quote": "住民税の0円を「不明」と表示しない"}]
+        },
+        {
+          "checkId": "c04",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "commutingAllowance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "not-applicable", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "対象の記録の項目がすべて対象外なのでnot-applicable。対象外は不足に数えない。",
+          "cites": [{"doc": "common-types.md", "section": "11", "quote": "missingがなく、対象の記録が1件以上あり、その項目がすべてnot-applicable"}, {"doc": "common-types.md", "section": "5", "quote": "集計から除く。不足に数えない"}]
+        },
+        {
+          "checkId": "c05",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "healthInsurance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "not-applicable", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "社会保険に加入していないので対象外。",
+          "cites": [{"doc": "examples.md", "section": "EX-08", "quote": "健康保険料 | not-applicable"}]
+        },
+        {
+          "checkId": "c06",
+          "afterOp": "o2",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "employmentInsurance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "pay_801", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "employmentInsurance"}, "state": "not-stated"},
+                  {"ref": {"id": "pay_802", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "employmentInsurance"}, "state": "not-stated"}
+                ]
+              }
+            ]
+          },
+          "reason": "記載なしは不足として数える（別の資料が要る）。knownが1件もないので「不明（記載なし2件）」。記載なしを、確かめる前に対象外へ変えない。",
+          "cites": [{"doc": "common-types.md", "section": "5", "quote": "資料を確かめたが、その資料に項目の記載がない"}, {"doc": "examples.md", "section": "EX-08", "quote": "不明（記載なし2件）"}]
+        },
+        {
+          "checkId": "c07",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-12-01", "to": "2026-12-31"}
+          },
+          "expect": {"values": [{"state": "no-records", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "口座2に2026-12-31の入金があっても、明細がなければ支給額は記録なし（0円と表示しない）。",
+          "cites": [{"doc": "examples.md", "section": "EX-08", "quote": "口座2に2026-12-31の入金があっても、明細がなければ記録なし"}]
+        },
+        {
+          "checkId": "c08",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "employmentInsurance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {"values": [{"state": "not-applicable", "knownSum": 0, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "勤務先Bの回答（明細とは別の情報源）で雇用保険料を対象外にする改訂はnew-information。改訂のあとは、雇用保険料の集計は対象外。",
+          "cites": [
+            {"doc": "records.md", "section": "4", "quote": "明細とは別の情報源（勤務先の回答等）に基づいてknown・not-applicableにする場合は、new-informationの改訂にし"},
+            {"doc": "examples.md", "section": "EX-08", "quote": "雇用保険料の集計はnot-applicable（対象外）になる"}
+          ]
+        },
+        {
+          "checkId": "c09",
+          "afterOp": "end",
+          "view": {"kind": "known-on", "date": "2026-12-01"},
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "employmentInsurance"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_2"], "accountIds": [], "from": "2026-10-01", "to": "2026-11-30"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [
+                  {"ref": {"id": "pay_801", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "employmentInsurance"}, "state": "not-stated"},
+                  {"ref": {"id": "pay_802", "revision": 1, "line": "whole"}, "field": {"kind": "record-item", "name": "employmentInsurance"}, "state": "not-stated"}
+                ]
+              }
+            ]
+          },
+          "reason": "把握時点の再現（2026-12-01）では、版2の把握日2026-12-05はまだ来ていないので版1が選ばれ、記載なしのまま。不足の行の版は、その見方で選ばれた版1。",
+          "cites": [{"doc": "examples.md", "section": "EX-08", "quote": "把握時点の再現（2026-12-01）では、版1（把握日 2026-10-28・2026-11-27）が選ばれ、記載なしのまま"}]
+        }
+      ]
+    }
+  ]
+}

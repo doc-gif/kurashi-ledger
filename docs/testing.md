@@ -19,6 +19,8 @@ Product tests start with the local HTTP boundary (T26): `src/infrastructure/http
 13. UI rearrangement does not affect domain calculations.
 14. Backups restore records, evidence, relationships and history in a clean environment.
 
+T03 turned the contract examples (docs/contracts/examples.md) and these cases into a synthetic fixture ledger with expected results derived from the contract text, not from an implementation: `tests/fixtures/ledger/` (fixtures and the ledger check `ledger.test.ts`, which runs as part of `npm test` and in CI) and docs/test-oracles/README.md (how to read and use it, and open questions). Regime cases there must state the year, jurisdiction, primary sources and rounding before they can be approved.
+
 ## Rules
 
 Before adopting a calculator, record official source examples and independently reviewed expected values. Test boundary equality, dates, age transitions, rounding, multiple employers and mid-year changes. Record the jurisdiction and rule version for each fixture.

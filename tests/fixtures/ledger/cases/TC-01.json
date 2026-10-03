@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "caseId": "TC-01",
+  "title": "追加: 改訂のモデルと保存の検査（T06の改訂競合・存在しない参照・不正期間）",
+  "consumers": ["T06", "T07", "T09"],
+  "scenarios": [
+    {
+      "scenarioId": "TC-01-a",
+      "title": "改訂のモデル（版の競合、理由と状態の遷移、参照先の実在、期間、把握日、取消の先、変えられない項目）",
+      "covers": [{"doc": "common-types.md", "section": "9"}, {"doc": "common-types.md", "section": "7"}, {"doc": "common-types.md", "section": "2"}],
+      "acceptance": ["correction"],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o01",
+          "at": "2026-10-16T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_T1",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-15"}, "amount": {"state": "known", "value": 50000}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o02",
+          "at": "2026-10-16T01:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "dep_T1", "recordType": "bank-deposit", "revision": 2, "reason": "correct-input-error", "body": {"amount": {"state": "known", "value": 51000}}}
+        },
+        {
+          "op": "save",
+          "opId": "o03",
+          "at": "2026-10-16T01:02:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "stale-base-revision"},
+          "record": {"id": "dep_T1", "recordType": "bank-deposit", "revision": 2, "reason": "correct-input-error", "body": {"amount": {"state": "known", "value": 52000}}},
+          "baseRevision": 1
+        },
+        {
+          "op": "save",
+          "opId": "o04",
+          "at": "2026-10-16T01:03:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "transition-not-allowed"},
+          "record": {"id": "dep_T1", "recordType": "bank-deposit", "revision": 3, "reason": "unvoid"}
+        },
+        {
+          "op": "save",
+          "opId": "o05",
+          "at": "2026-10-16T01:04:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "transition-not-allowed"},
+          "record": {
+            "id": "dep_T2",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-15"}, "amount": {"state": "known", "value": 1000}},
+            "revision": 2,
+            "reason": "create"
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o06",
+          "at": "2026-10-16T01:05:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-target-missing"},
+          "record": {
+            "id": "alc_T1",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "proposed",
+              "from": {"id": "pay_T9", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_T1", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 1000},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o07",
+          "at": "2026-10-16T01:06:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "invalid-period"},
+          "record": {
+            "id": "pay_T1",
+            "recordType": "payslip",
+            "body": {
+              "employerId": "emp_1",
+              "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+              "workPeriod": {"state": "known", "value": {"start": {"state": "known", "value": "2026-10-31"}, "end": {"state": "known", "value": "2026-10-01"}}}
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o08",
+          "at": "2026-10-04T10:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "known-on-in-future"},
+          "record": {
+            "id": "dep_T3",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-03"}, "amount": {"state": "known", "value": 1000}},
+            "knownOn": {"state": "known", "value": "2026-10-05"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o09",
+          "at": "2026-10-04T15:30:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_T3",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-03"}, "amount": {"state": "known", "value": 1000}},
+            "knownOn": {"state": "known", "value": "2026-10-05"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o10",
+          "at": "2026-10-16T01:07:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-target-invalid"},
+          "record": {
+            "id": "dep_T1",
+            "recordType": "bank-deposit",
+            "revision": 3,
+            "reason": "void",
+            "duplicateOf": {"state": "known", "value": {"id": "dep_T1", "revision": "current", "line": "whole"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o11",
+          "at": "2026-10-16T01:08:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "dep_T4",
+            "recordType": "bank-deposit",
+            "body": {"accountId": "acct_1", "depositDate": {"state": "known", "value": "2026-10-14"}, "amount": {"state": "known", "value": 2000}},
+            "entryChannel": "import",
+            "importKey": {"state": "known", "value": {"source": "架空の口座CSV", "key": "2026-10-14の1行目"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o12",
+          "at": "2026-10-16T01:09:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "immutable-field-changed"},
+          "record": {
+            "id": "dep_T4",
+            "recordType": "bank-deposit",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "importKey": {"state": "known", "value": {"source": "架空の口座CSV", "key": "2026-10-14の2行目"}}
+          }
+        },
+        {
+          "op": "saveEvidenceFile",
+          "opId": "o13",
+          "at": "2026-10-16T01:10:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "file": {
+            "id": "evf_T1",
+            "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "byteSize": 512,
+            "mediaType": "image/png",
+            "originalFileName": "合成の通帳の画像.png",
+            "storageName": "4444444444444444444444444444444444444444444444444444444444444444.png",
+            "importedAt": "2026-10-16T01:10:00.000Z"
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o14",
+          "at": "2026-10-16T01:11:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-granularity"},
+          "record": {"id": "evl_T1", "recordType": "evidence-link", "body": {"evidenceFileId": "evf_T1", "target": {"id": "dep_T1", "revision": "current", "line": "l1"}, "role": "source"}}
+        },
+        {
+          "op": "save",
+          "opId": "o15",
+          "at": "2026-10-16T01:12:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "ref-target-invalid"},
+          "record": {
+            "id": "alc_T2",
+            "recordType": "allocation",
+            "body": {
+              "kind": "transfer-to-deposit",
+              "allocationStatus": "proposed",
+              "from": {"id": "dep_T3", "revision": "current", "line": "whole"},
+              "to": {"id": "dep_T1", "revision": "current", "line": "whole"},
+              "amount": {"state": "known", "value": 1000},
+              "proposedBy": "user"
+            }
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o16",
+          "at": "2026-10-17T01:00:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {"id": "dep_T1", "recordType": "bank-deposit", "revision": 3, "reason": "void", "changeNote": {"state": "known", "value": "自分の口座でない取引の取込"}}
+        },
+        {
+          "op": "save",
+          "opId": "o17",
+          "at": "2026-10-17T01:01:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "transition-not-allowed"},
+          "record": {"id": "dep_T1", "recordType": "bank-deposit", "revision": 4, "reason": "new-information", "body": {"amount": {"state": "known", "value": 50500}}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o03",
+          "query": {"kind": "selectedRevision", "record": "dep_T1"},
+          "expect": {"revision": 2},
+          "reason": "改訂の保存は基にした版を指定し、現在の版と違えば保存せず競合を知らせる。版1を基にした2つ目の訂正は拒否され、現在は版2（51,000）。",
+          "cites": [{"doc": "common-types.md", "section": "9", "quote": "改訂の保存は、基にした版を指定する。現在の版と違えば保存せず、競合を知らせる"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "o09",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {"values": [{"state": "complete", "knownSum": 52000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "dep_T1版2の51,000と、dep_T3の1,000。activeな記録の取消の取り消し、版2から始まるcreate、存在しない記録を指す配分、startがendより後の期間、保存の日（Asia/Tokyo）より後の把握日の保存は拒否され、記録を作らない。保存の時計2026-10-04T15:30:00.000ZはAsia/Tokyoで2026-10-05なので、把握日2026-10-05は保存できる。",
+          "cites": [
+            {"doc": "common-types.md", "section": "9", "quote": "表にない組合せの保存は拒否する"},
+            {"doc": "common-types.md", "section": "2", "quote": "参照先が存在しない参照は保存できない"},
+            {"doc": "common-types.md", "section": "6", "quote": "両端がknownならstart ≤ end"},
+            {"doc": "common-types.md", "section": "7", "quote": "保存のときの時計の日付（Asia/Tokyo）より後にできない"}
+          ]
+        },
+        {
+          "checkId": "c03",
+          "afterOp": "end",
+          "query": {"kind": "aggregate", "key": {"kind": "deposit-amount"}, "axis": "deposit-date", "scope": {"employerIds": [], "accountIds": ["acct_1"], "from": "2026-10-01", "to": "2026-10-31"}},
+          "expect": {"values": [{"state": "complete", "knownSum": 3000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "残るのはdep_T3の1,000と、取込のdep_T4の2,000。自分自身を残す方にした取消、取込のimportKeyを変える改訂、行を指す証憑の紐付け、給与明細でないfromの配分は拒否される。存在しない取引としての取消（二重登録でない取消）は保存でき、dep_T1は集計から除かれる。取消した記録に続けられるのはunvoidだけで、new-informationは拒否される。",
+          "cites": [
+            {"doc": "common-types.md", "section": "9", "quote": "指せるのは、自分以外の、保存のときに有効な記録"},
+            {"doc": "common-types.md", "section": "9", "quote": "改訂で変えられないもの: id、recordType、entryChannel、importKey"},
+            {"doc": "common-types.md", "section": "9", "quote": "取消した記録に続けられる改訂はunvoidだけ"}
+          ]
+        }
+      ]
+    }
+  ]
+}
