@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "c6834b76afbc08f706f5031cae8fed4e903ce52a",
+  "base_sha": "3c4d1dd4eb756eebdc3a2e0477a155fa2f86968a",
   "task_id": "T02",
   "planned_paths": [
     ".github/ISSUE_TEMPLATE/task.md",
@@ -11,6 +11,7 @@
     "AGENTS.md",
     "README.md",
     "SECURITY.md",
+    "design/README.md",
     "docs/adr/0002-runtime-and-distribution.md",
     "docs/adr/0005-sqlite-driver.md",
     "docs/adr/0008-install-record.md",
@@ -41,6 +42,11 @@
       "description": "PR #12で状態資料にT02の開発環境を加えた一方、base（3672a30）の状態資料は実装停止・Issue未作成のままで矛盾した（Copilotの指摘）。",
       "state": "resolved",
       "resolution": "#6の決定を含むPR #4がmain（c6834b7）に入ったので、それを取り込み、実装の可否・Issueの対応・公開範囲を同じ状態に合わせた。実装停止とマージ方針の文言はmainのものを使う。"
+    },
+    {
+      "description": "main（3c4d1dd）に入ったT04（PR #10）のdesign/README.mdは、画像ファイルを「T02で.gitignoreの除外（*.png等）を直すまでcommitしない」としている。T02はこの除外を直し、design/の.png・.jpg・.jpegを例外にしたので、条件が古くなる。",
+      "state": "resolved",
+      "resolution": "T02の範囲で決められる部分だけ直す: 条件の文を、commitするときはdocs/public-data.mdの5の点検を行う、という文に改め、検証の記録の「上記の理由」を、当時はT02の修正の前だったという事実に改める。スクリーンショットをrepoに置くかどうかはデザイン側（T04以降）の判断のまま変えない。"
     }
   ],
   "assessments": [
@@ -81,12 +87,29 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "公開する差分は、開発用の設定・スクリプト・文書と、合成の試験データだけ。秘密情報の見本は試験の中で文字列を分割して組み立てる。試験は127.0.0.1の合成registryと一時ディレクトリを使い、利用者のnpmの設定・キャッシュを使わない。新しい外部サービスは加えない（依存は公開のnpm registryから取得）。",
+      "reason": "公開する差分は、開発用の設定・スクリプト・文書と、合成の試験データだけ。秘密情報の見本は試験の中で文字列を分割して組み立てる。試験は127.0.0.1の合成registryと一時ディレクトリを使い、利用者のnpmの設定・キャッシュを使わない。新しい外部サービスは加えない（依存は公開のnpm registryから取得）。 main（3c4d1dd、PR #10のT04）を取り込んだあと、design/README.mdの画像のcommitの条件を、T02の.gitignoreの例外（design/の.png・.jpg・.jpeg）と、追加するときの点検（docs/public-data.mdの5: 合成であること、メタデータ、写り込み、ファイル名）に合わせる。点検は緩めない。",
       "checks": [
         {
           "id": "public",
-          "method": "npm run check:public相当（node scripts/check-public.ts --stagedと全件）、個人のパス・メール・トークン・鍵の形のgrep、差分の目視を、commitのたびに行う。",
+          "method": "npm run check:public相当（node scripts/check-public.ts --stagedと全件）、個人のパス・メール・トークン・鍵の形のgrep、差分の目視を、commitのたびに行う。 design/README.mdの画像の条件が、docs/public-data.mdの5と.gitignoreの例外に一致するかを読み比べる。",
           "expected": "実データ・秘密・個人のパスの当たりなし（規則の定義、合成の見本、プレースホルダ、example.comだけ）。試験の前後で利用者のnpmのキャッシュとOSの一時ディレクトリに残るものがない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "not-applicable",
+      "reason": "T02がdesign/で変えるのは、design/README.mdの画像をcommitする条件の文（「T02で.gitignoreの除外を直すまでcommitしない」）だけ。T02の.gitignoreと公開検査の修正で条件が満たされるので、追加するときの点検（docs/public-data.mdの5）を参照する文に改める。トークン、部品の状態（Amount InputのEmpty・Unknown等）、Figmaとの対応、記録の意味と計算履歴は変えない。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "design/README.mdの差分を読み、画像のcommitの条件と、その理由を指す検証の記録の文だけが変わっていることを確かめる。design/components.md・tokens.json・figma-map.jsonは変えない。",
+          "expected": "未知値と0、銀行入金と給与、実績・見込み・正式通知の区別に関わる記述（部品の状態の対応を含む）は変わらない。"
+        },
+        {
+          "id": "history",
+          "method": "制度・計算版・期待値を扱うファイル（docs/contracts/、rules/、docs/test-oracles/等）が差分にないことを確かめる。",
+          "expected": "追加も変更もしない。"
         }
       ]
     },
@@ -166,7 +189,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "T02はpackage.jsonとlockfileを最初に作り、T05→T26→T08の順の引継ぎ（実装計画）を変えない。固定版とMac/Windows/Linuxでの確認は、所有者の決定（2026-10-02）でT05の受入条件に移し、ADR-0002・ADR-0005・ADR一覧・台帳のT02/T05節を合わせた。mainへ入ったPR #4（#6の決定を含む）を取り込み、状態資料・README・AGENTS・Copilotの指示を同じ状態に合わせる。移行用の計画で、実装前に計画したものではない。",
+      "reason": "T02はpackage.jsonとlockfileを最初に作り、T05→T26→T08の順の引継ぎ（実装計画）を変えない。固定版とMac/Windows/Linuxでの確認は、所有者の決定（2026-10-02）でT05の受入条件に移し、ADR-0002・ADR-0005・ADR一覧・台帳のT02/T05節を合わせた。mainへ入ったPR #4（#6の決定を含む）を取り込み、状態資料・README・AGENTS・Copilotの指示を同じ状態に合わせる。移行用の計画で、実装前に計画したものではない。 main（3c4d1dd、PR #10のT04）を履歴を書き換えずに取り込み、T04の決定（T08の依存にT01、Status Badge・Amount Inputの受入条件、Figmaの作成済み）とT02の変更の両方を残す。",
       "checks": [
         {
           "id": "dependencies",
@@ -175,8 +198,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "mainを取り込んだあと、README・AGENTS.md・.github/copilot-instructions.md・docs/project-status.md・docs/development.md・docs/testing.mdを読み比べ、実装の可否、Issueの対応（T01 #8、T02 #9、T04 #7）、使えるコマンド（レビュー運用ツールの試験と、T02のnpm test・check:public）、製品の試験とCIがまだないことが一致するかを確かめる。",
-          "expected": "実装停止の文言は残らず（#4の決定のまま）、状態資料はT02の開発用の設定と試験を含む公開範囲を示し、Copilotが指摘した矛盾（Issueの一覧、実装状態、公開範囲）がなくなる。予定の機能と使える機能を分けて書く。"
+          "method": "mainを取り込んだあと、README・AGENTS.md・.github/copilot-instructions.md・docs/project-status.md・docs/development.md・docs/testing.mdを読み比べ、実装の可否、Issueの対応（T01 #8、T02 #9、T04 #7）、使えるコマンド（レビュー運用ツールの試験と、T02のnpm test・check:public）、製品の試験とCIがまだないことが一致するかを確かめる。 T04の取り込みのあとは、README・docs/project-status.md・docs/implementation-plan.md・台帳のT04・T08節・design/README.mdの、design/への参照と画像のcommitの条件も読み比べる。",
+          "expected": "実装停止の文言は残らず（#4の決定のまま）、状態資料はT02の開発用の設定と試験を含む公開範囲を示し、Copilotが指摘した矛盾（Issueの一覧、実装状態、公開範囲）がなくなる。予定の機能と使える機能を分けて書く。 T04の決定は変えず、design/への参照がREADMEの設計資料の一覧からたどれ、画像のcommitの条件がT02の修正のあとの状態と一致する。"
         }
       ]
     }
@@ -248,6 +271,20 @@
         {
           "id": "public",
           "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RECORDS": {
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
         }
       ],
       "history": []
