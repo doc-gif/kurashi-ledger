@@ -145,6 +145,34 @@ export function withRunStamp(ledger: Ledger, id: string, recordedAt: string): Le
   return { ...ledger, saves: [...ledger.saves, { kind: "run", id, recordedAt, recordedSeq: nextSeq(ledger) }], runIds };
 }
 
+// 保存の境界で入力を深く写して凍結する（呼び出し元が後から入力を変えても、保存した履歴・連番・索引が変わらないように）。
+// 写すのはJSONの値（null・真偽値・数・文字列、配列、プロトタイプがObjectかnullのobject）だけ。それ以外（関数、Date等の
+// objectやundefined・bigint・symbol）を含めば、その位置を返して拒否させる。getterは1回だけ読む。
+export function snapshotJson(v: unknown, path = "$"): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly path: string } {
+  if (v === null || typeof v === "string" || typeof v === "boolean" || typeof v === "number") return { ok: true, value: v };
+  if (Array.isArray(v)) {
+    const out: unknown[] = [];
+    for (let i = 0; i < v.length; i += 1) {
+      const e = snapshotJson(v[i], `${path}[${i}]`);
+      if (!e.ok) return e;
+      out.push(e.value);
+    }
+    return { ok: true, value: Object.freeze(out) };
+  }
+  if (typeof v === "object") {
+    const proto: unknown = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) return { ok: false, path };
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v)) {
+      const e = snapshotJson((v as Record<string, unknown>)[k], `${path}.${k}`);
+      if (!e.ok) return e;
+      out[k] = e.value;
+    }
+    return { ok: true, value: Object.freeze(out) };
+  }
+  return { ok: false, path };
+}
+
 // 保存した改訂のbody。検査をすり抜けたデータではobjectでないことがあるので、導く判定はこの関数で読み、例外を投げずに
 // 空のobject（どの項目もない）として扱う（その記録は履歴の検査でsave-checkになる）。
 export function bodyOf(revision: Revision): Readonly<Record<string, unknown>> {

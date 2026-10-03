@@ -63,13 +63,30 @@ export function isInstant(v: unknown): v is string {
   return !Number.isNaN(t) && new Date(t).toISOString() === v;
 }
 
-const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
+const TOKYO_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit", era: "short" });
 
-// 時点のAsia/Tokyoの日付。日本は1951年以降夏時間を使わないので、UTC+9の固定の差で決まる（共通の型の7の「把握日」の検査）。
+// 時点のAsia/Tokyoの日付（共通の型の7の「把握日」の検査）。固定のUTC+9ではなく、Node.jsのIntl（ICUのタイムゾーンのデータ）で
+// 求めるので、日本の夏時間（1948〜1951年）の期間も正しい。年は4桁以上の西暦（YYYY-MM-DD。10000年以降は5桁）。
 export function tokyoDateOf(instant: string): string {
   const t = Date.parse(instant);
   if (Number.isNaN(t)) throw new Error(`Instantではない: ${instant}`);
-  return new Date(t + TOKYO_OFFSET_MS).toISOString().slice(0, 10);
+  const parts = TOKYO_DATE.formatToParts(new Date(t));
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
+  if (get("era") !== "AD") throw new Error(`紀元前の時点は扱わない: ${instant}`);
+  return `${get("year").padStart(4, "0")}-${get("month")}-${get("day")}`;
+}
+
+// LocalDate（または5桁の年を持つ日付）の大小。年を数で比べる（文字列の比較では5桁の年を誤るため）。
+export function compareDates(a: string, b: string): number {
+  const [ya, ra] = splitYear(a);
+  const [yb, rb] = splitYear(b);
+  if (ya !== yb) return ya < yb ? -1 : 1;
+  return ra < rb ? -1 : ra > rb ? 1 : 0;
+}
+
+function splitYear(d: string): [number, string] {
+  const i = d.indexOf("-");
+  return [Number(d.slice(0, i)), d.slice(i)];
 }
 
 export function isCount(v: unknown): v is number {

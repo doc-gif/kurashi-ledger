@@ -8,6 +8,7 @@ import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, RECORD_PREFIX, RUN_
 import {
   bodyOf,
   idInUse,
+  snapshotJson,
   recordIds,
   importKeyIndex,
   latestRevision,
@@ -82,7 +83,11 @@ function nowOf(clock: Clock): string {
 
 // 記録の改訂を1件保存する。inputは保存しようとしている改訂（改訂の共通の形からrecordedAt・recordedSeqを除いたもの）に、
 // 改訂ならbaseRevision（基にした版）を加えたもの。新規（reasonがcreate）ではidを書かず、ID生成器が割り当てる。
-export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): SaveOutcome {
+export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): SaveOutcome {
+  // 保存の境界で入力を深く写して凍結し、以後は写しだけを検査・保存する（返す改訂も台帳と同じ写しを指す）。
+  const snap = snapshotJson(raw);
+  if (!snap.ok) return reject(ledger, one("value-invalid", snap.path, "JSONの値ではない"));
+  const input = snap.value;
   if (!isObj(input)) return reject(ledger, one("value-invalid", "$", "保存の要求がobjectではない"));
   const { baseRevision, ...proposal } = input;
   // 1. 再送（同じwriteRequestId）。最初の結果を返すか、内容が違えば拒否する（共通の型の10）。
@@ -99,6 +104,7 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
   const isCreate = proposal["reason"] === "create";
   const staticViolations = checkRevisionStatic(proposal, { stored: false });
   if (isCreate && "id" in proposal) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "新規の保存のIDはID生成器が割り当てる（書かない）" });
+  if (isCreate && "baseRevision" in input) staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "新規の保存にbaseRevisionは書かない（改訂だけ）" });
   if (!isCreate && !("id" in proposal)) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "改訂の保存には記録のIDが要る" });
   if (!isCreate && (typeof baseRevision !== "number" || !Number.isSafeInteger(baseRevision) || baseRevision < 1)) {
     staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "改訂の保存は基にした版（1以上の整数）を指定する" });
@@ -135,7 +141,7 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
     const future = knownOnInFuture(proposal, previous, now);
     if (future.length > 0) return reject(ledger, future);
   }
-  const revision: Revision = {
+  const revision: Revision = Object.freeze({
     id,
     recordType: type,
     revision: proposal["revision"] as number,
@@ -150,7 +156,7 @@ export function saveRevision(ledger: Ledger, input: unknown, deps: SaveDeps): Sa
     writeRequestId: proposal["writeRequestId"] as string,
     importKey: proposal["importKey"] as Revision["importKey"],
     body: proposal["body"] as Revision["body"],
-  };
+  });
   const after = withRevision(ledger, revision);
   // 5. ほかの記録との関係で決まる検査（保存したあとの状態で）。
   const relational = checkRelations(ledger, after, revision, previous);
@@ -278,9 +284,12 @@ function dependentToViolation(v: DependentViolation, revision: Revision, previou
 // inputは証憑ファイルの項目からid・recordedAt・recordedSeqを除いたもの（IDはID生成器が割り当てる）。
 export function saveEvidenceFile(
   ledger: Ledger,
-  input: unknown,
+  raw: unknown,
   deps: SaveDeps,
 ): { readonly kind: "accepted"; readonly ledger: Ledger; readonly file: EvidenceFile } | { readonly kind: "existing-returned"; readonly ledger: Ledger; readonly fileId: string } | { readonly kind: "rejected"; readonly ledger: Ledger; readonly reason: RejectionReason; readonly violations: readonly Violation[] } {
+  const snap = snapshotJson(raw);
+  if (!snap.ok) return { kind: "rejected", ledger, reason: "value-invalid", violations: one("value-invalid", snap.path, "JSONの値ではない") };
+  const input = snap.value;
   const violations = checkEvidenceFileStatic(input);
   if (isObj(input) && "id" in input) violations.push({ reason: "value-invalid", path: "$.id", message: "証憑ファイルのIDはID生成器が割り当てる（書かない）" });
   if (violations.length > 0 || !isObj(input)) {
@@ -294,7 +303,7 @@ export function saveEvidenceFile(
   if (!isIdWithPrefix(id, EVIDENCE_FILE_PREFIX)) return { kind: "rejected", ledger, reason: "value-invalid", violations: one("value-invalid", "$.id", `ID生成器の値が証憑ファイルのIDではない: ${id}`) };
   if (idInUse(ledger, id)) return { kind: "rejected", ledger, reason: "id-already-used", violations: one("id-already-used", "$.id", `すでに使われたID: ${id}`) };
   const now = nowOf(deps.clock);
-  const file: EvidenceFile = {
+  const file: EvidenceFile = Object.freeze({
     id,
     sha256: sha,
     byteSize: input["byteSize"] as number,
@@ -304,7 +313,7 @@ export function saveEvidenceFile(
     importedAt: input["importedAt"] as string,
     recordedAt: now,
     recordedSeq: nextSeq(ledger),
-  };
+  });
   return { kind: "accepted", ledger: withEvidenceFile(ledger, file), file };
 }
 
@@ -321,7 +330,10 @@ export function saveRunStamp(ledger: Ledger, runId: string, deps: Pick<SaveDeps,
 // 集計等の導く判定は、このような改訂を、そのつど保存の検査と同じ条件で確かめる（aggregate.ts）。
 export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], deps: Pick<SaveDeps, "clock">): Ledger {
   let cur = ledger;
-  for (const r of records) {
+  for (const rawRecord of records) {
+    const snap = snapshotJson(rawRecord);
+    if (!snap.ok) throw new Error(`復元する改訂がJSONの値ではない: ${snap.path}`);
+    const r = snap.value;
     if (!isObj(r)) throw new Error("復元する改訂がobjectではない");
     const type = recordTypeOfId(r["id"]);
     if (type === undefined || r["recordType"] !== type) throw new Error(`復元する改訂のIDと種類が合わない: ${String(r["id"])}`);
@@ -335,11 +347,11 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
       const owner = cur.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
       if (owner !== undefined && owner !== r["id"]) throw new Error(`復元する改訂のimportKeyが別の記録${owner}と重なる`);
     }
-    const revision = {
+    const revision: Revision = Object.freeze({
       ...(r as unknown as Revision),
       recordedAt: nowOf(deps.clock),
       recordedSeq: nextSeq(cur),
-    };
+    });
     cur = withRevision(cur, revision);
   }
   return cur;

@@ -136,16 +136,29 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
   const problems: SeriesProblem[] = [];
   // 1. 差し替えの関係: 取消していない記録Xのsupersedesをたどり、取消した記録を通り過ぎて、最初に着いた取消していない記録Y。
   const relation = new Map<string, string>();
+  // 履歴の検査（PR28-R001）: 見方で選ばれた改訂の値を根拠に使う記録は、取消していてもいなくても、その改訂までの履歴を
+  // 保存と同じ検査にかける。満たさない記録は、選ばれた改訂までのすべての改訂のsupersedesの先と同じ系列に入れ、系列全体を
+  // 整っていない系列にする（壊れたsupersedesで古い資料を独立の系列として残さない。後の改訂は使わない）。
+  for (const id of ids) {
+    const sel = selected.get(id);
+    if (sel === undefined || isHistoryValid(ledger, sel)) continue;
+    problems.push({ kind: "save-check", ids: [id] });
+    for (const r of revisionsOf(ledger, id)) {
+      if (r.revision > sel.revision) continue;
+      const s = supersedesOf(r);
+      if (s.kind === "ref") uf.union(id, s.id);
+    }
+  }
   for (const x of ids) {
     if (!isActive(x)) continue;
     const visited = [x];
     let cur = selected.get(x) as Revision;
-    if (!isHistoryValid(ledger, cur)) problems.push({ kind: "save-check", ids: [x] });
     for (;;) {
       const s = supersedesOf(cur);
       if (s.kind === "none") break;
       if (s.kind === "invalid") {
-        problems.push({ kind: "invalid-reference", ids: [x] });
+        problems.push({ kind: "invalid-reference", ids: [...visited] });
+        for (const v of visited) uf.union(x, v);
         break;
       }
       const y = s.id;
@@ -160,7 +173,8 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
         break;
       }
       if (recordTypeOfId(y) !== type || revisionsOf(ledger, y).length === 0) {
-        problems.push({ kind: "invalid-reference", ids: [x] });
+        problems.push({ kind: "invalid-reference", ids: [...visited] });
+        for (const v of visited) uf.union(x, v);
         break;
       }
       const ySel = selected.get(y);
@@ -170,9 +184,12 @@ export function analyzeSeries(ledger: Ledger, type: SeriesType, view: ResolvedVi
         uf.union(x, y);
         break;
       }
+      // たどる途中の取消した記録（橋）も、たどり着いた記録も、起点と同じ系列に入れる。履歴の検査を満たさない記録の
+      // supersedes・値は根拠にせず、たどるのをやめる（その記録は上でsave-checkとして系列全体を整っていない系列にしている）。
+      uf.union(x, y);
+      if (!isHistoryValid(ledger, ySel)) break;
       if (ySel.status === "active") {
         relation.set(x, y);
-        uf.union(x, y);
         break;
       }
       visited.push(y);

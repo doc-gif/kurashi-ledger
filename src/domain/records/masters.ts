@@ -3,6 +3,7 @@
 // すべて正規のIDで行い、記録のIdの値は書き換えない。
 
 import { knownValue } from "./fact.ts";
+import { isHistoryValid } from "./history.ts";
 import { isMasterType, recordTypeOfId } from "./ids.ts";
 import type { Ledger } from "./ledger.ts";
 import { masterView, selectRevision, type ResolvedView } from "./views.ts";
@@ -20,6 +21,8 @@ export function canonicalMasterId(ledger: Ledger, id: string, view: ResolvedView
     seen.add(cur);
     const rev = selectRevision(ledger, cur, v);
     if (rev === undefined || rev.recordType !== type) return undefined;
+    // 鎖でたどる改訂は、どれもその改訂までの履歴が保存の検査を満たすときだけ根拠にする（共通の型の9。PR28-R001）。
+    if (!isHistoryValid(ledger, rev)) return undefined;
     if (rev.status === "active") return cur;
     const next = knownValue(rev.duplicateOf);
     if (typeof next !== "object" || next === null) return undefined;

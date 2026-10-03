@@ -6,7 +6,7 @@ import { revisionsOf, type Ledger, type Revision, type RevisionReason } from "./
 import type { RejectionReason, Violation } from "./reasons.ts";
 import { LINE_LISTS } from "./schema.ts";
 import { checkRevisionStatic, lineObjects } from "./validate.ts";
-import { tokyoDateOf } from "./values.ts";
+import { compareDates, tokyoDateOf } from "./values.ts";
 
 type Obj = Readonly<Record<string, unknown>>;
 
@@ -51,7 +51,7 @@ export function knownOnInFuture(proposal: Obj, previous: Revision | undefined, n
   if (!entered) return [];
   const k = knownValue(proposal["knownOn"]);
   const today = tokyoDateOf(now);
-  return typeof k === "string" && k > today ? one("known-on-in-future", "$.knownOn", `把握日${k}が保存のときの日付${today}（Asia/Tokyo）より後`) : [];
+  return typeof k === "string" && compareDates(k, today) > 0 ? one("known-on-in-future", "$.knownOn", `把握日${k}が保存のときの日付${today}（Asia/Tokyo）より後`) : [];
 }
 
 // 改訂とその前の版で決まる保存の検査（共通の型の9の改訂のモデル、2の行IDの予約、7の把握日）。historyは前の版までの改訂

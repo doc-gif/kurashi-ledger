@@ -12,7 +12,7 @@ import { canonicalMasterId } from "./masters.ts";
 import { restoreUnchecked, saveRevision, type SaveOutcome } from "./save.ts";
 import { analyzeSeries } from "./series.ts";
 import { checkRevisionStatic } from "./validate.ts";
-import { addYen, isLocalDate, tokyoDateOf } from "./values.ts";
+import { addYen, compareDates, isLocalDate, tokyoDateOf } from "./values.ts";
 import { CURRENT, resolveView, selectRevision, seqForTime, type View } from "./views.ts";
 
 let wr = 0;
@@ -569,4 +569,112 @@ test("PR28-R001: 履歴が検査を満たさない記録でも、選んだ版ま
     { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "unvoid", body: { depositDate: { state: "known", value: "2026-10-10" } } },
   ]);
   assert.deepEqual(depositOct(m), { state: "incomplete", knownSum: 0, missing: ["dep_1@3:save-check:conflict"] });
+});
+
+test("PR28-R001: 取消した橋の履歴が壊れている（取消でsupersedesを変えた）系列は、古い資料も新しい資料も数えずconflictにする", () => {
+  let l = setup();
+  const sup = (prev: string): Obj => ({ supersedes: { state: "known", value: { id: prev, revision: "current", line: "whole" } } });
+  const grossOct = (ledger: Ledger, view: View = CURRENT) => aggregateRecords(ledger, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } }, view);
+  l = ok(save(l, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+  l = ok(save(l, payslip("pay_b", { grossPay: { state: "known", value: 150 }, ...sup("pay_a") }), T0));
+  const beforeBadVoid = l.saves.length;
+  // Bの版2: 取消でbodyのsupersedesをnot-applicableに変えた不正な履歴（復元）。
+  l = restore(l, [{ id: "pay_b", recordType: "payslip", revision: 2, reason: "void", body: { supersedes: { state: "not-applicable" } } }]);
+  l = ok(save(l, payslip("pay_c", { grossPay: { state: "known", value: 200 }, ...sup("pay_b") }), T0));
+  const now = grossOct(l);
+  assert.ok(now.ok);
+  if (now.ok) {
+    assert.equal(now.values[0].state, "incomplete");
+    assert.equal(now.values[0].knownSum, 0);
+    assert.deepEqual(now.values[0].missing.map((m) => m.ref.id).sort(), ["pay_a", "pay_c"]);
+  }
+  const st = analyzeSeries(l, "payslip", CURRENT).status;
+  assert.deepEqual(["pay_a", "pay_b", "pay_c"].map((id) => st.get(id)), ["unconfirmed-series", "voided", "unconfirmed-series"]);
+  // 不正な取消より前の記録時点の再現は、後の改訂を使わず正常（Bが現在の記録）。
+  const past = grossOct(l, { kind: "record-seq", seq: beforeBadVoid });
+  assert.ok(past.ok && past.values[0].state === "complete" && past.values[0].knownSum === 150, JSON.stringify(past));
+  // 正しい取消の橋は、これまでどおり通り過ぎる（A ← B（取消） ← Cで、Cだけを数える）。
+  let g = setup();
+  g = ok(save(g, payslip("pay_a", { grossPay: { state: "known", value: 100 } }), T0));
+  g = ok(save(g, payslip("pay_b", { grossPay: { state: "known", value: 150 }, ...sup("pay_a") }), T0));
+  g = ok(save(g, payslip("pay_c", { grossPay: { state: "known", value: 200 }, ...sup("pay_b") }), T0));
+  g = ok(save(g, { id: "pay_b", recordType: "payslip", revision: 2, reason: "void" }, T0));
+  const good = grossOct(g);
+  assert.ok(good.ok && good.values[0].state === "complete" && good.values[0].knownSum === 200, JSON.stringify(good));
+});
+
+test("Copilot r4172813522: 履歴の検査を満たさないマスタは、正規のIDに解決しない（unknown）", () => {
+  let l = setup();
+  // 不正な取消の取り消し（bodyを変えた）。
+  l = restore(l, [
+    { id: "emp_9", recordType: "employer", body: { displayName: "勤務先Z" } },
+    { id: "emp_9", recordType: "employer", revision: 2, reason: "void" },
+    { id: "emp_9", recordType: "employer", revision: 3, reason: "unvoid", body: { displayName: "勤務先Z（変更）" } },
+  ]);
+  assert.equal(canonicalMasterId(l, "emp_9", CURRENT), undefined);
+  // その時点までの履歴が正しい過去の見方では解決する。
+  assert.equal(canonicalMasterId(l, "emp_9", { kind: "record-seq", seq: (latestRevision(l, "emp_9")?.recordedSeq ?? 0) - 2 }), "emp_9");
+  // 形の崩れた復元したマスタ（bodyがnull）。
+  const broken = { ...expandRecord({ id: "emp_8", recordType: "employer", body: { displayName: "勤務先Y" } }, { scenarioId: "unit", opId: "b1", previous: undefined }), body: null };
+  l = restoreUnchecked(l, [broken], { clock: { now: () => T0 } });
+  assert.equal(canonicalMasterId(l, "emp_8", CURRENT), undefined);
+  // 解決できないマスタを指す明細は、範囲から外さず不足（unknown）に挙げ、新しく指す保存は拒否する。
+  l = restore(l, [payslip("pay_1", { employerId: "emp_9", grossPay: { state: "known", value: 1 } })]);
+  const all = aggregateRecords(l, { key: { kind: "payslip-item", item: "grossPay" }, axis: "scheduled-pay-date", scope: { employerIds: [], accountIds: [], from: "2026-10-01", to: "2026-10-31" } });
+  assert.ok(all.ok && all.values[0].missing.some((m) => m.ref.id === "pay_1" && m.field.kind === "record-item" && m.field.name === "employerId" && m.state === "unknown"), JSON.stringify(all));
+  rejected(save(l, payslip("pay_2", { employerId: "emp_8" }), T0), "ref-target-invalid");
+});
+
+test("Copilot r4172813501: 保存の境界で入力を写して凍結し、保存のあとで入力を変えても履歴・連番・索引は変わらない", () => {
+  let l = setup();
+  const input = expandRecord(
+    { id: "dep_1", recordType: "bank-deposit", entryChannel: "import", importKey: { state: "known", value: { source: "架空の口座CSV", key: "1行目" } }, body: { accountId: "acct_1", depositDate: { state: "known", value: "2026-10-10" }, amount: { state: "known", value: 100 } } },
+    { scenarioId: "unit", opId: "s1", previous: undefined },
+  ) as Record<string, unknown>;
+  delete input["id"];
+  const out = saveRevision(l, input, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
+  l = ok(out);
+  const seq = l.saves.length;
+  const body = input["body"] as { amount: { value: number } };
+  body.amount.value = 999;
+  (input["importKey"] as { value: { key: string } }).value.key = "2行目";
+  input["writeRequestId"] = "w-changed";
+  const stored = latestRevision(l, "dep_1");
+  assert.ok(stored !== undefined && Object.isFrozen(stored) && Object.isFrozen(stored.body));
+  if (out.kind === "accepted") assert.equal(out.revision, stored);
+  assert.deepEqual(depositOct(l), { state: "complete", knownSum: 100, missing: [] });
+  assert.equal(l.saves.length, seq);
+  assert.ok(l.writeRequests.has(stored?.writeRequestId ?? "") && !l.writeRequests.has("w-changed"));
+  assert.equal([...l.importKeys.values()].filter((v) => v === "dep_1").length, 1);
+  assert.throws(() => {
+    (stored?.body as Record<string, unknown>)["amount"] = 1;
+  });
+  // 復元の入口も同じ。JSONの値でない入力は拒否する。
+  const restored = expandRecord(deposit("dep_2", { state: "known", value: 5 }), { scenarioId: "unit", opId: "s2", previous: undefined }) as Record<string, unknown>;
+  l = restoreUnchecked(l, [restored], { clock: { now: () => T0 } });
+  (restored["body"] as { amount: { value: number } }).amount.value = 7;
+  assert.equal(depositOct(l).knownSum, 105);
+  rejected(saveRevision(l, { ...input, writeRequestId: "w-date", body: { ...(input["body"] as Obj), descriptionText: new Date(0) } }, { clock: { now: () => T0 }, ids: { next: () => "dep_3" } }), "value-invalid");
+});
+
+test("Copilotの概要: 新規の保存にbaseRevisionがあれば拒否する", () => {
+  const l = setup();
+  const record = expandRecord(deposit("dep_1", { state: "known", value: 1 }), { scenarioId: "unit", opId: "c1", previous: undefined });
+  const { id: _id, ...input } = record;
+  void _id;
+  rejected(saveRevision(l, { ...input, baseRevision: 0 }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } }), "value-invalid");
+  rejected(saveRevision(l, { ...input, baseRevision: 1 }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } }), "value-invalid");
+  ok(saveRevision(l, input, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } }));
+});
+
+test("Copilotの概要: Asia/Tokyoの暦日はタイムゾーンのデータで求め、日本の夏時間（1948〜1951年）も正しい", () => {
+  assert.equal(tokyoDateOf("1948-06-01T14:30:00.000Z"), "1948-06-02");
+  assert.equal(tokyoDateOf("1952-06-01T14:30:00.000Z"), "1952-06-01");
+  assert.equal(tokyoDateOf("0001-01-01T00:00:00.000Z"), "0001-01-01");
+  assert.equal(tokyoDateOf("9999-12-31T23:59:59.999Z"), "10000-01-01");
+  assert.ok(compareDates("9999-12-31", "10000-01-01") < 0);
+  // 夏時間の期間の把握日の未来の判定。UTCで6月1日14:30は東京で6月2日なので、6月2日の把握日は未来ではない。
+  let l = setup();
+  l = ok(save(l, { ...deposit("dep_1", { state: "known", value: 1 }, { state: "known", value: "1948-06-02" }), knownOn: { state: "known", value: "1948-06-02" } }, "1948-06-01T14:30:00.000Z"));
+  rejected(save(l, { ...deposit("dep_2", { state: "known", value: 1 }), knownOn: { state: "known", value: "1948-06-03" } }, "1948-06-01T14:30:00.000Z"), "known-on-in-future");
 });
