@@ -27,7 +27,7 @@
     {
       "description": "GitHubのWindowsのrunnerは管理者で動くので、管理者でないユーザーでの動き（symlinkを作れないときの弱めた確認、T26の本人だけのACL）は、CIでは確かめられていなかった。",
       "state": "resolved",
-      "resolution": "Windowsで一時の一般のローカルユーザーを作り、タスク スケジューラ（S4U、権限は制限）でnpm testと同じ試験をそのユーザーとして実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
+      "resolution": "Windowsで一時の一般のローカルユーザーを作り、タスク スケジューラ（パスワードのログオン、権限は制限）でnpm testと同じ試験をそのユーザーとして実行し、skipを照合するジョブを加える。トークンが管理者でないこと（Medium Mandatory Level、Administratorsを含まない）を確かめる。T26の試験は統合後にnpm testに含まれるので、同じジョブで一般のユーザーとして実行される。"
     }
   ],
   "assessments": [
@@ -60,7 +60,7 @@
         },
         {
           "id": "recovery",
-          "method": "CIのWindows（管理者のrunnerと、一時の一般のユーザー）で、setup-lock.test.ts・setup.test.ts・install-record.test.tsの中断の試験が飛ばされずに合格することを、npm testの出力とcheck:test-skipsのSummaryで確かめる。印を消せない状態は、Windowsでは試験の中で削除の拒否のACE（Everyoneに対するDELETE・DELETE_CHILDのDeny）で作り、試験の終わりに外す。強制終了で印が残る試験（全OS）は変えない。",
+          "method": "CIのWindows（管理者のrunnerと、一時の一般のユーザー）で、setup-lock.test.ts・setup.test.ts・install-record.test.tsの中断の試験が飛ばされずに合格することを、npm testの出力とcheck:test-skipsのSummaryで確かめる。印を消せない状態は、Windowsでは、別のプロセス（Windows PowerShell 5.1）が削除の共有を許さずに（FileShare.Readで）印を開いたままにして作り、試験の終わりに閉じる（Issue #19の手での確認と同じ方法。削除を拒否するACEは、管理者のrunnerでは削除を止められなかったので使わない）。強制終了で印が残る試験（全OS）は変えない。",
           "expected": "Ctrl+Cは130、Ctrl+Breakは149で終わり、印も記録も残らず、次のsetupが進む。印を消せないときは130で終わり、印が残ったことと消し方を表示し、記録は残らず、印を消すと次のsetupが0で終わる。どれかが違えば試験が失敗する（期待値は実装の出力から作らず、ADR-0008の「中断」とIssue #19の期待する結果から書く）。"
         }
       ]
@@ -68,7 +68,7 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "試験は合成のプロジェクトと合成のnpm・127.0.0.1の合成のregistryだけを使う。CIで作る一時のローカルユーザーのパスワードは、ジョブの中で暗号論的な乱数から作り、表示・保存・ログ出力をしない（タスクの実行はS4Uで、パスワードを渡さない）。secretsを使わず、artifactをuploadしない。step summaryには試験の名前・skip・diagnostic・版・ユーザーの種別（管理者でないこと）だけを書き、ユーザー名・SIDは書かない。",
+      "reason": "試験は合成のプロジェクトと合成のnpm・127.0.0.1の合成のregistryだけを使う。CIで作る一時のローカルユーザーのパスワードは、ジョブのステップの中で暗号論的な乱数から作り、表示・ファイルへの保存・ログ出力をせず、ユーザーの作成とタスクの登録に渡すだけにする。ジョブの最後にタスクとユーザーを消す（runnerは使い捨てのVM）。secretsを使わず、artifactをuploadしない。step summaryには試験の名前・skip・diagnostic・版・ユーザーの種別（管理者でないこと）だけを書き、ユーザー名・SIDは書かない。",
       "checks": [
         {
           "id": "public",
