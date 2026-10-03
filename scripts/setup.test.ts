@@ -411,7 +411,14 @@ test('node_modulesがリポジトリの外へのリンクなら、setup・check:
   assert.equal(readFileSync(join(shared, '.kurashi-ledger-install.json'), 'utf8'), '{"other":"worktree"}');
 });
 
-test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない', async () => {
+// Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を送れないので、理由を出してskipし、
+// T05の受入条件で確かめる。強制終了で印が残る場合は scripts/setup-lock.test.ts が全OSで確かめる。
+const posixOnly =
+  process.platform === 'win32'
+    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。T05の受入条件で確かめる'
+    : false;
+
+test('Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える', { skip: posixOnly }, async () => {
   mode = 'ok';
   const root = makeProject();
   assert.equal((await npm(root, ['run', 'setup'])).status, 0);
@@ -420,35 +427,29 @@ test('setupを途中で止めたとき（Ctrl+C相当）、記録は残らない
   mode = 'hang';
   const before = requests;
   useCache(root, `cache-hang-${counter}`);
-  const { child, exited, done } = startNpm(root, ['run', 'setup']);
+  const { child, done } = startNpm(root, ['run', 'setup']);
   const deadline = Date.now() + 60_000;
   while (requests === before) {
     assert.ok(Date.now() < deadline, 'npm ciが依存の取得を始めなかった');
     await new Promise((r) => setTimeout(r, 50));
   }
   killTree(child, 'SIGINT');
-  await exited;
-  // setupのプロセスは止まった。POSIXではnpm ciが残っていることがあるので、依存を渡して
-  // 最後まで進めさせる。それでも記録は書かれない（記録を書くのはsetupだけ）。
+  // setupはnpm ciの終了を待つ。止まっている取得に応答して、npm ciを終わらせる（入れ終わっても記録は書かない）。
+  await new Promise((r) => setTimeout(r, 200));
   mode = 'ok';
   for (const res of held.splice(0)) {
     res.writeHead(200, { 'content-type': 'application/octet-stream' });
     res.end(tarball);
   }
   const result = await done;
-  assert.ok(result.status !== 0 || result.signal !== null, `中断されていない: ${describe(result)}`);
-
-  assert.equal(existsSync(join(root, RECORD)), false);
-  // 強制的に止めたsetupの作業中の印は残り、次のsetupと照合を止める（自動では消さない。ADR-0008）。
-  assert.ok(existsSync(join(root, '.kurashi-ledger-setup.lock')), '作業中の印が残る');
+  assert.ok(result.status === 130 || result.signal === 'SIGINT', `中断されていない: ${describe(result)}`);
+  assert.match(result.stderr, /SIGINT を受けたので中断した/);
+  assert.equal(existsSync(join(root, RECORD)), false, '記録は残らない');
+  assert.equal(existsSync(join(root, '.kurashi-ledger-setup.lock')), false, '作業中の印は残らない（ADR-0008）');
   const check = await npm(root, ['run', 'check:install']);
   assert.notEqual(check.status, 0);
   assert.match(check.stderr, /npm run setup/);
-  const again = await npm(root, ['run', 'setup']);
-  assert.notEqual(again.status, 0, describe(again));
-  assert.match(again.stderr, /Remove-Item \.kurashi-ledger-setup\.lock/);
-  rmSync(join(root, '.kurashi-ledger-setup.lock'));
-  assert.equal((await npm(root, ['run', 'setup'])).status, 0, '印を消せば進める');
+  assert.equal((await npm(root, ['run', 'setup'])).status, 0, '次のsetupは止まらずに進める');
 });
 
 test('setupはnpm run経由でだけ動き、--forceを拒む', async () => {

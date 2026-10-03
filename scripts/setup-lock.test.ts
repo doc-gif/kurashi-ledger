@@ -124,7 +124,7 @@ test('印を持ったまま失敗したsetupは、記録を残さず印を外す
   assert.equal(existsSync(join(p.root, LOCK)), false);
 });
 
-test('強制終了で残った印があると、次のsetupは何も変えずに止まり、印を消すと進める', async () => {
+test('強制終了（SIGKILL・Windowsはプロセスツリーの強制終了）では印が残り、次のsetupは何も変えずに止まり、印を消すと進める', async () => {
   const p = makeProject();
   const crashed = startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go });
   await waitFor(() => p.starts() === 1, 'npm ciが始まらない');
@@ -144,4 +144,46 @@ test('強制終了で残った印があると、次のsetupは何も変えずに
   const resumed = await startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go }).done;
   assert.equal(resumed.status, 0, resumed.stderr);
   assert.equal(verifyInstallRecord(p.root).ok, true);
+});
+
+// ---- 実際のシグナル（POSIXだけ）。Windowsでは、試験から実際のCtrl+C（コンソールの制御イベント）を
+// 送る手段がないので、理由を出してskipし、T05の受入条件（台帳のT05）で確かめる。片付けの処理そのものは、
+// scripts/install-record.test.tsの単体試験で全OSで確かめている。
+const posixOnly =
+  process.platform === 'win32'
+    ? 'Windowsでは試験から実際のCtrl+C（コンソールの制御イベント）を送れない。T05の受入条件で確かめる'
+    : false;
+
+async function interruptAndCheck(signal: NodeJS.Signals, whole: boolean, expectedCode: number) {
+  const p = makeProject();
+  const run = startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go });
+  await waitFor(() => p.starts() === 1, 'npm ciが始まらない');
+  // wholeはCtrl+Cと同じくプロセスグループ全体（合成のnpmにも届く）、そうでなければsetupだけに送る
+  // （setupが猶予のあとで合成のnpmへ転送する）。
+  process.kill(whole ? -(run.child.pid as number) : (run.child.pid as number), signal);
+  const result = await run.done;
+  assert.equal(result.status, expectedCode, result.stderr);
+  assert.match(result.stderr, new RegExp(`${signal} を受けたので中断した`));
+  assert.equal(existsSync(join(p.root, LOCK)), false, '作業中の印は残らない');
+  assert.equal(existsSync(recordPath(p.root)), false, '記録は残らない');
+  const log = readFileSync(p.log, 'utf8');
+  assert.ok(!log.includes('done'), '合成のnpmは入れ終わる前に止まった');
+
+  writeFileSync(p.go, '');
+  const next = await startSetup(p.root, { FAKE_NPM_LOG: p.log, FAKE_NPM_GO: p.go }).done;
+  assert.equal(next.status, 0, next.stderr);
+  assert.equal(verifyInstallRecord(p.root).ok, true, '次のsetupは止まらずに進める');
+}
+
+test('実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える', { skip: posixOnly }, async () => {
+  await interruptAndCheck('SIGINT', false, 130);
+});
+
+test('Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える', { skip: posixOnly }, async () => {
+  await interruptAndCheck('SIGINT', true, 130);
+});
+
+test('SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える', { skip: posixOnly }, async () => {
+  await interruptAndCheck('SIGTERM', false, 143);
+  await interruptAndCheck('SIGHUP', true, 129);
 });

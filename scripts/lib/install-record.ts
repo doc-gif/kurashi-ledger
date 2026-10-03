@@ -9,6 +9,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   statSync,
@@ -52,15 +53,99 @@ export type NpmCiResult = {
   readonly error?: Error | undefined;
 };
 
+// 実行中のnpm ci。doneは終わるのを待つ（失敗も結果として返し、rejectしない）。
+// forwardは、npm ciにシグナルを転送する（もう終わっていれば何もしない）。
+export type NpmCiRun = {
+  readonly done: Promise<NpmCiResult>;
+  readonly forward?: ((signal: NodeJS.Signals) => void) | undefined;
+};
+
 export type SetupDependencies = {
   readonly root: string;
   readonly runtime: Runtime;
-  readonly runNpmCi: () => NpmCiResult;
+  readonly runNpmCi: () => NpmCiRun;
   readonly log: (line: string) => void;
   readonly error: (line: string) => void;
+  // 終了のシグナルの受付。setup.tsがprocessのシグナルをここへ渡す。試験では直接notifyする。
+  readonly interruption?: SetupInterruption | undefined;
   // 試験で、ディレクトリの反映の失敗を起こすために差し替える。
   readonly syncDirectory?: ((dir: string) => void) | undefined;
 };
+
+// setupが受け付ける終了のシグナル（ADR-0008）。WindowsではCtrl+CがSIGINT、Ctrl+BreakがSIGBREAKになる。
+export function setupSignals(platform: string): NodeJS.Signals[] {
+  return platform === 'win32' ? ['SIGINT', 'SIGBREAK'] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
+}
+
+const SIGNAL_NUMBERS: Readonly<Record<string, number>> = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15, SIGBREAK: 21 };
+
+// シグナルで中断したときの終了コード（128+シグナル番号。SIGINTは130）。
+export function signalExitCode(signal: NodeJS.Signals): number {
+  return 128 + (SIGNAL_NUMBERS[signal] ?? 0);
+}
+
+// 終了のシグナルの受付。最初のシグナルだけを覚え、以後の手順を始めさせない。npm ciが動いていれば、
+// 猶予（graceMs）のあいだに自分で終わらなければ（シグナルが届いていなければ）、同じシグナルを1回だけ転送する。
+// 2回目以降のシグナル（端末のCtrl+Cと、npm runによる転送が重なる等）は、受付済みとして何もしない。
+export class SetupInterruption {
+  #signal: NodeJS.Signals | null = null;
+  #child: NpmCiRun | null = null;
+  #childDone = false;
+  #timer: NodeJS.Timeout | null = null;
+  readonly #graceMs: number;
+  readonly #onFirstSignal: (signal: NodeJS.Signals) => void;
+
+  constructor(options: { graceMs?: number; onFirstSignal?: (signal: NodeJS.Signals) => void } = {}) {
+    this.#graceMs = options.graceMs ?? 3000;
+    this.#onFirstSignal = options.onFirstSignal ?? (() => {});
+  }
+
+  get signal(): NodeJS.Signals | null {
+    return this.#signal;
+  }
+
+  notify(signal: NodeJS.Signals): void {
+    if (this.#signal !== null) return;
+    this.#signal = signal;
+    this.#onFirstSignal(signal);
+    this.#scheduleForward();
+  }
+
+  attach(run: NpmCiRun): void {
+    this.#child = run;
+    this.#childDone = false;
+    const finished = () => {
+      this.#childDone = true;
+      this.#clearTimer();
+    };
+    run.done.then(finished, finished);
+    this.#scheduleForward();
+  }
+
+  detach(): void {
+    this.#child = null;
+    this.#clearTimer();
+  }
+
+  #scheduleForward(): void {
+    const signal = this.#signal;
+    if (signal === null || this.#child === null || this.#childDone || this.#timer !== null) return;
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      if (this.#child !== null && !this.#childDone) this.#child.forward?.(signal);
+    }, this.#graceMs);
+  }
+
+  #clearTimer(): void {
+    if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#timer = null;
+  }
+}
+
+// シグナルの処理（イベントループ）を先に回す。同期の手順の最中に届いたシグナルを、次の判断の前に受け付けるため。
+function yieldToEvents(): Promise<void> {
+  return new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+}
 
 export function currentRuntime(): Runtime {
   return { node: process.version, platform: process.platform, arch: process.arch };
@@ -156,7 +241,7 @@ export function setupLockPath(root: string): string {
 
 export class SetupLockError extends Error {}
 
-type SetupLock = { readonly token: string };
+export type SetupLock = { readonly token: string };
 
 // 残っている印の中身（プロセス番号と開始時刻）を、案内のために読む。リンクはたどらない。
 function describeSetupLock(root: string): string {
@@ -191,7 +276,7 @@ export function acquireSetupLock(root: string): SetupLock {
     if (isErrnoException(error) && error.code === 'EEXIST') {
       throw new SetupLockError(
         [
-          `別の \`npm run setup\` が動いているか、前の \`npm run setup\` が強制終了（Ctrl+C等）して作業中の印が残っている。依存は何も変えずに止めた。`,
+          `別の \`npm run setup\` が動いているか、前の \`npm run setup\` が強制終了（kill -9、タスク マネージャー、電源断等。Ctrl+Cでは残らない）して作業中の印が残っている。依存は何も変えずに止めた。`,
           `作業中の印: このworktreeの直下の ${SETUP_LOCK_NAME}${describeSetupLock(root)}`,
           '動いている setup がないことを確かめてから（macOS: `ps -p <番号>` やアクティビティモニタ、Windows: タスク マネージャーで node.exe を確かめる。プロセス番号は再利用されることがあるので、番号だけで判断しない）、印を消して（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）、`npm run setup` をやり直す。',
         ].join('\n'),
@@ -236,6 +321,29 @@ export function releaseSetupLock(root: string, lock: SetupLock): string | null {
   }
   unlinkSync(path);
   return null;
+}
+
+// シグナルで中断したときの片付け。シグナルの処理から呼ぶほか、試験から直接呼べる。
+// 記録と、このプロセスが記録を書く途中の一時ファイルを消してから、自分の印だけを消す。
+// 記録を消せなかった場合は印を残す（印があれば照合は不一致になり、古い記録が使われない）。
+export function cleanupAfterInterruption(root: string, lock: SetupLock): { recordCleared: boolean; notes: string[] } {
+  try {
+    if (inspectNodeModules(root) === 'directory') {
+      removeInstallRecord(root);
+      const prefix = `${RECORD_FILE_NAME}.${process.pid}.`;
+      for (const name of readdirSync(nodeModulesPath(root))) {
+        if (name.startsWith(prefix) && name.endsWith('.tmp')) unlinkIfPresent(join(nodeModulesPath(root), name));
+      }
+    }
+  } catch (e) {
+    return { recordCleared: false, notes: [keptLockNote(e)] };
+  }
+  const warning = releaseSetupLock(root, lock);
+  return { recordCleared: true, notes: warning === null ? [] : [warning] };
+}
+
+function keptLockNote(e: unknown): string {
+  return `依存の導入の記録を片付けられなかったので、作業中の印（${SETUP_LOCK_NAME}）を残した。setupと照合は止まったままになる。原因を直してから、記録（node_modules/${RECORD_FILE_NAME}）と印を消す: ${e instanceof Error ? e.message : String(e)}`;
 }
 
 // pathをたどって（リンクを解決して）、通常のファイルに届き、その実体パスがbaseの中にあるか。
@@ -599,7 +707,11 @@ function describeNpmCiFailure(result: NpmCiResult): string {
 
 // `npm run setup` の本体。worktree単位の作業中の印を取ってから、既存の記録を消し、npm ciが成功したときだけ
 // 記録を書き、最後に印を外す。印を取れなければ、記録もnode_modulesも変えずに止まる。
-export function runSetup(deps: SetupDependencies): number {
+// 終了のシグナルを受けたら、新しい手順を始めず、npm ciの終了を待ってから、記録・一時ファイル・自分の印を
+// 片付けて、128+シグナル番号を返す。最後の照合のあとの確認（確定点）より前に届いたシグナルは中断として扱い
+// （書き終えた記録も消す）、確定点より後に届いたものは、記録を残したまま成功として終える（ADR-0008）。
+export async function runSetup(deps: SetupDependencies): Promise<number> {
+  const interruption = deps.interruption ?? new SetupInterruption();
   let lock: SetupLock;
   try {
     lock = acquireSetupLock(deps.root);
@@ -611,15 +723,41 @@ export function runSetup(deps: SetupDependencies): number {
     );
     return 1;
   }
+  let code: number;
+  let recordLeft: unknown = null;
   try {
-    return runSetupLocked(deps);
-  } finally {
-    const warning = releaseSetupLock(deps.root, lock);
-    if (warning !== null) deps.error(warning);
+    code = await runSetupLocked(deps, interruption);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    try {
+      removeInstallRecord(deps.root);
+      deps.error(`導入の途中で失敗した: ${reason}。記録は残していない。`);
+    } catch (r) {
+      deps.error(`導入の途中で失敗した: ${reason}。`);
+      recordLeft = r;
+    }
+    code = 1;
   }
+  // 確定点。ここまでに届いたシグナルを受け付けてから判断する。
+  await yieldToEvents();
+  const signal = interruption.signal;
+  if (signal !== null) {
+    const { recordCleared, notes } = cleanupAfterInterruption(deps.root, lock);
+    const head = `${signal} を受けたので中断した。${recordCleared ? '依存の導入の記録は残していない。' : ''}`;
+    deps.error([head, ...notes].join('\n'));
+    return signalExitCode(signal);
+  }
+  if (recordLeft !== null) {
+    // 記録が残ったかもしれないので、中断のときと同じく印を残して、setupと照合を止めておく。
+    deps.error(keptLockNote(recordLeft));
+    return code;
+  }
+  const warning = releaseSetupLock(deps.root, lock);
+  if (warning !== null) deps.error(warning);
+  return code;
 }
 
-function runSetupLocked(deps: SetupDependencies): number {
+async function runSetupLocked(deps: SetupDependencies, interruption: SetupInterruption): Promise<number> {
   const { root, runtime, log, error } = deps;
   try {
     removeInstallRecord(root);
@@ -634,8 +772,16 @@ function runSetupLocked(deps: SetupDependencies): number {
     error(`package-lock.json・package.json・.npmrc を読めない: ${e instanceof Error ? e.message : String(e)}`);
     return 1;
   }
+  // npm ciを始める前に、届いているシグナルを受け付ける（受けていれば始めない）。
+  await yieldToEvents();
+  if (interruption.signal !== null) return 1;
   log('既存の依存の導入の記録を削除した。npm ci を実行する（インストールスクリプトは実行しない）。');
-  const result = deps.runNpmCi();
+  const run = deps.runNpmCi();
+  interruption.attach(run);
+  const result = await run.done;
+  interruption.detach();
+  // npm ciの最中にシグナルを受けていれば、次の手順を始めない（片付けはrunSetupで行う）。
+  if (interruption.signal !== null) return 1;
   if (result.error || result.signal || result.status !== 0) {
     error(`${describeNpmCiFailure(result)}。依存の導入の記録は書いていない。原因を直してから \`npm run setup\` をやり直す。`);
     return result.status !== null && result.status !== 0 ? result.status : 1;

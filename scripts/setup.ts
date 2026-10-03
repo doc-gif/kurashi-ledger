@@ -1,10 +1,18 @@
 // `npm run setup`: 依存の導入（ADR-0002、ADR-0008）。
 // 既存の記録を削除し、npm ciが成功したときだけ記録を書く。
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { currentRuntime, npmChildEnvironment, npmCiArguments, runSetup } from './lib/install-record.ts';
+import {
+  type NpmCiResult,
+  SetupInterruption,
+  currentRuntime,
+  npmChildEnvironment,
+  npmCiArguments,
+  runSetup,
+  setupSignals,
+} from './lib/install-record.ts';
 
 function isTruthy(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== 'false' && value !== '0';
@@ -23,25 +31,52 @@ if (isTruthy(process.env['npm_config_force'])) {
 
 const root = process.cwd();
 const runtime = currentRuntime();
-process.exitCode = runSetup({
+
+// 終了のシグナル（POSIXはSIGINT・SIGTERM・SIGHUP、WindowsはSIGINT・SIGBREAK）を受けたら、新しい手順を始めず、
+// npm ciの終了を待ってから記録と作業中の印を片付けて、128+シグナル番号で終える（ADR-0008）。
+// 受付はプロセスが終わるまで外さない（確定点より後のシグナルで、片付けの途中に止まらないように）。
+const interruption = new SetupInterruption({
+  onFirstSignal: (signal) =>
+    console.error(`${signal} を受けた。新しい手順を始めず、npm ci の終了を待ってから、記録と作業中の印を片付ける。`),
+});
+for (const signal of setupSignals(process.platform)) {
+  process.on(signal, () => interruption.notify(signal));
+}
+
+process.exitCode = await runSetup({
   root,
   runtime,
+  interruption,
   runNpmCi: () => {
     // 子のnpmには、利用者・全体のnpmrcとnpm_で始まる環境変数を渡さない。
     // 使う設定は、repoの.npmrcと引数だけ（ADR-0008）。
     const configDir = mkdtempSync(join(tmpdir(), 'kurashi-ledger-setup-'));
+    const cleanup = () => rmSync(configDir, { recursive: true, force: true });
     try {
       const emptyConfigs = { user: join(configDir, 'user-npmrc'), global: join(configDir, 'global-npmrc') };
       writeFileSync(emptyConfigs.user, '');
       writeFileSync(emptyConfigs.global, '');
-      const result = spawnSync(process.execPath, [npmCli, ...npmCiArguments(runtime, emptyConfigs)], {
+      const child = spawn(process.execPath, [npmCli, ...npmCiArguments(runtime, emptyConfigs)], {
         cwd: root,
         stdio: 'inherit',
         env: npmChildEnvironment(process.env),
       });
-      return { status: result.status, signal: result.signal, error: result.error };
-    } finally {
-      rmSync(configDir, { recursive: true, force: true });
+      const done = new Promise<NpmCiResult>((resolve) => {
+        child.once('error', (error) => resolve({ status: null, signal: null, error }));
+        child.once('exit', (status, signal) => resolve({ status, signal }));
+      }).finally(cleanup);
+      return {
+        done,
+        // WindowsではPOSIXのシグナルを送れず、SIGTERMで子を終わらせる（Node.jsの仕様）。
+        forward: (signal) => {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill(process.platform === 'win32' ? 'SIGTERM' : signal);
+          }
+        },
+      };
+    } catch (error) {
+      cleanup();
+      return { done: Promise.resolve({ status: null, signal: null, error: error instanceof Error ? error : new Error(String(error)) }) };
     }
   },
   log: (line) => console.log(line),

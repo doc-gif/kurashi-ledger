@@ -45,7 +45,15 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 | `npm test` | Node.js標準の試験（`node --test`）で、`scripts/`の試験を実行する |
 | `npm run check:public` | 公開検査。`-- --staged`でcommitしようとしている変更だけを見る（[公開範囲と公開前の点検](public-data.md)） |
 
-`npm run setup`は、worktreeの直下に作業中の印`.kurashi-ledger-setup.lock`を作ってから導入し、終わったら消す。同じworktreeで2つ目を起動すると、依存を変えずに止まる。setupを強制終了（Ctrl+C等）すると印が残り、次のsetupと照合（`check:install`・`build`）が止まる。動いているsetupがないことを確かめてから（macOS: `ps -p <番号>`やアクティビティモニタ、Windows: タスク マネージャー）、印を消す（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）。印は自動では消さない（ADR-0008）。
+`npm run setup`は、worktreeの直下に作業中の印`.kurashi-ledger-setup.lock`を作ってから導入し、終わったら消す。同じworktreeで2つ目を起動すると、依存を変えずに止まる。
+
+Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`・`SIGHUP`）で止めると、新しい手順を始めず、動いている`npm ci`の終了を待ってから、記録と書きかけのファイルと自分の印を消して終える（終了コードはCtrl+Cで130。数秒かかることがある）。記録が残らないので、`npm run setup`をやり直す。Ctrl+Cを重ねても片付けは飛ばさない。
+
+印が残るのは、setupを強制終了したとき（macOS: `kill -9`やアクティビティモニタの「強制終了」、Windows: タスク マネージャーでの終了やコンソールを閉じたとき、電源断）と、片付けで記録を消せなかったとき（そう表示する）だけ。印が残っていると、次のsetupと照合（`check:install`・`build`）が止まり、印に書いたプロセス番号と開始時刻を表示する。次の手順で消す（印は自動では消さない。ADR-0008）。
+
+1. 動いているsetupがないことを確かめる（macOS: `ps -p <番号>`やアクティビティモニタ、Windows: タスク マネージャー）。番号は別のプロセスに再利用されうるので、開始時刻も見る。
+2. 印を消す（macOS: `rm .kurashi-ledger-setup.lock`、WindowsのPowerShell: `Remove-Item .kurashi-ledger-setup.lock`）。片付けで記録を消せなかったと表示された場合は、原因（権限等）を直してから、記録`node_modules/.kurashi-ledger-install.json`も消す。
+3. `npm run setup`をやり直す。
 
 `npm ci`や`npm install`を直接実行しても記録は書かれない。`npm run build`（T09以降は`start:real`と`:real`の保守コマンドも）が止まるので、`npm run setup`をやり直す。`package-lock.json`・`package.json`（scriptsだけの変更を含む）・`.npmrc`が変わったとき（branchやタグの切り替えを含む）、Node.jsを入れ替えたとき（パッチ版を含む）も同じ。
 

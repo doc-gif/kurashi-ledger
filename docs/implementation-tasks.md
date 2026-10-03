@@ -61,6 +61,7 @@
 - ブラウザ試験の基盤: Playwrightを導入し、CIでChromium（Mac/Windows/Linux）とWebKit（Mac）を実行できるようにする（ADR-0004）。最初に使うのはT26のcookie交換の試験。
 - 受入: 失敗・中断・想定外skipが成功に見えない。必要な検証と最新PR SHA・統合対象baseの対応が確認できる。ルール・workflowの変更をレビューなしで自動承認しない。
 - 受入（2026-10-02の所有者決定でT02から移した確認）: 固定した版のNode.js（`devEngines`の範囲）を使うmacOS・Windows・LinuxのCIで、`npm run setup`・`npm run typecheck`・`npm test`（`node:sqlite`で警告が出ないことの試験を含む）・`npm run build`がすべて成功する。
+- 受入（2026-10-03の所有者決定でT02から移した確認）: Windowsの実機のコンソールで`npm run setup`の`npm ci`の最中にCtrl+Cを押すと、`npm ci`の終了を待ってから、依存の導入の記録も作業中の印`.kurashi-ledger-setup.lock`も残さずに130で終わり、続けて`npm run setup`が進む（ADR-0008の「中断」）。試験のプロセスからは実際のCtrl+Cを送れないので、`scripts/setup-lock.test.ts`・`scripts/setup.test.ts`のPOSIXだけの試験の代わりに、手順と結果をPRに記録する。
 - 検証: 意図的失敗、古いSHAの成功、欠落ジョブ、fork PRで秘密なし、workflow変更時の扱い。UI追加時にE2Eを追加できる。後続タスク（T26等）が試験を追加すれば、Mac/Windows/Linuxで実行される。
 - 非対象: 初期から大規模sharding、セルフホストrunner、長時間polling。
 
