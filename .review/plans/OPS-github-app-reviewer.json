@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "7cbb684187a359cb7325b37691a5e33350e3cc39",
+  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
   "task_id": "OPS-github-app-reviewer",
   "planned_paths": [
     "README.md",
@@ -35,6 +35,11 @@
       "description": "PR #40（OPS-WRITING）とPR #38が、pr-review-loop・github-agent-operations・external-worker・project-status・READMEを同時に変える。",
       "state": "resolved",
       "resolution": "このPRの変更は各文書への短い追記に留め、後でマージする側が最新mainを取り込んで照合する。既存の規則（マージの条件、役割の表記、印の書式）は変えない。"
+    },
+    {
+      "description": "Copilotのレビュー（9906a6b、PR42の3件）をまとめて読んだ。(a) 応答にrepositoriesがないとrepository_selectionだけで成功にし、トークンを出力する（範囲の確認が欠ける）。(b) ClaudeのAppの作成状況が、SECURITY.md（作成済みと読める）・docs/github-apps.md（残作業）・docs/project-status.md（Codexだけ作成済み）で食い違う。(c) 入口のコメントの例が、実装していない--roleを使う。",
+      "state": "resolved",
+      "resolution": "全体の方針: 3件とも設計の段階で直す（後のタスクへ回すものはない）。互いに、また以前の決定（--agent/--purpose、最小権限、秘密を出さない）と衝突しない。(a) 範囲の確認を『確認できなければ失敗』に統一する: 発行の応答にrepositoriesがない、またはkurashi-ledgerの1件でなければ、トークンを失効させて終了コード1。さらに、発行したトークンでGET /installation/repositoriesを呼び、total_countが1でその1件がkurashi-ledgerであることを確かめ、違う・確かめられない（HTTPの失敗・通信の失敗・JSONでない）場合も失効させて1。どの失敗でも標準出力に何も出さない。経路ごとに試験する。GitHubが応答にrepositoriesを含めない場合は安全側に失敗するので、確かめていないことに書く。(b) 事実（2026-10-03に所有者が2つのAppを同じ権限・Administrationなし・このrepoだけにインストールで作成し、鍵を2つのserviceでキーチェーンに登録した。CodexのAppの権限を広げて承認し直した）に合わせ、docs/github-apps.md・docs/project-status.md・SECURITY.md・Issue #41を同じ現在形にする。IDは書かない。PR #40と重なる文書の変更は最小にする。(c) 入口のコメントの例を--agent/--purposeにする。base_shaを1d513e7（PR #31のmiseの取り込み）に更新した。miseは版の管理で、このPRの範囲・方針に影響しない。"
     }
   ],
   "assessments": [
@@ -62,7 +67,7 @@
       "checks": [
         {
           "id": "public",
-          "method": "node scripts/check-public.ts --staged を各commitの前に実行し終了コードを確かめる。差分を読み、ID・鍵・トークン・個人のパスがないことを確かめる。試験で、HTTPの失敗・通信の失敗・GitHubのメッセージへの秘密の混入・鍵の不正・キーチェーンの失敗・権限の不一致の各経路で、標準エラーと標準出力に鍵（PEMの本文）・JWT・トークンの番兵が出ないことを確かめる。成功時の標準出力がトークンと改行だけであることも確かめる。",
+          "method": "node scripts/check-public.ts --staged を各commitの前に実行し終了コードを確かめる。差分を読み、ID・鍵・トークン・個人のパスがないことを確かめる。試験で、HTTPの失敗・通信の失敗・GitHubのメッセージへの秘密の混入・鍵の不正・キーチェーンの失敗・権限の不一致の各経路で、標準エラーと標準出力に鍵（PEMの本文）・JWT・トークンの番兵が出ないことを確かめる。成功時の標準出力がトークンと改行だけであることも確かめる。 発行の応答のrepositoriesの欠落・不一致と、GET /installation/repositoriesでの不一致・HTTPの失敗・通信の失敗の各経路で、トークンを失効させ、標準出力に何も出さないことを試験する。",
           "expected": "公開検査が0で終わる。全経路で番兵が出力に現れず、成功時の標準出力はトークンの1行だけ。文書の例はプレースホルダだけ。"
         }
       ]
