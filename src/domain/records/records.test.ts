@@ -678,3 +678,43 @@ test("Copilotの概要: Asia/Tokyoの暦日はタイムゾーンのデータで�
   l = ok(save(l, { ...deposit("dep_1", { state: "known", value: 1 }, { state: "known", value: "1948-06-02" }), knownOn: { state: "known", value: "1948-06-02" } }, "1948-06-01T14:30:00.000Z"));
   rejected(save(l, { ...deposit("dep_2", { state: "known", value: 1 }), knownOn: { state: "known", value: "1948-06-03" } }, "1948-06-01T14:30:00.000Z"), "known-on-in-future");
 });
+
+test("PR28-R002: JSON.parseで作った「__proto__」のown keyも保存の写しに残し、検査と再送の比較に使う", () => {
+  let l = setup();
+  const record = expandRecord(deposit("dep_1", { state: "known", value: 100 }), { scenarioId: "unit", opId: "p1", previous: undefined });
+  const { id: _id, ...input } = record;
+  void _id;
+  const json = JSON.stringify(input);
+  const d = { clock: { now: () => T0 }, ids: { next: () => "dep_1" } };
+  // 新規の余分なキー（トップレベル、bodyの入れ子）はvalue-invalid。JSのobject literalの__proto__はown keyにならないので、
+  // JSON.parseで作る。
+  const topLevel = JSON.parse(`${json.slice(0, -1)},"__proto__":{}}`) as Obj;
+  assert.ok(Object.keys(topLevel).includes("__proto__"));
+  const before = l;
+  for (const bad of [
+    topLevel,
+    JSON.parse(json.replace('"body":{', '"body":{"__proto__":{"amount":{"state":"known","value":1}},')) as Obj,
+  ]) {
+    const out = saveRevision(l, bad, d);
+    rejected(out, "value-invalid");
+    assert.equal(out.ledger, before);
+  }
+  // 必須の項目を__proto__の下に置いても、その項目があることにはならない。
+  const hidden = JSON.parse(json.replace(/"amount":\{"state":"known","value":100\},?/, "").replace('"body":{', '"body":{"__proto__":{"amount":{"state":"known","value":100}},')) as Obj;
+  rejected(saveRevision(l, hidden, d), "value-invalid");
+  // 正しい要求を受け付けたあと、同じwriteRequestIdに__proto__を足した再送は内容が違うので拒否し、状態・連番・索引を変えない。
+  const first = saveRevision(l, JSON.parse(json) as Obj, d);
+  l = ok(first);
+  const seq = l.saves.length;
+  const replay = saveRevision(l, JSON.parse(json) as Obj, d);
+  assert.equal(replay.kind, "replayed");
+  if (replay.kind === "replayed" && first.kind === "accepted") assert.equal(replay.revision, first.revision);
+  for (const bad of [JSON.parse(`${json.slice(0, -1)},"__proto__":{}}`) as Obj, JSON.parse(json.replace('"body":{', '"body":{"__proto__":{},')) as Obj]) {
+    const out = saveRevision(l, bad, d);
+    rejected(out, "write-request-conflict");
+    assert.equal(out.ledger, l);
+    assert.equal(out.ledger.saves.length, seq);
+    assert.equal(out.ledger.writeRequests, l.writeRequests);
+    assert.equal(out.ledger.importKeys, l.importKeys);
+  }
+});

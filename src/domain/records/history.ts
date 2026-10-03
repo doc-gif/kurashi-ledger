@@ -65,7 +65,7 @@ export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj
   if (baseRevision !== previous.revision) return one("stale-base-revision", "$.baseRevision", `基にした版${baseRevision}が現在の版${previous.revision}と違う`);
   if (proposal["revision"] !== previous.revision + 1) return one("transition-not-allowed", "$.revision", `版は直前の版${previous.revision}に1を足したもの`);
   if (reason === "create") return one("transition-not-allowed", "$.reason", "createは版1だけ");
-  if (!(reason in PREVIOUS_STATUS)) return one("value-invalid", "$.reason", `改訂の理由ではない: ${String(reason)}`);
+  if (!Object.hasOwn(PREVIOUS_STATUS, reason)) return one("value-invalid", "$.reason", `改訂の理由ではない: ${String(reason)}`);
   if (previous.status !== PREVIOUS_STATUS[reason]) return one("transition-not-allowed", "$.reason", `${reason}は直前のstatusが${PREVIOUS_STATUS[reason]}のときだけ（直前は${previous.status}）`);
   if (proposal["entryChannel"] !== previous.entryChannel) return one("immutable-field-changed", "$.entryChannel", "entryChannelは改訂で変えられない");
   if (!sameJson(proposal["importKey"], previous.importKey)) return one("immutable-field-changed", "$.importKey", "importKeyは改訂で変えられない");

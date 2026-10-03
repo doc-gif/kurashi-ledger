@@ -103,9 +103,9 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
   const recordType = proposal["recordType"];
   const isCreate = proposal["reason"] === "create";
   const staticViolations = checkRevisionStatic(proposal, { stored: false });
-  if (isCreate && "id" in proposal) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "新規の保存のIDはID生成器が割り当てる（書かない）" });
-  if (isCreate && "baseRevision" in input) staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "新規の保存にbaseRevisionは書かない（改訂だけ）" });
-  if (!isCreate && !("id" in proposal)) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "改訂の保存には記録のIDが要る" });
+  if (isCreate && Object.hasOwn(proposal, "id")) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "新規の保存のIDはID生成器が割り当てる（書かない）" });
+  if (isCreate && Object.hasOwn(input, "baseRevision")) staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "新規の保存にbaseRevisionは書かない（改訂だけ）" });
+  if (!isCreate && !Object.hasOwn(proposal, "id")) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "改訂の保存には記録のIDが要る" });
   if (!isCreate && (typeof baseRevision !== "number" || !Number.isSafeInteger(baseRevision) || baseRevision < 1)) {
     staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "改訂の保存は基にした版（1以上の整数）を指定する" });
   }
@@ -291,7 +291,7 @@ export function saveEvidenceFile(
   if (!snap.ok) return { kind: "rejected", ledger, reason: "value-invalid", violations: one("value-invalid", snap.path, "JSONの値ではない") };
   const input = snap.value;
   const violations = checkEvidenceFileStatic(input);
-  if (isObj(input) && "id" in input) violations.push({ reason: "value-invalid", path: "$.id", message: "証憑ファイルのIDはID生成器が割り当てる（書かない）" });
+  if (isObj(input) && Object.hasOwn(input, "id")) violations.push({ reason: "value-invalid", path: "$.id", message: "証憑ファイルのIDはID生成器が割り当てる（書かない）" });
   if (violations.length > 0 || !isObj(input)) {
     const r = reject(ledger, violations.length > 0 ? violations : one("value-invalid", "$", "objectではない"));
     return r as { kind: "rejected"; ledger: Ledger; reason: RejectionReason; violations: readonly Violation[] };

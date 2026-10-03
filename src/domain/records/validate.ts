@@ -119,9 +119,9 @@ function checkFact(of: Spec, states: readonly FactState[], v: unknown, path: str
   const state = v["state"];
   if (!states.includes(state)) out.add("fact-state-not-allowed", path, `この項目が許さない状態: ${state}`);
   if (state === "known") {
-    if (!("value" in v)) out.add("value-invalid", path, "knownに値がない");
+    if (!Object.hasOwn(v, "value")) out.add("value-invalid", path, "knownに値がない");
     else checkValue(of, v["value"], `${path}.value`, out);
-  } else if ("value" in v) {
+  } else if (Object.hasOwn(v, "value")) {
     out.add("value-invalid", path, `${state}に値がある`);
   }
 }
@@ -163,10 +163,11 @@ function checkObject(fields: Readonly<Record<string, Spec>>, v: unknown, path: s
     return;
   }
   for (const k of Object.keys(fields)) {
-    if (!(k in v)) out.add("value-invalid", `${path}.${k}`, "項目がない（表に書いた項目は省略しない）");
+    if (!Object.hasOwn(v, k)) out.add("value-invalid", `${path}.${k}`, "項目がない（表に書いた項目は省略しない）");
   }
   for (const k of Object.keys(v)) {
-    const s = fields[k];
+    // 表にある項目かは、表のown keyだけで決める（「__proto__」等のキーで、表のprototypeを項目の仕様と取り違えない）。
+    const s = Object.hasOwn(fields, k) ? fields[k] : undefined;
     if (s === undefined) out.add("value-invalid", `${path}.${k}`, "表にない項目");
     else checkValue(s, v[k], `${path}.${k}`, out);
   }
@@ -198,7 +199,7 @@ export function checkRevisionStatic(record: unknown, options: StaticCheckOptions
   const allowed = options.stored ? STORED_FIELDS : PROPOSED_FIELDS;
   for (const k of allowed) {
     if (k === "id" && !options.stored) continue;
-    if (!(k in record)) out.add("value-invalid", `$.${k}`, "改訂の共通の形の項目がない");
+    if (!Object.hasOwn(record, k)) out.add("value-invalid", `$.${k}`, "改訂の共通の形の項目がない");
   }
   for (const k of Object.keys(record)) if (!allowed.includes(k)) out.add("value-invalid", `$.${k}`, "改訂の共通の形にない項目");
   if (options.stored) {
@@ -211,7 +212,7 @@ export function checkRevisionStatic(record: unknown, options: StaticCheckOptions
     out.add("value-invalid", "$.recordType", `記録の種類ではない: ${String(recordType)}`);
     return out.list;
   }
-  if ("id" in record && !isIdWithPrefix(record["id"], RECORD_PREFIX[recordType])) {
+  if (Object.hasOwn(record, "id") && !isIdWithPrefix(record["id"], RECORD_PREFIX[recordType])) {
     out.add("value-invalid", "$.id", `${recordType}の接頭辞${RECORD_PREFIX[recordType]}のIDではない: ${String(record["id"])}`);
   }
   const revision = record["revision"];
@@ -236,7 +237,7 @@ export function checkRevisionStatic(record: unknown, options: StaticCheckOptions
   // duplicateOfはvoidの改訂で、二重登録として取り消した場合だけknown。ほかの改訂ではnot-applicable（共通の型の9・12）。
   if (reason !== "void") requireStates(record["duplicateOf"], ["not-applicable"], "$.duplicateOf", out, "voidでない改訂のduplicateOfはnot-applicable");
   const dup = knownValue(record["duplicateOf"]);
-  if (isObj(dup) && "id" in record && dup["id"] === record["id"]) out.add("ref-target-invalid", "$.duplicateOf", "自分自身を残す方にできない");
+  if (isObj(dup) && Object.hasOwn(record, "id") && dup["id"] === record["id"]) out.add("ref-target-invalid", "$.duplicateOf", "自分自身を残す方にできない");
   const channel = record["entryChannel"];
   if (channel !== "manual" && channel !== "import") out.add("value-invalid", "$.entryChannel", "manual・importではない");
   checkFact({ t: "object", fields: { source: { t: "text", nonEmpty: true }, key: { t: "text", nonEmpty: true } } }, ENVELOPE_STATES.importKey, record["importKey"], "$.importKey", out);

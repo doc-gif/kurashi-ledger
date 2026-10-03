@@ -162,11 +162,13 @@ export function snapshotJson(v: unknown, path = "$"): { readonly ok: true; reado
   if (typeof v === "object") {
     const proto: unknown = Object.getPrototypeOf(v);
     if (proto !== Object.prototype && proto !== null) return { ok: false, path };
-    const out: Record<string, unknown> = {};
+    // prototypeを持たないobjectに、すべてのown keyをown data propertyとして定義する。通常の{}への代入では、JSON.parseが
+    // 作ったown key「__proto__」がprototypeの差し替えになり、検査と再送の比較から消えるため（PR28-R002）。
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const k of Object.keys(v)) {
       const e = snapshotJson((v as Record<string, unknown>)[k], `${path}.${k}`);
       if (!e.ok) return e;
-      out[k] = e.value;
+      Object.defineProperty(out, k, { value: e.value, enumerable: true, writable: false, configurable: false });
     }
     return { ok: true, value: Object.freeze(out) };
   }
