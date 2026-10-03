@@ -81,8 +81,8 @@
         },
         {
           "id": "history",
-          "method": "rules/manifest.jsonの各規則に、識別子と版、状態（draft・approved）、対象の年・手続・基準の時点・地域・適用範囲、一次資料（URL・資料の更新日・取得日・箇所）を持たせ、制度データに丸めの方法・単位・原典の箇所を持たせる。regime-cases.jsonの各ケースは、規則から2通りの独立した導き方で求めた期待値と、規則の版を持つ。tests/rules/rules.test.tsが、manifestの形、ケースの規則の版がmanifestに実在すること、ケースの原典がmanifestの原典と一致すること、丸めの記録が計算し直せること、承認前の規則をapprovedのケースが使わないことを確かめる。 制度のケースと規則の検査が同じ語（手続・制度・丸め方）を使うよう、tests/fixtures/ledger/contract-shape.tsから共通の一覧を出し、ledger.test.tsとrules.test.tsで書き写さない。 approvedの規則にはmanifestのapproval（レビュー記録のURL・対象head・承認のPR）を必須にし、制度データのstatusとapprovedの制度のケースのreviewedByがそれと一致することを検査する。特定親族特別控除の年齢範囲・判定日と、家族の控除の適用要件・未対応の入力の条件を制度データに持たせ、ケースの入力がそれを満たすか（unsupported・incompleteの例を含む）を検査する。",
-          "expected": "期待値はレビュー前はdraftのままで、実装の出力を使わない。規則の版・原典・丸めがケースとmanifestで食い違えば試験が失敗する。過去の版を書き換えずに新しい版を足す運用が文書にある。 証跡のないapproved、年齢範囲と生年月日の食い違い、入力による未対応を計算するケースを検査が見つける。"
+          "method": "rules/manifest.jsonの各規則に、識別子と版、状態（draft・approved）、対象の年・手続・基準の時点・地域・適用範囲、一次資料（URL・資料の更新日・取得日・箇所）を持たせ、制度データに丸めの方法・単位・原典の箇所を持たせる。regime-cases.jsonの各ケースは、規則から2通りの独立した導き方で求めた期待値と、規則の版を持つ。tests/rules/rules.test.tsが、manifestの形、ケースの規則の版がmanifestに実在すること、ケースの原典がmanifestの原典と一致すること、丸めの記録が計算し直せること、承認前の規則をapprovedのケースが使わないことを確かめる。 制度のケースと規則の検査が同じ語（手続・制度・丸め方）を使うよう、tests/fixtures/ledger/contract-shape.tsから共通の一覧を出し、ledger.test.tsとrules.test.tsで書き写さない。 approvedの規則にはmanifestのapproval（レビュー記録のURL・対象head・承認のPR）を必須にし、制度データのstatusとapprovedの制度のケースのreviewedByがそれと一致することを検査する。特定親族特別控除の年齢範囲・判定日と、家族の控除の適用要件・未対応の入力の条件を制度データに持たせ、ケースの入力がそれを満たすか（unsupported・incompleteの例を含む）を検査する。 Copilot 5400344892を受けて: 計算の規則に必須の入力のパス（requiredInputs）を、任意のspouse・relativesと分けてmanifestに書き、欠けた必須の入力をunknownと同じに扱う（computed・provisionalにしない）。各必須の入力を消した壊れた写しで確かめる。制度のケースの導き方の理由（控除しない理由）を、年齢・所得・適用要件のどれに当たるかから導き直す。",
+          "expected": "期待値はレビュー前はdraftのままで、実装の出力を使わない。規則の版・原典・丸めがケースとmanifestで食い違えば試験が失敗する。過去の版を書き換えずに新しい版を足す運用が文書にある。 証跡のないapproved、年齢範囲と生年月日の食い違い、入力による未対応を計算するケースを検査が見つける。 必須の入力が欠けたcomputedのケースを検査が見つける。"
         }
       ]
     },
