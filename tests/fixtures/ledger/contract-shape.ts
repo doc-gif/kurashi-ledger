@@ -771,6 +771,46 @@ function checkTypeRules(type: RecordType, body: Obj, out: Out): void {
   }
 }
 
+// 記録が参照する記録・マスタ・証憑ファイルのID。契約の型の表（BODY）でIDかRefの項目だけをたどり、
+// 摘要・表示名・メモ等の自由な文字列は、IDに似た値でも参照とみなさない（原因台帳のPR11-R107）。
+export interface RecordReference {
+  id: string;
+  path: string;
+}
+
+function collectBySpec(spec: Spec, v: unknown, path: string, out: RecordReference[]): void {
+  switch (spec.t) {
+    case "id":
+      if (typeof v === "string") out.push({ id: v, path });
+      return;
+    case "ref":
+      if (isObj(v) && typeof v["id"] === "string") out.push({ id: v["id"], path: `${path}.id` });
+      return;
+    case "fact":
+      if (isObj(v) && v["state"] === "known" && "value" in v) collectBySpec(spec.of, v["value"], `${path}.value`, out);
+      return;
+    case "list":
+      if (Array.isArray(v)) v.forEach((e, i) => collectBySpec(spec.of, e, `${path}[${i}]`, out));
+      return;
+    case "object":
+      if (isObj(v)) for (const [k, s] of Object.entries(spec.fields)) collectBySpec(s, v[k], `${path}.${k}`, out);
+      return;
+    default:
+      return;
+  }
+}
+
+export function recordReferences(record: unknown): RecordReference[] {
+  const out: RecordReference[] = [];
+  if (!isObj(record)) return out;
+  const type = record["recordType"];
+  if (typeof type !== "string" || !(RECORD_TYPES as readonly string[]).includes(type)) return out;
+  const body = record["body"];
+  if (isObj(body)) for (const [k, s] of Object.entries(BODY[type as RecordType])) collectBySpec(s, body[k], `$.body.${k}`, out);
+  collectBySpec({ t: "fact", of: { t: "ref", to: RECORD_TYPES, line: "whole" }, states: FACT_STATES }, record["duplicateOf"], "$.duplicateOf", out);
+  return out;
+}
+
 export function checkEvidenceFile(file: unknown): Violation[] {
   const out = new Out();
   checkObject(
@@ -813,4 +853,4 @@ export function checkRefShape(v: unknown, path: string, revision: "current" | "i
   return out.list;
 }
 
-export const SPECS = { text, localDate, calendarYear, yen, id, fact, enm };
+export const SPECS = { text, nonEmptyText, localDate, calendarYear, yen, id, fact, enm };

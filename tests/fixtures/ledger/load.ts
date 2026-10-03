@@ -23,13 +23,18 @@ export interface LedgerFiles {
   regime: { file: string; data: Obj }[];
 }
 
+// cases/・regime/に置けるのはJSONのファイルだけ。ほかの名前（拡張子の違い、隠しファイル等）を黙って読み飛ばさず、誤りにする。
+export function ledgerFileNames(sub: string, names: readonly string[]): string[] {
+  const bad = names.filter((f) => !/^[0-9A-Za-z][0-9A-Za-z._-]*\.json$/.test(f));
+  if (bad.length > 0) throw new Error(`${sub}/にJSONでないか名前の形が違うファイルがある: ${bad.join(", ")}`);
+  return [...names].sort();
+}
+
 export function readLedgerFiles(dir: string = LEDGER_DIR): LedgerFiles {
   const common = readJson(join(dir, "common-setup.json"));
   if (!isObj(common)) throw new Error("common-setup.jsonがobjectではない");
   const list = (sub: string): { file: string; data: Obj }[] =>
-    readdirSync(join(dir, sub))
-      .filter((f) => f.endsWith(".json"))
-      .sort()
+    ledgerFileNames(sub, readdirSync(join(dir, sub)))
       .map((f) => {
         const data = readJson(join(dir, sub, f));
         if (!isObj(data)) throw new Error(`${sub}/${f}がobjectではない`);
@@ -110,6 +115,10 @@ export function expandRecord(compact: Obj, ctx: ExpandContext): Obj {
   if (typeof recordType !== "string" || !(recordType in BODY)) throw new Error(`${ctx.opId}: recordTypeがない`);
   const type = recordType as RecordType;
   if (typeof id !== "string" || recordTypeOfId(id) !== type) throw new Error(`${ctx.opId}: IDの接頭辞がrecordTypeと合わない: ${String(id)}`);
+  // 書いた項目の型が違う場合は、既定に読み替えず誤りにする（黙って捨てない）。
+  if ("reason" in compact && typeof compact["reason"] !== "string") throw new Error(`${ctx.scenarioId} ${ctx.opId}: reasonが文字列ではない`);
+  if ("revision" in compact && typeof compact["revision"] !== "number") throw new Error(`${ctx.scenarioId} ${ctx.opId}: revisionが数ではない`);
+  if ("body" in compact && !isObj(compact["body"])) throw new Error(`${ctx.scenarioId} ${ctx.opId}: bodyがobjectではない`);
   const reason = typeof compact["reason"] === "string" ? compact["reason"] : "create";
   const revision = typeof compact["revision"] === "number" ? compact["revision"] : 1;
   const prev = ctx.previous;
@@ -147,12 +156,23 @@ export function expandRecord(compact: Obj, ctx: ExpandContext): Obj {
 
 // 場面の操作の並び。baseScenarioがあれば、同じケースの先に書いた場面の操作（その場面のbaseScenarioも含む）のあとに、
 // この場面の操作を続ける。基にした場面の検査（checks）とorderVariantsは引き継がない。
+// 不正な要素（objectでない場面・操作、並びでないoperations）は黙って除かず、場面IDと位置を含む誤りにする。
 export function resolveOperations(caseData: Obj, scenarioId: string, seen: ReadonlySet<string> = new Set()): Obj[] {
-  const list = Array.isArray(caseData["scenarios"]) ? caseData["scenarios"].filter(isObj) : [];
+  const scenarios = caseData["scenarios"];
+  if (!Array.isArray(scenarios)) throw new Error(`${String(caseData["caseId"])}: scenariosが並びではない`);
+  scenarios.forEach((s, i) => {
+    if (!isObj(s)) throw new Error(`${String(caseData["caseId"])}: scenarios[${i}]がobjectではない`);
+  });
+  const list = scenarios as Obj[];
   const index = list.findIndex((s) => s["scenarioId"] === scenarioId);
   const sc = list[index];
   if (sc === undefined) throw new Error(`場面がない: ${scenarioId}`);
-  const own = Array.isArray(sc["operations"]) ? sc["operations"].filter(isObj) : [];
+  const ops = sc["operations"];
+  if (!Array.isArray(ops)) throw new Error(`${scenarioId}: operationsが並びではない（追加の操作がなければ空の並び）`);
+  ops.forEach((o, i) => {
+    if (!isObj(o)) throw new Error(`${scenarioId}: operations[${i}]がobjectではない`);
+  });
+  const own = ops as Obj[];
   const base = sc["baseScenario"];
   if (base === undefined) return own;
   if (typeof base !== "string" || seen.has(base) || list.findIndex((s) => s["scenarioId"] === base) >= index) {

@@ -24,6 +24,7 @@ import {
   isObj,
   isYearMonth,
   MASTER_TYPES,
+  recordReferences,
   NOTICE_TYPES,
   PAYSLIP_AMOUNT_ITEMS,
   PREFIX,
@@ -34,7 +35,7 @@ import {
   type RecordType,
   type StaticCode,
 } from "./contract-shape.ts";
-import { CONTRACTS_DIR, expandRecord, readLedgerFiles, resolveOperations, stableStringify, type LedgerFiles, type Obj } from "./load.ts";
+import { CONTRACTS_DIR, expandRecord, ledgerFileNames, readLedgerFiles, resolveOperations, stableStringify, type LedgerFiles, type Obj } from "./load.ts";
 
 // ---- 拒否の理由（docs/test-oracles/README.mdの「拒否の理由」の表と同じ）
 
@@ -236,16 +237,9 @@ function exists(state: State, id: string): boolean {
   return state.records.has(id) || state.evidence.has(id) || state.runs.has(id);
 }
 
-const ID_LIKE = /^(emp|term|acct|pay|dep|ann|fc|ntc|evf|evl|alc|dcs|iss|run)_[0-9A-Za-z-]{1,40}$/;
-
-function collectIds(v: unknown, out: Set<string>): void {
-  if (typeof v === "string") {
-    if (ID_LIKE.test(v)) out.add(v);
-  } else if (Array.isArray(v)) {
-    for (const e of v) collectIds(e, out);
-  } else if (isObj(v)) {
-    for (const e of Object.values(v)) collectIds(e, out);
-  }
+// 参照は、契約の型の表でIDかRefの項目だけから取る（摘要・表示名・メモの文字列は、IDに似ていても参照にしない）。
+function referencedIds(rec: Obj): Set<string> {
+  return new Set(recordReferences(rec).map((r) => r.id));
 }
 
 function lineIdsOf(record: Obj): Set<string> {
@@ -309,9 +303,7 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
     if (fresh && knownOn["value"] > jstDate(op["at"])) codes.add("known-on-in-future");
   }
   // 参照先の実在（共通の型の2）。duplicateOfの先は、自分以外の有効な記録（9）。
-  const refs = new Set<string>();
-  collectIds(rec["body"], refs);
-  collectIds(rec["duplicateOf"], refs);
+  const refs = referencedIds(rec);
   for (const r of refs) if (r !== id && !exists(state, r)) codes.add("ref-target-missing");
   const dupOf = isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known" ? rec["duplicateOf"]["value"] : undefined;
   if (isObj(dupOf) && typeof dupOf["id"] === "string") {
@@ -390,9 +382,7 @@ function replayOps(
           break;
         }
         const id = String(rec["id"]);
-        const refs = new Set<string>();
-        collectIds(rec["body"], refs);
-        collectIds(rec["duplicateOf"], refs);
+        const refs = referencedIds(rec);
         refs.add(id);
         for (const r of refs) {
           const by = state.createdBy.get(r);
@@ -465,14 +455,18 @@ function replayOps(
       case "restoreUnchecked": {
         if (outcome !== "restored") problems.add(w, "restoreUncheckedのoutcomeはrestored");
         const records = op["records"];
+        if (!Array.isArray(op["expectedViolations"])) problems.add(w, "expectedViolationsが並びではない（違反がなければ空の並び）");
         const expected = new Set(Array.isArray(op["expectedViolations"]) ? op["expectedViolations"].map(String) : []);
         const found = new Set<string>();
         if (!Array.isArray(records)) {
           problems.add(w, "recordsが並びではない");
           break;
         }
-        for (const r of records) {
-          if (!isObj(r)) continue;
+        for (const [ri, r] of records.entries()) {
+          if (!isObj(r)) {
+            problems.add(w, `records[${ri}]がobjectではない`);
+            continue;
+          }
           let rec: Obj;
           try {
             rec = expandRecord(r, { scenarioId, opId, previous: latest(state, String(r["id"])) });
@@ -484,9 +478,7 @@ function replayOps(
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
-          const refs = new Set<string>();
-          collectIds(rec["body"], refs);
-          for (const x of refs) if (!exists(state, x) && x !== rec["id"]) problems.add(w, `復元する記録の参照先がない: ${x}`);
+          for (const x of referencedIds(rec)) if (!exists(state, x) && x !== rec["id"]) problems.add(w, `復元する記録の参照先がない: ${x}`);
           const id = String(rec["id"]);
           state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId }]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
@@ -1042,6 +1034,90 @@ function hasNumber(v: unknown): boolean {
   return false;
 }
 
+const nonEmpty = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
+const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
+
+// 制度のケースの値の形。値が正しい形でなければ、理由の並びを返す（「未確認」は呼び出し側で扱う）。
+const REGIME_FIELDS: Readonly<Record<string, (v: unknown, c: Obj, target: Obj) => string[]>> = {
+  "target.year": (v, _c, target) => {
+    if (!isObj(v) || (v["kind"] !== "calendar" && v["kind"] !== "fiscal") || !isCalendarYear(v["year"])) return ["{ kind: calendar・fiscal, year }"];
+    if (target["yearKind"] !== v["kind"]) return ["kindがyearKindと違う"];
+    return [];
+  },
+  "target.jurisdiction": (v) =>
+    isObj(v) && ["national", "prefecture", "municipality", "insurer"].includes(String(v["kind"])) && nonEmpty(v["code"]) ? [] : ["{ kind: national・prefecture・municipality・insurer, code（空でない） }"],
+  "target.referencePoint": (v, _c, target) => {
+    const p = target["procedure"];
+    if (p === "premium") return isObj(v) && v["kind"] === "month" && isYearMonth(v["month"]) ? [] : ["premiumは{ kind: month, month }"];
+    return isObj(v) && v["kind"] === "date" && isLocalDate(v["date"]) ? [] : [`${String(p)}は{ kind: date, date }`];
+  },
+  ruleSet: (v) => (isObj(v) && nonEmpty(v["id"]) && nonEmpty(v["version"]) ? [] : ["{ id, version }（どちらも空でない）"]),
+  sources: (v) => {
+    if (!Array.isArray(v) || v.length === 0) return ["1件以上の原典"];
+    const out: string[] = [];
+    if (!v.some((x) => isObj(x) && x["primary"] === true)) out.push("一次資料（primary: true）が要る");
+    v.forEach((x, i) => {
+      if (
+        !isObj(x) ||
+        !nonEmpty(x["title"]) ||
+        !nonEmpty(x["publisher"]) ||
+        typeof x["url"] !== "string" ||
+        !x["url"].startsWith("https://") ||
+        typeof x["primary"] !== "boolean" ||
+        !isLocalDate(x["documentUpdatedOn"]) ||
+        !isLocalDate(x["retrievedOn"]) ||
+        !nonEmpty(x["location"])
+      ) {
+        out.push(`sources[${i}]は{ title, publisher, url（https）, primary, documentUpdatedOn, retrievedOn, location }`);
+      } else if (String(x["documentUpdatedOn"]) > String(x["retrievedOn"])) out.push(`sources[${i}]の資料の更新日が取得日より後`);
+    });
+    return out;
+  },
+  rounding: (v, c) => {
+    if (!Array.isArray(v)) return ["手順の並び（丸めがなければ空の並び）"];
+    const expected = c["expected"];
+    const keys = new Set(isObj(expected) && Array.isArray(expected["results"]) ? expected["results"].filter(isObj).map((r) => String(r["key"])) : []);
+    const out: string[] = [];
+    v.forEach((r, i) => {
+      if (!isObj(r) || !nonEmpty(r["itemKey"]) || !ROUNDING_METHODS.includes(String(r["method"])) || !/^[0-9]+(\.[0-9]+)?$/.test(String(r["unit"])) || Number(r["unit"]) <= 0 || !["rule", "input", "calculator"].includes(String(r["basis"]))) {
+        out.push(`rounding[${i}]は{ itemKey, method, unit（正のDecimal）, basis, location }`);
+        return;
+      }
+      if (r["basis"] !== "calculator" && !nonEmpty(r["location"])) out.push(`rounding[${i}]: 制度の丸め（rule・input）には原典の箇所（location）が要る`);
+      if (r["basis"] === "input" && !nonEmpty(r["methodInput"])) out.push(`rounding[${i}]: inputの丸めには丸め方を受け取る仮定（methodInput）が要る`);
+      if (!keys.has(String(r["itemKey"]))) out.push(`rounding[${i}]のitemKeyが期待値の結果の項目にない`);
+    });
+    return out;
+  },
+  input: (v) => (isObj(v) && Object.keys(v).length > 0 ? [] : ["空でないobject"]),
+  expected: (v) => {
+    if (!isObj(v) || !Array.isArray(v["results"]) || v["results"].length === 0) return ["{ results: 結果の項目の並び（1件以上） }"];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    v["results"].forEach((r, i) => {
+      if (!isObj(r) || !nonEmpty(r["key"]) || (r["valueType"] !== "yen" && r["valueType"] !== "decimal")) {
+        out.push(`results[${i}]は{ key, valueType: yen・decimal, value }`);
+        return;
+      }
+      if (seen.has(String(r["key"]))) out.push(`results[${i}]のkeyが重なる`);
+      seen.add(String(r["key"]));
+      const value = r["value"];
+      const state = factStateOf(value);
+      if (state === undefined || !["known", "unknown", "not-stated", "not-applicable"].includes(state)) out.push(`results[${i}].valueはFact`);
+      else if (state === "known") {
+        const x = isObj(value) ? value["value"] : undefined;
+        const ok = r["valueType"] === "yen" ? typeof x === "number" && Number.isSafeInteger(x) : typeof x === "string" && DECIMAL.test(x);
+        if (!ok) out.push(`results[${i}].valueの値がvalueTypeに合わない`);
+      }
+    });
+    return out;
+  },
+  derivation: (v) =>
+    isObj(v) && nonEmpty(v["method"]) && nonEmpty(v["reviewedBy"]) && v["independentOfImplementation"] === true
+      ? []
+      : ["{ method（空でない）, reviewedBy（空でない）, independentOfImplementation: true }"],
+};
+
 export function validateRegimeCase(c: unknown, where: string, problems: Problems): void {
   if (!isObj(c)) {
     problems.add(where, "制度のケースがobjectではない");
@@ -1053,13 +1129,15 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
   const status = c["status"];
   if (status !== "placeholder" && status !== "draft" && status !== "approved") problems.add(where, "statusはplaceholder・draft・approved");
   const target = isObj(c["target"]) ? c["target"] : {};
-  for (const k of ["year", "jurisdiction", "procedure", "referencePoint"]) if (!(k in target)) problems.add(where, `target.${k}がない（適用年・地域・手続・基準の時点は必須）`);
+  if (!isObj(c["target"])) problems.add(where, "targetがobjectではない");
+  for (const k of ["year", "yearKind", "jurisdiction", "procedure", "referencePoint"]) if (!(k in target)) problems.add(where, `target.${k}がない（適用年・地域・手続・基準の時点は必須）`);
   const procedure = target["procedure"];
   if (!PROCEDURES.includes(String(procedure))) problems.add(where, "target.procedureが計算結果の契約の表にない");
   if (!["calendar", "fiscal", REGIME_PLACEHOLDER].includes(String(target["yearKind"]))) problems.add(where, "target.yearKindはcalendar・fiscal・未確認");
+  // levyは年度だけで規則が決まるので、基準の時点はnot-applicableだけ（計算結果の1の「手続と基準の時点」）。
   if (procedure === "levy" && target["referencePoint"] !== "not-applicable") problems.add(where, "levyのreferencePointはnot-applicable（計算結果の1）");
-  const ph = (v: unknown): boolean => v === REGIME_PLACEHOLDER;
-  const valueFields: [string, unknown][] = [
+  if (procedure !== "levy" && target["referencePoint"] === "not-applicable") problems.add(where, "levy以外のreferencePointはnot-applicableにしない");
+  const values: [string, unknown][] = [
     ["target.year", target["year"]],
     ["target.jurisdiction", target["jurisdiction"]],
     ["ruleSet", c["ruleSet"]],
@@ -1069,43 +1147,22 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
     ["expected", c["expected"]],
     ["derivation", c["derivation"]],
   ];
-  if (procedure !== "levy") valueFields.push(["target.referencePoint", target["referencePoint"]]);
+  if (procedure !== "levy") values.push(["target.referencePoint", target["referencePoint"]]);
   if (status === "placeholder") {
-    for (const [name, v] of valueFields) if (!ph(v)) problems.add(where, `placeholderの${name}は「未確認」だけ（制度の値を入れない）`);
+    for (const [name, v] of values) if (v !== REGIME_PLACEHOLDER) problems.add(where, `placeholderの${name}は「未確認」だけ（制度の値を入れない）`);
     if (hasNumber(c)) problems.add(where, "placeholderに数値がある（制度の値を入れない）");
     return;
   }
-  if (status === "approved") {
-    for (const [name, v] of valueFields) if (ph(v)) problems.add(where, `approvedの${name}が未確認`);
-    const y = target["year"];
-    if (!isObj(y) || (y["kind"] !== "calendar" && y["kind"] !== "fiscal") || !isCalendarYear(y["year"])) problems.add(where, "target.yearは{ kind, year }");
-    const j = target["jurisdiction"];
-    if (!isObj(j) || typeof j["kind"] !== "string" || typeof j["code"] !== "string") problems.add(where, "target.jurisdictionは{ kind, code }");
-    const sources = c["sources"];
-    if (!Array.isArray(sources) || sources.length === 0) problems.add(where, "sourcesは1件以上");
-    else {
-      if (!sources.some((s) => isObj(s) && s["primary"] === true)) problems.add(where, "一次資料（primary: true）が要る");
-      for (const s of sources) {
-        if (!isObj(s) || typeof s["url"] !== "string" || !s["url"].startsWith("https://") || !isLocalDate(s["retrievedOn"]) || !isLocalDate(s["documentUpdatedOn"]) || typeof s["location"] !== "string" || s["location"] === "") {
-          problems.add(where, "sourcesの要素は{ title, publisher, url（https）, primary, documentUpdatedOn, retrievedOn, location }");
-        }
-      }
+  if (status === "approved" && target["yearKind"] === REGIME_PLACEHOLDER) problems.add(where, "approvedのtarget.yearKindが未確認");
+  // draftは「未確認」か正しい形の値、approvedは正しい形の値だけ（null・空の文字列・形の違う値を通さない）。
+  for (const [name, v] of values) {
+    if (v === REGIME_PLACEHOLDER) {
+      if (status === "approved") problems.add(where, `approvedの${name}が未確認`);
+      continue;
     }
-    const rounding = c["rounding"];
-    if (!Array.isArray(rounding)) problems.add(where, "roundingは手順の並び（丸めがないなら空の並びと理由）");
-    else {
-      for (const r of rounding) {
-        if (!isObj(r) || !ROUNDING_METHODS.includes(String(r["method"])) || typeof r["unit"] !== "string" || !["rule", "input", "calculator"].includes(String(r["basis"]))) {
-          problems.add(where, "roundingの要素は{ itemKey, method, unit, basis, location }");
-        } else if (r["basis"] !== "calculator" && (typeof r["location"] !== "string" || r["location"] === "")) {
-          problems.add(where, "制度の丸め（rule・input）には原典の箇所（location）が要る");
-        }
-      }
-    }
-    const d = c["derivation"];
-    if (!isObj(d) || typeof d["method"] !== "string" || typeof d["reviewedBy"] !== "string" || d["independentOfImplementation"] !== true) {
-      problems.add(where, "derivationは{ method, reviewedBy, independentOfImplementation: true }");
-    }
+    const check = REGIME_FIELDS[name];
+    if (check === undefined) continue;
+    for (const m of check(v, c, target)) problems.add(where, `${String(status)}の${name}: ${m}`);
   }
 }
 
@@ -1118,6 +1175,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
   const commonCount = commonState.seq;
   checkCites(common["cites"], docs, "common-setup", problems);
   const covered = new Set<string>();
+  if (!Array.isArray(common["coverageExceptions"])) problems.add("common-setup", "coverageExceptionsが並びではない（例外がなければ空の並び）");
   const exceptions = Array.isArray(common["coverageExceptions"]) ? common["coverageExceptions"] : [];
   for (const e of exceptions) if (isObj(e)) covered.add(`${String(e["section"])}|${String(e["subsection"] ?? "")}`);
   const tags = new Set<string>();
@@ -1152,6 +1210,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
       if (!isObj(rules) || !["none", "EX-06-mapping"].includes(String(rules["comparisonMapping"])) || !["none", "EX-05-scheduled-pay-date-year"].includes(String(rules["attribution"]))) {
         problems.add(where, "rulesは{ comparisonMapping: none・EX-06-mapping, attribution: none・EX-05-scheduled-pay-date-year }");
       }
+      if ("acceptance" in sc && !Array.isArray(sc["acceptance"])) problems.add(where, "acceptanceが並びではない");
       for (const t of Array.isArray(sc["acceptance"]) ? sc["acceptance"] : []) {
         if (!ACCEPTANCE_TAGS.includes(String(t))) problems.add(where, `acceptanceのタグが表にない: ${String(t)}`);
         tags.add(String(t));
@@ -1337,21 +1396,109 @@ test("検査の自己確認: 制度のケースの必須の項目と、未確認
   };
   assert.deepEqual(run(base), []);
   assert.ok(run({ ...base, target: { ...base.target, year: { kind: "calendar", year: 2026 } } }).length > 0);
-  const approved = {
-    ...base,
-    status: "approved",
-    target: { year: { kind: "calendar", year: 2030 }, yearKind: "calendar", jurisdiction: { kind: "national", code: "x" }, procedure: "withholding", referencePoint: { kind: "date", date: "2030-01-25" } },
-    ruleSet: { id: "rs", version: "1" },
-    sources: [{ title: "t", publisher: "p", url: "https://example.org/x", primary: true, documentUpdatedOn: "2030-01-01", retrievedOn: "2030-01-02", location: "第1条" }],
-    rounding: [{ itemKey: "a", method: "floor", unit: "1", basis: "rule", location: "第2条" }],
-    input: {},
-    expected: {},
-    derivation: { method: "m", reviewedBy: "r", independentOfImplementation: true },
-  };
-  assert.deepEqual(run(approved), []);
-  assert.ok(run({ ...approved, rounding: [{ itemKey: "a", method: "floor", unit: "1", basis: "rule" }] }).some((x) => x.includes("location")));
-  assert.ok(run({ ...approved, sources: [{ ...approved.sources[0], primary: false }] }).some((x) => x.includes("一次資料")));
-  assert.ok(run({ ...approved, target: { ...approved.target, jurisdiction: "未確認" } }).some((x) => x.includes("未確認")));
+});
+
+// 承認済み（approved）の制度のケースの見本（架空の値）と、必須の値が欠けた・null・空・形の違う負の見本。
+const APPROVED = {
+  caseId: "REG-X",
+  regime: "income-tax",
+  title: "x",
+  status: "approved",
+  consumers: ["T14"],
+  target: { year: { kind: "calendar", year: 2030 }, yearKind: "calendar", jurisdiction: { kind: "national", code: "x" }, procedure: "withholding", referencePoint: { kind: "date", date: "2030-01-25" } },
+  ruleSet: { id: "rs", version: "1" },
+  sources: [{ title: "t", publisher: "p", url: "https://example.org/x", primary: true, documentUpdatedOn: "2030-01-01", retrievedOn: "2030-01-02", location: "第1条" }],
+  rounding: [{ itemKey: "a", method: "floor", unit: "1", basis: "rule", location: "第2条" }],
+  input: { synthetic: "架空の入力" },
+  expected: { results: [{ key: "a", valueType: "yen", value: { state: "known", value: 1 } }] },
+  derivation: { method: "m", reviewedBy: "r", independentOfImplementation: true },
+};
+
+function runRegime(c: unknown): string[] {
+  const p = new Problems();
+  validateRegimeCase(c, "x", p);
+  return p.list;
+}
+
+test("検査の自己確認: approvedの制度のケースの見本は通る（levyの基準の時点はnot-applicable）", () => {
+  assert.deepEqual(runRegime(APPROVED), []);
+  const levy = { ...APPROVED, regime: "resident-tax", target: { ...APPROVED.target, year: { kind: "fiscal", year: 2030 }, yearKind: "fiscal", procedure: "levy", referencePoint: "not-applicable" } };
+  assert.deepEqual(runRegime(levy), []);
+  const premium = { ...APPROVED, regime: "employee-insurance", target: { ...APPROVED.target, procedure: "premium", referencePoint: { kind: "month", month: "2030-04" } } };
+  assert.deepEqual(runRegime(premium), []);
+});
+
+test("検査の自己確認: approvedで必須の値がnull・空・形の違う値なら見つける", () => {
+  const t = APPROVED.target;
+  const negatives: [string, unknown, string][] = [
+    ["ruleSetがnull", { ...APPROVED, ruleSet: null }, "ruleSet"],
+    ["ruleSetのversionがない", { ...APPROVED, ruleSet: { id: "rs" } }, "ruleSet"],
+    ["ruleSetのidが空", { ...APPROVED, ruleSet: { id: " ", version: "1" } }, "ruleSet"],
+    ["referencePointがnull", { ...APPROVED, target: { ...t, referencePoint: null } }, "target.referencePoint"],
+    ["withholdingの基準の時点が月", { ...APPROVED, target: { ...t, referencePoint: { kind: "month", month: "2030-01" } } }, "target.referencePoint"],
+    ["premiumの基準の時点が日", { ...APPROVED, target: { ...t, procedure: "premium", referencePoint: { kind: "date", date: "2030-01-25" } } }, "target.referencePoint"],
+    ["levy以外の基準の時点がnot-applicable", { ...APPROVED, target: { ...t, referencePoint: "not-applicable" } }, "not-applicable"],
+    ["levyの基準の時点が日", { ...APPROVED, target: { ...t, procedure: "levy", referencePoint: { kind: "date", date: "2030-01-25" } } }, "levy"],
+    ["inputがnull", { ...APPROVED, input: null }, "input"],
+    ["inputが空", { ...APPROVED, input: {} }, "input"],
+    ["expectedがnull", { ...APPROVED, expected: null }, "expected"],
+    ["expectedの結果が空", { ...APPROVED, expected: { results: [] } }, "expected"],
+    ["expectedのvalueTypeが表にない", { ...APPROVED, expected: { results: [{ key: "a", valueType: "boolean", value: { state: "known", value: true } }] } }, "expected"],
+    ["expectedの値が型に合わない", { ...APPROVED, expected: { results: [{ key: "a", valueType: "yen", value: { state: "known", value: 1.5 } }] } }, "expected"],
+    ["derivation.methodが空", { ...APPROVED, derivation: { ...APPROVED.derivation, method: "" } }, "derivation"],
+    ["derivation.reviewedByが空白", { ...APPROVED, derivation: { ...APPROVED.derivation, reviewedBy: "  " } }, "derivation"],
+    ["独立に導いたことがない", { ...APPROVED, derivation: { method: "m", reviewedBy: "r" } }, "derivation"],
+    ["yearがnull", { ...APPROVED, target: { ...t, year: null } }, "target.year"],
+    ["yearの種類がyearKindと違う", { ...APPROVED, target: { ...t, year: { kind: "fiscal", year: 2030 } } }, "target.year"],
+    ["yearKindが未確認", { ...APPROVED, target: { ...t, yearKind: "未確認" } }, "yearKind"],
+    ["jurisdictionのcodeが空", { ...APPROVED, target: { ...t, jurisdiction: { kind: "national", code: "" } } }, "target.jurisdiction"],
+    ["jurisdictionが未確認", { ...APPROVED, target: { ...t, jurisdiction: "未確認" } }, "未確認"],
+    ["一次資料がない", { ...APPROVED, sources: [{ ...APPROVED.sources[0], primary: false }] }, "一次資料"],
+    ["原典のtitleが空", { ...APPROVED, sources: [{ ...APPROVED.sources[0], title: "" }] }, "sources"],
+    ["資料の更新日が取得日より後", { ...APPROVED, sources: [{ ...APPROVED.sources[0], documentUpdatedOn: "2030-02-01" }] }, "更新日"],
+    ["制度の丸めに原典の箇所がない", { ...APPROVED, rounding: [{ itemKey: "a", method: "floor", unit: "1", basis: "rule" }] }, "location"],
+    ["丸めの単位が0", { ...APPROVED, rounding: [{ itemKey: "a", method: "floor", unit: "0", basis: "calculator" }] }, "rounding"],
+    ["丸めのitemKeyが結果にない", { ...APPROVED, rounding: [{ itemKey: "b", method: "floor", unit: "1", basis: "calculator" }] }, "itemKey"],
+  ];
+  for (const [name, c, word] of negatives) {
+    const p = runRegime(c);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+
+test("検査の自己確認: 摘要等の自由な文字列のIDに似た値は参照とみなさない", () => {
+  const p = mutated((copy) => {
+    const o = op(scenario(firstCase(copy, "EX-01"), "EX-01-a"), "o1");
+    ((o["record"] as Obj)["body"] as Obj)["descriptionText"] = { state: "known", value: "pay_999" };
+    (o["record"] as Obj)["changeNote"] = { state: "known", value: "dep_999" };
+  });
+  assert.deepEqual(p, []);
+  const q = mutated((copy) => {
+    const o = op(scenario(firstCase(copy, "EX-01"), "EX-01-a"), "o1");
+    ((o["record"] as Obj)["body"] as Obj)["payerHint"] = { state: "known", value: "emp_99" };
+  });
+  assert.ok(q.some((x) => x.includes("ref-target-missing")), q.join("\n"));
+});
+
+test("検査の自己確認: 操作の並びの不正な要素を黙って除かず、場面IDと位置を示す", () => {
+  const p = mutated((copy) => {
+    const sc = scenario(firstCase(copy, "EX-05"), "EX-05-e");
+    sc["operations"] = [null];
+  });
+  assert.ok(p.some((x) => x.includes("EX-05-e") && x.includes("operations[0]")), p.join("\n"));
+  const q = mutated((copy) => {
+    const sc = scenario(firstCase(copy, "EX-02"), "EX-02-c4");
+    const o = op(sc, "o1");
+    (o["records"] as unknown[]).push("pay_205");
+  });
+  assert.ok(q.some((x) => x.includes("EX-02-c4") && x.includes("records[5]")), q.join("\n"));
+  const r = mutated((copy) => {
+    const o = op(scenario(firstCase(copy, "EX-01"), "EX-01-a"), "o1");
+    (o["record"] as Obj)["body"] = "不正なbody";
+  });
+  assert.ok(r.some((x) => x.includes("EX-01-a") && x.includes("bodyがobjectではない")), r.join("\n"));
+  assert.throws(() => ledgerFileNames("cases", ["EX-01.json", "EX-01.json.bak", ".DS_Store"]), /EX-01\.json\.bak, \.DS_Store/);
+  assert.deepEqual(ledgerFileNames("cases", ["TC-01.json", "EX-01.json"]), ["EX-01.json", "TC-01.json"]);
 });
 
 test("台帳のIDの接頭辞は契約の表と同じ", () => {

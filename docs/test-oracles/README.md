@@ -174,7 +174,14 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 
 - いまはすべて`placeholder`で、手続（`procedure`）以外は「未確認」。`placeholder`には数値を入れない（制度の値を入れない）。手続と、住民税・国保・ふるさと納税の賦課の年度（`fiscal`）、所得税の暦年（`calendar`）は計算結果の契約の1による。勤務先の保険料・認定の年の種類は「未確認」。
 - `levy`の`referencePoint`は`not-applicable`（計算結果の1の「手続と基準の時点」）。
-- `approved`にするには、適用年（`{ kind, year }`）・地域（`{ kind, code }`）・基準の時点・制度データの版、一次資料（`primary: true`）を含む原典（`url`はhttps、資料の更新日`documentUpdatedOn`と取得日`retrievedOn`、箇所`location`）、丸めの手順（`basis`が`rule`・`input`なら原典の箇所）、入力と期待値、実装と独立に導いたことと確かめた担当（`derivation`の`independentOfImplementation: true`・`reviewedBy`）がすべて要る。
+- `approved`にするには、次の値がすべて要る。「未確認」でないことだけでなく、値の形を確かめ、`null`・空の文字列・形の違う値を通さない。`draft`の値は「未確認」か、同じ形の値。
+  - 適用年`year`（`{ kind: calendar・fiscal, year }`。`kind`は`yearKind`と同じ）と地域`jurisdiction`（`{ kind: national・prefecture・municipality・insurer, code }`）。
+  - 基準の時点`referencePoint`: 手続に合う形（`withholding`・`year-end-adjustment`・`tax-return`・`recognition`は`{ kind: date, date }`、`premium`は`{ kind: month, month }`）。`levy`だけは`not-applicable`。
+  - 制度データの版`ruleSet`（`{ id, version }`）。
+  - 原典`sources`: 一次資料（`primary: true`）を1件以上含み、各要素に`title`・`publisher`・`url`（https）・資料の更新日`documentUpdatedOn`・取得日`retrievedOn`（更新日以後）・箇所`location`。
+  - 丸め`rounding`: 手順の並び（丸めがなければ空）。各手順の`itemKey`は期待値の結果の項目で、`unit`は正、`basis`が`rule`・`input`なら原典の箇所、`input`なら`methodInput`。
+  - 入力`input`（空でないobject）と期待値`expected`（`{ results: [{ key, valueType: yen・decimal, value: Fact }] }`、1件以上）。
+  - 導き方`derivation`（`method`と確かめた担当`reviewedBy`が空でなく、`independentOfImplementation: true`）。
 - 値を入れるのはT14（一次資料で確かめ、承認したものだけ）。年・地域・原典・丸めのどれかが欠けたケースは`approved`にできない。
 
 ## 後続タスクの使い方
@@ -183,14 +190,14 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 - **T11（照合）:** `unreconciled`・`allocationUsage`・`forecastLine`・`attribution`・`comparison`・`adoption`・`duplicateCandidates`・`decisionPremise`・`seriesStatus`と、所得の年・年間の値・見込み・決定額の`aggregate`を、照合の結果と比べる。`orderVariants`で入力の順序を入れ替えても同じ結果になることを確かめる。`rules`に合わせて、比較の対応表と帰属の規則を注入する（`none`なら規則なし）。
 - **T15（計算基盤）:** `saveRun`の射影を、架空の計算器の版の`requests`等で補って保存の検査に使う。`runClosure`・`requiredAdoptions`・`runInputChange`・`roundingStep`・`roundingValidation`は、計算器に依存しない判定の試験になる。
 - **T14（制度調査）:** `regime/regime-cases.json`の雛形を、一次資料で確かめた値で埋め、`approved`の条件を満たしたものだけを後続へ渡す。
-- 読み込みは`load.ts`の`readLedgerFiles`・`resolveOperations`・`expandRecord`を使ってよい。
+- 読み込みは`load.ts`の`readLedgerFiles`・`resolveOperations`・`expandRecord`を使ってよい。不正な要素（JSONでないファイル、objectでない場面・操作、型の違う`reason`・`revision`・`body`）は黙って除かず、場面IDと位置を含む誤りにする。
 
 ## 台帳の検査
 
 `node --test tests/fixtures/ledger/ledger.test.ts`で実行する（`package.json`は変えていない。T05のCIが統合されると、`npm test`の`tests/**/*.test.ts`にも含まれる）。確かめること:
 
 - ファイルの形、ID（ケース・場面・操作・検査）の一意性、`baseScenario`と`afterOp`の参照。
-- 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。参照先が先に保存されていること。`recordedSeq`の期待が保存の順と合うこと。
+- 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
 - 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形等。
 - 引用の語句が契約の節に実在すること、examples.mdのEX-NNの見出しと小見出しをすべての場面のどれかが扱うこと、受入条件のタグをそれぞれ1つ以上の場面が持つこと、制度のケースの必須の項目。
