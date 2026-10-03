@@ -47,7 +47,7 @@ README: <更新したREADMEと内容、または「更新不要」と理由（AG
 
 実装者とGitHubアカウントが同じ場合はCOMMENTとして記録する。自分で作成した変更を独立レビュー済みと扱わない。投稿直前にhead/baseとworker状態を再取得し、途中で変わった場合は完了レビューを投稿しない。
 
-AIごとのGitHub App（[AIのGitHub App](github-apps.md)）で投稿する場合も、本文は下の書式のまま、自分のAIのAppの`--purpose review`のトークンで投稿する。`decision: accepted`はレビューしたheadのSHAを`commit_id`に指定した`APPROVE`、`changes-requested`は`REQUEST_CHANGES`（または`COMMENT`）、`needs-owner`は`COMMENT`にする。レビューしたhead以外を承認しない。`role`のAIと投稿したAppのAIは一致させる。AIは、自分が実装したPRや、自分がpushしたPRを承認しない。Appの承認も、rulesetを設定するまでは（所有者の確認待ち）マージの必須条件ではない。
+AIごとのGitHub App（[AIのGitHub App](github-apps.md)）で投稿する場合も、本文は下の書式のまま、自分のAIのAppの`--purpose review`のトークンで投稿する。トークンのスクリプトはPRのcheckoutから実行せず、レビュー済みのmainのSHAから取り出した写しで実行する。投稿のあとで、投稿者が自分のAppのbotであることを確かめる。`decision: accepted`はレビューしたheadのSHAを`commit_id`に指定した`APPROVE`、`changes-requested`は`REQUEST_CHANGES`（または`COMMENT`）、`needs-owner`は`COMMENT`にする。レビューしたhead以外を承認しない。`role`のAIと投稿したAppのAIは一致させる。AIは、自分が実装したPRや、自分がpushしたPRを承認しない。Appの承認も、rulesetを設定するまでは（所有者の確認待ち）マージの必須条件ではない。
 
 ```text
 <!-- kurashi-ledger:review:v1 -->

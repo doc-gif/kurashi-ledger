@@ -1,13 +1,13 @@
 # AIのGitHub App（CodexとClaudeの身元）
 
-2026-10-03の所有者決定（実装側のチャット。記録は[Issue #41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに、それぞれ1つずつGitHub Appを用意し、AIごとの別のGitHubの身元にした（2つとも、同じ日に所有者が作成・インストール済み）。トークンは自作のスクリプト`scripts/github-app-token.ts`で発行する。rulesetの変更は、Appが動くことを確かめたあとで所有者が確認する（下の「rulesetの提案」。**まだ設定していない**）。
+2026-10-03の所有者決定（実装側のチャット。記録は[Issue #41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに、それぞれ1つずつGitHub Appを用意し、AIごとの別のGitHubの身元にした（2つとも、同じ日に所有者が作成・インストール済み）。トークンは自作のスクリプト`scripts/github-app-token.ts`が発行し、そのトークンで1つのコマンドを子プロセスとして実行する（トークンは表示しない）。mainのrulesetの承認の規則は、Appが動くことを確かめたあとで所有者が確認する（下の「ruleset」。**承認の規則はまだ設定していない**）。
 
 ## 背景
 
 - いまは所有者とAIが同じGitHubアカウント（doc-gif）を使う。レビューはCOMMENTの記録（`decision: accepted`等）で、GitHub上の承認ではない。作者自身は自分のPRを承認できないので、承認を必須にすると誰もマージできない（[修正前の整合確認](review-prevention.md)）。
 - 所有者は、2つ目のユーザーアカウントではなく、GitHub Appを選んだ。Appの承認は別の身元からのGitHubの正式な承認になるので、将来rulesetで「作者と別の身元による最新のpushの承認」を必須にし、レビューの分離を手続きだけでなくGitHubに強制させられる。
 - ClaudeとCodexのどちらも、実装とレビューの両方を行う（例: PR #4はCodexが実装し、Claudeがレビューした）。そのため、Appは**役割ではなくAIの身元**を表す。分離は身元で行う: **AIは、自分が実装したPRや、自分がpushしたPRを承認しない**（[現在の状態](project-status.md)の「レビュー」、[PRレビューのループ](pr-review-loop.md)）。
-- トークンの発行は、第三者のgh拡張ではなく、依存を加えない自作のスクリプトで行う（所有者の決定）。
+- トークンの発行は、第三者のgh拡張ではなく、依存を加えない自作のスクリプトで行う（所有者の決定）。トークンを標準出力に出して`GH_TOKEN="$(…)"`で受ける形は、発行に失敗したときにghが保存済みのdoc-gif（管理者）の資格情報へ黙って戻るので使わない（PR42-R004）。所有者の決定で、スクリプトがコマンドを実行する形にした。
 
 ## 所有者が用意したもの（2026-10-03）
 
@@ -18,9 +18,9 @@ IDと鍵はrepoに置かない。下の`<...>`は、実行するときに実際�
 | App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>`（作成済み） |
 | インストール先 | このrepoだけ | このrepoだけ |
 | App ID・Installation ID | 環境変数`KL_GITHUB_APP_ID_CODEX`・`KL_GITHUB_APP_INSTALLATION_ID_CODEX` | 環境変数`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE` |
-| 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account `$USER`、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
+| 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account はmacOSのログイン名、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
 
-serviceの名前に入っている`reviewer`・`implementer`は、所有者が最初に登録したときの名前で、役割の意味を持たない。鍵を登録し直さずに使うため、スクリプトの既定にした（`--keychain-service`で変えられる）。
+serviceの名前に入っている`reviewer`・`implementer`は、所有者が最初に登録したときの名前で、役割の意味を持たない。鍵を登録し直さずに使うため、スクリプトの既定にした（`--keychain-service`で変えられる）。accountは、スクリプトが`os.userInfo()`で調べるmacOSのログイン名を使う（環境変数`USER`ではない。ふつうは同じ。`sudo`等で違うと「項目がない」になる）。
 
 ### Appの権限（2つとも同じ）
 
@@ -30,7 +30,9 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Pull requests | Read and write | PRの作成、レビュー（APPROVE等）、PRへのコメント |
 | Issues | Read and write | Issueの作成・コメント |
 | Actions | Read-only | CIの結果の確認 |
-| Workflows | Read and write | `.github/workflows/`を変えるPRのpush |
+| Checks | Read-only | CIの結果の確認（check run） |
+| Commit statuses | Read-only | CIの結果の確認（commit status） |
+| Workflows | Read and write | `.github/workflows/`を変えるcommitのpush（その用途のトークンにだけ付ける） |
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
@@ -40,42 +42,66 @@ webhookは使わない。インストールできるのは所有者のアカウ�
 
 2026-10-03に、所有者が次を済ませた。
 
-1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと上の表の権限に広げ（Settings → Permissions & events で Contents・Issues・Workflows を Read and write）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
-2. ClaudeのAppを、上の表と同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
+1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
+2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
 3. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
 
-残っているのは、下の「実際の鍵での確認」と「移行の計画」の2以降、rulesetの確認（所有者の確認待ち）。権限を変えるときは、上の1と同じく、インストール先での承認し直しが要る。
+**残っている所有者の手順:** 2つのAppに Checks と Commit statuses の Read-only を加え、インストール先で承認し直す（同じ日の所有者決定）。済むまでは、スクリプトが`checks`・`statuses`を求めるので、トークンの発行がHTTP 422で失敗する（コマンドは実行されない）。そのあと、下の「実際の鍵での確認」と「移行の計画」。権限を変えるときは、毎回インストール先での承認し直しが要る。
 
 ## 鍵の保管・再発行・失効
 
-- 秘密鍵は、ログインキーチェーンの汎用パスワードにだけ置く。ダウンロードした`.pem`は、キーチェーンに登録したら消す。repo・worktree・クラウド・チャット・Issueに置かない。**鍵の控え（バックアップ）は要らない。** なくしたら、Appの設定で新しい鍵を作ればよい。
-- 登録の例（所有者が手で行う。値は対話で入力し、コマンドの引数に鍵を書かない）: `base64 -i <ダウンロードした.pem>`の出力をコピーし、`security add-generic-password -U -s <service> -a "$USER" -w`を実行して、表示される入力欄に貼り付ける。そのあとクリップボードを消し、`.pem`を消す。
+- 秘密鍵の保管場所は、ログインキーチェーンの汎用パスワードだけ。`--key-file`・`--key-stdin`は、キーチェーンを使えない環境（macOS以外）での一時的な受け渡しのためで、鍵をファイルとして置いたままにしない。ダウンロードした`.pem`は、キーチェーンに登録したら消す。repo・worktree・クラウド・チャット・Issueに置かない。**鍵の控え（バックアップ）は要らない。** なくしたら、Appの設定で新しい鍵を作ればよい。
+- 登録の例（所有者が手で行う。値は対話で入力し、コマンドの引数に鍵を書かない）: `base64 -i <ダウンロードした.pem>`の出力をコピーし、`security add-generic-password -U -s <service> -a "$(id -un)" -w`を実行して、表示される入力欄に貼り付ける。そのあとクリップボードを消し、`.pem`を消す。クリップボードの履歴を残すアプリや、ほかのAppleの機器と共有する「ユニバーサルクリップボード」を使っていると、コピーした鍵がそこに残る・送られるので、登録の間は止める。
 - **再発行（rotation）:** AppのSettings → General → Private keys → Generate a private key で新しい鍵を作り、上の手順でキーチェーンの値を置き換え（`-U`）、下の「実際の鍵での確認」で動くことを確かめてから、古い鍵を同じ画面で消す（Delete）。
 - **失効:** 鍵が漏れた、または漏れた疑いがあれば、すぐにAppの設定で、その鍵を消す（消した鍵ではJWTを作れなくなる）。発行済みのinstallation access tokenは最長1時間有効なので、急ぐ場合はインストールを一時停止する（Installed GitHub Apps → Configure → Suspend）。漏れた鍵をIssue等に貼り直さない（[公開範囲と公開前の点検](public-data.md)の「誤って公開したとき」）。
-- キーチェーンの項目は、作った`/usr/bin/security`に読取りを許すので、同じmacOSユーザーのプロセスは確認なしで読める（下の「限界」）。読まれたときに気づきたい場合は、キーチェーンアクセスで項目の「アクセス制御」を「キーチェーンのパスワードを要求」にできる。そのかわり、無人の定期実行は止まる。
+- 公開検査（`npm run check:public`）は、PEMの見出しの行とGitHubのトークンの形を見るが、**base64にしたPEMやJWTは見つけない**。キーチェーンの値（base64）やJWTを、ファイル・Issue・ログに貼らない。
+- `--key-file`の権限の検査は、POSIXの権限のビット（`chmod 600`）と所有者だけを見る。macOSの拡張ACL（`chmod +a`。`ls -le`で見える）でほかの利用者に読取りを許していても見抜けない。Windowsでは権限を確かめない（ACLを所有者だけにしておく）。
 
-## トークンの発行（scripts/github-app-token.ts）
+## 信頼した写し（PRのcheckoutから実行しない）
+
+**このスクリプトを、PRのcheckout（レビュー中・作業中のbranch）から実行しない。** PRで変えられたスクリプトは、鍵を読み、トークンを別の宛先へ送れる。レビュー済みのmainのSHAから、repoの外へ取り出した写しで実行する。
 
 ```sh
-GH_TOKEN="$(node scripts/github-app-token.ts --agent <codex|claude> --purpose <review|implement>)" gh <コマンド>
+sha=<レビュー済みのmainの40文字のSHA>
+dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"
+mkdir -p "$dir/lib" && chmod 700 "$dir"
+git -C <この repo の checkout> show "$sha:scripts/github-app-token.ts" > "$dir/github-app-token.ts"
+git -C <この repo の checkout> show "$sha:scripts/lib/github-app-token.ts" > "$dir/lib/github-app-token.ts"
+printf '{"type":"module"}\n' > "$dir/package.json"
+```
+
+以下の例では、この写しのディレクトリを`KL_APP_TOKEN_DIR`（秘密ではない）とする。写しを新しくするのは、スクリプトの変更が独立したレビューを経てmainに入ったときだけ。**このスクリプトと`PURPOSES`（用途ごとの権限）の変更は、権限の制御の変更**で、実装していない別の担当のレビューを受ける。
+
+## 使い方（スクリプトがコマンドを実行する）
+
+```sh
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|claude> --purpose <用途> -- <コマンド> [引数…]
 ```
 
 - `--agent`（必須）: どのAIのAppか。キーチェーンのserviceの既定と、IDを読む環境変数（上の表）を決める。IDは`--app-id`・`--installation-id`でも渡せる（環境変数より優先）。数字だけを受け付ける。
-- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どちらも`repositories: ["kurashi-ledger"]`に縮小する。
+- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どれも`repositories: ["kurashi-ledger"]`に縮小する。
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
-  | `review` | pull_requests:write、contents:read、actions:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
-  | `implement` | contents:write、pull_requests:write、issues:write、actions:read、workflows:write | push、PR・Issue・コメントの作成、マージ |
+  | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
+  | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
+  | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`を変えるcommitをpushするときだけ（所有者決定: 必要なときだけ付ける） |
 
-  `review`にissues:writeを入れない理由: PRへのコメント（Issueのタイムラインのコメント）とレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。PRへのコメントがこの権限で拒否されることが分かったら、表（`scripts/lib/github-app-token.ts`の`PURPOSES`）を直すPRを出す（下の「確かめていないこと」）。
-- 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ユーザー> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒み、symlinkも拒む。Windowsでは権限のビットがNTFSのACLを表さないので確かめず、注意を出す（ACLを所有者だけにしておく）。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない）。
-- 動き: RS256のJWT（`iat`=いま−60秒、`exp`=いま+9分、`iss`=App ID）を`node:crypto`で作り、`POST https://api.github.com/app/installations/<Installation ID>/access_tokens`で発行する。応答の権限とrepoが要求どおりか確かめる。さらに、発行したトークンで`GET /installation/repositories`を呼び、触れるrepoがこのrepoの1件だけかを確かめる。どれかが違う、または確かめられない（応答にrepoの一覧がない、HTTPや通信の失敗等）ときは、トークンを出さずに失効させ（`DELETE /installation/token`）、終了コード1で終える。
-- 出力: 標準出力には、成功したときのトークンと改行だけを出す。エラーは標準エラーに、HTTPの状態とGitHubのメッセージを出す。鍵・JWT・トークンは出さない（既知の値と、数字を含む長い英数字の並びを伏せる）。終了コードは、成功0・発行の失敗1・引数の誤り2。
-- 時間の上限: GitHubへの要求は15秒、キーチェーンは60秒（許可のダイアログに答える時間）。ディスクに書かない。依存は使わない（Node.jsの組込みだけ）。
-- npm scriptにしない: `npm run`は標準出力に見出しを出すので、`$(...)`で受けるとトークンに混ざる。`node scripts/...`で直接実行する。
-- トークンは1時間で失効する。シェルの設定ファイル・`.env`・ファイルに保存しない。続けて使うときはサブシェルで閉じる: `( export GH_TOKEN="$(node scripts/github-app-token.ts --agent codex --purpose review)"; gh ...; gh ... )`。
+  `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
+- `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。Windowsでは`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
+- 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ログイン名> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、通常のファイルでないもの（symlink・FIFO・ディレクトリ）を開く前に拒み、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒む。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない。このときコマンドには標準入力を渡さない）。
+- 動き:
+  1. RS256のJWT（`iat`=いま−60秒、`exp`=いま+9分、`iss`=App ID）を`node:crypto`で作り、`POST https://api.github.com/app/installations/<Installation ID>/access_tokens`で発行する。
+  2. 応答の権限が要求と完全に一致し（GitHubが必ず加える`metadata: read`のほかは、多くも少なくもない）、repoがこのrepoの1件だけかを確かめる。さらに、発行したトークンで`GET /installation/repositories`を呼び、触れるrepoがこのrepoの1件だけかを確かめる。どれかが違う、または確かめられないときは、トークンを失効させ（`DELETE /installation/token`）、**コマンドを実行せずに**終える。
+  3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境では、`GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、gitの資格情報・SSH・設定に関わる変数を外し、ghには空の一時の設定ディレクトリ（`GH_CONFIG_DIR`）を渡す。gitは利用者・システムの設定を読まず（`GIT_CONFIG_GLOBAL`を空のデバイス、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や`url.*.insteadOf`を使わない）、SSHを使えず（`GIT_SSH_COMMAND=false`）、端末に聞かず、`https://github.com`への資格情報としてだけ`GH_TOKEN`を返すhelperを使う。こうして、子のghとgitがdoc-gifの資格情報に戻れないようにする。
+  4. 子が終わったら、一時の設定ディレクトリを消し、トークンを失効させる（失敗したら標準エラーに伝える。トークンは1時間で失効する）。
+- 出力: このスクリプト自身は標準出力に何も書かない（子の出力はそのまま見える）。エラーは標準エラーに、HTTPの状態とGitHubのメッセージを出す。鍵・JWT・トークンは出さない（既知の値と、数字を含む長い英数字の並びを伏せる）。
+- 終了コード: 子の終了コード（シグナルで終わったら128+番号）。このスクリプト自身の失敗（引数の誤り・発行や確認の失敗）は125で、そのときコマンドは実行していない。コマンドを実行できなければ126、見つからなければ127。
+- 時間の上限: GitHubへの各要求（発行・確認・失効）は15秒、キーチェーンは60秒（許可のダイアログに答える時間）、標準入力の鍵は10秒。`--key-file`は、FIFO等で待たないよう、開く前に通常のファイルかを確かめ、待たずに開く。子のコマンドには上限を置かない。
+- ディスク: トークン・鍵・JWTを書かない。ghの一時の設定ディレクトリ（所有者だけが使える権限で作る）は、子が終わったら消す。依存は使わない（Node.jsの組込みだけ）。npm scriptにはしない。
 - 試験は`scripts/github-app-token.test.ts`（`npm test`）。試験の中で作ったRSA鍵と番兵の値だけを使い、ネットワークとキーチェーンを使わない。
+
+**reviewのトークンで行わないこと:** pull_requests:writeは、レビューの投稿のほかに、PRの本文・タイトル・baseの変更、PRを閉じる・開き直す、レビューのdismiss、レビュワーの依頼もできる。レビュー側はこれらを行わない（レビューとPRへのコメントだけ）。
 
 ## レビューの投稿（AppのトークンでGitHubのレビューにする）
 
@@ -87,108 +113,131 @@ GH_TOKEN="$(node scripts/github-app-token.ts --agent <codex|claude> --purpose <r
 | `changes-requested` | `REQUEST_CHANGES`（または`COMMENT`） |
 | `needs-owner` | `COMMENT` |
 
-承認は、レビューしたheadにだけ行う。`gh pr review --approve`は、実行した時点のheadを承認するので、確認と承認の間にpushがあると、レビューしていないheadを承認しうる。そのため、`commit_id`を指定してAPIで送る。
+承認は、レビューしたheadにだけ行う。`gh pr review --approve`は、実行した時点のheadを承認するので、確認と承認の間にpushがあると、レビューしていないheadを承認しうる。そのため、`commit_id`を指定してAPIで送る。直前に、head/baseがレビューしたものと同じかを確かめる。
 
 ```sh
-( export GH_TOKEN="$(node scripts/github-app-token.ts --agent codex --purpose review)"
-  gh api repos/doc-gif/kurashi-ledger/pulls/<番号> --jq '.head.sha + " " + .base.sha'   # 直前に再取得して、レビューしたhead/baseと同じか確かめる
-  gh api -X POST repos/doc-gif/kurashi-ledger/pulls/<番号>/reviews -f commit_id=<レビューしたheadのSHA> -f event=APPROVE -F body=@<本文のファイル> --jq '.commit_id + " " + .state' )
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose review -- gh api repos/doc-gif/kurashi-ledger/pulls/<番号> --jq '.head.sha + " " + .base.sha'
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose review -- gh api -X POST repos/doc-gif/kurashi-ledger/pulls/<番号>/reviews -f commit_id=<レビューしたheadのSHA> -f event=APPROVE -F body=@<本文のファイル> --jq '.user.login + " " + .commit_id + " " + .state'
 ```
 
-応答の`commit_id`がレビューしたheadで、`state`が`APPROVED`であることを確かめる。違えば、そのレビューを`decision`の記録として使わない。`changes-requested`・`needs-owner`は、`event=REQUEST_CHANGES`・`event=COMMENT`で同じように送る（`gh pr review <番号> --comment --body-file <ファイル>`でもよい）。本文のファイルは、作業ディレクトリの外の一時の場所に置き、送ったら消す。
+2つ目の出力が`<codexのAppの名前>[bot] <レビューしたheadのSHA> APPROVED`であることを確かめる。投稿者が自分のAppのbotでない（doc-gif等）、`commit_id`が違う、のどれかなら、そのレビューを`decision`の記録として使わず、所有者に知らせる（自分で取り消そうとしない）。`changes-requested`・`needs-owner`は、`event=REQUEST_CHANGES`・`event=COMMENT`で同じように送り、同じく投稿者を確かめる。本文のファイルは、作業ディレクトリの外の一時の場所に置き、送ったら消す。ClaudeがレビューするときはClaudeのApp（`--agent claude --purpose review`）で行う。
 
-- **自分が実装した、または自分のAppでpushしたPRを承認しない。** GitHubは、PRの作者による承認を受け付けない。rulesetの「最新のpushの承認」は、最後にpushした身元の承認を数えない。それでも、規則として、AIは自分の差分を承認しない。
-- rulesetを設定するまでは、Appの承認もマージの必須条件ではない。マージの条件は[AGENTS.md](../AGENTS.md)・[現在の状態](project-status.md)のまま（実装していない別の担当の`decision: accepted`等）。
+- **自分が実装した、または自分のAppでpushしたPRを承認しない。** GitHubは、PRの作者による承認を受け付けない。rulesetの「最新のpushの承認」は、最後にpushした身元の承認を数えない。それでも、規則として、AIは自分の差分を承認しない（下の「ruleset」の前提を参照）。
+- rulesetの承認の規則を設定するまでは、Appの承認もマージの必須条件ではない。マージの条件は[AGENTS.md](../AGENTS.md)・[現在の状態](project-status.md)のまま（実装していない別の担当の`decision: accepted`等）。
 
 ## 実装側の操作（push・PR・コメント・マージ）
 
-`--purpose implement`のトークンを使う。トークンを`.git/config`・remoteのURL・ファイルに書かない。
+`--purpose implement`（`.github/workflows/`を変えるcommitのpushだけ`implement-workflows`）を使う。
 
-**push:** remoteはSSH（`git@github.com:...`）なので、そのまま`git push`すると所有者のSSHの鍵（doc-gif）でpushされる。Appの身元でpushするときは、HTTPSのURLを直接指定し、そのコマンドだけの資格情報のhelperでトークンを渡す。
+**push:** remote `origin`はSSHなので、子の中では使えない（SSHはdoc-gifの鍵になるので、子では`GIT_SSH_COMMAND=false`で止める）。HTTPSのURLを直接指定する。repoの設定（`.git/config`）の`url.*.insteadOf`は子でも効くので、先に、ないことを確かめる。
 
-```sh
-GH_TOKEN="$(node scripts/github-app-token.ts --agent claude --purpose implement)" GIT_TERMINAL_PROMPT=0 \
-  git -c credential.helper= -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
-  push https://github.com/doc-gif/kurashi-ledger.git HEAD:refs/heads/<branch>
-```
-
-- 1つ目の`-c credential.helper=`で、macOSのキーチェーン等の既存のhelperを外す（トークンを保存させない）。helperは単一引用符で囲み、`$GH_TOKEN`をhelperの実行時に展開させる。
-- URLを直接指定したpushは、`origin/<branch>`の追跡の参照を更新しないので、続けて`git fetch origin --prune`を実行する。
-
-**PR・コメント・マージ:** ghは環境変数`GH_TOKEN`を優先する。
+次の1行目が何も表示しないこと（`url.*.insteadOf`がないこと）を確かめてから、pushする。
 
 ```sh
-( export GH_TOKEN="$(node scripts/github-app-token.ts --agent claude --purpose implement)"
-  gh pr create --draft --head <branch> --base main --title <タイトル> --body-file <本文のファイル>
-  gh pr comment <番号> --body-file <引継ぎのファイル> )
+git config --local --get-regexp '^url\.'
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- git push https://github.com/doc-gif/kurashi-ledger.git HEAD:refs/heads/<branch>
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh api 'repos/doc-gif/kurashi-ledger/activity?ref=refs/heads/<branch>&per_page=1' --jq '.[0].actor.login + " " + .[0].after'
 ```
 
-マージも同じトークンで、AGENTS.mdの条件と`--match-head-commit`を守る（`gh pr merge <番号> --merge --match-head-commit <SHA>`）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
+最後の出力が`<claudeのAppの名前>[bot] <pushしたcommitのSHA>`であることを確かめる（pushした身元の確認）。URLを直接指定したpushは`origin/<branch>`の追跡の参照を更新しないので、続けて`git fetch origin --prune`を実行する。
 
-**commitの作者（任意。所有者が決める）:** 既定は変えない（いまのgitの設定のまま）。Appの身元を作者にしたい場合は、そのcommitだけ`git -c user.name='<appの名前>[bot]' -c user.email='<botのユーザーID>+<appの名前>[bot]@users.noreply.github.com' commit ...`とする。botのユーザーIDは`gh api 'users/<appの名前>[bot]' --jq .id`で分かる（App IDとは別）。
+**PR・コメント・マージ:**
+
+```sh
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr create --repo doc-gif/kurashi-ledger --draft --head <branch> --base main --title <タイトル> --body-file <本文のファイル>
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr view <番号> --repo doc-gif/kurashi-ledger --json author --jq .author.login
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr comment <番号> --repo doc-gif/kurashi-ledger --body-file <引継ぎのファイル>
+```
+
+PRの作者が自分のAppのbotであることを2つ目で確かめる。マージも同じ用途のトークンで、AGENTS.mdの条件と`--match-head-commit`を守る（`… -- gh pr merge <番号> --repo doc-gif/kurashi-ledger --merge --match-head-commit <SHA>`）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
+
+**commitの作者（任意。所有者が決める）:** 既定は変えない（いまのgitの設定のまま。commitは子の外で作る）。Appの身元を作者にしたい場合は、そのcommitだけ`git -c user.name='<appの名前>[bot]' -c user.email='<botのユーザーID>+<appの名前>[bot]@users.noreply.github.com' commit ...`とする。botのユーザーIDは`gh api 'users/<appの名前>[bot]' --jq .id`で分かる（App IDとは別）。
 
 ## 限界（強い隔離ではない）
 
-- CodexとClaudeは同じmacOSユーザーで動く。2つのキーチェーンの項目、所有者のdoc-gifの資格情報（`gh auth`の管理者のトークン、SSHの鍵）は、同じユーザーのどのプロセスからも読める。AIは、自分のAppのトークンだけを使い、**ほかのAIの鍵を読まない**（実装担当がレビュー側の鍵を読まない、を含む）。doc-gifの資格情報を、Appのトークンの代わりに使わない（移行のあと）。
+- CodexとClaudeは同じmacOSユーザーで動く。**同じユーザーで動くコード（試験、依存のパッケージ、手元で実行したPRのコード等）は、2つのキーチェーンの項目を確認なしで読める**（項目は`/usr/bin/security`に読取りを許しているため）。所有者のdoc-gifの資格情報（`gh auth`の管理者のトークン、SSHの鍵）も同じ。AIは、自分のAppだけを使い、**ほかのAIの鍵を読まない**。doc-gifの資格情報を、Appの代わりに使わない（移行のあと）。
 - そのため、これは**取り違えを防ぐもの**で、悪意や誤動作からの隔離ではない。AIが規則に反してほかの鍵や管理者の資格情報を使えば、GitHubはそれを止めない（doc-gifは管理者なので、rulesetそのものを変えられる）。
-- より強くするには: AIごとに別のmacOSユーザー（キーチェーンとホームを分ける）で動かす、鍵を使う処理をクラウドの秘密の保管庫（GitHub Actionsのsecrets等）に移す、AIの環境からdoc-gifの管理者の資格情報を外す。どれも所有者の判断。
+- このスクリプトと`PURPOSES`の変更は、権限の制御の変更で、独立したレビューを要する。T23の巡回の保護対象（`policy_paths`）に、このスクリプトを加えることを後続にした（[タスク台帳](implementation-tasks.md)のT23）。
+- より強くする選択肢（所有者の判断。いまは採っていない）: AIごとに別のmacOSユーザーで動かす（キーチェーンとホームを分ける）、キーチェーンの項目のアクセス制御を「キーチェーンのパスワードを要求」にする（無人の定期実行は止まる）、AIの環境からdoc-gifの管理者の資格情報を外す。鍵をGitHub Actionsに置く場合は、repoのsecretsではなく、保護の規則（必須のレビュワー等）を付けたenvironmentのsecretsにする（PRのworkflowから読めないようにする）。
 - CODEOWNERSの所有者にはAppを指定できない。下の提案は、Code Ownersのレビューではなく、承認の件数と最新のpushの承認で分離する。
 
-## rulesetの提案（所有者の確認待ち）
+## ruleset
 
-**状態: 提案。どの設定も変えていない。** Appが実際に動くことを確かめたあとで、所有者が確認する。T23の「独立レビューを必須にする保護」（[修正前の整合確認](review-prevention.md)。PR #38で提案）の、別アカウントとCODEOWNERSの代わりになる形。
+**いまの設定（2026-10-03）:** mainのbranch ruleset（`Required CI for main`、id 24409165、対象はdefault branch、迂回の一覧は空）に、必須のstatus check（`Quality gate`）のほか、**削除の制限（deletion）と強制pushの禁止（non_fast_forward）**がある。後の2つは、所有者の承認（「今すぐ足す」）を受けて、同じ日に調整係が加えた。
 
-mainのbranch rulesetの「Require a pull request before merging」で:
+**提案（所有者の確認待ち。まだ設定していない）:** 同じrulesetの「Require a pull request before merging」で:
 
 1. Required approvals: **1**
 2. Dismiss stale pull request approvals when new commits are pushed: **有効**
 3. Require approval of the most recent reviewable push: **有効**
-4. Bypass list: **空**（Repository adminも入れない）
+4. Bypass list: **空**のまま（Repository adminも入れない）
+5. 迂回試験のために、対象に`ruleset-test/**`のbranchを加える（下の「迂回試験」）。
 
-必須のstatus check（`Quality gate`）と最新のbaseを求める設定は、T05の決定どおり別に扱う。
+こうすると、PRの作者は自分のPRを承認できず、最後にpushした身元の承認は数えない。**ただし、「承認できるのはもう一方のAIのAppか所有者だけ」になるのは、AIのpushとPRの作成が、すべてそのAIのAppの身元で行われるときだけ。** AIがdoc-gifの資格情報（SSHの`origin`、保存済みの`gh auth`）でpushしたりPRを作ったりすると、作者と最後のpushはdoc-gifになり、同じAIのAppでも承認できてしまう（自分の差分の承認）。GitHubはこれを止めない。緩和策（所有者の選択肢）:
 
-こうすると: PRの作者（実装したAIのApp）は自分のPRを承認できない。最後にpushした身元の承認は数えない。そのため、承認できるのは、もう一方のAIのApp（または所有者）だけになる。2つのAppはAdministrationを持たないので、Appのトークンではrulesetを変えられない。
+- 移行のあと、AIはpush・PRの作成を、この文書の子プロセスの形でだけ行う（規則）。
+- AIのworktreeで、doc-gifの資格情報でのpushが失敗するようにする: 例えば、worktreeごとの設定（`extensions.worktreeConfig`。repoの設定を変えるので所有者が判断）で`remote.origin.pushurl`を資格情報のないHTTPSのURLにし、helperを空にする。
+- T23の巡回で、作者や最後のpushがAppのbotでないPRと、作者や最後のpushと同じAIのAppの承認を、警告として出す（[タスク台帳](implementation-tasks.md)のT23の後続）。
 
-### 迂回試験（設定したあとに行う）
+2つのAppはAdministrationを持たないので、Appのトークンではrulesetを変えられない。
 
-合成の変更だけを使い、マージしない。各手順のコマンド・エラーの文・判定をIssue #41（またはその後継）に記録する。どれかが期待と違えば、強制ゲートとして扱わず、設定を直して1からやり直す。
+### 迂回試験（承認の規則を設定したあとに行う）
 
-1. mainから試験用のbranchを作り、文書の1行を変える合成のcommitを、ClaudeのApp（`--purpose implement`）でpushし、同じトークンでPRを作る。期待: PRの作者がClaudeのbotになる（`gh pr view <番号> --json author`）。
-2. ClaudeのAppのトークンで`gh pr merge <番号> --merge`を実行する。期待: 承認がないので拒否される。
-3. ClaudeのAppのトークンで、自分のPRを承認する（`commit_id`付きのAPI）。期待: 作者なので拒否される。
-4. doc-gifの資格情報で`gh pr merge <番号> --merge --admin`を試す。期待: 迂回の一覧が空なので拒否される。
-5. 両方のAppのトークン（`implement`と`review`）で、rulesetの変更（`gh api repos/doc-gif/kurashi-ledger/rulesets`の1件への`PATCH`）を試す。期待: 403等で拒否される。
-6. CodexのAppで、レビューしたheadを承認する。期待: `reviewDecision`が`APPROVED`になる（`gh pr view <番号> --json reviewDecision,mergeStateStatus`）。**この手順で、Appの承認が必須の承認に数えられることを確かめる**（下の「確かめていないこと」）。
-7. そのあと、ClaudeのAppで新しいcommitをpushする。期待: 承認が取り消され、再び拒否される。
-8. CodexのAppで新しいcommitをpushし、CodexのAppで承認する。期待: 最新のpushをした身元なので、承認として数えられない。ClaudeのAppの承認で数えられる。
-9. rulesetの「Rule insights」で、試験の間に迂回が記録されていないことを確かめる。PRは閉じ、試験用のbranchの削除は所有者が判断する。
+**mainへマージしない。実際のrulesetの値を変えない。** 試験は`ruleset-test/**`のbranchだけで行う: 所有者が`ruleset-test/base`をmainから作り、試験のPRはすべて`ruleset-test/base`を対象にする。マージを試すときは`--match-head-commit`を付ける。rulesetの変更の試みは、いまと**同じ値**のPATCH（`gh api repos/doc-gif/kurashi-ledger/rulesets/24409165`で読んだbodyをそのまま送る）で行い、拒否されること（または、許されても何も変わらないこと）を確かめる。各手順のコマンド・エラーの文・判定をIssue #41（またはその後継）に記録する。どれかが期待と違えば、強制ゲートとして扱わず、設定を直して1からやり直す。
+
+1. ClaudeのApp（`implement`）で、`ruleset-test/claude-1`に合成のcommit（文書の1行）をpushし、`ruleset-test/base`へのPRを作る。期待: 作者がClaudeのbot。
+2. ClaudeのAppで`gh pr merge <番号> --merge --match-head-commit <SHA>`。期待: 承認がないので拒否。
+3. ClaudeのAppで自分のPRを承認（`commit_id`付きのAPI）。期待: 作者なので拒否。
+4. doc-gifで`gh pr merge <番号> --merge --admin --match-head-commit <SHA>`。期待: 迂回の一覧が空なので拒否。
+5. 2つのApp（全用途）で、rulesetの同じ値のPATCH。期待: 403。
+6. CodexのApp（`review`）で、レビューしたheadを承認。期待: `reviewDecision`が`APPROVED`（`gh pr view <番号> --json reviewDecision,mergeStateStatus`）。**Appの承認が必須の承認に数えられることを、ここで確かめる。** マージはしない。
+7. ClaudeのAppで新しいcommitをpush。期待: 承認が取り消され、再び拒否。
+8. CodexのAppで新しいcommitをpushし、CodexのAppで承認。期待: 最新のpushをした身元なので数えられない。ClaudeのAppの承認なら数えられる。
+9. **doc-gifでpushしてPRを作り、同じAI（例えばClaude）のAppで承認する。** 期待（前提の限界の確認）: GitHubは承認を数える。結果を記録し、上の緩和策を所有者が選ぶ材料にする。
+10. 2つのAppとdoc-gifで、`ruleset-test/base`の削除（`git push <HTTPSのURL> --delete ruleset-test/base`）と強制push（`--force`）を試す。期待: 拒否。
+11. rulesetの「Rule insights」で、試験の間に迂回が記録されていないことを確かめる。PRは閉じ、試験用のbranchの削除は所有者が判断する。
 
 ## 確かめていないこと（推測しない）
 
 次は、実際のAppで確かめるまで分からない。確かめたら、結果をIssue #41に書き、この節を直す。
 
-- Appの承認が、rulesetの必須の承認に数えられるか（AppのContentsがRead and writeのとき）。上の迂回試験の6。
-- Appが作者のPRで、Copilotの自動レビューのrulesetが動くか。
-- Appのトークンで、Copilotのレビューを依頼できるか（`gh pr edit <番号> --add-reviewer @copilot`、またはAPIの`requested_reviewers`）。
-- botが書いたコメント・レビューの`author_association`の値（`NONE`等になりうる）。
-- T23の巡回（`tools/review_guard/patrol.py`、PR #38）の役割の判定への影響。巡回は`author_association`がOWNER・MEMBER・COLLABORATORの記録だけを読むので、botの記録を読まないおそれがある。
+- Appの承認が、rulesetの必須の承認に数えられるか（迂回試験の6）。
+- Appが作者のPRで、Copilotの自動レビューのrulesetが動くか。Appのトークンで、Copilotのレビューを依頼できるか。
+- botが書いたコメント・レビューの`author_association`の値（`NONE`等になりうる）と、T23の巡回（PR #38）の役割の判定への影響。巡回は`author_association`がOWNER・MEMBER・COLLABORATORの記録だけを読むので、botの記録を読まないおそれがある。
 - `review`の権限（issues:writeなし）で、PRへのコメントを書けるか。
-- Appがpushしたbranchで、CIが動くか（Appのトークンのpushはworkflowを起動するはずだが、未確認）。
-- トークンの発行の応答に、縮小したrepoの一覧（`repositories`）が入るか。入らなければ、スクリプトは安全側に失敗する（トークンを出さない）。そのときは、一覧の代わりに`GET /installation/repositories`だけで確かめる形に直すPRを出す。
+- `checks:read`・`statuses:read`で、`gh pr checks`等のCIの結果を読めるか。`actions:read`だけで足りるなら、表を縮める。
+- GitHubが、要求していない権限を暗黙に加えることがあるか。加えた場合、スクリプトは完全一致の照合で失敗する（コマンドは実行しない）。そのときは表を直すか、所有者に判断を求める。
+- 発行の応答に、縮小したrepoの一覧（`repositories`）が入るか。入らなければ、スクリプトは安全側に失敗する。そのときは`GET /installation/repositories`だけで確かめる形に直すPRを出す。
+- Appがpushしたbranchで、CIが動くか。
+- `repos/…/activity`（pushした身元の確認）を、このトークンで読めるか。読めなければ、PRのtimelineで確かめる手順に直す。
+- 権限の外の書込みが、bodyの検証より前に403で拒まれるか（下の「実際の鍵での確認」の否定の確認の前提）。
 
 ## 移行の計画
 
-1. **実際の鍵で確かめる。** 所有者・Codex・Claudeが、下の「実際の鍵での確認」を、自分のAppで実行する。この文書を作った担当は、実際の鍵を読まず、実際のAppを呼んでいない。
-2. **Claude側の作業を、ClaudeのAppのトークンに切り替える**（push・PR・コメント・マージ）。Codex側のレビューを、CodexのAppのトークンに切り替える。Claude側のレビューは、ClaudeのAppの`review`のトークンで行う。
-3. **rulesetを所有者が確認して設定し、迂回試験を行う**（上の「rulesetの提案」）。
-4. **T23の巡回の設定を、2つのbotのloginに合わせる**（[タスク台帳](implementation-tasks.md)のT23の後続）。`.review/patrol.json`で2つのbotのloginをAIに対応付け（コードに書かない）、役割は本文の印の`role:`から決めたまま、印のAIと投稿したbotのAIが一致するかを確かめ、違えば警告する。botの`author_association`の扱いも決める。
+1. **実際の鍵で確かめる**（下の「実際の鍵での確認」。肯定と否定の両方）。この文書を作った担当は、実際の鍵を読まず、実際のAppを呼んでいない。
+2. **Appが作者のPRに進む前に、次を済ませる:** (a) Appが作者の合成のDraft PR（マージしない）で、Copilotの自動レビューと依頼が動くかを確かめる。(b) T23の巡回の後続（[タスク台帳](implementation-tasks.md)のT23）を済ませる。
+3. **作業をAppに切り替える。** Claude側のpush・PR・コメント・マージをClaudeのApp、Codex側の作業をCodexのAppで行い、レビューは各AIのAppの`review`で行う。
+4. **rulesetの承認の規則を所有者が確認して設定し、迂回試験を行う**（上の「ruleset」）。
+5. PR #40（AI向けの規約の整理）がマージされたら、AGENTS.mdからこの文書を参照する（後続）。
 
 ## 実際の鍵での確認
 
-所有者またはそのAI自身が行う（この文書の担当は行っていない）。IDはプレースホルダを置き換える。トークンは表示しない。
+所有者またはそのAI自身が、信頼した写しで行う（この文書の担当は行っていない）。IDの環境変数を設定してから実行する。トークンは表示されない。
+
+肯定（インストールのトークンでしか成功しない。repoはpublicなので、`repos/doc-gif/kurashi-ledger`の取得では確かめにならない）:
 
 ```sh
-GH_TOKEN="$(KL_GITHUB_APP_ID_CODEX=<CodexのApp ID> KL_GITHUB_APP_INSTALLATION_ID_CODEX=<CodexのInstallation ID> node scripts/github-app-token.ts --agent codex --purpose review)" gh api repos/doc-gif/kurashi-ledger --jq .full_name
+node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose review -- gh api /installation/repositories --jq '.total_count, [.repositories[].full_name]'
 ```
 
-`doc-gif/kurashi-ledger`と表示されれば、発行と縮小が動いている。Claudeは`--agent claude`と`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE`で同じことを行い、`--purpose implement`でも確かめる。
+期待: `1`と`["doc-gif/kurashi-ledger"]`。`--agent claude`、`--purpose implement`・`implement-workflows`でも同じ。
+
+否定（権限の外の書込みが拒まれること。bodyをわざと無効にしてあるので、権限があっても何も作られず422になる。2xxが出たら、すぐに所有者に知らせる）:
+
+| 確かめること | コマンドの`--`のあと | `review`で期待 | `implement`で期待 |
+| --- | --- | --- | --- |
+| contentsの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000` | 403 | 422 |
+| issuesの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/issues -f title=` | 403 | 422 |
+| administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
+
+ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。

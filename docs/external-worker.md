@@ -28,7 +28,7 @@
 
 ## GitHubの身元
 
-移行のあとは、Claude側のpush・PR・コメント・マージを、ClaudeのGitHub Appのトークン（`--agent claude --purpose implement`）で行い、レビューは`--purpose review`のトークンで行う。手順・限界・移行の計画は[AIのGitHub App](github-apps.md)。ほかのAIの鍵を読まない。移行が済むまでは、いまの方法のまま。
+移行のあとは、Claude側のpush・PR・コメント・マージを、ClaudeのGitHub App（`--agent claude --purpose implement`）で行い、レビューは`--purpose review`で行う。スクリプトがコマンドを実行する形で使い、PRのcheckoutからは実行しない（レビュー済みのmainのSHAから取り出した写しで実行する）。手順・限界・移行の計画は[AIのGitHub App](github-apps.md)。ほかのAIの鍵を読まない。移行が済むまでは、いまの方法のまま。
 
 ## 現在の状態
 

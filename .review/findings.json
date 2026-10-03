@@ -90,7 +90,8 @@
       "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
-        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+        "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847",
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
       ]
     },
     {
@@ -562,7 +563,8 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
         "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
         "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
-        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+        "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
       ]
     },
     {
@@ -644,6 +646,33 @@
         "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
         "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
         "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+      ]
+    },
+    {
+      "id": "PR42-R001",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+      ]
+    },
+    {
+      "id": "PR42-R004",
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+      ]
+    },
+    {
+      "id": "PR42-R006",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+      "sources": [
+        "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
       ]
     }
   ]
