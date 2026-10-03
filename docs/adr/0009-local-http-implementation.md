@@ -36,7 +36,7 @@ ADR-0003は境界の方式を決め、起動の識別子の「ヘッダの名前
 T07のデータルートの権限も、この基準を使う。基準を変えるときは、このADRと、T26・T07の試験を同じPRで直す。
 
 - macOS・Linux: `lstat`で調べ、所有者が実行中のユーザーで、グループとほかのユーザーの権限のbit（`0o077`）がないこと。作るものは、ファイル`0600`・ディレクトリ`0700`に設定してから確かめる。
-- Windows: 所有者が実行中のユーザーのSIDで、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）がすべて実行中のユーザーのSIDで、Allow・Deny以外の種類のエントリがないこと。SYSTEM・Administrators・CREATOR OWNER等の許可も拒否する（管理者は特権で読めるので、外しても本人の利用は変わらない）。作るものは、継承を切って実行中のユーザーだけにFullControlを許可するDACLに置き換えてから確かめる。表示名はロケールで変わるので使わず、SDDL（所有者とDACL）とSIDで判定する。読み書きは、Windowsに同梱のWindows PowerShell 5.1（`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`）で.NETのACLのAPIを呼び、パスは環境変数で渡す（コマンドの文字列に埋め込まない。実行ポリシーは変えない）。
+- Windows: 所有者が実行中のユーザーのSIDで、DACLがあり（NULLのDACLは拒否）、Allowのエントリ（継承専用を含む）がすべて実行中のユーザーのSIDで、Allow・Deny以外の種類のエントリがないこと。SYSTEM・Administrators・CREATOR OWNER等の許可も拒否する（管理者は特権で読めるので、外しても本人の利用は変わらない）。作るものは、所有者を実行中のユーザーにし（管理者の権限で動くと、作ったものの所有者がAdministratorsになることがあるため）、継承を切って実行中のユーザーだけにFullControlを許可するDACLに置き換えてから確かめる。表示名はロケールで変わるので使わず、SDDL（所有者とDACL）とSIDで判定する。読み書きは、Windowsに同梱のWindows PowerShell 5.1（`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`）で.NETのACLのAPIを呼び、パスは環境変数で渡す（コマンドの文字列に埋め込まない。実行ポリシーは変えない）。
 - 見ないもの: POSIXの拡張ACL（macOSのACL、LinuxのPOSIX ACL）。モードのbitが本人だけでも、拡張ACLでほかのユーザーに許可されていれば見抜けない。T26のディレクトリは利用者または起動処理が作ったものなので、この限界を受け入れる。T07で必要なら見直す。
 
 ### 5. 待受・ポート・応答

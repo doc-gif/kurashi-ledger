@@ -15,7 +15,8 @@ import { join } from 'node:path';
 export type OwnerOnlyKind = 'file' | 'directory';
 export type OwnerOnlyCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
-// PowerShellのスクリプト。$env:KURASHI_LEDGER_ACL_MODEがrestrict-*なら、継承を切って実行中のユーザーだけを
+// PowerShellのスクリプト。$env:KURASHI_LEDGER_ACL_MODEがrestrict-*なら、所有者を実行中のユーザーにし（管理者として
+// 動くと、作ったものの所有者がAdministratorsになることがあるため）、継承を切って実行中のユーザーだけを
 // FullControlで許可するDACLに置き換えてから、読み直す。1行目に実行中のユーザーのSID、2行目にSDDL（所有者とDACL）を出す。
 const POWERSHELL_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -26,11 +27,13 @@ const POWERSHELL_SCRIPT = [
   '$allow = [System.Security.AccessControl.AccessControlType]::Allow',
   "if ($mode -eq 'restrict-file') {",
   '  $sec = New-Object System.Security.AccessControl.FileSecurity',
+  '  $sec.SetOwner($user)',
   '  $sec.SetAccessRuleProtection($true, $false)',
   '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($user, $full, $allow)))',
   '  [System.IO.File]::SetAccessControl($p, $sec)',
   "} elseif ($mode -eq 'restrict-directory') {",
   '  $sec = New-Object System.Security.AccessControl.DirectorySecurity',
+  '  $sec.SetOwner($user)',
   '  $sec.SetAccessRuleProtection($true, $false)',
   "  $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'",
   '  $none = [System.Security.AccessControl.PropagationFlags]::None',
@@ -134,6 +137,6 @@ export function restrictToOwner(path: string, kind: OwnerOnlyKind): void {
 // 直し方の案内（利用者がディレクトリを用意するとき）。
 export function ownerOnlyDirectoryHint(path: string): string {
   return process.platform === 'win32'
-    ? `PowerShellで icacls "${path}" /inheritance:r /grant:r "\${env:USERNAME}:(OI)(CI)F" を実行し、本人だけに許可する。`
+    ? `PowerShellで icacls "${path}" /setowner "\${env:USERNAME}" と icacls "${path}" /inheritance:r /grant:r "\${env:USERNAME}:(OI)(CI)F" を実行し、所有者を本人にして本人だけに許可する。`
     : `chmod 700 "${path}" で本人だけの権限にする（新しく作るなら mkdir -m 700）。`;
 }

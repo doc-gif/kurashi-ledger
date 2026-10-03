@@ -426,8 +426,9 @@ test('ポートが使用中なら別のポートへ移らずに止まり、一�
   const blocker = createNetServer();
   await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
   const port = (blocker.address() as { port: number }).port;
-  const tmp = ownerOnlyTempDirectory('inuse');
+  let tmp: ReturnType<typeof ownerOnlyTempDirectory> | undefined;
   try {
+    tmp = ownerOnlyTempDirectory('inuse');
     await assert.rejects(startLocalServer({ port, tokenDirectory: tmp.path }), (error: unknown) => {
       assert.ok(error instanceof PortInUseError);
       assert.equal(error.port, port);
@@ -436,7 +437,7 @@ test('ポートが使用中なら別のポートへ移らずに止まり、一�
     assert.deepEqual(readdirSync(tmp.path), []);
   } finally {
     blocker.close();
-    tmp.cleanup();
+    tmp?.cleanup();
   }
 });
 

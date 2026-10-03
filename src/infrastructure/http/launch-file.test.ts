@@ -1,6 +1,6 @@
 // 起動用の一時ファイルと、渡されたディレクトリの確認（ADR-0003の4、ADR-0009）。
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { ownerOnlyTempDirectory } from '../../../tests/support/http.ts';
@@ -70,10 +70,11 @@ test('起動用の一時ファイルは本人だけの権限で作り、トー�
     assert.equal(existsSync(file.path), false);
     assert.equal(removeLaunchFile(file), 'missing');
 
-    // 同じ名前の別のファイルに置き換わっていたら消さない。
+    // 同じ名前の別のファイルに置き換わっていたら消さない（別のファイルを先に作ってから名前を変えて重ねるので、
+    // inodeの番号は再利用されない）。
     const again = createLaunchFile(dir, 'launch-replaced.html', 'first');
-    unlinkSync(again.path);
-    writeFileSync(again.path, 'someone else');
+    writeFileSync(join(dir, 'other.html'), 'someone else');
+    renameSync(join(dir, 'other.html'), again.path);
     assert.equal(removeLaunchFile(again), 'replaced');
     assert.equal(readFileSync(again.path, 'utf8'), 'someone else');
   } finally {

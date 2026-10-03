@@ -123,8 +123,9 @@ test('ポートが使用中なら、npm startは別のポートへ移らずに�
   const blocker = createNetServer();
   await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
   const port = (blocker.address() as { port: number }).port;
-  const tmp = ownerOnlyTempDirectory('start-inuse');
+  let tmp: ReturnType<typeof ownerOnlyTempDirectory> | undefined;
   try {
+    tmp = ownerOnlyTempDirectory('start-inuse');
     const r = run(['--token-dir', tmp.path, '--port', String(port), '--no-open']);
     const { code } = await r.exited;
     assert.equal(code, 1, r.output());
@@ -133,7 +134,7 @@ test('ポートが使用中なら、npm startは別のポートへ移らずに�
     assert.deepEqual(readdirSync(tmp.path), []);
   } finally {
     blocker.close();
-    tmp.cleanup();
+    tmp?.cleanup();
   }
 });
 
