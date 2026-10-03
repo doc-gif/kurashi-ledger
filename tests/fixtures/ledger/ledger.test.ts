@@ -888,6 +888,11 @@ function checkSeqLabel(v: unknown): boolean {
   return typeof v === "string" && /^N(\+\d+)?$/.test(v);
 }
 
+// checkのviewが現在の見方（省略、またはkindがcurrent）か。afterOpの時点の最新の改訂から導いた値と比べてよいのは、この見方だけ。
+function isCurrentView(view: unknown): boolean {
+  return view === undefined || (isObj(view) && view["kind"] === "current");
+}
+
 function checkView(ctx: CheckCtx, view: unknown): void {
   if (view === undefined) return;
   if (!isObj(view)) {
@@ -1251,11 +1256,12 @@ function checkOne(ctx: CheckCtx, check: Obj): void {
     case "seriesStatus": {
       requireRecord(ctx, query["record"], ["payslip", "annual-document", "official-notice"]);
       if (!SERIES_STATUSES.includes(String(expect["status"]))) ctx.problems.add(ctx.where, "系列の状態が表にない");
-      // 最新の見方の期待値は、runの不足の判断・二重登録の取消と同じ系列の補助で導いた状態と一致させる（入口ごとに判定を変えない）。
-      // 時点を指定した見方（not-in-view等）は、この補助の見方と違うので比べない。
+      // 現在の見方（checkのviewを省略、またはkindがcurrent）の期待値は、runの不足の判断・二重登録の取消と同じ系列の補助で
+      // 導いた状態と一致させる（入口ごとに判定を変えない）。補助はafterOpの時点の最新の改訂だけを見るので、時点を指定した見方
+      // （record-seq・record-time・known-on）の期待値は比べない（その見方の改訂を選ぶ実装はT06。最新の状態を混ぜて判定しない）。
       const id = String(query["record"]);
       const rec = latest(ctx.state, id);
-      if (rec !== undefined && Object.keys(query).every((k) => k === "kind" || k === "record") && expect["status"] !== "not-in-view") {
+      if (rec !== undefined && isCurrentView(check["view"]) && Object.keys(query).every((k) => k === "kind" || k === "record") && expect["status"] !== "not-in-view") {
         const series = seriesAmong(latestLookup(ctx.state), [...ctx.state.records.keys()]);
         const actual = rec["status"] !== "active" ? "voided" : series.illFormed.has(id) ? "unconfirmed-series" : series.superseded.has(id) ? "superseded" : "current";
         if (actual !== expect["status"]) ctx.problems.add(ctx.where, `${id}の系列の状態の期待値${String(expect["status"])}が、系列の補助で導いた${actual}と合わない`);
@@ -2252,6 +2258,41 @@ test("検査の自己確認: 系列の状態の期待値は、runの検査・二
     (check(scenario(firstCase(copy, "TC-04"), "TC-04-b"), "c02")["expect"] as Obj)["status"] = "superseded";
   });
   assert.ok(p.some((x) => x.includes("TC-04-b c02") && x.includes("系列の補助で導いたunconfirmed-series")), p.join("\n"));
+});
+
+test("検査の自己確認: 系列の状態の期待値を最新の状態と比べるのは現在の見方だけで、時点を指定した見方は比べない（PR23-R006）", () => {
+  const only = (p: string[]): string[] => p.filter((x) => x.includes("TC-04-a "));
+  // TC-04-aのo03のあと（pay_S1 ← S2 ← S3）。現在はpay_S1が差し替え済み。o01の直後の時点ではpay_S2がまだなく、pay_S1は現在の記録。
+  const withCheck = (view: Obj | undefined, status: string, knownOn = false): string[] =>
+    only(
+      mutated((copy) => {
+        const sc = scenario(firstCase(copy, "TC-04"), "TC-04-a");
+        if (knownOn) {
+          // 把握時点の再現の見本: pay_S1は10月20日、pay_S2は10月24日に把握した（pay_S3は把握日不明のまま）。
+          (op(sc, "o01")["record"] as Obj)["knownOn"] = { state: "known", value: "2026-10-20" };
+          (op(sc, "o02")["record"] as Obj)["knownOn"] = { state: "known", value: "2026-10-24" };
+        }
+        const base = check(sc, "c02");
+        (sc["checks"] as Obj[]).push({
+          ...base,
+          checkId: "v01",
+          afterOp: "o03",
+          ...(view === undefined ? {} : { view }),
+          query: { kind: "seriesStatus", record: "pay_S1" },
+          expect: { status },
+        });
+      }),
+    );
+  // 時点を指定した見方の正しい過去の期待値（current）は、最新の状態（superseded）と比べて拒否しない。
+  assert.deepEqual(withCheck({ kind: "record-seq", seq: "N+1" }, "current"), []);
+  assert.deepEqual(withCheck({ kind: "record-time", time: "2026-10-24T01:00:30.000Z" }, "current"), []);
+  assert.deepEqual(withCheck({ kind: "known-on", date: "2026-10-21" }, "current", true), []);
+  // 対: 見方を省略、または明示したcurrentでは、誤った期待値（current）を引き続き拒否する。
+  for (const view of [undefined, { kind: "current" }]) {
+    const p = withCheck(view, "current");
+    assert.ok(p.some((x) => x.includes("TC-04-a v01") && x.includes("系列の補助で導いたsuperseded")), `${stableStringify(view)}\n${p.join("\n")}`);
+    assert.deepEqual(withCheck(view, "superseded"), []);
+  }
 });
 
 test("検査の自己確認: 目的が決まらないrunはどの鎖にも入らず、目的が決まった最初のrunは1要素の鎖", () => {
