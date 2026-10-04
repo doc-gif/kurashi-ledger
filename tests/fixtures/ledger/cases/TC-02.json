@@ -588,8 +588,8 @@
           "expect": {"values": [{"state": "complete", "knownSum": 105000, "coverage": {"state": "not-applicable"}, "missing": []}]},
           "reason": "版2は検査を通して保存した改訂（checked）で、静的な検査と版1からの遷移（correct-input-error、行IDwholeを消してl1を足す。l1は予約されていない）を満たす。履歴の検査は版2から当てるので、版1の不正（行IDのwhole）は履歴で要確認として残るが、集計を止めない。",
           "cites": [
-            {"doc": "common-types.md", "section": "9", "quote": "Cより前の改訂は、Rの判定に使わない"},
-            {"doc": "common-types.md", "section": "2", "quote": "利用者が行IDを直す改訂（correct-input-error）を検査を通して保存すれば"}
+            {"doc": "common-types.md", "section": "9", "quote": "それを理由に集計・照合・判断を止めない"},
+            {"doc": "common-types.md", "section": "2", "quote": "利用者が行IDを直す修復の改訂（correct-input-error）を検査を通して保存すれば"}
           ]
         },
         {
@@ -612,8 +612,8 @@
               }
             ]
           },
-          "reason": "回復した改訂より前の時点（連番N+1、復元だけの時点）では、選ばれる版1はuncheckedで不正なので、従来どおり保存の検査をすり抜けたデータ。過去の時点の状態を、あとの回復で書き換えない。",
-          "cites": [{"doc": "common-types.md", "section": "9", "quote": "過去の時点の状態を、あとの回復で書き換えない"}]
+          "reason": "回復した改訂より前の時点（連番N+1、復元だけの時点）では、選ばれる版1はuncheckedで不正なので、従来どおり保存の検査をすり抜けたデータ。あとの修復で、過去の時点の状態を書き換えない。",
+          "cites": [{"doc": "common-types.md", "section": "9", "quote": "あとの修復で、過去の時点の状態を書き換えない"}]
         }
       ]
     }

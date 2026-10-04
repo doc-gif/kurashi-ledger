@@ -25,7 +25,7 @@
 | 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
 | Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-04の所有者決定で任意の補助レビューとした。指摘は評価・対応するが、応答・利用枠不足・未対応指摘の有無は独立したマージ条件にしない。[正本](github-agent-operations.md#merge-conditions) |
 | AIのGitHub App | 2026-10-03の所有者決定（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに1つずつ、同じ権限（Administrationなし）のApp（AIの身元）を所有者が作成し、このrepoだけにインストールした。トークンは`scripts/github-app-token.ts`が発行してコマンドを実行する（表示しない）。mainのrulesetに削除の制限と強制pushの禁止を加えた。実際の鍵での確認・移行・承認の規則は所有者の確認待ち。手順は[AIのGitHub App](github-apps.md) |
-| 契約 | 契約版2.0（[#32](https://github.com/doc-gif/kurashi-ledger/issues/32)、PR #36で1.0から見直し中）。変更は[契約](contracts/README.md)の「変更の履歴」。2026-10-03の所有者決定で、役員賞与と昇給の遡及差額はいまは製品の対象外とし、拡張点（給与明細の帰属の区分）だけを用意する |
+| 契約 | 契約版2.0（[#32](https://github.com/doc-gif/kurashi-ledger/issues/32)で1.0から見直した）。変更は[契約](contracts/README.md)の「変更の履歴」。2026-10-03の所有者決定で、役員賞与と昇給の遡及差額はいまは製品の対象外とし、拡張点（給与明細の帰属の区分）だけを用意する |
 | 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
 次の着手は計画の依存関係に従う。完了済みのT05はT26/T08が使う試験基盤を提供している。日々の作業一覧をここへ複製しない。作業中Draft、レビュー依頼Open、最新SHAの引継ぎと独立レビューは[PRループ](pr-review-loop.md)に従う。[T00開始プロンプト](first-worker-prompt.md)は歴史的記録で、新規担当への許可ではない。[worktree運用](local-worktrees.md)も確認する。
