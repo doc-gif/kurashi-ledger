@@ -13,6 +13,8 @@
   "scripts/lib/review-dispatch/github.ts",
   "scripts/lib/review-dispatch/store.test.ts",
   "scripts/lib/review-dispatch/store.ts",
+  "scripts/lib/review-dispatch/webhook.test.ts",
+  "scripts/lib/review-dispatch/webhook.ts",
   "scripts/review-dispatch.test.ts",
   "scripts/review-dispatch.ts"
  ],
@@ -25,7 +27,7 @@
   {
    "description": "R015でquota_pause.atとblocked.atの意味をローカル時刻からserver時刻へ変える。表の形は変わらないが、古いDBの行はローカル時刻のまま残る",
    "state": "resolved",
-   "resolution": "schemaを5に上げ、schema 4のDBは書かずに止める（暗黙のmigrationはしない）。実hostのshadowはこのPRのマージ後に始める（所有者決定）ので、所有者は新しい専用rootをinitする"
+   "resolution": "schemaを5に上げ、schema 4のDBは書かずに止める（暗黙のmigrationはしない）。実hostのshadowはこのPRのマージ後に始める（所有者決定）ので、所有者は新しい専用rootをinitする。schema 5はこのPRで足したもので、配った・使っているDBはないので、PRの途中の変更（holds、inboxのpolicy列）はschema 5の中で行う"
   }
  ],
  "owner_decisions": [
@@ -262,8 +264,16 @@
      "result": "Linkのnextをたどる。件数がないので従来どおり（ページの失敗は取得失敗）"
     },
     {
-     "location": "reconcile: 保留中のpolicy revisionの変更",
-     "result": "保留したrevisionと違えば、保留した配送は結び付けずに処理（変更の記録は残す）"
+     "location": "webhook.ts serve・ingest → inbox.policy",
+     "result": "受けたときのpolicyのrevisionを記録（配送ごとに読み直す。読めなければ503で保存しない）。PR58-R003"
+    },
+    {
+     "location": "reconcile: bindReady・bindReview",
+     "result": "配送のrevisionが今のrevisionと同じときだけ。違う・記録なしは結び付けない（保留が続いても同じ）"
+    },
+    {
+     "location": "reconcile: 配送のない回復（recoverable）",
+     "result": "前の観測のrevisionが今と同じときだけ（従来どおり）"
     }
    ]
   },

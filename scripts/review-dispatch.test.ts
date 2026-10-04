@@ -194,7 +194,7 @@ test("W4 cycle: active needs the start-small shape and an install record before 
     x.d.store.inbox(3, "ready", "pull_request", JSON.stringify({
       repository: { id: 1 }, installation: { id: 2 }, sender: { id: 20 }, action: "ready_for_review",
       pull_request: { number: 1, updated_at: "2026-01-01T00:00:03.000Z", head: { sha: HEAD }, base: { sha: BASE } },
-    }), 1);
+    }), 1, "p1");
     const base = ["cycle", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh"];
     // Without --install the (empty) record path fails the owner-file check.
     await assert.rejects(main(base, env, () => {}, () => 1000, deps), /host check failed/);
@@ -235,7 +235,7 @@ test("PR48-R016 shadow applies the retention after the reconcile: an old process
     p.mode = "shadow";
   });
   try {
-    x.d.store.inbox(3, "old", "pull_request", "{}", 1);
+    x.d.store.inbox(3, "old", "pull_request", "{}", 1, "p1");
     x.d.store.processed(3, "old");
     const github = { ready: false, now: 5, calls: 0 };
     const args = ["shadow", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh"];
@@ -305,7 +305,7 @@ async function activeCli() {
   x.d.store.inbox(3, "ready", "pull_request", JSON.stringify({
     repository: { id: 1 }, installation: { id: 2 }, sender: { id: 20 }, action: "ready_for_review",
     pull_request: { number: 1, updated_at: "2026-01-01T00:00:03.000Z", head: { sha: HEAD }, base: { sha: BASE } },
-  }), 1);
+  }), 1, "p1");
   const github = { ready: true, now: 5, calls: 0 };
   const args = ["cycle", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh", "--install", x.installFile];
   const env = { ...x.env, GH_TOKEN: "synthetic-dispatch-read" };
@@ -389,7 +389,7 @@ test("Codex PR56-R003: a deferred post is recovered from the cycle entry point o
     store.inbox(3, "edit-1", "issue_comment", JSON.stringify({
       repository: { id: 1 }, installation: { id: 2 }, sender: { id: 30 }, action: "edited",
       issue: { number: 1, pull_request: {} }, comment: { id: 5, user: { id: 30 }, body: "x", updated_at: "2026-01-01T00:00:04.000Z" },
-    }), 502, "1:1");
+    }), 502, "p1", "1:1");
     assert.ok(store.deferred("1:1"));
     if (launchProof === "missing") store.saveCapability("claude", null, 503);
     const jobsBefore = store.status("1:1").jobs.length;

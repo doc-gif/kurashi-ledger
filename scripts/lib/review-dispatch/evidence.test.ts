@@ -262,7 +262,7 @@ test("R004 signed Inbox -> gh binding -> acceptance and tombstone is atomic, rep
           "ready-delivery",
           "pull_request",
           JSON.stringify(delivery()),
-          3,
+          3, "p1",
         ),
         false,
       );
@@ -335,7 +335,7 @@ test("R004 failure during persistence rolls back binding and processed flag toge
       "transaction",
       "pull_request",
       JSON.stringify(delivery()),
-      1,
+      1, "p1",
     );
     const original = d.store.saveObservation.bind(d.store);
     d.store.saveObservation = () => {
@@ -360,7 +360,7 @@ test("R004 activity actor proves pusher independence; owner anchor requires API-
     f.state.pusher = 30;
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const s = (await reconcile(f.reader(), p, d.store))[0]!.snapshot;
     assert.deepEqual(s.pushers, [30]);
     assert.equal(reviewerEligible(p, s, 30), false);
@@ -592,7 +592,7 @@ async function boundApproval(
     ["pull_request_review", "review-delivery", delivery(false)],
     ["pull_request", "ready-delivery", delivery()],
   ] as const)
-    d.store.inbox(3, name, event, JSON.stringify(payload), 1);
+    d.store.inbox(3, name, event, JSON.stringify(payload), 1, "p1");
   return (await reconcile(f.reader(), p, d.store))[0]!;
 }
 test("R007 an assigned reviewer's later line finding blocks acceptance; third-party lines are reference only", async () => {
@@ -668,7 +668,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     f.state.ready = true;
     f.state.now = 5;
     f.state.headFiles = change;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const untrusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(untrusted.observation.workflow, "untrusted");
     assert.equal(untrusted.snapshot.complete, false);
@@ -702,7 +702,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     g.state.now = 5;
     g.state.headFiles = change;
     q.trustedCi = [{ main: ciTrustDigest(listing()), head: ciTrustDigest(listing(change)) }];
-    e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const r = (await reconcile(g.reader(), q, e.store))[0]!;
     assert.equal(r.observation.workflow, "trusted");
     assert.equal(assess(q, r.snapshot, null).status, "eligible");
@@ -767,7 +767,7 @@ test("R008 required jobs count only from the reviewed ci.yml path; a truncated t
     try {
       f.state.ready = true;
       f.state.now = 5;
-      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const transport: Transport = async (path, h) => {
         const r = await f.send(path, h);
         if (variant === "other-path" && path.includes("/actions/runs?")) {
@@ -865,7 +865,7 @@ test("W4 row 8: a signed edit/delete delivery raises a change the next reconcile
           ...(event === "issue_comment" ? { issue: { number: 1, pull_request: {} } } : { pull_request: { number: 1 } }),
           ...(event === "pull_request_review" ? { review: thing } : { comment: thing }),
         }),
-        Date.parse(t(7)),
+        Date.parse(t(7)), "p1",
         "1:1",
       );
     signal("s1", "issue_comment", "deleted", { id: 55, user: { id: 30 }, body: "PR1-R009 hidden" });
@@ -952,7 +952,7 @@ test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or
       };
       f.state.ready = true;
       f.state.now = 6;
-      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const s = (await reconcile(new GhReader("synthetic/repository", transport), p, d.store))[0]!.snapshot;
       assert.deepEqual(s.openFindings, [{ actor: 10, ids: ["PR1-R005"] }], where);
       const target = assess(p, s, null);
@@ -1005,7 +1005,7 @@ test("PR48-R013 a transiently incomplete reconcile saves nothing and keeps the d
     const prior = d.store.observation<{ observedAt: number }>("1:1")!;
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const [held] = await reconcile(changingReader(f), p, d.store);
     assert.equal(held!.snapshot.complete, false);
     assert.equal(d.store.pendingInbox().length, 1);
@@ -1046,7 +1046,7 @@ test("PR48-R013 an untrusted workflow is not transient: the delivery is processe
     f.state.ready = true;
     f.state.now = 5;
     f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const [r] = await reconcile(f.reader(), p, d.store);
     assert.equal(r!.observation.workflow, "untrusted");
     assert.equal(d.store.pendingInbox().length, 0);
@@ -1178,7 +1178,7 @@ test("PR48-R013 RT-1: an untrusted workflow seen on a pair that changed during t
     f.state.now = 5;
     // H1 changes the CI files (untrusted); by the last read the PR already points at H2.
     f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     let reads = 0;
     const moving = new GhReader("synthetic/repository", async (path, h) => {
       const r = await f.send(path, h);
@@ -1208,7 +1208,7 @@ test("PR48-R013 RT-5: a held PR keeps its hold start; the 250-commit list limit 
     d.store.tick(1000);
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1000);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1000, "p1");
     const first = (await reconcile(changingReader(f), p, d.store))[0]!;
     assert.equal(first.heldSince, 1000);
     d.store.tick(5000);
@@ -1238,7 +1238,7 @@ test("PR48-R015 RT-2: a hold is settled by the first saved reconcile that began 
   try {
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const [r] = await reconcile(f.reader(), p, d.store);
     d.store.observe(assess(p, r!.snapshot, null));
     const j = d.store.claim(p, r!.snapshot, 30, "review", 2)!;
@@ -1308,7 +1308,7 @@ test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound,
       await reconcile(f.reader(), p, d.store);
       f.state.ready = true;
       f.state.now = 5;
-      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const odd = new GhReader(p.repo, async (path, h) => {
         const r = await f.send(path, h);
         if (!path.endsWith("/pulls/1")) return r;
@@ -1335,7 +1335,7 @@ test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound,
     f = fixture(),
     p = policy();
   try {
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     f.state.ready = true;
     f.state.now = 5;
     const uncounted = new GhReader(p.repo, async (path, h) => {
@@ -1352,30 +1352,85 @@ test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound,
     d.cleanup();
   }
 });
-test("Red team round 3 RT-1: a Ready held under an earlier policy revision is processed without binding after the revision changes", async () => {
+// PR58-R003: a reader whose timeline is given by the test (Draft/Ready events at chosen times).
+function timelineReader(f: ReturnType<typeof fixture>, events: () => Record<string, unknown>[], changing = false) {
+  let reads = 0;
+  return new GhReader("synthetic/repository", async (path, h) => {
+    if (path.includes("/issues/1/timeline"))
+      return { status: 200, headers: { date: t(f.state.now) }, body: JSON.stringify(events()) };
+    const r = await f.send(path, h);
+    if (!changing || !path.endsWith("/pulls/1")) return r;
+    return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), updated_at: t(100 + ++reads) }) };
+  });
+}
+const readyAt = (at: number) => ({ ...delivery(), pull_request: { ...delivery().pull_request, updated_at: t(at) } });
+test("PR58-R003 a Ready received under an earlier policy revision never binds to a new one, held or not; a fresh Ready binds once", async () => {
+  for (const variant of ["complete at p2", "p2 first incomplete"] as const) {
+    const d = database(),
+      f = fixture();
+    const events: Record<string, unknown>[] = [];
+    try {
+      // p1: the identity anchor is wrong, so the history is incomplete and the reconcile at t(5) holds.
+      const p1 = policy();
+      p1.targets[0]!.identity = { activity: "missing-anchor", head: HEAD, at: Date.parse(t(1)), pushers: [20] };
+      f.state.now = 5;
+      const [held] = await reconcile(timelineReader(f, () => events), p1, d.store);
+      assert.notEqual(held!.heldSince, null, variant);
+      // Still p1: Draft at t(6), Ready at t(7); the delivery arrives at t(8) (after the last hold).
+      events.push(
+        { id: 8, event: "convert_to_draft", actor: { id: 20 }, created_at: t(6) },
+        { id: 9, event: "ready_for_review", actor: { id: 20 }, created_at: t(7) },
+      );
+      d.store.inbox(3, "old-ready", "pull_request", JSON.stringify(readyAt(7)), 8000, "p1");
+      // t(9): the owner fixes the identity and raises the revision; readyAfter stays as it was.
+      const p2 = policy();
+      p2.revision = "p2";
+      f.state.now = 10;
+      if (variant === "p2 first incomplete") {
+        const [again] = await reconcile(timelineReader(f, () => events, true), p2, d.store);
+        assert.equal(again!.snapshot.complete, false, variant);
+        assert.equal(d.store.pendingInbox().length, 1, variant);
+        f.state.now = 11;
+      }
+      const [r] = await reconcile(timelineReader(f, () => events), p2, d.store);
+      assert.equal(r!.snapshot.historyComplete, true, variant);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, variant);
+      assert.equal(assess(p2, r!.snapshot, null).reason, "new-ready-required", variant);
+      assert.equal(d.store.pendingInbox().length, 0, variant);
+      // A fresh Draft -> Ready after the change, received under p2, binds exactly once.
+      events.push(
+        { id: 10, event: "convert_to_draft", actor: { id: 20 }, created_at: t(12) },
+        { id: 11, event: "ready_for_review", actor: { id: 20 }, created_at: t(13) },
+      );
+      d.store.inbox(3, "new-ready", "pull_request", JSON.stringify(readyAt(13)), 14000, "p2");
+      f.state.now = 15;
+      const [fresh] = await reconcile(timelineReader(f, () => events), p2, d.store);
+      assert.deepEqual(
+        d.store.evidence<{ id: string; policy: string }>("1:1", "ready").map((x) => [x.id, x.policy]),
+        [["timeline:11", "p2"]],
+        variant,
+      );
+      assert.equal(assess(p2, fresh!.snapshot, null).status, "eligible", variant);
+    } finally {
+      d.cleanup();
+    }
+  }
+});
+test("PR58-R003 a delivery with no recorded revision never binds", async () => {
   const d = database(),
     f = fixture(),
     p = policy();
   try {
-    // The identity anchor is wrong: the branch history is incomplete and the Ready delivery is held.
-    p.targets[0]!.identity = { activity: "missing-anchor", head: HEAD, at: Date.parse(t(1)), pushers: [20] };
+    await reconcile(f.reader(), p, d.store);
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
-    const [held] = await reconcile(f.reader(), p, d.store);
-    assert.equal(held!.snapshot.historyComplete, false);
-    assert.equal(d.store.pendingInbox().length, 1);
-    assert.equal(d.store.hold("1:1")!.policy, "p1");
-    // The owner fixes the identity and raises the revision, but leaves readyAfter as it was.
-    const next = policy();
-    next.revision = "p2";
-    f.state.now = 6;
-    const [later] = await reconcile(f.reader(), next, d.store);
-    assert.equal(later!.snapshot.historyComplete, true);
-    assert.equal(d.store.pendingInbox().length, 0);
+    d.store.inbox(3, "unknown", "pull_request", JSON.stringify(delivery()), 1, null);
+    // Not recoverable either: the Ready (t(3)) is before the prior observation window ends (t(2) < t(3) is
+    // inside), so the timeline path would recover it; move the prior window past it to isolate the delivery.
+    d.store.saveObservation("1:1", { ...d.store.observation<{ observedAt: number }>("1:1")!, observedAt: Date.parse(t(4)) });
+    await reconcile(f.reader(), p, d.store);
     assert.equal(d.store.evidence("1:1", "ready").length, 0);
-    assert.equal(assess(next, later!.snapshot, null).reason, "new-ready-required");
-    assert.equal(d.store.hold("1:1"), null);
+    assert.equal(d.store.pendingInbox().length, 0);
   } finally {
     d.cleanup();
   }
@@ -1395,7 +1450,7 @@ test("Red team round 3 RT-2: a short list against a valid count over the cap, an
       await reconcile(f.reader(), p, d.store);
       f.state.ready = true;
       f.state.now = 5;
-      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const odd = new GhReader(p.repo, async (path, h) => {
         const r = await f.send(path, h);
         if (path.endsWith("/pulls/1")) {

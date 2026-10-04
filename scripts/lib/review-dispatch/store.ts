@@ -33,7 +33,7 @@ export function canonicalRoot(path: string): string {
 }
 // Schema 4 (Issue #50 W4): blocked, run_keys, capability, marks, run_materials and jobs.origin. Schema 3 was
 // an unreleased draft of this PR. Schema 5 (W4c): quota_pause.at and blocked.at are GitHub server times, NULL
-// until settled (PR48-R015), and `holds` (PR48-R013). Older DBs are not migrated implicitly; they are refused
+// until settled (PR48-R015), `holds` (PR48-R013) and inbox.policy (PR58-R003). Older DBs are not migrated implicitly; they are refused
 // like any unknown schema and the owner initializes a new root.
 const SCHEMA = 5;
 // PR48-R016: observation history kept per PR (change points only; the latest is also in `shadow`).
@@ -96,7 +96,7 @@ export class Store {
         this.db.exec(`
         BEGIN IMMEDIATE;
         CREATE TABLE targets(key TEXT PRIMARY KEY, value TEXT NOT NULL, pending TEXT);
-        CREATE TABLE inbox(app INTEGER, delivery TEXT, event TEXT, received INTEGER, payload TEXT, processed INTEGER DEFAULT 0, PRIMARY KEY(app,delivery));
+        CREATE TABLE inbox(app INTEGER, delivery TEXT, event TEXT, received INTEGER, payload TEXT, processed INTEGER DEFAULT 0, policy TEXT, PRIMARY KEY(app,delivery));
         CREATE TABLE consumed(id TEXT PRIMARY KEY);
         CREATE TABLE jobs(id TEXT PRIMARY KEY,key TEXT,generation INTEGER,actor INTEGER,kind TEXT,executor TEXT,run TEXT UNIQUE,value TEXT,status TEXT,started INTEGER,result TEXT,origin TEXT, UNIQUE(key,generation,actor,kind));
         CREATE TABLE leases(key TEXT PRIMARY KEY,job TEXT UNIQUE REFERENCES jobs(id),cancel INTEGER DEFAULT 0);
@@ -112,7 +112,7 @@ export class Store {
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
         CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
-        CREATE TABLE holds(key TEXT PRIMARY KEY,since INTEGER NOT NULL,policy TEXT NOT NULL,seen INTEGER NOT NULL);
+        CREATE TABLE holds(key TEXT PRIMARY KEY,since INTEGER NOT NULL);
         PRAGMA user_version=5; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
@@ -168,12 +168,15 @@ export class Store {
   }
   // `mark` (W4 row 8): the target key of an edit/delete/dismiss delivery. It is stored in the same
   // transaction and stops launches and posts for that PR until a reconcile has processed the delivery.
+  // `policy` (PR58-R003): the policy revision current when the delivery was received. A delivery binds only
+  // under that same revision; null (unknown) never binds.
   inbox(
     app: number,
     delivery: string,
     event: string,
     payload: string,
     now: number,
+    policy: string | null,
     mark: string | null = null,
   ): boolean {
     return this.atomic(() => {
@@ -182,9 +185,9 @@ export class Store {
         Number(
           this.db
             .prepare(
-              "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload) VALUES(?,?,?,?,?)",
+              "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload,policy) VALUES(?,?,?,?,?,?)",
             )
-            .run(app, delivery, event, at, payload).changes,
+            .run(app, delivery, event, at, payload, policy).changes,
         ) === 1;
       if (stored && mark !== null)
         this.db
@@ -307,27 +310,18 @@ export class Store {
           .run(serverAt, key);
   }
   // PR48-R013: since when (stored local clock) a PR's observation is held as transiently incomplete; null
-  // once a reconcile processes it. The hold keeps the policy revision it was held under and when it was last
-  // held (`seen`); a new revision starts a new hold.
-  heldSince(key: string, held: boolean, policy: string): number | null {
+  // once a reconcile processes it.
+  heldSince(key: string, held: boolean): number | null {
     if (!held) {
       this.db.prepare("DELETE FROM holds WHERE key=?").run(key);
       return null;
     }
-    const now = this.storedClock() ?? 0;
-    if (this.hold(key)?.policy === policy)
-      this.db.prepare("UPDATE holds SET seen=? WHERE key=?").run(now, key);
-    else
-      this.db
-        .prepare(
-          "INSERT INTO holds VALUES(?,?,?,?) ON CONFLICT(key) DO UPDATE SET since=excluded.since,policy=excluded.policy,seen=excluded.seen",
-        )
-        .run(key, now, policy, now);
-    return this.hold(key)!.since;
-  }
-  hold(key: string): { since: number; policy: string; seen: number } | null {
-    const r = this.db.prepare("SELECT since,policy,seen FROM holds WHERE key=?").get(key) as Row | undefined;
-    return r ? { since: Number(r["since"]), policy: String(r["policy"]), seen: Number(r["seen"]) } : null;
+    this.db
+      .prepare("INSERT OR IGNORE INTO holds VALUES(?,?)")
+      .run(key, this.storedClock() ?? 0);
+    return Number(
+      (this.db.prepare("SELECT since FROM holds WHERE key=?").get(key) as Row)["since"],
+    );
   }
   processed(app: number, delivery: string): void {
     this.db

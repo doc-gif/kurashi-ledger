@@ -272,3 +272,31 @@ test("W4 receiver listens on loopback only, on a fixed port other than 443, and 
     d.cleanup();
   }
 });
+
+test("PR58-R003 the receiver records the policy revision current at receipt; a failed re-read stores nothing (503)", async () => {
+  const d = database(),
+    p = policy();
+  p.mode = "shadow";
+  let revision: () => string = () => "p1";
+  const server = serve(p, d.store, secret, () => 100, 0, () => {}, () => revision());
+  await once(server, "listening");
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const send = (id: string) => post(address.port, { ...headers(), "x-github-delivery": id }, body);
+    assert.equal(await send("before"), 202);
+    revision = () => "p2"; // the owner raised the revision; no restart
+    assert.equal(await send("after"), 202);
+    revision = () => {
+      throw new Error("policy unreadable");
+    };
+    assert.equal(await send("unreadable"), 503);
+    assert.deepEqual(
+      d.store.pendingInbox().map((r) => [r["delivery"], r["policy"]]).sort(),
+      [["after", "p2"], ["before", "p1"]],
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    d.cleanup();
+  }
+});

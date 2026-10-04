@@ -96,6 +96,7 @@ export function ingest(
       event,
       raw.toString("utf8"),
       now,
+      p.revision, // PR58-R003: the revision this delivery was received under
       signalKey(p, event, payload),
     );
     return 202;
@@ -162,6 +163,9 @@ export function serve(
   now: () => number,
   port = 0,
   stored: () => void = () => {},
+  // PR58-R003: the policy revision now (the CLI re-reads the owner's policy for each delivery, so a revision
+  // change applies without a restart). A failure is 503: nothing is stored or acknowledged.
+  revision: () => string = () => p.revision,
 ): Server {
   if (p.mode !== "shadow" && p.mode !== "active")
     throw new Error("Webhook receiver is off");
@@ -207,10 +211,17 @@ export function serve(
         const v = req.headers[key];
         headers[key] = typeof v === "string" ? v : undefined;
       }
+      let current: Policy;
+      try {
+        current = { ...p, revision: revision() };
+      } catch {
+        reply(503);
+        return;
+      }
       const status =
         size > MAX_BODY
-          ? ingestOversized(p, store, secret, headers, mac.digest(), size, now())
-          : ingest(p, store, secret, headers, Buffer.concat(chunks), now());
+          ? ingestOversized(current, store, secret, headers, mac.digest(), size, now())
+          : ingest(current, store, secret, headers, Buffer.concat(chunks), now());
       reply(status);
       if (status === 202)
         try {

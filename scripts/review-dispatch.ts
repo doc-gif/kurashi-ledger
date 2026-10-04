@@ -364,7 +364,16 @@ async function receive(
   // Same checks as the setup-token file: owner-only, no link, fixed character set. 32 bytes or more.
   const secret = readTokenFile(values.get("--secret-file") ?? "");
   if (Buffer.byteLength(secret) < 32) throw new Error("Webhook secret too short");
-  const server = serve(policy, store, Buffer.from(secret, "utf8"), clock, port, () => touchTrigger(root));
+  const file = values.get("--policy") ?? "";
+  // PR58-R003: each delivery is attributed to the revision of the owner's policy at receipt. Only the
+  // revision changes without a restart; a policy with another repository, installation or App is refused.
+  const revision = (): string => {
+    const now = validatePolicy(JSON.parse(readOwnerPolicy(file, CODE_ROOT)));
+    if (now.repoId !== policy.repoId || now.installationId !== policy.installationId || now.receiveAppId !== policy.receiveAppId)
+      throw new Error("Policy identity changed; restart the receiver");
+    return now.revision;
+  };
+  const server = serve(policy, store, Buffer.from(secret, "utf8"), clock, port, () => touchTrigger(root), revision);
   log(`Webhookの受け口: 127.0.0.1:${port}（mode ${policy.mode}）`);
   await new Promise<void>((resolve) => {
     const stop = () => server.close(() => resolve());

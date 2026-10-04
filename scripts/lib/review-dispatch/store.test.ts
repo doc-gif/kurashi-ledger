@@ -29,19 +29,19 @@ test("D02 real SQLite WAL survives reopening and payload TTL retains tombstones"
   const d = database();
   try {
     assert.equal(
-      d.store.inbox(3, "delivery", "pull_request", "synthetic", 0),
+      d.store.inbox(3, "delivery", "pull_request", "synthetic", 0, "p1"),
       true,
     );
     d.store.processed(3, "delivery");
     d.store.retain(8 * 86400000);
     assert.equal(
-      d.store.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000),
+      d.store.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000, "p1"),
       false,
     );
     assert.equal(d.store.pendingInbox().length, 0);
     const second = new Store(d.root);
     assert.equal(
-      second.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000),
+      second.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000, "p1"),
       false,
     );
     second.close();
@@ -197,7 +197,7 @@ test("D08 notice once; transaction crash rolls back ownership", () => {
 test("I002 unknown schema rejected without write; quiesced backup restores replay state", async () => {
   const d = database();
   try {
-    d.store.inbox(3, "delivery", "pull_request", "synthetic", 0);
+    d.store.inbox(3, "delivery", "pull_request", "synthetic", 0, "p1");
     const copy = join(d.root, "backup.sqlite");
     await d.store.backup(copy);
     const read = new DatabaseSync(copy, { readOnly: true });
@@ -236,7 +236,7 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
   const d = database(),
     e = database();
   try {
-    d.store.inbox(3, "retained", "pull_request", "synthetic", 0);
+    d.store.inbox(3, "retained", "pull_request", "synthetic", 0, "p1");
     const path = join(e.root, "copy.sqlite");
     await d.store.backup(path);
     await assert.rejects(d.store.backup(path));
@@ -335,7 +335,7 @@ test("R009 clock rollback beyond tolerance refuses inbox/claim/retain atomically
     assert.equal(d.store.tick(T0), T0);
     // Within tolerance: the stored (later) time is used and kept.
     assert.equal(d.store.tick(T0 - CLOCK_SKEW_MS), T0);
-    assert.equal(d.store.inbox(3, "inside", "pull_request", "synthetic", T0 - 1), true);
+    assert.equal(d.store.inbox(3, "inside", "pull_request", "synthetic", T0 - 1, "p1"), true);
     assert.equal(
       d.store.db.prepare("SELECT received FROM inbox WHERE delivery='inside'").get()!["received"],
       T0,
@@ -343,7 +343,7 @@ test("R009 clock rollback beyond tolerance refuses inbox/claim/retain atomically
     // Beyond tolerance: refused, nothing written, the stored clock is unchanged.
     const behind = T0 - CLOCK_SKEW_MS - 1;
     assert.throws(() => d.store.tick(behind), ClockRollbackError);
-    assert.throws(() => d.store.inbox(3, "behind", "pull_request", "synthetic", behind), ClockRollbackError);
+    assert.throws(() => d.store.inbox(3, "behind", "pull_request", "synthetic", behind, "p1"), ClockRollbackError);
     assert.throws(() => d.store.oversized(3, "behind-big", "pull_request", behind), ClockRollbackError);
     assert.throws(() => d.store.retain(behind), ClockRollbackError);
     assert.throws(() => claim(d.store, policy(), snapshot(), behind), ClockRollbackError);
@@ -491,9 +491,9 @@ test("W4 row 8: an edit/delete mark stops claims until the delivery is processed
     s = snapshot();
   try {
     d.store.observe(assess(p, s, null));
-    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 50, "1:1"), true);
+    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 50, "p1", "1:1"), true);
     // A repeated delivery adds neither a row nor a second mark.
-    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 51, "1:1"), false);
+    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 51, "p1", "1:1"), false);
     assert.equal(d.store.marked("1:1"), true);
     assert.equal(d.store.claim(p, s, 30, "faultfinding", 100), null);
     d.store.processed(3, "edit-1");
