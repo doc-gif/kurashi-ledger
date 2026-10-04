@@ -30,7 +30,7 @@ import {
   type SyntheticProbe,
   type TrapLayout,
 } from "./doctor.ts";
-import { LaunchError, SANDBOX_EXEC, TOKEN_ENV, argvTemplateHash, buildLaunch, type LaunchInstall, type LaunchPlan } from "./launcher.ts";
+import { LaunchError, SANDBOX_EXEC, TOKEN_ENV, argvTemplateHash, buildMeasurementLaunch, type LaunchInstall, type LaunchPlan } from "./launcher.ts";
 import { capabilityReady, REQUIRED_PROBES } from "./runtime.ts";
 import { policy } from "../../../tests/fixtures/review-dispatch.ts";
 
@@ -89,7 +89,7 @@ const job = (actor: number) => ({
 });
 const opts = { platform: "darwin" as const, exists: () => false, scan: () => [], readToken: () => TOKEN };
 const launchFor = (i: LaunchInstall) => ({
-  plan: buildLaunch(policy(), job(i.backend === "claude" ? 30 : 20), i, run, opts),
+  plan: buildMeasurementLaunch(policy(), job(i.backend === "claude" ? 30 : 20), i, run, opts),
   install: i,
   run,
   argvHash: argvTemplateHash(i),
@@ -527,4 +527,53 @@ test("spawnExecutor runs a plan without a shell, with its env and stdin", async 
   const r = await spawnExecutor(10000)(plan);
   assert.equal(r.exitCode, 0);
   assert.equal(r.stdout, "hello $(echo no)|x1");
+});
+
+test("W4 doctor binds the capability to the argv template of the install it was measured with", async () => {
+  const ok = await runDoctor(claudeInput());
+  assert.equal(ok.state, "verified", JSON.stringify(ok.reasons));
+  assert.equal(ok.capability.argvHash, argvTemplateHash(install));
+  // A launch record whose hash is not this install's template disables the backend.
+  const other = { ...install, configDir: "/srv/synthetic/other-config" };
+  assert.notEqual(argvTemplateHash(other), argvTemplateHash(install));
+  const r = await runDoctor(claudeInput({ launch: { ...launchFor(install), argvHash: argvTemplateHash(other) }, measurement: { ...measurement(install), argvHash: argvTemplateHash(other) } }));
+  assert.equal(r.state, "disabled");
+  assert.ok(r.reasons.includes("argv-hash-mismatch"));
+  assert.equal(capabilityReady(r.capability), false);
+});
+
+test("Round 6 RT-3: only ENOENT means absent; an unreadable config file is a problem", async (t) => {
+  const { existsSafe, inspectConfigDir, inspectCodexHome } = await import("./doctor.ts");
+  const { lexists } = await import("./launcher.ts");
+  const fs = await import("node:fs"),
+    { join } = await import("node:path"),
+    { tmpdir } = await import("node:os");
+  const dir = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "rt3-")));
+  try {
+    assert.equal(existsSafe(join(dir, "missing")), false);
+    assert.equal(lexists(join(dir, "missing")), false);
+    const eacces = () => {
+      throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+    };
+    assert.deepEqual(inspectConfigDir(dir, eacces, () => false), [
+      "unreadable:settings.json", "unreadable:settings.local.json", "unreadable:.claude.json",
+    ]);
+    assert.deepEqual(inspectCodexHome(dir, eacces, () => false), ["unreadable:config.toml"]);
+    const locked = join(dir, "locked");
+    fs.mkdirSync(locked);
+    fs.chmodSync(locked, 0o000);
+    try {
+      if (process.platform === "win32" || process.getuid?.() === 0) {
+        t.diagnostic("permission bits do not restrict this user here; the injected EACCES above covers the rule");
+      } else {
+        // The directory cannot be searched: whether the file is there is unknown, so it counts as present.
+        assert.equal(existsSafe(join(locked, "CLAUDE.md")), true);
+        assert.equal(lexists(join(locked, "CLAUDE.md")), true);
+      }
+    } finally {
+      fs.chmodSync(locked, 0o700);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

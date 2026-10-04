@@ -1,6 +1,7 @@
 import { assess, accepted } from "./reducer.ts";
 import {
   hash,
+  type JobKind,
   type Policy,
   type Snapshot,
   type WorkerResult,
@@ -9,6 +10,7 @@ import {
 import { Store } from "./store.ts";
 import {
   parseResult,
+  recordIds,
   ResultContentError,
   ReviewBroker,
   type Provenance,
@@ -22,8 +24,11 @@ import {
 export type Capability = {
   backend: "fixture" | "codex" | "claude";
   version: string;
-  codeHash: string;
-  profileHash: string;
+  codeHash: string; // sha256 of the pinned CLI executable (doctor input)
+  profileHash: string; // doctor.ts profileHash(cli.sb text)
+  // launcher.ts argvTemplateHash(install). Required for Claude: active.ts binds all four values to the
+  // plan it launches (W4); a capability measured with other flags or paths never launches.
+  argvHash?: string;
   probes: Record<string, boolean>;
 };
 // Every probe must be proven denied (doctor.ts). Missing or false keeps the backend off.
@@ -45,12 +50,17 @@ export function capabilityReady(c: Capability | null): boolean {
   const required = REQUIRED_PROBES;
   return (
     c !== null &&
+    // Owner decision (Issue #50, 5977523656): Codex is never launched automatically in this release.
+    c.backend !== "codex" &&
+    (c.backend !== "claude" || /^[a-f0-9]{64}$/.test(c.argvHash ?? "")) &&
     c.version !== "" &&
     /^[a-f0-9]{64}$/.test(c.codeHash) &&
     /^[a-f0-9]{64}$/.test(c.profileHash) &&
     required.every((k) => c.probes[k] === true)
   );
 }
+// Synthetic fixture workers only (supervisor.py run-fixture). A real worker's env comes from launcher.ts,
+// with its HOME/TMPDIR outside the supervisor root (W4 row 4).
 export function workerEnvironment(
   root: string,
   path: string,
@@ -68,6 +78,10 @@ type RunOutcome = {
   result: string;
   treeEnded: boolean;
   uncertain: boolean;
+  // The worker was proven never started (materials or plan refused before the supervisor ran it).
+  neverStarted?: boolean;
+  // Why it never started (a fixed reason ID, for the owner notice).
+  reason?: string;
   // From the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
   origin: Provenance | null;
 };
@@ -134,48 +148,125 @@ export class Dispatcher {
     this.observe(s);
     if (this.policy.mode !== "active") return this.policy.mode;
     if (!runnerAcceptable(runner)) return "capability-disabled";
-    // Real CLI launch is deliberately unavailable until owner rollout/negative probes and reviewed installation.
+    // Real CLI launch goes through activeCycle (start-small, Claude only).
     if (
       runner.capability.backend !== "fixture" ||
       !capabilityReady(runner.capability)
     )
       return "capability-disabled";
-    const j = this.store.claim(this.policy, s, actor, "review", now);
+    return this.#launch(s, actor, "review", runner, broker, fetchFresh, now);
+  }
+  // Issue #50 W4: one job of the start-small active mode (active.ts decides the kind). The runner must be
+  // the Claude runner with a ready, plan-bound capability; Codex and the fixture are refused here.
+  async activeCycle(
+    s: Snapshot,
+    actor: number,
+    kind: Exclude<JobKind, "fix">,
+    runner: Runner,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string> {
+    this.observe(s);
+    if (this.policy.mode !== "active") return this.policy.mode;
+    if (
+      !runnerAcceptable(runner) ||
+      runner.capability.backend !== "claude" ||
+      !capabilityReady(runner.capability) ||
+      (kind !== "review" && kind !== "faultfinding")
+    )
+      return "capability-disabled";
+    return this.#launch(s, actor, kind, runner, broker, fetchFresh, now);
+  }
+  async #launch(
+    s: Snapshot,
+    actor: number,
+    kind: "review" | "faultfinding",
+    runner: Runner,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string> {
+    const j = this.store.claim(this.policy, s, actor, kind, now);
     if (!j) return "waiting";
     try {
       this.store.running(j);
       const value = await runner.run(j);
+      if (value.neverStarted === true) {
+        // Nothing ran: release the lease, keep the job (no relaunch for this generation) and tell the owner once.
+        this.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+        this.store.notice(`${j.key}:not-started:${value.reason ?? "unknown"}:${j.run}`);
+        return `not-started:${/^[a-z-]{1,40}$/.test(value.reason ?? "") ? value.reason : "unknown"}`;
+      }
       if (value.uncertain || !value.treeEnded) {
         this.store.uncertain(j);
         return "uncertain";
       }
       let parsed: WorkerResult;
       try {
-        parsed = parseResult(value.result, j);
+        parsed = parseResult(value.result, j, recordIds(this.store.runMaterials(j.run)));
       } catch (error) {
         // Content rejection (secret shape, format characters, look-alikes, links): blocked, like the check below.
         if (error instanceof ResultContentError)
-          return await this.#block(j, runner, value.result);
+          return await this.#block(j, runner, value.result, now);
         // Malformed shape: stays uncertain, but any persisted plaintext (the signed envelope) is still redacted.
         this.store.uncertain(j);
         await this.#redact(j, runner, value.result);
         return "uncertain";
       }
       if (resultFindings(parsed, j, s, this.policy.repo).length)
-        return await this.#block(j, runner, value.result);
-      this.store.result(j, value.result);
+        return await this.#block(j, runner, value.result, now);
+      this.store.result(j, value.result, value.origin);
       // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
-      const outcome = await broker.submit(
-        this.policy,
-        j,
-        value.result,
-        value.origin,
-        fetchFresh,
-      );
+      return await this.#post(j, runner, value.result, value.origin, broker, fetchFresh, now);
+    } catch {
+      this.store.uncertain(j);
+      return "uncertain";
+    }
+  }
+  // A job whose post was deferred (an unprocessed edit/delete mark) is posted by a later cycle from its stored
+  // result and provenance; the Broker verifies the signature again. Nothing is relaunched.
+  async resumeDeferred(
+    s: Snapshot,
+    runner: Runner,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string | null> {
+    this.observe(s);
+    const d = this.store.deferred(`${this.policy.repoId}:${s.pr}`);
+    if (!d || this.policy.mode !== "active") return null;
+    try {
+      return await this.#post(d.job, runner, d.result, d.origin as Provenance, broker, fetchFresh, now);
+    } catch {
+      this.store.uncertain(d.job);
+      return "uncertain";
+    }
+  }
+  async #post(
+    j: Job,
+    runner: Runner,
+    raw: string,
+    origin: Provenance | null,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string> {
+    {
+      const outcome = await broker.submit(this.policy, j, raw, origin, fetchFresh);
+      if (outcome === "deferred") {
+        // The result and the lease stay; one owner notice per run (PR #56 red team P2).
+        this.store.notice(`${j.key}:deferred:${j.run}`);
+        return outcome;
+      }
       if (outcome === "uncertain" || outcome === "blocked") {
-        // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner).
+        // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner),
+        // and keep the durable per-PR blocked state (W4 row 1).
         this.store.uncertain(j);
-        if (outcome === "blocked") await this.#redact(j, runner, value.result);
+        if (outcome === "blocked") {
+          this.store.block(j, "publication", now);
+          await this.#redact(j, runner, raw);
+        }
         return outcome;
       }
       this.store.release(j, {
@@ -185,16 +276,15 @@ export class Dispatcher {
         uncertain: false,
       });
       return outcome;
-    } catch {
-      this.store.uncertain(j);
-      return "uncertain";
     }
   }
-  // blocked = persistent needs-owner: DB keeps only the hash, one owner notice, lease held, envelope redacted.
-  async #block(j: Job, runner: Runner, raw: string): Promise<"blocked"> {
+  // blocked = persistent needs-owner: DB keeps only the hash, one owner notice, lease held, envelope redacted,
+  // and the durable per-PR blocked row (store.block, W4 row 1) that only the owner's unpause clears.
+  async #block(j: Job, runner: Runner, raw: string, now: number): Promise<"blocked"> {
     this.store.result(j, redactedResult(raw));
+    if (!this.store.checkpoint()) this.store.notice(`${j.key}:checkpoint-busy:${j.run}`);
     this.store.notice(blockedNotice(j));
-    this.store.uncertain(j);
+    this.store.block(j, "publication", now);
     await this.#redact(j, runner, raw);
     return "blocked";
   }
@@ -220,5 +310,7 @@ export function fixtureResult(j: Job): WorkerResult {
     findings: [],
     evidence: [],
     unverified: ["実AI・本導入は未検証"],
+    causes: [],
+    previous: [],
   };
 }

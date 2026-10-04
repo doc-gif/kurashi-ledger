@@ -254,3 +254,35 @@ test("R007 persisted observation: a deleted or edited item raises deleted:/edite
   assert.equal(again.changes.length, 1);
   assert.deepEqual(Object.fromEntries(again.open), { 30: ["edited:review:1"] });
 });
+
+test("W4 row 13: an edit back to an earlier body is a new change, compared with the latest known body", () => {
+  const A = "PR7-R001 — original",
+    B = "rewritten without the ID";
+  const first = result([review(1, 30, "COMMENTED", 1, A)], [line(10, 30, 2, A)]);
+  let changes: ChangeRecord[] = [];
+  const observe = (body: string, second: number, comment = body, updated = second) => {
+    const r = result([review(1, 30, "COMMENTED", 1, body), review(2, 30, "APPROVED", second - 1)], [line(10, 30, 2, comment, { updated_at: at(updated) })], [], {
+      items: first.items,
+      changes,
+      observedAt: Date.parse(at(second)),
+    });
+    changes = [...changes, ...r.changes];
+    return r;
+  };
+  // A -> B: one edit per item. B again: nothing new.
+  assert.equal(observe(B, 10, B, 9).changes.length, 2);
+  assert.equal(observe(B, 20, B, 9).changes.length, 0);
+  // B -> A (back to the first body): still an edit, raised after the approval at 29.
+  const back = observe(A, 30, A, 29.5);
+  assert.deepEqual(back.changes.map((c) => `${c.change}:${c.item}`).sort(), ["edited:comment:10", "edited:review:1"]);
+  // The comment edited after the approval reopens its own ID too.
+  assert.deepEqual(Object.fromEntries(back.open), { 30: ["PR7-R001", "comment:10", "edited:comment:10", "edited:review:1"] });
+  // A -> B again: a third record each (same hashes as the first edit, different time and previous).
+  const twice = observe(B, 40, B, 39.5);
+  assert.equal(twice.changes.length, 2);
+  assert.equal(changes.length, 6);
+  // Repeating the same observation adds nothing.
+  assert.equal(observe(B, 50, B, 39.5).changes.length, 0);
+  // Every record names the hash it changed from.
+  assert.ok(changes.every((c) => typeof c.previous === "string"));
+});

@@ -1,4 +1,5 @@
 import {
+  registered,
   independent,
   keyOf,
   samePair,
@@ -144,14 +145,18 @@ export function accepted(p: Policy, s: Snapshot, t: Target): boolean {
     return false;
   const assignment = p.targets.find((x) => x.pr === s.pr);
   if (!assignment) return false;
-  // Latest review per actor wins, including dismissal. A blocking review is not outvoted.
-  const latest = new Map(s.reviews.map((r) => [r.actor, r]));
+  // Latest DECISIVE review per actor wins (APPROVED, CHANGES_REQUESTED, DISMISSED): a later COMMENTED review
+  // does not undo a change request (GitHub semantics). The one rule shared with approvalBlockers and findings.ts
+  // (owner decision, Issue #50 issuecomment-5978984980): the latest change request of any participant registered
+  // in the policy, and any unresolved finding of a registered participant, block. Unregistered third parties are
+  // reference only. A blocker is not outvoted.
+  const latest = latestDecisive(s);
   if (
-    [...latest.values()].some(
-      (r) =>
-        reviewerEligible(p, s, r.actor) &&
-        (r.state === "CHANGES_REQUESTED" || r.findings.length),
-    )
+    [...latest.values()].some((r) => r.state === "CHANGES_REQUESTED" && registered(p, r.actor)) ||
+    // Unknown is not "none": a snapshot without the collected findings never accepts.
+    s.openFindings === undefined ||
+    s.openFindings.some((f) => f.ids.length) ||
+    s.reviews.some((r) => reviewerEligible(p, s, r.actor) && r.findings.length)
   )
     return false;
   return assignment.reviewers.every((id) => {
@@ -163,4 +168,24 @@ export function accepted(p: Policy, s: Snapshot, t: Target): boolean {
       samePair(r.pair, s.pair)
     );
   });
+}
+export function latestDecisive(s: Snapshot): Map<number, Snapshot["reviews"][number]> {
+  return new Map(
+    s.reviews.filter((r) => r.state !== "COMMENTED").map((r) => [r.actor, r]),
+  );
+}
+// What stops `self` from approving now (same rule as accepted()): any other registered participant's latest
+// decisive change request, and unresolved findings raised by any other registered participant (owners
+// included; snapshot.openFindings holds registered raisers only). The approver's own earlier change request and
+// findings are superseded by its new approval, like a native re-review. Empty = an APPROVE may be posted.
+export function approvalBlockers(p: Policy, s: Snapshot, self: number): string[] {
+  const out: string[] = [];
+  for (const [actor, r] of latestDecisive(s))
+    if (actor !== self && registered(p, actor) && r.state === "CHANGES_REQUESTED")
+      out.push(`changes-requested:${actor}`);
+  // Unknown is not "none": without the collected findings an APPROVE is never posted.
+  if (s.openFindings === undefined) out.push("findings-unknown");
+  for (const f of s.openFindings ?? [])
+    if (f.actor !== self && registered(p, f.actor)) out.push(...f.ids);
+  return [...new Set(out)].sort();
 }

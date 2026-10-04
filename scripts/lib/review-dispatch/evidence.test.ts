@@ -25,6 +25,7 @@ const BASE_TREE = "6".repeat(40);
 const FILES: Record<string, string> = {
   ".github/workflows/ci.yml": "1".repeat(40),
   ".github/PULL_REQUEST_TEMPLATE.md": "2".repeat(40),
+  ".npmrc": "a4".repeat(20),
   "package.json": "3".repeat(40),
   "tools/review_guard/guard.py": "4".repeat(40),
   "tools/review_guard/tests/test_guard.py": "5".repeat(40),
@@ -626,7 +627,11 @@ test("R007 an assigned reviewer's later line finding blocks acceptance; third-pa
     // The fault-finding source is R014 (out of W3); supply it to isolate the finding effect.
     s.faultfinding = { actor: 30, pair: { ...s.pair }, unresolved: [] };
     assert.equal(accepted(p, s, target), false);
+    // Both places that carry the finding (the reviewer's latest review and the raiser list) must be clear.
+    assert.deepEqual(s.openFindings, [{ actor: 30, ids: ["PR1-R001"] }]);
     s.reviews.at(-1)!.findings = [];
+    assert.equal(accepted(p, s, target), false);
+    s.openFindings = [];
     assert.equal(accepted(p, s, target), true);
   } finally {
     d.cleanup();
@@ -668,10 +673,15 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     assert.equal(untrusted.observation.workflow, "untrusted");
     assert.equal(untrusted.snapshot.complete, false);
     assert.equal(assess(p, untrusted.snapshot, null).reason, "unknown-evidence");
-    p.trustedCiDigests = [ciTrustDigest(listing())];
-    const other = (await reconcile(f.reader(), p, d.store))[0]!;
-    assert.equal(other.observation.workflow, "untrusted");
-    p.trustedCiDigests = [ciTrustDigest(listing(change))];
+    const main = ciTrustDigest(listing()),
+      head = ciTrustDigest(listing(change));
+    // Bound to main (owner decision 5978676604): the right head digest recorded against another main is not trusted.
+    for (const record of [{ main: head, head: main }, { main: "f".repeat(64), head }]) {
+      p.trustedCi = [record];
+      const other = (await reconcile(f.reader(), p, d.store))[0]!;
+      assert.equal(other.observation.workflow, "untrusted", JSON.stringify(record));
+    }
+    p.trustedCi = [{ main, head }];
     const trusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(trusted.observation.workflow, "trusted");
     assert.equal(trusted.snapshot.complete, true);
@@ -691,7 +701,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     g.state.ready = true;
     g.state.now = 5;
     g.state.headFiles = change;
-    q.trustedCiDigests = [ciTrustDigest(listing(change))];
+    q.trustedCi = [{ main: ciTrustDigest(listing()), head: ciTrustDigest(listing(change)) }];
     e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
     const r = (await reconcile(g.reader(), q, e.store))[0]!;
     assert.equal(r.observation.workflow, "trusted");
@@ -718,6 +728,10 @@ test("R008 each trust path (and only those, without test contents) makes workflo
     [{ "docs/architecture.md": "c1".repeat(20) }, "unchanged"],
     [{ "tests/unit/sample.test.ts": "c1".repeat(20) }, "unchanged"],
     [{ "package.json.bak": "c1".repeat(20) }, "unchanged"],
+    // W4 row 10 (owner decision 5977523656): npm's settings decide how CI installs.
+    [{ ".npmrc": "c1".repeat(20) }, "untrusted"],
+    [{ ".npmrc": null }, "untrusted"],
+    [{ "docs/.npmrc": "c1".repeat(20) }, "unchanged"],
   ];
   for (const [change, expected] of cases) {
     const d = database(),
@@ -737,6 +751,7 @@ test("R008 each trust path (and only those, without test contents) makes workflo
   assert.notEqual(ciTrustDigest(modes), ciTrustDigest(listing()));
   assert.deepEqual(CI_TRUST_PATHS, [
     ".github/",
+    ".npmrc",
     "package.json",
     "tools/review_guard/",
     "scripts/check-test-skips.ts",
@@ -826,5 +841,147 @@ test("R007 a conversation comment after approval blocks; a deleted line finding 
     assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
   } finally {
     d.cleanup();
+  }
+});
+
+test("W4 row 8: a signed edit/delete delivery raises a change the next reconcile could not see, and clears its mark", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await boundApproval(f, d, p);
+    // A reviewer's conversation comment written and deleted between two reconciles (never observed),
+    // a reviewer's line comment edited, and a third party's deletion (reference only).
+    const signal = (delivery: string, event: string, action: string, thing: Record<string, unknown>) =>
+      d.store.inbox(
+        3,
+        delivery,
+        event,
+        JSON.stringify({
+          repository: { id: 1 },
+          installation: { id: 2 },
+          sender: { id: 10 },
+          action,
+          ...(event === "issue_comment" ? { issue: { number: 1, pull_request: {} } } : { pull_request: { number: 1 } }),
+          ...(event === "pull_request_review" ? { review: thing } : { comment: thing }),
+        }),
+        Date.parse(t(7)),
+        "1:1",
+      );
+    signal("s1", "issue_comment", "deleted", { id: 55, user: { id: 30 }, body: "PR1-R009 hidden" });
+    signal("s2", "pull_request_review_comment", "edited", { id: 56, user: { id: 30 }, body: "changed", updated_at: t(7) });
+    signal("s3", "issue_comment", "deleted", { id: 57, user: { id: 99 }, body: "third party" });
+    signal("s4", "pull_request_review", "dismissed", { id: 9, user: { id: 30 }, body: "" });
+    assert.equal(d.store.marked("1:1"), true);
+    f.state.now = 8;
+    const r = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(r.observation.findings, ["deleted:issue:55", "edited:comment:56"]);
+    assert.equal(d.store.marked("1:1"), false);
+    // Persisted once; the next reconcile neither duplicates nor forgets them.
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+    f.state.now = 9;
+    const again = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(again.observation.findings, ["deleted:issue:55", "edited:comment:56"]);
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 faultfinding evidence in the snapshot is the dispatcher's own posted red-team record for this pair", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    const first = await boundApproval(f, d, p);
+    assert.equal(first.snapshot.faultfinding, null);
+    d.store.observe(assess(p, first.snapshot, null));
+    const j = d.store.claim(p, first.snapshot, 30, "faultfinding", Date.parse(t(6)))!;
+    assert.ok(j);
+    const id = d.store.outbox(j, "faultfinding", JSON.stringify({ actor: 30, decision: "accepted", findings: [] }));
+    d.store.sending(id);
+    d.store.posted(id, "6001");
+    f.state.now = 7;
+    const r = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(r.snapshot.faultfinding, { actor: 30, pair: { head: HEAD, base: BASE }, unresolved: [] });
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 a registered participant who is not an assigned reviewer raises findings; unregistered people and the implementer do not", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    const line = (id: number, user: number) => ({
+      id, user: { id: user }, created_at: t(5), updated_at: t(5), body: `PR1-R00${id % 10} — synthetic`, pull_request_review_id: 70 + id,
+    });
+    f.state.lineComments = [line(31, 40), line(32, 50), line(33, 20)];
+    const r = await boundApproval(f, d, p);
+    assert.deepEqual(r.snapshot.openFindings, [{ actor: 40, ids: ["PR1-R001"] }]);
+    // Attached to the assigned reviewer's latest review as well, so acceptance stops.
+    assert.deepEqual(r.snapshot.reviews.at(-1)!.findings, ["PR1-R001"]);
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or a conversation comment blocks accepted and turns the APPROVE into a needs-owner COMMENT", async () => {
+  const { approvalBlockers } = await import("./reducer.ts");
+  const { ReviewBroker } = await import("./broker.ts");
+  const { RunChannel } = await import("../../../tests/fixtures/review-dispatch-run-channel.ts");
+  const { fixtureResult } = await import("./runtime.ts");
+  for (const where of ["review", "line", "conversation"] as const) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    try {
+      const ownerReview = { id: 61, user: { id: 10 }, state: "COMMENTED", commit_id: HEAD, submitted_at: t(5), body: "PR1-R005 — 所有者の指摘" };
+      if (where === "line")
+        f.state.lineComments = [{ id: 62, user: { id: 10 }, created_at: t(5), updated_at: t(5), body: "PR1-R005 — 所有者の指摘", pull_request_review_id: 99 }];
+      if (where === "conversation")
+        f.state.conversation = [{ id: 63, user: { id: 10 }, created_at: t(5), updated_at: t(5), body: "PR1-R005 — 所有者の指摘" }];
+      const transport: Transport = async (path, h) => {
+        const r = await f.send(path, h);
+        if (where === "review" && path.includes("/pulls/1/reviews")) {
+          const v = JSON.parse(r.body) as unknown[];
+          return { ...r, body: JSON.stringify([...v, ownerReview]) };
+        }
+        return r;
+      };
+      f.state.ready = true;
+      f.state.now = 6;
+      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1);
+      const s = (await reconcile(new GhReader("synthetic/repository", transport), p, d.store))[0]!.snapshot;
+      assert.deepEqual(s.openFindings, [{ actor: 10, ids: ["PR1-R005"] }], where);
+      const target = assess(p, s, null);
+      s.faultfinding = { actor: 30, pair: { ...s.pair }, unresolved: [] };
+      assert.equal(accepted(p, s, target), false, where);
+      assert.deepEqual(approvalBlockers(p, s, 30), ["PR1-R005"], where);
+      // Through the Broker: the review result is accepted, the post is a COMMENT with needs-owner.
+      d.store.observe(target);
+      const j = d.store.claim(p, s, 30, "review", Date.parse(t(7)))!;
+      d.store.running(j);
+      const raw = JSON.stringify({ ...fixtureResult(j), decision: "accepted" });
+      d.store.result(j, raw);
+      const channel = new RunChannel(Buffer.alloc(32, 5));
+      const posts: { event: string; body: string }[] = [];
+      const broker = new ReviewBroker(
+        30,
+        {
+          post: async (_pr, event, _head, body) => void posts.push({ event, body }),
+          list: async () => posts.map((x, n) => ({ id: String(n + 1), actor: 30, head: HEAD, body: x.body })),
+        },
+        d.store,
+        channel,
+      );
+      assert.equal(await broker.submit(p, j, raw, channel.seal(j, raw), async () => s), "posted", where);
+      assert.equal(posts[0]!.event, "COMMENT", where);
+      assert.match(posts[0]!.body, /^decision: needs-owner$/m);
+      assert.match(posts[0]!.body, /APPROVEにせずCOMMENTにした（PR1-R005）/);
+    } finally {
+      d.cleanup();
+    }
   }
 });

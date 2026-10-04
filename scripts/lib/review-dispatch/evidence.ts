@@ -9,6 +9,7 @@ import {
   type ReviewBinding,
 } from "./github.ts";
 import {
+  findingRaisers,
   hash,
   keyOf,
   samePair,
@@ -18,7 +19,12 @@ import {
   type Snapshot,
 } from "./model.ts";
 import { assess } from "./reducer.ts";
-import { type ChangeRecord, type ItemRecord } from "./findings.ts";
+import {
+  changeKey,
+  type ChangeRecord,
+  type ItemRecord,
+} from "./findings.ts";
+import { SIGNALS } from "./webhook.ts";
 import { Store } from "./store.ts";
 
 export type Observation = {
@@ -187,6 +193,59 @@ function legacyReady(c: Collection, p: Policy): boolean {
     field("base_sha") === c.snapshot.pair.base
   );
 }
+// W4 row 8: change records from signed edit/delete deliveries, so a change made and undone between two
+// reconciles, or made before the first observation, is still raised. Same authors as findings.ts reads:
+// Review bodies of registered participants (model.ts findingRaisers) and owners, comments of the registered
+// participants. A dismissal is seen as
+// the DISMISSED state by the next collection, so it only marks the PR (webhook.ts).
+export function signalRecords(
+  p: Policy,
+  pr: number,
+  event: string,
+  payload: Record<string, unknown>,
+  received: number,
+): ChangeRecord[] {
+  const action = String(payload["action"]);
+  if (!(SIGNALS[event] ?? []).includes(action) || action === "dismissed") return [];
+  const target = p.targets.find((t) => t.pr === pr);
+  if (!target) return [];
+  const thing = object(
+    event === "pull_request_review" ? payload["review"] : payload["comment"],
+  );
+  const id = thing["id"],
+    author = actorId(thing["user"]);
+  if (!Number.isSafeInteger(id) || Number(id) < 1 || author === null) return [];
+  const review = event === "pull_request_review";
+  if (
+    !findingRaisers(p, pr).includes(author) &&
+    !(review && p.owners.includes(author))
+  )
+    return [];
+  const item = `${review ? "review" : event === "issue_comment" ? "issue" : "comment"}:${id}`;
+  const updated = Date.parse(String(thing["updated_at"]));
+  const text = thing["body"];
+  if (text !== null && text !== undefined && typeof text !== "string") return [];
+  return [
+    action === "deleted"
+      ? { item, actor: author, at: received, change: "deleted", hash: null, previous: "webhook" }
+      : {
+          item,
+          actor: author,
+          // Comments carry the server's edit time; a Review edit time is the receipt time.
+          at: !review && Number.isFinite(updated) ? updated : received,
+          change: "edited",
+          hash: hash(typeof text === "string" ? text : ""),
+          previous: "webhook",
+        },
+  ];
+}
+const deliveryPr = (event: string, payload: Record<string, unknown>): number | null => {
+  const holder =
+    event === "issue_comment" ? payload["issue"] : payload["pull_request"];
+  if (!holder || typeof holder !== "object") return null;
+  const n = (holder as Record<string, unknown>)["number"];
+  return Number.isSafeInteger(n) ? Number(n) : null;
+};
 export type CycleResult = {
   pr: number;
   snapshot: Snapshot;
@@ -216,7 +275,14 @@ export async function reconcile(
     const key = keyOf(p, target.pr),
       ready = store.evidence<ReadyBinding>(key, "ready"),
       reviews = store.evidence<ReviewBinding>(key, "review"),
-      prior = store.observation<Observation>(key);
+      prior = store.observation<Observation>(key),
+      stored = store.evidence<ChangeRecord>(key, "itemchange"),
+      signals = deliveries
+        .filter(({ row, payload }) => deliveryPr(String(row["event"]), payload) === target.pr)
+        .flatMap(({ row, payload }) =>
+          signalRecords(p, target.pr, String(row["event"]), payload, Number(row["received"])),
+        )
+        .filter((r) => !stored.some((x) => changeKey(x) === changeKey(r)));
     const c = await collect(reader, p, target.pr, {
       requiredJobs: [],
       ready,
@@ -226,7 +292,7 @@ export async function reconcile(
       faultfinding: null,
       unresolvedDesign: [],
       findingItems: store.evidence<ItemRecord>(key, "item"),
-      findingChanges: store.evidence<ChangeRecord>(key, "itemchange"),
+      findingChanges: [...stored, ...signals],
     });
     apply(c, ready, reviews, p);
     if (!Number.isFinite(c.observedAt))
@@ -238,8 +304,7 @@ export async function reconcile(
         object(payload["installation"])["id"] !== p.installationId
       )
         throw new Error("Inbox identity changed");
-      const pr = payload["pull_request"];
-      if (!pr || object(pr)["number"] !== target.pr) continue;
+      if (deliveryPr(String(row["event"]), payload) !== target.pr) continue;
       const r =
         String(row["event"]) === "pull_request" ? bindReady(payload, c) : null;
       if (r && !ready.some((x) => x.id === r.id)) ready.push(r);
@@ -287,6 +352,9 @@ export async function reconcile(
       (e) => !e.id.startsWith("activity:"),
     );
     apply(c, ready, reviews, p);
+    // The red-team record this dispatcher posted for this pair and policy revision (start-small: the
+    // assigned reviewer's faultfinding job). Manual records of people are not read yet (R014).
+    c.snapshot.faultfinding = store.faultfinding(key, c.snapshot.pair, p.revision);
     const assessed = assess(p, c.snapshot, store.target(key), store.consumed());
     const legacy = legacyReady(c, p);
     const observation: Observation = {
@@ -309,7 +377,7 @@ export async function reconcile(
       reviews,
       observation,
       items: c.findingItems,
-      changes: c.findingChanges,
+      changes: [...signals, ...c.findingChanges],
     });
     results.push({ pr: target.pr, snapshot: c.snapshot, observation });
   }
@@ -323,12 +391,7 @@ export async function reconcile(
       // PR48-R007: first observations and detected edits/deletions are immutable.
       for (const r of update.items) store.saveEvidence(update.key, "item", r.item, r);
       for (const r of update.changes)
-        store.saveEvidence(
-          update.key,
-          "itemchange",
-          `${r.change}:${r.item}:${r.hash ?? "none"}`,
-          r,
-        );
+        store.saveEvidence(update.key, "itemchange", changeKey(r), r);
       store.saveObservation(update.key, update.observation);
     }
     for (const { row } of deliveries)

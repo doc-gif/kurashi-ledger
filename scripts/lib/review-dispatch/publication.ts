@@ -1,5 +1,4 @@
 import { textFindings } from "../public-policy.ts";
-import type { DatabaseSync } from "node:sqlite";
 import { hash, type Job, type Snapshot, type WorkerResult } from "./model.ts";
 
 // Publication check for text that the Broker would post to the public repository (PR #51 red team P1,
@@ -17,32 +16,63 @@ const TOKEN_SHAPES: readonly RegExp[] = [
   /-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|CERTIFICATE)/,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, // JWT
   /\bBearer\s*[A-Za-z0-9._~+/=-]{16,}/i,
-  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*\S{6,}/i,
+  // Not a plain setting such as `persist-credentials: false` (W4 row 5: past public v1 bodies).
+  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*(?!(?:false|true|null|none|undefined)\b)\S{6,}/i,
   /\b(?:sk|pk|rk)[-_](?:live|test|ant|proj)[-_][A-Za-z0-9_-]{8,}/,
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}/,
 ];
+// Private locations and account files. System program locations (/usr/bin/security, /Library/Application Support,
+// /dev/tty) name no person or machine and appear in legitimate reviews (W4 row 5).
 const LOCAL_PATHS: readonly RegExp[] = [
   /(?:^|[^A-Za-z0-9_.~:/-])~\/[^\s]/,
-  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|opt|Volumes|root|usr|Library|System|Applications|mnt|srv|proc|dev|run|nix)(?:\/|\b)/,
+  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|Volumes|root|mnt|srv)(?:\/|\b)/,
   /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/,
   /\\\\[A-Za-z0-9._-]+\\/, // UNC
 ];
 const FORMAT_CHARACTER = /\p{Cf}/u;
-const GITHUB_URL = /https:\/\/github\.com\/[^\s<>()"'`]*/g;
 const ANY_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi;
+// Owner decision (Issue #50 issuecomment-5978676604): links to github.com and to a short fixed list of official
+// documentation hosts. The list is the hosts that the past public v1 bodies blocked before W4 actually cite
+// (Claude Code, GitHub, Playwright, Vite, Codex docs, the National Tax Agency, the Ministry of Internal Affairs
+// and Communications) plus nodejs.org. Exact host names over https, no user info, no port. Everything else stops.
+export const LINK_HOSTS: readonly string[] = [
+  "github.com",
+  "docs.github.com",
+  "code.claude.com",
+  "nodejs.org",
+  "learn.chatgpt.com",
+  "playwright.dev",
+  "vite.dev",
+  "www.nta.go.jp",
+  "www.soumu.go.jp",
+];
+export function allowedLink(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    u.protocol === "https:" &&
+    u.username === "" &&
+    u.password === "" &&
+    u.port === "" &&
+    LINK_HOSTS.includes(u.hostname) &&
+    url.toLowerCase().startsWith(`https://${u.hostname}/`)
+  );
+}
 
 // The only long identifiers allowed in public text: values the dispatcher/Broker verified itself in its own
-// fresh snapshot (pair, final pair, head/base recorded in the GitHub timeline) and the trusted run ID. Nothing
-// the worker wrote (evidence links included) can add to this set (PR #53 red team N1).
-// A full PR commit list is not in the snapshot yet; links to other commits stay blocked (collector: W3/W4).
+// fresh snapshot (pair, final pair, head/base recorded in the GitHub timeline, every commit of the PR) and the
+// trusted run ID. Nothing the worker wrote (evidence links included) can add to this set (PR #53 red team N1).
 export type Allowed = ReadonlySet<string>;
-export function allowedFor(
-  j: Job,
-  s: Pick<Snapshot, "pair" | "finalPair" | "history">,
-): Allowed {
+type Seen = Pick<Snapshot, "pair" | "finalPair" | "history" | "commits">;
+export function allowedFor(j: Job, s: Seen): Allowed {
   const ids = new Set<string>([j.run]);
   for (const pair of [s.pair, s.finalPair, ...s.history.map((e) => e.pair)])
     if (pair) for (const sha of [pair.head, pair.base]) if (/^[a-f0-9]{40}$/.test(sha)) ids.add(sha);
+  for (const sha of s.commits ?? []) if (/^[a-f0-9]{40}$/.test(sha)) ids.add(sha);
   return ids;
 }
 
@@ -65,6 +95,20 @@ export function evidenceFindings(
   return [...findings];
 }
 
+// Every link target, not only `scheme://` text (PR #56 red team round 2 P2-a): Markdown inline targets
+// `](…)`, reference definitions `[x]: …`, autolinks `<…>`, and scheme-less `//host`. Only https URLs that pass
+// allowedLink are allowed; `//…`, other schemes and relative targets (which resolve on the page) stop.
+const INLINE_TARGET = /\]\(\s*<?([^)\s>]*)/g;
+const REFERENCE_TARGET = /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]*)/gm;
+const AUTOLINK = /<((?:[a-z][a-z0-9+.-]*:|\/\/)[^<>\s]*)>/gi;
+const SCHEME_LESS = /(?:^|[^:/A-Za-z0-9_.-])\/\/[^\s/]/;
+export function linkTargetsAllowed(text: string): boolean {
+  const n = text.normalize("NFKC");
+  if (SCHEME_LESS.test(n)) return false;
+  for (const re of [INLINE_TARGET, REFERENCE_TARGET, AUTOLINK])
+    for (const m of n.matchAll(re)) if (!allowedLink(m[1] ?? "")) return false;
+  return true;
+}
 export function publicationFindings(text: string, allowed: Allowed): string[] {
   const findings = new Set<string>();
   // Zero-width and other format characters can split a secret past every rule below. Reject, never strip.
@@ -78,32 +122,41 @@ export function publicationFindings(text: string, allowed: Allowed): string[] {
   }
   if (LOCAL_PATHS.some((re) => re.test(n))) findings.add("local absolute path");
   for (const url of n.match(ANY_URL) ?? [])
-    if (!/^https:\/\/github\.com\//.test(url)) findings.add("non-GitHub link");
-  if (/\bwww\./i.test(n)) findings.add("non-GitHub link");
+    if (!allowedLink(url)) findings.add("link not allowed");
+  if (!linkTargetsAllowed(n)) findings.add("link not allowed");
+  // A bare host name (www.example.org) outside an allowed link is a link too.
+  if (/\bwww\./i.test(n.replace(ANY_URL, (url) => (allowedLink(url) ? " " : url))))
+    findings.add("link not allowed");
   if (/(?:%[0-9A-Fa-f]{2}){3,}/.test(n)) findings.add("percent-encoded data");
   // Opaque runs (keys, hex chunks, base64 with "/"). GitHub links are split into their segments first, so a
   // secret in a path or query is still seen; then this job's own IDs are removed.
-  let scan = n.replace(GITHUB_URL, (url) => url.split(/[/#?=&]/).join(" "));
+  let scan = n.replace(ANY_URL, (url) => (allowedLink(url) ? url.split(/[/#?=&.]/).join(" ") : url));
   for (const id of allowed) scan = scan.split(id).join(" ");
   for (const run of scan.match(/[A-Za-z0-9+/=_-]{32,}/g) ?? [])
-    if (/[0-9]/.test(run) && /[A-Za-z]/.test(run))
+    if (/[0-9]/.test(run) && /[A-Za-z]/.test(run) && !wordLike(run))
       findings.add("opaque key-like string");
   return [...findings];
 }
+// A repository path or ID made of words (docs/adr/0002-runtime-and-distribution,
+// .review/plans/OPS-dispatch-active-w1, tests/fixtures/ledger/cases/EX-05): every piece is letters only,
+// digits only, or a short label such as PR10, w1 or R001. Keys, hex and base64 have mixed pieces.
+const wordLike = (run: string): boolean =>
+  run
+    .split(/[/+=_.-]+/)
+    .every((piece) => /^(?:[A-Za-z]*|[0-9]*|[A-Za-z]{1,4}[0-9]{1,4})$/.test(piece));
 
 // Every prose field of a parsed worker result, checked as one text (so cross-field joins are also seen).
-export function resultFindings(
-  r: WorkerResult,
-  j: Job,
-  s: Pick<Snapshot, "pair" | "finalPair" | "history">,
-  repo: string,
-): string[] {
+export function resultFindings(r: WorkerResult, j: Job, s: Seen, repo: string): string[] {
   const allowed = allowedFor(j, s),
+    // Every text field of the result, the red-team table and earlier-RT notes included (Codex PR56-R006),
+    // checked as one text before anything is stored.
     parts = [
       r.summary,
-      ...r.findings.flatMap((f) => [f.location, f.impact, f.completion]),
+      ...r.findings.flatMap((f) => [f.id, f.location, f.impact, f.completion]),
       ...r.unverified,
       ...r.evidence,
+      ...(r.causes ?? []).flatMap((c) => [c.cause, c.judgement, c.where]),
+      ...(r.previous ?? []).flatMap((v) => [v.id, v.status, v.reason]),
     ];
   return [
     ...evidenceFindings(r.evidence, repo, allowed),
@@ -116,21 +169,8 @@ export function redactedResult(raw: string): string {
   return JSON.stringify({ redacted: "publication-check", resultHash: hash(raw) });
 }
 
-// Replaces a stored plaintext result with its hash-only form when the Broker blocks the final body. Matches the
-// exact job and stored hash so it cannot touch another row. Uses the jobs table directly because store.ts is
-// being changed by W3; moving this into the Store API is part of the W4 integration.
-export function redactStoredResult(db: DatabaseSync, j: Job, raw: string): boolean {
-  return (
-    db
-      .prepare(
-        "UPDATE jobs SET result=? WHERE id=? AND run=? AND result=?",
-      )
-      .run(redactedResult(raw), j.id, j.run, raw).changes === 1
-  );
-}
-
 // `blocked` (persistent needs-owner): never posted; the lease stays held (job status uncertain) so nothing
-// relaunches for this PR; one owner notice per run. A durable per-PR needs-owner state that survives an owner
-// releasing the uncertain lease is a REQUIRED Issue #50 W4 item (store.ts is W3's).
+// relaunches for this PR; one owner notice per run. The durable per-PR state (store.ts blocked, W4 row 1)
+// survives an owner releasing the ended run's lease and clears only by the owner's later unpause.
 export const blockedNotice = (j: Job): string =>
   `${j.key}:publication-blocked:${j.run}`;

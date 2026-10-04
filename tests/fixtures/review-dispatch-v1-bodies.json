@@ -1,0 +1,267 @@
+{
+ "note": "W4 row 5: prose lines of past public v1 review and red-team bodies in doc-gif/kurashi-ledger that the publication check blocked before W4. Each must pass now: the earlier false positives, and links to the allowed official documentation hosts (owner decision issuecomment-5978676604). Source: review:<PR>:<review ID> or comment:<PR>:<comment ID>.",
+ "lines": [
+  {
+   "source": "review:2:5388042664",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- 箇所: docs/adr/0006-data-location-backup-encryption.md:32,42（Copilot r4162543323）。"
+  },
+  {
+   "source": "review:2:5388471205",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- **R-006 [P1] 配信するUIとリリースの一致を確認する。** `docs/adr/0002-runtime-and-distribution.md:35,85–87`、ADR-0006の実利用条件。Gitのタグ・clean確認では、`.gitignore:2`で除外された`dist/`を検査できません。タグ切替後にbuildが失敗・省略された場合、旧UIと新APIの組合せで実データを扱えます。現在のcommit・lockfileと成果物のハッシュを検証する方式、または起動前のクリーンな再ビルドなどを定め、担当タスクと「古い／欠けた／途中生成の成果物ではDBを開く前に停止する」受入試験を追加してください。Copilot r4162988501と同一の指摘です。"
+  },
+  {
+   "source": "review:2:5388471205",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- **R-007 [P2] 異常終了後の単一起動lockの復旧を受入条件に含める。** `docs/adr/0006-data-location-backup-encryption.md:63`、`docs/implementation-tasks.md:76–78,91–94`。lockファイルと通常の二重起動試験だけでは、強制終了後に起動不能になる場合や、生存中のlockを誤って解除する場合を検出できません。T07/T09に、原子的な取得、生存不明なら奪わないこと、安全な復旧手順、および同時起動・強制終了・PID再利用／生存判定不能の試験を記載してください。具体的なライブラリやOS別手段の選定はT07で構いません。CopilotのPreviously missedと同一の指摘です。"
+  },
+  {
+   "source": "review:4:5388868564",
+   "before": [
+    "key/token"
+   ],
+   "text": "- テンプレートは`contents: read`、`persist-credentials: false`、SHAで固定したcheckout、タイムアウトを使い、SHAを環境変数で渡しています（スクリプトへの注入なし）。"
+  },
+  {
+   "source": "review:4:5388868564",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- 問題・影響: 日本語のWindowsでリダイレクトすると、出力はcp932になります（Windows PowerShell 5.1の`>`ではUTF-16）。`read_json`はUTF-8で厳密に読むので、次の`check`が文字コードの誤りで失敗します（出力は`ensure_ascii=False`で日本語を含む）。macOSの`/usr/bin/python3`は3.9で、READMEの「3.11以上」は検査されていません。"
+  },
+  {
+   "source": "review:16:5398510796",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "箇所: .review/findings.json:613–615（PR12-R104のsources）、.review/plans/OPS-LEDGER-PR10-PR12.json:37・44・48–49。"
+  },
+  {
+   "source": "review:18:5398510953",
+   "before": [
+    "key/token"
+   ],
+   "text": "境界と未検証範囲: pull_request、contents: read、persist-credentials: false、標準runner、Action SHA固定、secrets/投稿/マージ/デプロイ/artifact uploadなし、base側の計画検査器を使う配置、ブラウザの既定の安全設定を弱めていないことを差分で確認しました。CI自体をPRで変更できる限界も明記されています。Windows用の合成npm fixture修正は.binの形だけで、assertと製品コードは変えていません。READMEはコマンドとCIの入口を同じPRで更新し、詳細は正本へリンクしています。Windows実機のCtrl+C・Ctrl+Break・印を消せない場合は未実施のままで、#17を閉じず、手順と記録様式を残す扱いを確認しました。T05全体の完了や手動確認済みとは判定しません。"
+  },
+  {
+   "source": "review:29:5400493591",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "箇所: tests/rules/rules.test.ts のcomparison-mappingの処理、rules/withholding-slip-mapping/v1.json（Copilot 4172926945）。"
+  },
+  {
+   "source": "review:36:5401002488",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR36-R001 — `tests/fixtures/ledger/cases/EX-05.json:1161`、`ledger.test.ts:518`: EX-05-hは未知の拡張列挙値を違反にしない契約を引用する一方、`expectedViolations: [\"value-invalid\"]`を要求し、復元にも新規保存の検査を適用しています。契約どおりに復元を許す検査へ直すと台帳が失敗し、誤って`save-check/conflict`にする実装を誘導します。完了条件: 保存と読取・復元の検査を分け、未知区分の復元は違反なし・値を保持・候補年を狭めず・`save-check`なし、新規保存はTC-02-a/o05dで拒否することを検査してください。Copilot r4173245385に同意。r4173201047は場面追加を確認しましたが、この矛盾の解消まで未完了です。"
+  },
+  {
+   "source": "review:37:5401017076",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR37-R001 — docs/adr/0010-diagnostics-and-maintainability.md:199（監査表の71〜74行・111行、T30も同じ）: 保存ログは書き換え可能なので、読み戻した `launch`・`op`・`seq`・`t`・別名が「ロガー自身が作った値」であることは、書くときの表では証明できません。例えば正常な行の `seq` を合成の金額 `312345` に、`op` を正常なIDと同じ形式の合成トークンに替えると、形式で受け入れる方式では秘密がそのまま束に入り、閉じた集合だけで拒否する方式では正常なログの共通項目も拒否されます。完了条件: 書込み時と読込み時の出所を分け、取り込む4種類の例外値の変換／破棄と、正常なログを残せる条件をADR・計画・T30に明記し、形式に合う秘密を各例外項目へ埋めたログでも原値が束に出ない試験を受入に追加すること。"
+  },
+  {
+   "source": "review:37:5401216128",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR37-R004 — docs/adr/0010-diagnostics-and-maintainability.md:129,204（Copilotレビュー5401194198の「画面の問い合わせ番号と保存ログの対応付け」へ対応）: 画面の問い合わせ番号は元のopですが、共有する束ではO1等へ振り直され、利用者も調査担当もその番号から該当行を選べません。これはS3（32行）の「画面の表示とログの行の対応」を満たす手順がない問題です。完了条件: 元IDを公開束へ戻さずに、手元で問い合わせ番号を束内別名へ照合する手順を設計し、複数操作・該当なし・改ざんしたIDでも元の値が束へ出ないT30の受入条件を追加すること。精度低下の承認待ちと区別して、最低限どの調査ができるかを明記してください。"
+  },
+  {
+   "source": "review:38:5401003505",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- PR38-R002 — `.review/invariants.json:387`（[Copilot 4173219276](https://github.com/doc-gif/kurashi-ledger/pull/38#discussion_r4173219276)）: PR #25の実パス`docs/adr/0009-local-http-implementation.md`がG7のpathsにないため、その実装契約だけの変更で`INV-G7-HTTP`が選ばれません。完了条件: 既知パスを追加し、そのパスでG7の選択・assessment欠落拒否を確認すること（PR4-R009の教訓）。"
+  },
+  {
+   "source": "review:51:5404811070",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "設計§7の理由は「macOSが二重の閉じ込めを拒否する」と断定しています。手元のmacOS 26.5.1では、`sandbox-exec -p '(version 1) (allow default)'`を2段にして`/usr/bin/true`を起動すると終了0でした（PR由来のコード・鍵・AIは使用せず）。これは実Codexのprofileが入れ子で動く証明ではありませんが、OS一律の拒否という説明には反例です。固定版・外側profile・拒否された操作を区別し、未測定なら未確認と記録してください。外側を掛けない決定の再議論は不要です。"
+  },
+  {
+   "source": "comment:33:5975936338",
+   "before": [
+    "key/token"
+   ],
+   "text": "- 新しいpermissionsもsecretsもない。`pull_request_target`は使っていない。新しいジョブのactionsは、既存と同じくSHAで固定している。`persist-credentials: false`なので、workspaceを読めるようにしても、tokenは渡らない。"
+  },
+  {
+   "source": "comment:51:5977292218",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- [P2] keychainの「CLI自身のログイン以外を拒否」は、Seatbeltで項目ごとに分けられない可能性が高い / design §7のread-onlyの段落 / CLIがログインを読むために`/usr/bin/security`とsecuritydを許すと、同じlogin keychainにある、AIのGitHub Appの秘密鍵も読める（項目のACLが`security`を許していれば）。どうなるかは「ownerが実機で測る」とあるだけで、不合格のときの扱いが決まっていない / 直し方: doctorの否定試験に「実際のAppの鍵と同じACLを持つ合成の項目を、CLI用のprofileから読めない」を加える。読めたらcapabilityをdisabledにするか、Appの鍵を別のkeychainへ移すかACLを狭めるかを、このPRで決める / 設計の水準"
+  },
+  {
+   "source": "comment:53:5977705141",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- `git diff 7364f83 f4b720d` は `docs/review-dispatch-implementation.md` と計画 `.review/plans/OPS-dispatch-active-w2.json` の2ファイルだけ。コードと試験の変更はない。"
+  },
+  {
+   "source": "comment:54:5977515767",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- [P3] `/dev/tty`の読み書きを許している / W1かW4"
+  },
+  {
+   "source": "comment:54:5977608656",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- P3: 版の下限2.1.268、app-key-itemの明示deny、/dev/ttyの削除、トークンのエラーの固定文とfstat後の再検査、CODEX_HOMEの検査、lintの強化。§7との差・443は所有者が残余として受け入れた（5977523656）"
+  },
+  {
+   "source": "comment:54:5977721713",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- `git diff 24a0058 42962bb` は計画 `.review/plans/OPS-dispatch-active-w1.json` の1ファイルだけ（所有者の指摘4176569009に応じた短縮）。コードと試験の変更はない。"
+  },
+  {
+   "source": "review:2:5388308985",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "- 根拠: [Vite公式CSP仕様](https://vite.dev/guide/features#content-security-policy-csp)、[html.cspNonce](https://vite.dev/config/shared-options#html-cspnonce)。公式GitHub上の文書・React pluginの生成処理を読み、独立に確認しました。"
+  },
+  {
+   "source": "review:18:5398640257",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "`outcome() === 'expected'`を無条件に`passed`へ足しますが、Playwrightでは`test.fail()`で失敗を期待した試験が実際に失敗したときも`expected`になります（[公式TestCase仕様](https://playwright.dev/docs/api/class-testcase#test-case-outcome)、[expectedStatus](https://playwright.dev/docs/api/class-testcase#test-case-expected-status)）。その試験は必要ブラウザの実行件数を満たし、problemsにも入らず、Playwright全体もpassedとなるため、StrictReporterとQuality gateが成功してしまいます。T05の「失敗が成功に見えない」という受入条件に、期待失敗を許す例外はありません。"
+  },
+  {
+   "source": "review:29:5400094212",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "国税庁[No.2509](https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2509.htm)では、利益を基礎とする役員賞与は決議等の日、支給日の定めがない遡及差額は改訂の効力が生じた日によります。例えば2025年に決議され、明細の支給日が2026年の役員賞与を、このデータは2026年に確定します。利用者指定がなければconflictにもならず、「黙って違う年に数えない」を満たしません。"
+  },
+  {
+   "source": "review:29:5400094212",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "「すべての支払者の源泉徴収票の支払金額の合計」「源泉徴収税額の合計」では、前職分を通算した現職の票と前職の票を重ねて加算します。例えば前職100万円、現職票300万円（前職100万円を含む）なら所得の入力は300万円ですが、この記載は400万円になります。[源泉徴収票の支払金額の記載要領](https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-3.htm)と、mainのreconciliation.md §5の「採用した年間資料（重複を除いた集合）」に反します。同PRの対応表は前職分を含む意味を正しく記録しており、所得税仕様との不整合です。"
+  },
+  {
+   "source": "review:29:5400094212",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "所得区分はデータ化されていますが、19歳以上23歳未満の条件は説明文だけで、全ケースのspecific-relative-deductionが0です。年齢条件を落としても、この経路の期待値は検証できません。[No.1177](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm)の年齢・所得の両方が必要です。"
+  },
+  {
+   "source": "review:29:5400094212",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "準確定申告と年途中の死亡・出国を対象にしていますが、その事実／判定日の入力がなく、扶養の制度データは12月31日固定です。例えば2026-12-10死亡、扶養親族が2008-12-20生まれ、申告日が12月以後なら、死亡時は18歳ですが年末では19歳となり一般38万円を特定63万円へ誤ります。申告書提出日で規則を選ぶことと、家族の現況を判定する日は別です。[No.1180](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm)にも死亡／出国時の現況が定められています。"
+  },
+  {
+   "source": "review:29:5400094212",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "入力と説明は生年月日・所得・生計／関係だけで、事業専従者の除外、配偶者特別控除の双方適用禁止等を判定できません。本人が給与所得だけでも、親族が別の親族の事業専従者であるケースは除外されません。例えば20歳の親族が青色専従者給与80万円を受け、所得は閾値以下でも扶養控除の対象にはできません。[No.1191](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm)、[No.1180](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm)、[No.1195](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm)、[No.1177](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm)の適用要件を満たして初めて額の表を使えます。"
+  },
+  {
+   "source": "review:29:5400354528",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "1. [No.1195](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm)の(4)(5)には、配偶者が源泉控除対象配偶者ありとして源泉徴収された場合でも、年末調整・確定申告で配偶者特別控除を受けなかった場合等の例外があります。現データは`spouseWithheldWithSourceDeductionSpouse=false`を一律必須にしているため、最終的に双方適用していない例でも控除を0にします。本人給与450万円、配偶者所得90万円、配偶者が年中は当該源泉徴収を受けたが年末に適用しなかった例では、この条件だけで本来の38万円控除を除外します。"
+  },
+  {
+   "source": "review:29:5400354528",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "2. [No.1177](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm)の(8)は「特定親族が別の特定親族を申告して源泉徴収を受けているか」、(9)は「他の者が納税者本人を特定親族として申告して源泉徴収を受けているか」です。現入力は親族ごとの`sourceDeductionRelativeWithheld`を「源泉控除対象親族として源泉徴収されていない」としており、原典の主語と申告される人を区別していません。親族自身の適用・その親族の申告・納税者本人が他者に申告される事実は別です。所得条件を満たす親族の存在だけで自動的に(8)(9)を満たしたことにはできません。"
+  },
+  {
+   "source": "review:29:5400493591",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "- 「ほかの納税者の扶養親族とされている親族の扱い」は未確認と書かれていますが、現eligibility/unsupportedInputsには所属確認がありません。20歳・所得0円の同じ子が両親と生計を一にする場合、片親の扶養として申告済みでも、もう一方の入力が現在の条件を満たすと63万円を控除してしまいます。国税庁[No.1181](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1181.htm)は申告書等での所属と変更手続を定めています。文書の「未確認」だけでは適用範囲から除外されません。"
+  },
+  {
+   "source": "review:29:5400493591",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "69万1,000円とありますが、制度データと国税庁[電子計算機等による年末調整](https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/204.pdf)は74万1,000円からの区分です。数値の正本が制度データでも、この説明は同じ年分の計算手順と矛盾します。74万1,000円に訂正するか、重複する数値を正本への参照にしてください。"
+  },
+  {
+   "source": "review:29:5400577936",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "国税庁の[年調ソフト操作マニュアル（令和8年10月、第7.0版）](https://www.nta.go.jp/users/gensen/nenmatsu/pdf/manual_windows-mac.pdf) 82ページ、3-6の①②は、複数所得者に該当する特定親族、特定親族と他の所得者の配偶者特別控除の対象の重なりを、いずれか1人に限定しています。No.1177(8)(9)の源泉徴収の条件だけでは、この年間の所属の問題を代替しません。"
+  },
+  {
+   "source": "review:29:5400577936",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "Copilot 4172926824の検査数字の変更要求は採用不要です。[総務省の全国地方公共団体コード仕様](https://www.soumu.go.jp/main_content/000137948.pdf) の11・注①②③をPDF原典から再確認し、余り0→1、1→0、10→1と現行式が一致しました。"
+  },
+  {
+   "source": "review:29:5400660305",
+   "before": [
+    "non-GitHub link",
+    "opaque key-like string"
+   ],
+   "text": "制度データにはsalaryRevenueMax:20000000がある一方、manifestのunsupportedInputsに数値上限がなく、検査器にもyearEndAdjustmentLimitsの参照がありません。salaryRevenue:20000001の年末調整をcomputedとした写しを範囲外として拒否できません。[国税庁No.2665](https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2665.htm)の12月の対象者(1)は2,000万円を超える人を除きます。後続がこの上限を適用判定から落とす危険があります。"
+  },
+  {
+   "source": "review:51:5404811070",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "設計は「人にSHAやAIテンプレートの転記は不要」としますが、active手順2はSHA付きの完了報告を要求し、確認表は必要reviewer全員のReview本文に`base_sha`を要求します。人がGitHubの画面で本文なしのApproveを送ると、正しいpairに結び付けられていても、この正本では受入不能です。GitHubのnative Reviewには`commit_id`がありますが、`base_sha`は標準フィールドではありません（[Review API](https://docs.github.com/en/rest/pulls/reviews)）。"
+  },
+  {
+   "source": "review:51:5404811070",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "設計§7の`--sandbox read-only`は書込み制限であり、読取りを資料dirへ絞る設定ではありません。ローカル版と同じ公式Codex 0.160.0の[SandboxPolicy](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/protocol.rs#L1222)は全disk読取りを許可し、[変換処理](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/permissions.rs#L2046)もrootへのreadを設定します。公式の[permission profiles](https://learn.chatgpt.com/docs/permissions)には範囲を絞る方法がありますが、通常の`--sandbox`指定と併用して適用できるものではありません。"
+  },
+  {
+   "source": "review:51:5404811070",
+   "before": [
+    "non-GitHub link"
+   ],
+   "text": "Claudeのsetup-token／OAuth環境変数と起動層は、[認証](https://code.claude.com/docs/en/authentication)・[CLI](https://code.claude.com/docs/en/cli-reference)・[permissions](https://code.claude.com/docs/en/permissions)の説明と概ね整合します。実機の隔離合格は別です。PR48の導入前チェックをW1〜W4へ残す扱いも妥当で、特にR003の実run出所証明、R006/R011の実配送、R007の未解消指摘収集、R008のCI信頼、R009/R010のhost検査を、docsの更新やfixture成功だけで完了にしないことを確認しました。"
+  }
+ ]
+}

@@ -212,3 +212,103 @@ test("R001 result prose cannot inject protocol blocks, HTML comments, mentions o
     d.cleanup();
   }
 });
+
+test("W4 row 5: prose of past public v1 bodies passes the publication check; secrets and private paths still do not", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { publicationFindings } = await import("./publication.ts");
+  const fixture = JSON.parse(
+    readFileSync(new URL("../../../tests/fixtures/review-dispatch-v1-bodies.json", import.meta.url), "utf8"),
+  ) as { lines: { source: string; text: string; before: string[] }[] };
+  assert.ok(fixture.lines.length >= 15);
+  // No identifier is allowed beyond the check's own: the lines hold no full commit SHA.
+  for (const l of fixture.lines) assert.deepEqual(publicationFindings(l.text, new Set()), [], l.source);
+  // Narrowing the rules must not open the secret shapes (synthetic values, assembled at runtime so this
+  // file holds no path-shaped literal).
+  const at = (...parts: string[]) => parts.join("");
+  const blocked: [string, string][] = [
+    [at("tok", "en: abcdefgh12345678"), "key/token"],
+    [at("sec", "ret=hunter2-synthetic"), "key/token"],
+    [at("パスは/Us", "ers/someone/projectです"), "local absolute path"],
+    [at("/pri", "vate/var/folders/xy/T/run"), "local absolute path"],
+    [at("~", "/Library/Keychains"), "local absolute path"],
+    ["Q2xhdWRlIHN5bnRoZXRpYyBrZXkgdmFsdWUgMTIzNDU2Nzg5MA", "opaque key-like string"],
+    ["9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "opaque key-like string"],
+    ["codex/01a10243-14a2-7ed2-9b75-26b378f74cca", "opaque key-like string"],
+    // Only the fixed official hosts: other hosts, look-alikes, user info, ports, http and other schemes stop.
+    ["https://example.org/collect?d=1", "link not allowed"],
+    ["https://code.claude.com.evil.example/x", "link not allowed"],
+    ["https://code.claude.com@evil.example/x", "link not allowed"],
+    ["https://code.claude.com:8443/x", "link not allowed"],
+    ["http://code.claude.com/docs", "link not allowed"],
+    ["file:///etc/hosts", "link not allowed"],
+    ["www.example.org", "link not allowed"],
+  ];
+  for (const [text, finding] of blocked)
+    assert.ok(publicationFindings(text, new Set()).includes(finding), text);
+});
+
+test("W4 finding IDs: a review uses PR<N>-R only; a red-team record uses RT-<n> and the table cells stay one line without |", () => {
+  const d = database();
+  try {
+    const review = claim(d.store);
+    const base = fixtureResult(review);
+    const finding = (id: string) => ({ ...base, decision: "changes-requested" as const, findings: [{ id, location: "a", impact: "b", completion: "c" }] });
+    assert.ok(parseResult(JSON.stringify(finding("PR1-R001")), review));
+    for (const id of ["PR1-D001", "PR1-T001", "RT-1"])
+      assert.throws(() => parseResult(JSON.stringify(finding(id)), review), /Invalid finding/, id);
+    // A review carries no red-team table.
+    assert.throws(() => parseResult(JSON.stringify({ ...base, causes: [{ cause: "INV-LOCK/x", judgement: "該当なし", where: "a" }] }), review), /Invalid worker result/);
+    const red = { ...review, kind: "faultfinding" as const };
+    assert.ok(parseResult(JSON.stringify({ ...finding("RT-1"), run: red.run }), red));
+    assert.throws(() => parseResult(JSON.stringify(finding("PR1-R001")), red), /Invalid finding/);
+    const row = (where: string) => ({ ...base, causes: [{ cause: "INV-LOCK/restore-lock-identity", judgement: "該当なし", where }] });
+    assert.ok(parseResult(JSON.stringify(row("確かめた")), red));
+    for (const where of ["a | b", "a\nb", ""])
+      assert.throws(() => parseResult(JSON.stringify(row(where)), red), /Invalid cause judgement/, JSON.stringify(where));
+    // accepted cannot leave an earlier RT open.
+    assert.throws(
+      () => parseResult(JSON.stringify({ ...base, decision: "accepted", previous: [{ id: "RT-2", status: "未解消", reason: "残る" }] }), red),
+      /Contradictory/,
+    );
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 round 2 P2-a: every Markdown link target must be an allowed https URL (inline, reference, autolink, //host)", async () => {
+  const { publicationFindings } = await import("./publication.ts");
+  const ok = [
+    "[資料](https://docs.github.com/en/rest)",
+    "[x]: https://code.claude.com/docs/en/headless",
+    "<https://nodejs.org/api/sqlite.html>",
+    "式 a // b と書く", // a comment marker followed by a space is prose
+  ];
+  for (const text of ok) assert.deepEqual(publicationFindings(text, new Set()), [], text);
+  const bad = [
+    "[資料](//evil.example/p)",
+    "[資料]( //evil.example/p )",
+    "[資料](<//evil.example/p>)",
+    "[x]: //evil.example",
+    "  [x]: <//evil.example>",
+    "<//evil.example/p>",
+    "参照は//evil.example/pにある",
+    "[資料](/relative/path)",
+    "[資料](docs/page.md)",
+    "[資料](#anchor)",
+    "[資料](mailto:someone)",
+    "[x]: ftp://evil.example/f",
+    "<ftp://evil.example/f>",
+    "[資料](https://evil.example/p)",
+    "[資料](ｈｔｔｐｓ://evil.example/p)", // full-width, caught after NFKC
+  ];
+  for (const text of bad) assert.ok(publicationFindings(text, new Set()).includes("link not allowed"), text);
+  // parseResult refuses the same forms in worker prose (blocked, not only at POST).
+  const d = database();
+  try {
+    const j = claim(d.store);
+    for (const text of ["[資料](//evil.example/p)", "[x]: //evil.example", "[資料](docs/page.md)"])
+      assert.throws(() => parseResult(JSON.stringify({ ...fixtureResult(j), summary: text }), j), /Unsafe result prose/, text);
+  } finally {
+    d.cleanup();
+  }
+});

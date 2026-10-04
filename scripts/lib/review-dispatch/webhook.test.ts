@@ -200,3 +200,75 @@ test("R011 oversized marker limits: off, size bounds, event allow-list and clock
     d.cleanup();
   }
 });
+
+test("W4 row 8: edit/delete/dismiss deliveries mark their PR in the same transaction; other actions do not", () => {
+  const d = database(),
+    p = policy();
+  try {
+    const send = (event: string, payload: Record<string, unknown>, delivery: string) => {
+      const raw = Buffer.from(
+        JSON.stringify({ repository: { id: 1 }, installation: { id: 2 }, sender: { id: 40 }, ...payload }),
+      );
+      return ingest(
+        p,
+        d.store,
+        secret,
+        { ...headers(raw), "x-github-event": event, "x-github-delivery": delivery },
+        raw,
+        100,
+      );
+    };
+    // Policy target PR 1: registered participants 30 and 40, owner 10, implementer 20. Only registered
+    // participants' (not the implementer's) and owners' items mark; other PRs and third parties do not.
+    const by = (id: number) => ({ user: { id } });
+    const cases: [string, Record<string, unknown>, string | null][] = [
+      ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(30) }, "1:1"],
+      ["pull_request_review", { action: "dismissed", pull_request: { number: 1 }, review: by(10) }, "1:1"],
+      ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(999) }, null],
+      ["pull_request_review", { action: "submitted", pull_request: { number: 1 }, review: by(30) }, null],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(30) }, "1:1"],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(20) }, null], // implementer
+      ["pull_request_review_comment", { action: "edited", pull_request: { number: 1 }, comment: by(40) }, "1:1"], // registered, not assigned
+      ["pull_request_review_comment", { action: "created", pull_request: { number: 1 }, comment: by(30) }, null],
+      ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: by(30) }, "1:1"],
+      ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: {} }, "1:1"], // unreadable author
+      ["issue_comment", { action: "deleted", issue: { number: 1 }, comment: by(30) }, null], // a plain issue
+      ["issue_comment", { action: "deleted", issue: { number: 9, pull_request: {} }, comment: by(30) }, null], // not a target
+      ["pull_request", { action: "edited", pull_request: { number: 1 } }, null],
+    ];
+    cases.forEach(([event, payload, mark], i) => {
+      assert.equal(send(event, payload, `signal-${i}`), 202, event);
+      const marked = d.store.db.prepare("SELECT key FROM marks WHERE delivery=?").get(`signal-${i}`);
+      assert.equal(marked?.["key"] ?? null, mark, `${i} ${event} ${String(payload["action"])}`);
+    });
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 receiver listens on loopback only, on a fixed port other than 443, and refuses off mode", async () => {
+  const d = database(),
+    p = policy();
+  try {
+    for (const port of [443, 80, 1023, 65536, 1.5, -1])
+      assert.throws(() => serve(p, d.store, secret, () => 100, port), /port/, String(port));
+    p.mode = "off";
+    assert.throws(() => serve(p, d.store, secret, () => 100), /off/);
+    p.mode = "active";
+    let stored = 0;
+    const server = serve(p, d.store, secret, () => 100, 0, () => stored++);
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      assert.ok(address && typeof address !== "string");
+      assert.equal(address.address, "127.0.0.1");
+      assert.equal(await post(address.port, headers(), body), 202);
+      assert.equal(await post(address.port, { ...headers(), "x-hub-signature-256": "sha256=" + "0".repeat(64) }, body), 401);
+      assert.equal(stored, 1); // only after a durable 202
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    }
+  } finally {
+    d.cleanup();
+  }
+});
