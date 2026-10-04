@@ -112,7 +112,7 @@ export class Store {
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
         CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
-        CREATE TABLE holds(key TEXT PRIMARY KEY,since INTEGER NOT NULL);
+        CREATE TABLE holds(key TEXT PRIMARY KEY,since INTEGER NOT NULL,policy TEXT NOT NULL,seen INTEGER NOT NULL);
         PRAGMA user_version=5; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
@@ -307,18 +307,27 @@ export class Store {
           .run(serverAt, key);
   }
   // PR48-R013: since when (stored local clock) a PR's observation is held as transiently incomplete; null
-  // once a reconcile processes it.
-  heldSince(key: string, held: boolean): number | null {
+  // once a reconcile processes it. The hold keeps the policy revision it was held under and when it was last
+  // held (`seen`); a new revision starts a new hold.
+  heldSince(key: string, held: boolean, policy: string): number | null {
     if (!held) {
       this.db.prepare("DELETE FROM holds WHERE key=?").run(key);
       return null;
     }
-    this.db
-      .prepare("INSERT OR IGNORE INTO holds VALUES(?,?)")
-      .run(key, this.storedClock() ?? 0);
-    return Number(
-      (this.db.prepare("SELECT since FROM holds WHERE key=?").get(key) as Row)["since"],
-    );
+    const now = this.storedClock() ?? 0;
+    if (this.hold(key)?.policy === policy)
+      this.db.prepare("UPDATE holds SET seen=? WHERE key=?").run(now, key);
+    else
+      this.db
+        .prepare(
+          "INSERT INTO holds VALUES(?,?,?,?) ON CONFLICT(key) DO UPDATE SET since=excluded.since,policy=excluded.policy,seen=excluded.seen",
+        )
+        .run(key, now, policy, now);
+    return this.hold(key)!.since;
+  }
+  hold(key: string): { since: number; policy: string; seen: number } | null {
+    const r = this.db.prepare("SELECT since,policy,seen FROM holds WHERE key=?").get(key) as Row | undefined;
+    return r ? { since: Number(r["since"]), policy: String(r["policy"]), seen: Number(r["seen"]) } : null;
   }
   processed(app: number, delivery: string): void {
     this.db

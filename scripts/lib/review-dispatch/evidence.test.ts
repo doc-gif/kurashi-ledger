@@ -1352,3 +1352,68 @@ test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound,
     d.cleanup();
   }
 });
+test("Red team round 3 RT-1: a Ready held under an earlier policy revision is processed without binding after the revision changes", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    // The identity anchor is wrong: the branch history is incomplete and the Ready delivery is held.
+    p.targets[0]!.identity = { activity: "missing-anchor", head: HEAD, at: Date.parse(t(1)), pushers: [20] };
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    const [held] = await reconcile(f.reader(), p, d.store);
+    assert.equal(held!.snapshot.historyComplete, false);
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.equal(d.store.hold("1:1")!.policy, "p1");
+    // The owner fixes the identity and raises the revision, but leaves readyAfter as it was.
+    const next = policy();
+    next.revision = "p2";
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), next, d.store);
+    assert.equal(later!.snapshot.historyComplete, true);
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    assert.equal(assess(next, later!.snapshot, null).reason, "new-ready-required");
+    assert.equal(d.store.hold("1:1"), null);
+  } finally {
+    d.cleanup();
+  }
+});
+test("Red team round 3 RT-2: a short list against a valid count over the cap, and an invalid count with a non-empty list, are held", async () => {
+  const listOf = (n: number) =>
+    JSON.stringify(Array.from({ length: n }, (_, i) => ({ sha: i.toString(16).padStart(40, "0") })));
+  for (const [name, count, listed] of [
+    ["251 vs 249", 251, 249],
+    ["invalid count, 3 listed", "3", 3],
+    ["missing count, 3 listed", undefined, 3],
+  ] as const) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    try {
+      await reconcile(f.reader(), p, d.store);
+      f.state.ready = true;
+      f.state.now = 5;
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      const odd = new GhReader(p.repo, async (path, h) => {
+        const r = await f.send(path, h);
+        if (path.endsWith("/pulls/1")) {
+          const v = JSON.parse(r.body);
+          if (count === undefined) delete v.commits;
+          else v.commits = count;
+          return { ...r, body: JSON.stringify(v) };
+        }
+        return path.includes("/pulls/1/commits") ? { ...r, body: listOf(listed) } : r;
+      });
+      const [r] = await reconcile(odd, p, d.store);
+      assert.equal(r!.snapshot.complete, false, name);
+      assert.notEqual(r!.heldSince, null, name);
+      assert.equal(d.store.pendingInbox().length, 1, name);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, name);
+      assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)), name);
+    } finally {
+      d.cleanup();
+    }
+  }
+});

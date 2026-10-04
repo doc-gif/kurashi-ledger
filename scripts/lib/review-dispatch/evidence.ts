@@ -371,8 +371,15 @@ export async function reconcile(
   // PR48-R013: PRs whose observation was transiently incomplete. Nothing of theirs is saved and their
   // deliveries stay pending, so a later complete reconcile binds a Ready missed now.
   const held = new Set<number>();
+  // Red team round 3 RT-1: deliveries held under an earlier policy revision are processed without binding
+  // (like an untrusted workflow): a revision change needs a new Ready. Their change records are still saved.
+  const unbound = new Set<string>(),
+    unboundChanges: { key: string; records: ChangeRecord[] }[] = [];
+  const id = (row: Record<string, unknown>) => `${String(row["app"])}:${String(row["delivery"])}`;
   for (const target of p.targets) {
     const key = keyOf(p, target.pr),
+      hold = store.hold(key),
+      stale = hold !== null && hold.policy !== p.revision ? hold : null,
       ready = store.evidence<ReadyBinding>(key, "ready"),
       reviews = store.evidence<ReviewBinding>(key, "review"),
       prior = store.observation<Observation>(key),
@@ -405,6 +412,14 @@ export async function reconcile(
       )
         throw new Error("Inbox identity changed");
       if (deliveryPr(String(row["event"]), payload) !== target.pr) continue;
+      if (stale !== null && Number(row["received"]) <= stale.seen) {
+        unbound.add(id(row));
+        unboundChanges.push({
+          key,
+          records: signalRecords(p, target.pr, String(row["event"]), payload, Number(row["received"])),
+        });
+        continue;
+      }
       const r =
         String(row["event"]) === "pull_request" ? bindReady(payload, c) : null;
       if (r && !ready.some((x) => x.id === r.id)) ready.push(r);
@@ -511,10 +526,12 @@ export async function reconcile(
       store.saveObservation(update.key, update.observation);
       store.settleHolds(update.key, update.observation.observedAt, unsettled);
     }
-    for (const r of results) r.heldSince = store.heldSince(keyOf(p, r.pr), held.has(r.pr));
+    for (const r of results) r.heldSince = store.heldSince(keyOf(p, r.pr), held.has(r.pr), p.revision);
+    for (const { key, records } of unboundChanges)
+      for (const r of records) store.saveEvidence(key, "itemchange", changeKey(r), r);
     for (const { row, payload } of deliveries) {
       const pr = deliveryPr(String(row["event"]), payload);
-      if (pr === null || !held.has(pr))
+      if (pr === null || !held.has(pr) || unbound.has(id(row)))
         store.processed(Number(row["app"]), String(row["delivery"]));
     }
   });

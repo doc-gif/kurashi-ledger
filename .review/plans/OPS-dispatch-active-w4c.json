@@ -260,6 +260,10 @@
     {
      "location": "GhReader.pages: 件数のない一覧",
      "result": "Linkのnextをたどる。件数がないので従来どおり（ページの失敗は取得失敗）"
+    },
+    {
+     "location": "reconcile: 保留中のpolicy revisionの変更",
+     "result": "保留したrevisionと違えば、保留した配送は結び付けずに処理（変更の記録は残す）"
     }
    ]
   },
