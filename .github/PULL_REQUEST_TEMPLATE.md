@@ -23,4 +23,4 @@
 
 作業中はDraftにしてください。レビューを依頼するときはOpenへ切り替え、docs/pr-review-loop.mdの形式で対象head/baseとworker_status=ready-for-reviewをPRコメントへ記載してください。このテンプレートを埋めるだけでは完了報告になりません。
 
-レビュー中は差分を変更せず、修正再開時はworkingを明記してください。マージは、AGENTS.mdの条件（実装していない別の担当のaccepted、Copilotの未対応の指摘なし、baseの変化と競合なし）を満たしたあとで、実装担当が`--match-head-commit`付きで行います。
+レビュー中は差分を変更せず、修正再開時はworkingを明記してください。マージは、[正本の条件](https://github.com/doc-gif/kurashi-ledger/blob/main/docs/github-agent-operations.md#merge-conditions)を満たしたあとで、自分のPRに限り実装担当が`--match-head-commit`付きのマージコミットで行います。
