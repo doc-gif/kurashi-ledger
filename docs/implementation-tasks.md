@@ -218,7 +218,7 @@
 - 受入: 既存PRの修正を新規作業より優先。同じbranch/worktreeの多重起動を防ぎ、生存不明のworkerを勝手に置き換えない。仕様拡大は候補Issueへ分離。指摘は根拠を評価し、不要な変更は理由を残す。
 - 検証: 起動重複・中断復帰・古い担当・停止中の製品実装・同じ指摘の繰返し・レビュー間の矛盾・2回の修正でも未解決・予算到達。CLAUDE.mdとAGENTS.mdの整合も確認。
 - 子タスク: T24a 実行環境と担当割当、T24b PR引継ぎと修正ループ、T24c 停止・異常系の運用試験。
-- 受付のactive（Issue #50）: 受付がactiveのPRでは、粗探し・レビューのAIの起動を受付のJob管理へ移す。実装側は指摘への修正を続け、Draft→Readyで依頼する。auto-fixは、ownerがPRごとに許可したときだけ受付が起動する（許可1回につき最大2修正）。旧workerの停止を確かめてから切り替える。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
+- 受付のactive（Issue #50）: 受付がactiveのPRでは、粗探し・レビューのAIの起動を受付のJob管理へ移す。実装側は指摘への修正を続け、Draft→Readyで依頼する。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効。旧workerの停止を確かめてから切り替える。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
 - 非対象: 自動マージ。CopilotのFix with Copilot等で第二の実装担当を無断起動しない。環境未設定なら指示書と手動引継ぎまで。
 
 ## T25 — 長期運用・更新・復元のリハーサル

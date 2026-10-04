@@ -52,7 +52,7 @@ dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変
 
 GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路はO1によりCloudflare Tunnelを推奨とし、tunnelはlocalhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの導入手順（Issue #50のW4）に置く。URLはrepoへ書かない。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路の方式は、設計の提案としてCloudflare Tunnelを挙げ、ownerがW4の導入手順で選ぶ。どの方式でも、localhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの導入手順（Issue #50のW4）に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -90,7 +90,7 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 
 起動はowner許可、操作認可、独立性、Open/non-Draft、exact-pair Ready、最新main取り込み、必要CI、未処理依頼、枠/予算が全て揃った時だけ。Copilotレビューは[現行マージ条件](github-agent-operations.md#merge-conditions)で任意としたため、応答・利用枠不足の証拠を起動条件にしない。
 
-提出前の別担当のdesign-faultfinding Job/人の証跡とexact-pair acceptedを常に必要とし、未解消設計指摘があれば止める。AIの粗探しもreview quota/PR leaseに含める。Copilotの後着指摘は独立に評価・対応し、重大な欠陥なら独立受入を再確認する。無応答や指摘の未対応表示だけでacceptedを取り消さず、通常コメントへの返信で再レビューを仮定しない。
+粗探しの証跡（担当reviewerのうち独立性を満たす1者のfaultfinding Job、人なら同じ書式の手動記録）とexact-pair acceptedを常に必要とし、未解消設計指摘があれば止める。activeでは、2026-10-04の所有者承認による読み替えで、Readyを「レビューの依頼」とみなす。粗探しはReadyのあと、レビューJobの前に、同じhead/baseで行う。AIの粗探しもreview quota/PR leaseに含める。Copilotの後着指摘は独立に評価・対応し、重大な欠陥なら独立受入を再確認する。無応答や指摘の未対応表示だけでacceptedを取り消さず、通常コメントへの返信で再レビューを仮定しない。
 
 | 項目 | off | shadow | active（移行後のみ） |
 | --- | --- | --- | --- |
@@ -109,7 +109,7 @@ activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTE
 
 workerは結果schemaだけを返し、GitHubへ直接書き込まない。Brokerはidentityごとに固定し、その鍵だけを管理する。受付/workerがAppや鍵を選ぶ引数を設けない。Claudeの鍵はClaudeのBrokerだけが管理し、Codexによる実装・検証はfake Brokerで行う。
 
-Jobの割当を固定したrun manifestと結果hashをBrokerが照合する。固定した接続先と認証したrun endpointから結果を受け、別run/actorの結果を拒否する。投稿身元＝Job reviewer＝実際のrun actor、現行generation/pairであり、PR作者・push/実装参加者でないことを投稿直前に再確認する。identity履歴不明も拒否。Outboxのdecisionはworker schema由来で、受付がacceptedを合成しない。
+Jobの割当を固定したrun manifestと結果hashをBrokerが照合する。固定した接続先と認証したrun endpointから結果を受け、別run/actorの結果を拒否する。投稿身元＝Job reviewer＝実際のrun actor、現行generation/pairであり、PR作者・push/実装参加者でないことを投稿直前に再確認する。identity履歴不明も拒否。Outboxのdecisionはworker schema由来で、受付がacceptedを合成しない。Brokerは投稿の前に、本文を公開してよいかを検査する（check-public相当。Issue #50のW2）。検査に通らなければ投稿せず、人へ知らせる。
 
 | worker decision | BrokerのGitHub event |
 | --- | --- |
@@ -119,9 +119,9 @@ Jobの割当を固定したrun manifestと結果hashをBrokerが照合する。�
 
 本文は[現行v1書式](pr-review-loop.md)のmarker、role、agent_id、head_sha、base_sha、decisionと、短い結論・指摘ID・検証リンク・未検証範囲を保持する。運用移行前のCOMMENT acceptedは現行判定だけで扱い、activeへ移植しない。
 
-fixのpush/Ready/返信はimplementerに固定したBrokerだけ。ownerが明示的にauto-fixを有効にしたPRに限る。push後に実際のGitHub activity actorとheadを確認し、確認不能ならReadyにしない。レビューBrokerからpushした結果を同じ身元で承認しない。token/GitHub認証をworkerに渡さず、local commit案をBrokerが検査して送る。
+fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効。** そのあとも、ownerが明示的にauto-fixを有効にしたPRに限る。push後に実際のGitHub activity actorとheadを確認し、確認不能ならReadyにしない。レビューBrokerからpushした結果を同じ身元で承認しない。token/GitHub認証をworkerに渡さず、local commit案をBrokerが検査して送る。
 
-人への案内はPRコメントを使い、通知Brokerの固定Codex Appで投稿する。keyはrepo/PR/通知種別/head/base/generation＋障害fingerprint、markerはkurashi-ledger:dispatch-notice:v1。対象状態ごとに1回、変化なし0件。通常レビュー依頼は人への標準Request reviewも使えるが、同じkeyで重複依頼しない。自分の通知/Review・一般コメントからAI Jobを起動しない。通知のPOST不明も§4で止める。GitHubへ接続できない障害はlocalの状態記録で1回知らせる。
+人への案内はPRコメントを使い、通知Brokerの固定Codex Appで投稿する。keyはrepo/PR/通知種別/head/base/generation＋障害fingerprint、markerはkurashi-ledger:dispatch-notice:v1。対象状態ごとに1回、変化なし0件。通常レビュー依頼は人への標準Request reviewも使えるが、同じkeyで重複依頼しない。自分の通知/Review・一般コメントからAI Jobを起動しない。activeへの切替とrollbackでは、それぞれ1回、mode・policy revision・必要なreviewer（login/App ID）を書いた通知を投稿する（[PR書式](pr-review-loop.md#受付がactiveのpr)）。通知は情報であり、権限を与えない。通知のPOST不明も§4で止める。GitHubへ接続できない障害はlocalの状態記録で1回知らせる。
 
 ## 7. workerの隔離と往復上限
 
@@ -134,7 +134,7 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。ownerが明�
 
 shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
 
-read-only flagはキーチェーン読取りの隔離ではない。初期macOS backendはsystemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、CLI自身のログイン以外のsecurity/keychain access、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexのtool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
+read-only flagはキーチェーン読取りの隔離ではない。初期macOS backendはsystemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、CLI自身のログイン以外のsecurity/keychain access、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。Read（とGlob）はCLIのprocessの中で動くので、tool子processのprofileでは守れない。CLIのprofileが読めるのは、資料・runtime・`CLAUDE_CONFIG_DIR`だけにする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexのtool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
 
 doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
@@ -144,24 +144,35 @@ doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格�
 
 ### Claudeの起動の層（O2）
 
-Claudeは購読のログインで起動する。`--bare`は購読のログインもkeychainも読まず、API鍵を要する（[headless](https://code.claude.com/docs/en/headless)）。そのため`--bare`とAPI鍵は使わない。次の層を全部重ねる。
+Claudeは購読のログインで起動する。`--bare`は購読のログインもkeychainも読まず、API鍵を要する（[headless](https://code.claude.com/docs/en/headless)）。そのため`--bare`とAPI鍵は使わない。次の層は**すべて必須**。固定版にflag・設定がない、または否定試験で効かないなら、capabilityをdisabledにする。
 
-| 層 | 設定 | 防ぐもの |
+| 層 | 設定（[headless](https://code.claude.com/docs/en/headless)・[cli-reference](https://code.claude.com/docs/en/cli-reference)・[permissions](https://code.claude.com/docs/en/permissions)の記載だけ） | 防ぐもの |
 | --- | --- | --- |
 | 認証 | 起動専用の`CLAUDE_CONFIG_DIR`。ownerがそこで1回ログインする。CLAUDE.mdを置かない | 個人設定・memory・別の認証の混入、API費用 |
-| 設定 | inlineの`--settings` JSON。hooksとpluginsを持たない | hooks・pluginsの実行 |
-| MCP | serverのない`--mcp-config` | MCP serverの接続 |
-| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す。`--allowedTools`もこの3つに限る | 書込み・shell・Web |
+| 設定の読込み | `--setting-sources user`（projectとlocalを除く）、または`--restricted` | cwdの`.claude/settings*.json`の読込み |
+| 設定 | inlineの`--settings` JSON。`disableAllHooks: true`、pluginsなし、下のRead規則 | hooks・pluginsの実行 |
+| MCP | serverのない`--mcp-config`、`--strict-mcp-config`、`--disallowedTools "mcp__*"` | 他の場所のMCP設定、MCP tool |
+| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す | 書込み・shell・Web |
+| 読取りの範囲 | allowは資料dirに限った`Read(//<資料>/**)`等。denyに`Read(//<config dir>/**)`。素の`Read`・`Grep`・`Glob`を許可しない | cwd外・config dirの読取り |
 | 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
-| cwd | 取得資料だけの使い捨て領域。repo・worktreeの外で、祖先にもCLAUDE.md・AGENTS.mdがない | repoの指示・設定の自動ロード |
-| OS | `sandbox-exec`のSeatbelt profile。CLI用とtool子process用に分ける | 資料・runtime以外の読取り、policy/DBの書込み、tool子processの資格情報・network |
+| cwd | 取得資料だけの使い捨て領域。repo・worktreeの外。資料はrepoのpathを保たず、中立の名前で置く。cwdとその祖先に`.claude/`・`.mcp.json`・`CLAUDE.md`・`AGENTS.md`を作らない。あれば起動しない | PRのhooks・MCP・指示の自動ロード |
+| OS | `sandbox-exec`のSeatbelt profile。CLI用は資料・runtime・config dirだけを読める。tool子process用は資格情報もnetworkも使えない | 上の層の迂回、policy/DBの書込み |
 
-- 使うflagは[headless](https://code.claude.com/docs/en/headless)と[cli-reference](https://code.claude.com/docs/en/cli-reference)に記載のものだけ。必要なflagが固定版の文書にない、または否定試験で効かないなら、capabilityをdisabledにする。
-- dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く（headlessの記載）。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`が要る。
-- 素の`Read`をallowedToolsに入れると、cwd外の読取りも確認なしになる。範囲付きの規則にするか、cwd内の読取りに任せる。Seatbeltが資料・runtime以外の読取りを拒む。
-- 同じ層を狭める記載済みのflagもある: `--strict-mcp-config`、`--disallowedTools "mcp__*"`、`--safe-mode`、`--permission-prompts none`、`--no-session-persistence`、`--setting-sources`。固定版が対応すれば起動器で併用し、採否を起動器のPRに記録する。
-- CLIのprocessはモデルとの通信と自分のログインの読取りが要る。tool子processは資格情報を読めず、networkも使えない。macOSでログインがkeychainのどの項目に入り、通常のログインと分かれるかは未確認。ownerが実機で測る。
-- ログインが無効・期限切れなら起動しない。人へ1回知らせる。API鍵・別サービスへ自動で切り替えない。新しいAPI費用はowner承認が要る。
+- `--bare`なしの`-p`は、cwdの`.claude/settings.json`のhooksと`.mcp.json`を信頼の確認なしで使う（headlessの記載）。そのため設定の読込み・MCP・cwdの3つの層を重ねる。
+- dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`を使う。
+- `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
+- `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
+
+doctorの否定試験に次を加える。1つでも拒否できなければcapabilityをdisabledにする。
+
+- `.claude/settings.json`のhooks・`.mcp.json`・`CLAUDE.md`・`.claude/agents`を含む合成PRを資料にして起動する。hookが動かず、MCP serverがなく、合成の目印の指示が効かない。
+- 注入した指示でconfig dirと合成の秘密を読ませる。Read・Grep・Globのどれでも拒否される。
+- CLI用のprofileから、実際のAppの鍵、または同じACLの形の合成のkeychain項目を読ませる。読めない。
+
+**keychain（2026-10-04の所有者決定）:** 上の最後の試験で読めたら、ownerがAppの鍵を別の専用keychain fileへ移す。移し終えて試験に通るまで、自動起動はdisabledのまま。
+
+- ログインが無効・期限切れなら起動しない。人へ1回知らせる。API鍵・別サービスへ自動で切り替えない。新しいAPI費用はowner承認が要る。購読の認証であることの確かめ方は起動器（W1）で決める。
+- 注入でPRの内容が粗探しとレビューの両方を通る危険は、手動のときと同じ残余リスクとして残る。Brokerの公開の検査（§6）は流出を減らすが、判断の誤りは防がない。
 
 ## 8. 実装・移行・完了
 
@@ -170,14 +181,16 @@ Claudeは購読のログインで起動する。`--bare`は購読のログイン
 3. ownerがW1〜W4のマージ、doctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
 4. ownerがPRごとにactiveへ切り替える。手順とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)が正本。capability不足では人へ案内し、旧巡回を勝手に起動しない。停止中PRの一括再開はしない。
 
-2026-10-04の所有者決定（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)）:
+2026-10-04の所有者決定。O1〜O3とWindowsは[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)、粗探しの時点とkeychainは同日に調整係が受けた所有者の指示（PR #51の粗探しへの対応）:
 
-| ID | 決定 | 反映先 |
-| --- | --- | --- |
-| O1 | Webhookで受ける。公開HTTPS経路（Cloudflare Tunnelを推奨）と15分の照合を併用する。受付Appは§3のとおりCodex App。専用のread-only Appへの置換は後の別判断 | §3 |
-| O2 | Claudeは購読のログインで起動する。`--bare`とAPI鍵は使わない。隔離は§7の層を重ねる。Codexは`codex exec --json --sandbox read-only` | §7 |
-| O3 | 別のOSユーザーでの分離は見送る。残余リスクとして記録する | §7 |
-| Windows | 受付はMacだけで動かす。Windowsのbackendは作らない。Windowsでは現行の手動レビュー手順を使う | §3、[PR書式](pr-review-loop.md#受付がactiveのpr) |
+| ID | 所有者の決定 | 設計の提案（決定ではない） | 反映先 |
+| --- | --- | --- | --- |
+| O1 | Webhookで受ける。公開HTTPS経路と15分の照合を併用する | 経路はCloudflare Tunnelを候補とし、ownerがW4で選ぶ。受付Appは§3のCodex App | §3 |
+| O2 | Claudeは購読のログインで起動する。`--bare`は使わない。専用`CLAUDE_CONFIG_DIR`・設定・MCP・tool・cwd・Seatbeltの層で隔離する | 層の具体的なflag（§7の表）。Codexは`codex exec --json --sandbox read-only` | §7 |
+| O3 | 別のOSユーザーでの分離は見送る | 残余リスクとして記録する | §7 |
+| Windows | 受付はMacだけで動かす。Windowsでは現行の手動レビュー手順を使う | Windowsのbackendは作らない | §3、[PR書式](pr-review-loop.md#受付がactiveのpr) |
+| 粗探しの時点 | activeのPRでは、Readyを「レビューの依頼」とみなし、粗探しをReadyのあと・レビューJobの前に同じhead/baseで行う | — | §5、[運用規約](github-agent-operations.md#merge-conditions) |
+| keychain | doctorでAppの鍵（または同じACLの合成項目）が読めたら、Appの鍵を専用keychain fileへ移す。それまで自動起動は無効 | — | §7 |
 
 ## 9. 受入試験と導入チェックリスト
 

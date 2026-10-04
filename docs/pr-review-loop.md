@@ -41,7 +41,7 @@ RT-1: <箇所・問題・同じ種類の箇所の一覧・直す条件・設計�
 
 `role:`とdecisionは書かない。印がhandoff・reviewと別なので、レビュー記録として数えない。自分の印のほかに、ほかの印（handoff・review・dispatch）を本文に引用しない（引継ぎの読み取りが本文の中の印を拾うため）。`RT-<番号>`はそのPRの中だけの番号。RTを台帳に入れるときや共有のIDが要るときは、内容レビューの担当が`PR<N>-R<3桁以上の番号>`を付け、どのRTに当たるかを書く。同じ原因なら既存のIDへまとめる（`triage`）。実装担当は、`RT-<番号>`ごとに修正のcommitか対応不要の理由を書き、ready-for-reviewの引継ぎの「実行した検証」に、粗探しのコメントへのリンクとその対象headを書く。
 
-受付がactiveのPRでは、粗探しはReadyのあとに担当reviewerのJobが行い、そのreviewerのAppが投稿する。実装担当のAppは投稿しない（[受付がactiveのPR](#受付がactiveのpr)）。
+受付がactiveのPRでは、2026-10-04の所有者承認による読み替えで、上の「時点」が変わる。Readyは「レビューの依頼」を意味し、粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。投稿は担当reviewerが行い、実装担当のAppは投稿しない（[受付がactiveのPR](#受付がactiveのpr)）。
 
 ## 1. 実装側の完了報告
 
@@ -124,12 +124,24 @@ PR<N>-R002: <同上>
 
 ## 受付がactiveのPR
 
-2026-10-04の所有者決定（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)）による正本。[受付](review-dispatch-design.md)がactiveのPRにだけ効く。ほかのPRは上の1〜5節を使う。[マージ条件](github-agent-operations.md#merge-conditions)は変えない。変わるのは、条件を確かめる記録だけ。
+2026-10-04の所有者決定（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)）による正本。[受付](review-dispatch-design.md)がactiveのPRにだけ効く。ほかのPRは上の1〜5節を使う。[マージ条件](github-agent-operations.md#merge-conditions)の文言は変えない。ただし2026-10-04の所有者承認で、「提出前の粗探し」の時点を読み替える（下の「実装担当の手順」の4）。ほかの条件は、確かめる記録だけが変わる。
 
 ### 対象
 
 - ownerが受付のpolicyの`targets`へ加えたPR。policyのmodeは`active`。policyはrepo外にあり、ownerだけが変える。
 - ラベル・通知・PR本文・AIの申告では対象にならない。
+- 受付の外の担当（実装担当・旧巡回）は、切替とrollbackの通知でこれを知る。通知は通知Broker（Codex Appのbot）が投稿し、受付が投稿できないときはownerが同じ書式で投稿する。
+
+```text
+<!-- kurashi-ledger:dispatch-notice:v1 -->
+kind: switch | rollback
+mode: active | shadow | off
+policy_revision: <revision>
+required_reviewers: <login/App IDの一覧>
+```
+
+- 通知は情報であり、権限を与えない。PRで最新の有効な通知（投稿者がCodex Appのbotかowner、全項目あり）が`kind: switch`・`mode: active`のときだけ、この節に従う。
+- 通知がない、項目が欠ける、投稿者が違う、互いに食い違うときは、旧規則（上の1〜5節）に従う。activeの記録だけを根拠にマージしない。
 - 受付はMacだけで動く。Windowsでは受付を動かさず、移行していないPRを上の1〜5節の手動手順でレビューする。
 - Macの受付が止まっている間、対象PRは待つ。長く止まるなら、ownerが下のrollbackを行う。
 
@@ -139,9 +151,9 @@ PR<N>-R002: <同上>
 | --- | --- | --- |
 | 起動条件の判定（Ready・CI・独立性・枠） | 受付だけ | T23の巡回、Codex・Claudeのレビュー巡回、実装側の定期確認はこのPRを判定しない |
 | 人への通知 | 受付の通知Broker（Codex App、印`kurashi-ledger:dispatch-notice:v1`）だけ | 状態ごとに1回。ほかの担当は同じ状態を知らせない |
-| 粗探し | 担当reviewerの粗探しJob。そのreviewerのBrokerが投稿する | 実装担当のAppは投稿しない。書式と範囲は[提出前の粗探し](#提出前の粗探し)と同じ |
+| 粗探し | 担当reviewerのうち独立性を満たす1者。AIならその粗探しJobとBroker、人なら同じ書式で手動 | Readyのあと・レビューJobの前（所有者承認の読み替え）。実装担当のAppは投稿しない。書式と範囲は[提出前の粗探し](#提出前の粗探し)と同じ |
 | 内容レビュー | 担当reviewerのレビューJob。BrokerがnativeのReviewで投稿する。本文は[3節](#3-別担当による内容レビュー)のv1書式 | acceptedは`APPROVE`だけ。COMMENTの`decision: accepted`は数えない |
-| 修正 | 実装担当。auto-fixは、ownerがPRごとに許可したときだけ受付が起動する | 手動の修正は変わらない |
+| 修正 | 実装担当 | 手動の修正は変わらない。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効 |
 | マージ | 実装担当 | 変わらない。受付はマージしない |
 
 ### 実装担当の手順
@@ -149,14 +161,14 @@ PR<N>-R002: <同上>
 1. 作業中はDraftにする。レビューを頼むときは、GitHubの標準操作でDraft→Readyにする。Readyにできるのは実装担当かownerだけ。
 2. [完了報告](#1-実装側の完了報告)の引継ぎは任意。書いても説明として扱い、受付の起動条件にしない。
 3. 修正を始めるときはDraftへ戻す。pushやmainの取り込みのあとは、新しいReadyが要る。
-4. 受付は粗探しJobを先に起動する。同じhead/baseで未解消のRTがないときだけ、レビューJobを起動する。
+4. 2026-10-04の所有者承認による読み替え: Readyはレビューの依頼を意味する。受付は粗探しJobをReadyのあと・レビューJobの前に、同じhead/baseで起動する。未解消のRTがないときだけ、レビューJobを起動する。Ready前の粗探しを待たない。
 
 ### マージ条件の確かめ方
 
 | 条件（[正本](github-agent-operations.md#merge-conditions)） | activeで確かめる記録 |
 | --- | --- |
-| 実装していない側のaccepted | 担当reviewer全員の最新Reviewが`APPROVE`。commit_idがhead、本文のbase_shaが確認したbase、投稿者がその担当reviewer（AIならそのbot）。`CHANGES_REQUESTED`や未解消の指摘がない |
-| 粗探しの完了、未解消なし | 同じhead/baseの`kurashi-ledger:red-team:v1`の記録を担当reviewer（AIならそのbot）が投稿している。未解消のRTがない |
+| 実装していない側のaccepted | 通知の`required_reviewers`全員の最新Reviewが`APPROVE`。commit_idがhead、本文のbase_shaが確認したbase、投稿者がその担当reviewer（AIならそのbot）。`CHANGES_REQUESTED`や未解消の指摘がない |
+| 粗探しの完了、未解消なし（読み替え後の時点） | 同じhead/baseの`kurashi-ledger:red-team:v1`の記録を、`required_reviewers`のうち独立性を満たす1者（AIならそのbot）が投稿している。未解消のRTがない |
 | `Quality gate`、最新main・競合なし、`--match-head-commit` | 変わらない。mainが進めば、取り込み・新しいReady・新しい粗探しとレビューが要る |
 
 ### 切替（PRごと）
@@ -166,13 +178,15 @@ PR<N>-R002: <同上>
 1. ownerが、そのPRの旧担当（Codex・Claudeのレビュー担当、粗探し、T23の巡回）を止め、終了を確かめる。進行中のレビューは完了させるか取り消す。
 2. ownerが旧巡回の設定から、そのPRを外す。
 3. ownerがpolicyへそのPRを加える。新しいrevisionと、切替時刻の`readyAfter`を付ける。
-4. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は、activeの証跡にしない。
+4. 受付が`kind: switch`の通知を1回投稿する。最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は、activeの証跡にしない。
 5. 実装担当が新しくDraft→Readyにする。
 
 ### rollback（PRごと、または全体）
 
-1. ownerがpolicyからそのPRを外す。全体ならmodeを`shadow`か`off`にする。新しいrevisionを付ける。
+1. ownerがpolicyからそのPRを外す。全体ならmodeを`shadow`か`off`にする。新しいrevisionを付ける。受付（止まっていればowner）が`kind: rollback`の通知を1回投稿する。
 2. そのPRの受付のJobが終わった（process treeが終了した）ことを確かめる。uncertainのOutboxがあれば、GitHub上の投稿を確かめて解消するまで旧方式へ戻さない。
 3. ownerが旧巡回の設定へ、そのPRを戻す。
-4. 実装担当が[完了報告](#1-実装側の完了報告)の引継ぎを出し直す。同じhead/baseの粗探しの記録と`APPROVE`（v1の本文）は、現行の規則でもそのまま使える。shadowの記録は使わない。
+4. 実装担当が[完了報告](#1-実装側の完了報告)の引継ぎを出し直す。同じhead/baseの粗探しの記録と`APPROVE`（v1の本文）は、切替の通知の`required_reviewers`全員の`APPROVE`が揃うときだけ使い直せる。揃わなければ現行の手順でレビューを受け直す。shadowの記録は使わない。
 5. 受付が止まったときや、doctorが不合格になったときも同じ手順にする。受付は旧巡回を自動で起動しない。
+
+旧巡回も最新の有効な通知を読む。それが`mode: active`なら、ownerが設定から外し忘れていても、そのPRを判定・通知しない。
