@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-09",
   "title": "雇用条件の期間（不明な境界、継続中と不明の区別）",
   "consumers": ["T06", "T17"],

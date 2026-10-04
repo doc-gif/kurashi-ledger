@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-04d",
   "title": "遡及訂正(d): 同じ種類・同じ年度の正式通知（表記の違い、発行者不明、別の発行者、3件以上、other、二重登録の類と年度）",
   "consumers": ["T11", "T18", "T19"],

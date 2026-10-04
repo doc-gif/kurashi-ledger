@@ -54,6 +54,12 @@ export function readLedgerFiles(dir: string = LEDGER_DIR): LedgerFiles {
 
 const NO_DEFAULT = Symbol("no-default");
 
+function hasRetroactiveLine(body: Obj): boolean {
+  const lines = body["otherEarnings"];
+  const list = isObj(lines) && lines["state"] === "known" ? lines["value"] : undefined;
+  return Array.isArray(list) && list.some((row) => isObj(row) && isObj(row["category"]) && row["category"]["state"] === "known" && row["category"]["value"] === "retroactive-adjustment");
+}
+
 function conditionalDefault(type: RecordType, field: string, body: Obj): unknown | typeof NO_DEFAULT | undefined {
   const na = { state: "not-applicable" };
   if (type === "allocation") {
@@ -67,6 +73,9 @@ function conditionalDefault(type: RecordType, field: string, body: Obj): unknown
     if (field === "explainedComparisons") return t === "mismatch-explanation" ? NO_DEFAULT : na;
   }
   if (type === "forecast" && field === "accountId") return body["subject"] === "deposit" ? NO_DEFAULT : na;
+  // 合成例の読み方の6（契約版2.0）: 給与明細の帰属の区分は、書いていなければ、遡及差額の行（分類retroactive-adjustment）を
+  // 持つ明細はunknown（役員賞与と遡及差額はいまは対象外）、ほかはknownのordinary（通常の給与等）。
+  if (type === "payslip" && field === "incomeTimingKind") return hasRetroactiveLine(body) ? { state: "unknown" } : { state: "known", value: "ordinary" };
   return undefined;
 }
 
@@ -83,14 +92,14 @@ function defaultFor(field: string, spec: Spec): unknown | typeof NO_DEFAULT {
   return NO_DEFAULT;
 }
 
-function expandObject(fields: Readonly<Record<string, Spec>>, given: Obj, where: string, type?: RecordType): Obj {
+function expandObject(fields: Readonly<Record<string, Spec>>, given: Obj, where: string, type?: RecordType, legacy10 = false): Obj {
   const out: Obj = {};
   for (const [field, spec] of Object.entries(fields)) {
     if (field in given) {
       out[field] = expandNested(spec, given[field], `${where}.${field}`);
       continue;
     }
-    const cond = type === undefined ? undefined : conditionalDefault(type, field, given);
+    const cond = type === undefined ? undefined : legacy10 && type === "payslip" && field === "incomeTimingKind" ? { state: "unknown" } : conditionalDefault(type, field, given);
     const d = cond === undefined ? defaultFor(field, spec) : cond;
     if (d === NO_DEFAULT) throw new Error(`${where}.${field}: 既定のない項目を省略している`);
     out[field] = d;
@@ -118,6 +127,8 @@ export interface ExpandContext {
   // writeRequestIdを書かなかったときの既定。省略すると w-<scenarioId>-<opId>（保存の操作ごとに1つ。同じ操作の再送は同じキー）。
   // restoreUncheckedのように1つの操作で複数の改訂を置く場合は、改訂ごとに一意のキーを渡す（restoredWriteRequestId）。
   defaultWriteRequestId?: string;
+  // 契約版1.0のデータとして読む（README（契約）の「1.0のデータの読み方」）。2.0で足したFactの項目は、書いていなければunknown。
+  legacy10?: boolean;
 }
 
 // restoreUncheckedで置く改訂ごとの既定のwriteRequestId。writeRequestIdはデータベース全体で予約するキーなので（共通の型の9・10）、
@@ -143,7 +154,7 @@ export function expandRecord(compact: Obj, ctx: ExpandContext): Obj {
   const given = isObj(compact["body"]) ? compact["body"] : {};
   let body: Obj;
   if (reason === "create" || prev === undefined) {
-    body = expandObject(BODY[type], given, `${ctx.opId}.body`, type);
+    body = expandObject(BODY[type], given, `${ctx.opId}.body`, type, ctx.legacy10 === true);
   } else {
     const base = isObj(prev["body"]) ? prev["body"] : {};
     const merged: Obj = { ...base };

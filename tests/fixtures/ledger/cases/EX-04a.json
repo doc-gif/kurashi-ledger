@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-04a",
   "title": "遡及訂正(a): 計算のあとで見つけた入力誤り、時点を指定した見方、計算runの目的と鎖（runは目的・鎖の判定に使う項目だけの射影）",
   "consumers": ["T06", "T07", "T15"],

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "TC-04",
   "title": "追加: 差し替えの系列（取消・取消の取り消し、拒否する形、未確認の系列、把握時点の再現）",
   "consumers": ["T06", "T11"],

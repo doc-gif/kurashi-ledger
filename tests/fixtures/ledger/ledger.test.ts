@@ -35,6 +35,7 @@ import {
   type RecordType,
   type StaticCode,
 } from "./contract-shape.ts";
+import type { CheckMode } from "./contract-shape.ts";
 import {
   CONTRACTS_DIR,
   expandRecord,
@@ -70,6 +71,7 @@ const SCENARIO_REASONS: ReadonlySet<string> = new Set([
   "write-request-conflict",
 ]);
 const SEMANTIC_REASONS: ReadonlySet<string> = new Set([
+  "read-only-unknown-content",
   "supersede-dimension-mismatch",
   "supersede-shape",
   "employment-term-overlap",
@@ -104,7 +106,7 @@ const ACCEPTANCE_TAGS: readonly string[] = [
 const USAGES = ["not-used", "unresolved", "duplicate-voided", "voided", "superseded", "stale", "needs-recheck", "valid"];
 const MISSING_STATES = ["unknown", "not-stated", "undetermined", "conflict", "adoption-needed", "partial-scope", "rule-pending"];
 const AGG_STATES = ["complete", "incomplete", "not-applicable", "no-records"];
-const COMPARISON_STATES = ["rule-pending", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
+const COMPARISON_STATES = ["rule-pending", "not-compared", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
 const SELECTIONS = ["annual-document", "entered-payslips", "no-annual-document", "adoption-needed"];
 const SERIES_STATUSES = ["current", "superseded", "unconfirmed-series", "voided", "not-in-view"];
 const ROUNDING_METHODS = ["floor", "ceil", "half-up", "half-down"];
@@ -116,11 +118,13 @@ const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: re
   "annual-adoption": { states: ["adoption-needed"], ref: ["employer"] },
   "annual-scope": { states: ["partial-scope"], ref: ["annual-document"] },
   "annual-mapping": { states: ["rule-pending"], ref: ["employer"] },
+  "annual-no-counterpart": { states: ["unknown"], ref: ["employer"] },
   "notice-duplicate": { states: ["conflict"], ref: ["official-notice"] },
   "supersede-series": { states: ["conflict"], ref: ["payslip", "annual-document", "official-notice"] },
   "forecast-remaining": { states: ["unknown"], ref: ["forecast"], line: "line" },
   "unreconciled-amount": { states: ["unknown"], ref: ["bank-deposit", "payslip"] },
   "save-check": { states: ["conflict"], ref: RECORD_TYPES },
+  "orphan-duplicate": { states: ["conflict"], ref: RECORD_TYPES },
 };
 
 // AggregateKeyの表（共通の型の11）。許すscopeの次元は修飾子で決まる場合がある（allowedDims）。
@@ -211,7 +215,7 @@ interface State {
   evidence: Map<string, Obj>;
   sha: Map<string, string>;
   runs: Map<string, Obj>;
-  writeRequests: Map<string, { opId: string; content: string }>;
+  writeRequests: Map<string, { opId: string; content: string; unchecked?: boolean }>;
   importKeys: Map<string, string>;
   seq: number;
 }
@@ -288,47 +292,149 @@ function factStateOf(v: unknown): string | undefined {
   return isObj(v) && typeof v["state"] === "string" ? v["state"] : undefined;
 }
 
-// 保存1件の、記録とその記録の前の版だけで決まる違反（静的・場面の違反）の分類を返す。
-function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems: Problems): Set<string> {
+// 共通の型の9の「信頼できる履歴と修復」: 改訂の静的な検査。取消（void）は、取消が決める項目だけに当て、bodyと変えられない
+// 項目（entryChannel・importKey）は直前と同じであることだけを確かめる（同じなら、それらの違反を数えない）。
+// 修復の取消（直前までの履歴が信頼できない記録の取消）は、bodyと変えられない項目にも当てる（所有者の決定（2026-10-04））。
+function staticCodesFor(rec: Obj, prev: Obj | undefined, mode: CheckMode, repair = false): { code: string; path: string; message: string }[] {
+  const vs = checkRecordStatic(rec, mode);
+  if (rec["reason"] !== "void" || prev === undefined || repair) return vs;
+  const same = (f: string): boolean => stableStringify(rec[f]) === stableStringify(prev[f]);
+  return vs.filter(
+    (v) =>
+      !(
+        (v.path.startsWith("$.body") && same("body")) ||
+        (v.path.startsWith("$.importKey") && same("importKey") && same("entryChannel")) ||
+        (v.path.startsWith("$.entryChannel") && same("entryChannel"))
+      ),
+  );
+}
+
+// 直前からの遷移（共通の型の9）。repairは、直前までの履歴が信頼できない記録への修復の改訂（同9の「修復の遷移」）。
+// historyは前の版までの改訂（最後が直前）。atは保存の時計の値（読取ではその改訂のrecordedAt）。
+function transitionCodes(history: readonly Obj[], rec: Obj, repair: boolean, at: string | undefined): Set<string> {
   const codes = new Set<string>();
-  for (const v of checkRecordStatic(rec)) {
-    if (v.code === "shape") problems.add(where, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
-    else codes.add(v.code);
-  }
-  const id = String(rec["id"]);
   const reason = rec["reason"];
-  const prev = latest(state, id);
+  const prev = history[history.length - 1];
   if (reason === "create") {
-    if (state.records.has(id)) codes.add("transition-not-allowed");
+    if (prev !== undefined) codes.add("transition-not-allowed");
   } else if (prev === undefined) {
     codes.add("ref-target-missing");
   } else {
+    if (rec["revision"] !== (typeof prev["revision"] === "number" ? prev["revision"] + 1 : NaN)) codes.add("revision-gap");
+    const ps = prev["status"];
+    if ((reason === "correct-input-error" || reason === "new-information") && ps !== "active") codes.add("transition-not-allowed");
+    if (reason === "void" && ps !== "active" && !(repair && ps === "voided")) codes.add("transition-not-allowed");
+    if (reason === "unvoid" && ps !== "voided") codes.add("transition-not-allowed");
+    // 修復の取消でbodyを変えられるのは、voidedからの再度の取消だけ（所有者の決定（2026-10-04））。
+    if (reason === "unvoid" || (reason === "void" && !(repair && ps === "voided"))) {
+      if (stableStringify(rec["body"]) !== stableStringify(prev["body"])) codes.add("body-change-on-void-or-unvoid");
+      if (!repair && stableStringify(rec["knownOn"]) !== stableStringify(prev["knownOn"])) codes.add("known-on-not-inherited");
+    }
+    for (const f of repair ? ["recordType"] : ["recordType", "entryChannel", "importKey"]) {
+      if (stableStringify(rec[f]) !== stableStringify(prev[f])) codes.add("immutable-field-changed");
+    }
+    if (repair) {
+      const note = rec["changeNote"];
+      if (!isObj(note) || note["state"] !== "known" || typeof note["value"] !== "string" || note["value"].trim() === "") codes.add("transition-not-allowed");
+    }
+    // 行IDの予約（共通の型の2）: 版1からのすべての改訂で、一度消えた行IDは、後の改訂（修復を含む）で使わない。
+    const dropped = new Set<string>();
+    for (let i = 0; i < history.length; i += 1) {
+      const now = lineIdsOf(history[i] as Obj);
+      const next = i + 1 < history.length ? lineIdsOf(history[i + 1] as Obj) : lineIdsOf(rec);
+      for (const l of now) if (!next.has(l)) dropped.add(l);
+    }
+    for (const l of lineIdsOf(rec)) if (dropped.has(l)) codes.add("line-id-reused");
+  }
+  // 把握日（共通の型の7）: 新しく入力する把握日は、保存の日付（Asia/Tokyo）より後にできない。修復の改訂では引き継ぐ値も入力とみなす。
+  const knownOn = rec["knownOn"];
+  if (isObj(knownOn) && knownOn["state"] === "known" && typeof knownOn["value"] === "string" && typeof at === "string") {
+    const fresh = repair || reason === "create" || reason === "new-information" || (reason === "correct-input-error" && stableStringify(knownOn) !== stableStringify(prev?.["knownOn"]));
+    if (fresh && knownOn["value"] > jstDate(at)) codes.add("known-on-in-future");
+  }
+  return codes;
+}
+
+// 改訂ごとの信頼（共通の型の9）。版kが信頼できる ⇔ 版kが妥当で、版k-1まで信頼できるか版kがchecked（restoreUncheckedでない）。
+// 未検査の取消でduplicateOfがknownなら、その改訂の1つ前の連番の見方で残す方が有効（取消しておらず信頼できる）であること。
+// 保存した改訂から、台帳の補助の項目（__opId・__seq・__at・__unchecked）を除いた記録。
+function bare(r: Obj): Obj {
+  return Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith("__")));
+}
+
+function trustFlags(state: State, revs: readonly Obj[]): boolean[] {
+  const out: boolean[] = [];
+  let trusted = true;
+  revs.forEach((rec, k) => {
+    const hist = revs.slice(0, k);
+    const prev = hist[hist.length - 1];
+    let valid = staticCodesFor(bare(rec), prev, rec["__newer"] === true ? "read" : "save", !trusted).length === 0 && transitionCodes(hist, rec, !trusted, typeof rec["__at"] === "string" ? rec["__at"] : undefined).size === 0;
+    const unchecked = rec["__unchecked"] === true;
+    if (valid && unchecked && rec["reason"] === "void" && isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known") {
+      const keep = rec["duplicateOf"]["value"];
+      const seq = typeof rec["__seq"] === "number" ? rec["__seq"] - 1 : 0;
+      valid = isObj(keep) && typeof keep["id"] === "string" && keeperValidAt(state, keep["id"], seq);
+    }
+    trusted = valid && (trusted || !unchecked);
+    out.push(trusted);
+  });
+  return out;
+}
+
+function keeperValidAt(state: State, id: string, seq: number): boolean {
+  const at = (rid: string): Obj[] => (state.records.get(rid) ?? []).filter((r) => typeof r["__seq"] === "number" && r["__seq"] <= seq);
+  const revs = at(id);
+  const last = revs[revs.length - 1];
+  if (last === undefined || last["status"] !== "active") return false;
+  // 残す方は、その連番の見方で、整った差し替えの系列の現在の記録であること（共通の型の9の「有効な記録」）。
+  const lookup: RecordLookup = (rid) => at(rid).at(-1);
+  const series = seriesAmong(lookup, [...state.records.keys()].filter((rid) => at(rid).length > 0));
+  if (series.superseded.has(id) || series.illFormed.has(id)) return false;
+  return trustFlags(state, revs).at(-1) === true;
+}
+
+function historyTrusted(state: State, id: string): boolean {
+  const revs = state.records.get(id) ?? [];
+  return revs.length === 0 || trustFlags(state, revs).at(-1) === true;
+}
+
+// 古い版では読むだけ（共通の型の1）: 読取の検査では違反でないが保存の検査では違反になる値（知らない拡張列挙の値・知らない項目）を持つ記録。
+function hasNewerContent(rec: Obj | undefined): boolean {
+  if (rec === undefined || rec["__newer"] !== true) return false;
+  rec = bare(rec);
+  const read = new Set(checkRecordStatic(rec, "read").map((v) => `${v.code}|${v.path}`));
+  return checkRecordStatic(rec, "save").some((v) => !read.has(`${v.code}|${v.path}`));
+}
+
+// 保存1件の、記録とその記録の前の版だけで決まる違反（静的・場面の違反）の分類を返す。
+function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems: Problems): Set<string> {
+  const codes = new Set<string>();
+  const id = String(rec["id"]);
+  const reason = rec["reason"];
+  const prev = latest(state, id);
+  const repairing = prev !== undefined && !historyTrusted(state, id);
+  for (const v of staticCodesFor(rec, prev, "save", repairing)) {
+    if (v.code === "shape") problems.add(where, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
+    else codes.add(v.code);
+  }
+  if (reason === "create") {
+    if (state.records.has(id)) codes.add("transition-not-allowed");
+  } else if (prev !== undefined) {
     const revision = typeof rec["revision"] === "number" ? rec["revision"] : 0;
     const base = typeof op["baseRevision"] === "number" ? op["baseRevision"] : revision - 1;
     if (revision !== base + 1) problems.add(where, "revisionがbaseRevision＋1でない");
     if (base !== prev["revision"]) codes.add("stale-base-revision");
-    const ps = prev["status"];
-    if ((reason === "correct-input-error" || reason === "new-information" || reason === "void") && ps !== "active") codes.add("transition-not-allowed");
-    if (reason === "unvoid" && ps !== "voided") codes.add("transition-not-allowed");
-    if (reason === "void" || reason === "unvoid") {
-      if (stableStringify(rec["body"]) !== stableStringify(prev["body"])) codes.add("body-change-on-void-or-unvoid");
-      if (stableStringify(rec["knownOn"]) !== stableStringify(prev["knownOn"])) problems.add(where, "取消・取消の取り消しは把握日を引き継ぐ（fixtureの誤り）");
-    }
-    for (const f of ["recordType", "entryChannel", "importKey"]) {
-      if (stableStringify(rec[f]) !== stableStringify(prev[f])) codes.add("immutable-field-changed");
-    }
-    const all = state.records.get(id) ?? [];
-    const prevLines = lineIdsOf(prev);
-    const everUsed = new Set<string>();
-    for (const r of all) for (const l of lineIdsOf(r)) everUsed.add(l);
-    for (const l of lineIdsOf(rec)) if (everUsed.has(l) && !prevLines.has(l)) codes.add("line-id-reused");
   }
-  // 把握日（共通の型の7）: 新しく入力する把握日は、保存の時計の日付（Asia/Tokyo）より後にできない。
-  const knownOn = rec["knownOn"];
-  if (isObj(knownOn) && knownOn["state"] === "known" && typeof knownOn["value"] === "string" && typeof op["at"] === "string") {
-    const fresh = reason === "create" || reason === "new-information" || (reason === "correct-input-error" && stableStringify(knownOn) !== stableStringify(prev?.["knownOn"]));
-    if (fresh && knownOn["value"] > jstDate(op["at"])) codes.add("known-on-in-future");
+  const history = state.records.get(id) ?? [];
+  const repair = prev !== undefined && !historyTrusted(state, id);
+  const tcodes = transitionCodes(reason === "create" ? [] : history, rec, repair, typeof op["at"] === "string" ? op["at"] : undefined);
+  if (tcodes.has("known-on-not-inherited")) {
+    tcodes.delete("known-on-not-inherited");
+    problems.add(where, "取消・取消の取り消しは把握日を引き継ぐ（fixtureの誤り）");
   }
+  // 版の連続は、保存では基にした版（stale-base-revision）で確かめる。
+  tcodes.delete("revision-gap");
+  for (const c of tcodes) codes.add(c);
   // 参照先の実在（共通の型の2）。duplicateOfの先は、自分以外の有効な記録（9）。
   const refs = referencedIds(rec);
   for (const r of refs) if (r !== id && !exists(state, r)) codes.add("ref-target-missing");
@@ -344,12 +450,17 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
   }
   // 照合配分の行を指す参照は、参照先の現在の版にある、その項目が指せる種類の行だけ（共通の型の2）。
   // 給与明細で指せるのは支給の行（otherEarnings）だけ、予測は見込みの行（lines）だけ。控除の行（otherDeductions）は指せない。
+  // 行の実在を確かめるのは、配分の版1と、from・toを直前の版から変える改訂だけ（取消・取消の取り消し・却下等では確かめない。所有者の決定（2026-10-03））。
   if (rec["recordType"] === "allocation" && isObj(rec["body"])) {
+    const prevBody = prev !== undefined && isObj(prev["body"]) ? prev["body"] : undefined;
     for (const end of ["from", "to"]) {
       const ref = rec["body"][end];
+      if (prevBody !== undefined && stableStringify(prevBody[end]) === stableStringify(ref)) continue;
       if (isObj(ref) && typeof ref["id"] === "string" && typeof ref["line"] === "string" && ref["line"] !== "whole") {
         const target = latest(state, ref["id"]);
         if (target !== undefined && !referableLineIds(target).has(ref["line"])) codes.add("ref-target-invalid");
+        // 信頼できない記録の行は、実在を確かめられないので指せない（共通の型の2）。
+        if (target !== undefined && !historyTrusted(state, ref["id"])) codes.add("ref-target-invalid");
       }
     }
   }
@@ -427,8 +538,10 @@ function replayOps(
         const wrid = String(rec["writeRequestId"]);
         const content = stableStringify({ ...rec, writeRequestId: undefined });
         const seen = state.writeRequests.get(wrid);
-        if (seen !== undefined && seen.content !== content) codes.add("write-request-conflict");
-        const replay = seen !== undefined && seen.content === content;
+        if (seen !== undefined && (seen.content !== content || seen.unchecked === true)) codes.add("write-request-conflict");
+        // 古い版では読むだけ（共通の型の1）: 知らない値・項目を持つ記録の改訂は受け付けない。
+        const newer = rec["reason"] !== "create" && hasNewerContent(latest(state, id));
+        const replay = seen !== undefined && seen.content === content && seen.unchecked !== true;
         let importHit: string | undefined;
         if (rec["entryChannel"] === "import" && isObj(rec["importKey"]) && rec["importKey"]["state"] === "known") {
           const k = `${String(rec["recordType"])}|${stableStringify(rec["importKey"]["value"])}`;
@@ -439,7 +552,8 @@ function replayOps(
           if (replay) problems.add(w, "同じwriteRequestIdで同じ内容の保存は、新しい記録を作らない（replayed）");
           if (importHit !== undefined) problems.add(w, `同じimportKeyの記録${importHit}がある（existing-returned）`);
           if (codes.size > 0) problems.add(w, `acceptedを期待するが、契約の保存の条件に当たる: ${[...codes].join(", ")}`);
-          const stored = { ...rec, __opId: opId };
+          if (newer) problems.add(w, "acceptedを期待するが、この版が知らない値・項目を持つ記録の改訂（read-only-unknown-content）");
+          const stored = { ...rec, __opId: opId, __seq: state.seq + 1, __at: op["at"] };
           state.records.set(id, [...(state.records.get(id) ?? []), stored]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
           if (seen === undefined) state.writeRequests.set(wrid, { opId, content });
@@ -455,6 +569,8 @@ function replayOps(
             if (!codes.has(reason)) problems.add(w, `拒否の理由${reason}を期待するが、記録にその違反がない（見つかったもの: ${[...codes].join(", ") || "なし"}）`);
           } else if (codes.size > 0) {
             problems.add(w, `意味の判定による拒否${reason}を期待するが、記録だけで判定できる違反もある（理由が一意に決まらない）: ${[...codes].join(", ")}`);
+          } else if (reason === "read-only-unknown-content" && !newer) {
+            problems.add(w, "read-only-unknown-contentを期待するが、記録はこの版が知らない値・項目を持たない");
           }
         } else if (outcome === "replayed") {
           if (!replay || seen === undefined || expect["of"] !== seen.opId) problems.add(w, "replayedを期待するが、同じwriteRequestIdで同じ内容の先の保存がない");
@@ -504,7 +620,7 @@ function replayOps(
           const rid = String(r["id"]);
           const rrev = typeof r["revision"] === "number" ? r["revision"] : 1;
           try {
-            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, rid), defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, rrev) });
+            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, rid), defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, rrev), legacy10: op["sourceContractVersion"] === "1.0" });
           } catch (e) {
             problems.add(w, `記録を補えない: ${(e as Error).message}`);
             continue;
@@ -513,15 +629,24 @@ function replayOps(
           const rwrid = String(rec["writeRequestId"]);
           const rseen = state.writeRequests.get(rwrid);
           if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
-          else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }) });
-          for (const v of checkRecordStatic(rec)) {
+          else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }), unchecked: true });
+          // 復元は読取の検査（拡張できる列挙の知らない値は違反にしない。共通の型の1）。新しい保存の拒否はsaveの検査（TC-02-aのo05d）。
+          // 新しい版のデータ（共通の型の1）だけ読取の検査。それ以外の知らない内容は静的な検査の違反。
+          const newerData = typeof op["sourceContractVersion"] === "string" && op["sourceContractVersion"] > LEDGER_CONTRACT_VERSION;
+          const rprev = latest(state, rid);
+          for (const v of staticCodesFor(rec, rprev, newerData ? "read" : "save", rprev !== undefined && !historyTrusted(state, rid))) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
           for (const x of referencedIds(rec)) if (!exists(state, x) && x !== rec["id"]) problems.add(w, `復元する記録の参照先がない: ${x}`);
           const id = String(rec["id"]);
-          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId }]);
+          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId, __unchecked: true, __newer: newerData, __seq: state.seq + 1, __at: op["at"] }]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
+          // 履歴全体で予約するキー（共通の型の9）: 復元した改訂のimportKeyも予約する（修復で直したあとも）。
+          if (isObj(rec["importKey"]) && rec["importKey"]["state"] === "known") {
+            const ik = `${String(rec["recordType"])}|${stableStringify(rec["importKey"]["value"])}`;
+            if (!state.importKeys.has(ik)) state.importKeys.set(ik, id);
+          }
           consume();
         }
         if (stableStringify([...found].sort()) !== stableStringify([...expected].sort())) {
@@ -869,6 +994,68 @@ interface CheckCtx {
   where: string;
   problems: Problems;
   commonCount: number;
+  // 場面のrules.comparisonMappingが指す例示の対応表（noneならundefined）。比較の期待値と対応表の整合に使う。
+  comparisonMapping?: ComparisonMapping | undefined;
+}
+
+// 例示の比較の対応表（common-setup.jsonのillustrativeRules）。照合の規則の5の「比較の対応表の形」: 項目ごとに比べるか比べないか。
+interface ComparisonMapping {
+  compared: ReadonlySet<string>;
+  notCompared: ReadonlySet<string>;
+}
+
+const ILLUSTRATIVE_RULE_NAMES = ["EX-06-mapping", "EX-05-scheduled-pay-date-year"];
+
+// illustrativeRulesの形（PR36-R006）: 名前の一覧、説明と引用、対応表のpairs・notComparedの項目・一意性・排他性。
+export function checkIllustrativeRules(rules: unknown, docs: ContractDocs, problems: Problems): ComparisonMapping | undefined {
+  const where = "common-setup illustrativeRules";
+  if (!isObj(rules)) {
+    problems.add(where, "illustrativeRulesがobjectではない");
+    return undefined;
+  }
+  const names = Object.keys(rules).sort();
+  if (stableStringify(names) !== stableStringify([...ILLUSTRATIVE_RULE_NAMES].sort())) problems.add(where, `例示の規則の名前が${ILLUSTRATIVE_RULE_NAMES.join("・")}と違う: ${names.join(",")}`);
+  for (const name of names) {
+    const r = rules[name];
+    const w = `${where}.${name}`;
+    if (!isObj(r)) {
+      problems.add(w, "objectではない");
+      continue;
+    }
+    if (typeof r["description"] !== "string" || r["description"].trim() === "") problems.add(w, "descriptionが空");
+    if (!Array.isArray(r["cites"]) || r["cites"].length === 0) problems.add(w, "citesがない");
+    checkCites(r["cites"], docs, w, problems);
+  }
+  const m = rules["EX-06-mapping"];
+  if (!isObj(m)) return undefined;
+  const w = `${where}.EX-06-mapping`;
+  const compared = new Set<string>();
+  const pairs = m["pairs"];
+  if (!Array.isArray(pairs) || pairs.length === 0) problems.add(w, "pairsが空でない並びではない");
+  else
+    pairs.forEach((pr, i) => {
+      if (!isObj(pr) || Object.keys(pr).sort().join(",") !== "annual,payslip") {
+        problems.add(w, `pairs[${i}]は{ annual, payslip }`);
+        return;
+      }
+      const a = String(pr["annual"]);
+      if (!ANNUAL_AMOUNT_ITEMS.includes(a)) problems.add(w, `pairs[${i}].annualが年間資料の金額の項目名ではない: ${a}`);
+      if (!PAYSLIP_AMOUNT_ITEMS.includes(String(pr["payslip"]))) problems.add(w, `pairs[${i}].payslipが給与明細の金額の項目名ではない: ${String(pr["payslip"])}`);
+      if (compared.has(a)) problems.add(w, `pairsで年間資料の項目${a}が重なる`);
+      compared.add(a);
+    });
+  const notCompared = new Set<string>();
+  const nc = m["notCompared"];
+  if (!Array.isArray(nc)) problems.add(w, "notComparedが並びではない（なければ空の並び）");
+  else
+    nc.forEach((x, i) => {
+      const a = String(x);
+      if (!ANNUAL_AMOUNT_ITEMS.includes(a)) problems.add(w, `notCompared[${i}]が年間資料の金額の項目名ではない: ${a}`);
+      if (notCompared.has(a)) problems.add(w, `notComparedで${a}が重なる`);
+      if (compared.has(a)) problems.add(w, `${a}がpairsとnotComparedの両方にある（比べるか比べないかはどちらか1つ）`);
+      notCompared.add(a);
+    });
+  return { compared, notCompared };
 }
 
 function requireRecord(ctx: CheckCtx, id: unknown, types?: readonly RecordType[]): void {
@@ -1048,9 +1235,13 @@ function checkAggregate(ctx: CheckCtx, query: Obj, expect: Obj): void {
       checkFact(ctx, c, SPECS.enm("annual-document", "entered-records-only"), `values[${i}].coverage`);
       const cs = factStateOf(c);
       if (cs !== "known" && cs !== "not-applicable") ctx.problems.add(ctx.where, `values[${i}].coverageはknownかnot-applicable`);
-      if (kind !== "annual-value" && kind !== "payslip-by-income-year" && cs !== "not-applicable") ctx.problems.add(ctx.where, "所得の年の軸以外のcoverageはnot-applicable");
+      // 共通の型の11（契約版2.0）: coverageはannual-valueだけ。payslip-by-income-yearを含むほかのkindはnot-applicable。
+      if (kind !== "annual-value" && cs !== "not-applicable") ctx.problems.add(ctx.where, "annual-value以外のcoverageはnot-applicable");
       coverages.add(stableStringify(c));
-    } else if (kind === "annual-value") ctx.problems.add(ctx.where, `values[${i}]: annual-valueのcoverageを書く`);
+    } else if (kind === "annual-value" || kind === "payslip-by-income-year") {
+      // annual-valueはcoverageで元を分け、payslip-by-income-yearは契約版2.0でnot-applicableと決まった（台帳の未決事項2）ので、どちらも書く。
+      ctx.problems.add(ctx.where, `values[${i}]: ${String(kind)}のcoverageを書く`);
+    }
   });
   if (values.length > 1 && coverages.size !== values.length) ctx.problems.add(ctx.where, "coverageで分けた集計値のcoverageが重なる");
 }
@@ -1232,6 +1423,15 @@ function checkOne(ctx: CheckCtx, check: Obj): void {
       if (!ANNUAL_AMOUNT_ITEMS.includes(String(query["field"]))) ctx.problems.add(ctx.where, "比較のfieldが年間資料の金額の項目名ではない");
       if (!COMPARISON_STATES.includes(String(expect["state"]))) ctx.problems.add(ctx.where, "比較の状態が表にない");
       if ("difference" in expect) checkFact(ctx, expect["difference"], SPECS.yen("signed"), "difference");
+      {
+        // 比較の状態と、場面が使う対応表の整合（照合の規則の5の表の順1・2）。対応表がない場面（none）は、どの項目もrule-pending。
+        const field = String(query["field"]);
+        const st = String(expect["state"]);
+        const m = ctx.comparisonMapping;
+        const want = m === undefined || (!m.compared.has(field) && !m.notCompared.has(field)) ? "rule-pending" : m.notCompared.has(field) ? "not-compared" : undefined;
+        if (want !== undefined && st !== want) ctx.problems.add(ctx.where, `対応表から、${field}の比較の状態は${want}`);
+        if (want === undefined && (st === "rule-pending" || st === "not-compared")) ctx.problems.add(ctx.where, `対応表が${field}を比べると定めているのに${st}`);
+      }
       return;
     case "adoption":
       if (!isCalendarYear(query["year"])) ctx.problems.add(ctx.where, "yearの形");
@@ -1543,14 +1743,18 @@ export function validateRegimeCase(c: unknown, where: string, problems: Problems
   }
 }
 
+// 台帳が対象にする契約版（docs/test-oracles/README.md）。共通の設定・ケース・制度のケースのすべてで同じ値にする。
+const LEDGER_CONTRACT_VERSION = "2.0";
+
 export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[] {
   const problems = new Problems();
   const common = files.commonSetup;
-  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== "1.0") problems.add("common-setup", "schemaVersion 1・contractVersion 1.0");
+  if (common["schemaVersion"] !== 1 || common["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add("common-setup", `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
   const commonReplay = replayOps(common["operations"], "common", newState(), 0, "common-setup", problems);
   const commonState = commonReplay.state;
   const commonCount = commonState.seq;
   checkCites(common["cites"], docs, "common-setup", problems);
+  const ex06Mapping = checkIllustrativeRules(common["illustrativeRules"], docs, problems);
   const covered = new Set<string>();
   if (!Array.isArray(common["coverageExceptions"])) problems.add("common-setup", "coverageExceptionsが並びではない（例外がなければ空の並び）");
   const exceptions = Array.isArray(common["coverageExceptions"]) ? common["coverageExceptions"] : [];
@@ -1566,7 +1770,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
     if (typeof caseId !== "string" || file !== `cases/${caseId}.json`) problems.add(file, "caseIdとファイル名が合わない");
     if (caseIds.has(String(caseId))) problems.add(file, "caseIdが重なる");
     caseIds.add(String(caseId));
-    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== "1.0") problems.add(file, "schemaVersion 1・contractVersion 1.0");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     if (typeof data["title"] !== "string" || data["title"] === "") problems.add(file, "titleがない");
     const consumers = data["consumers"];
     if (!Array.isArray(consumers) || consumers.length === 0 || !consumers.every((c) => typeof c === "string" && /^T\d{2}$/.test(c))) problems.add(file, "consumersはタスクIDの並び");
@@ -1643,7 +1847,8 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
         }
         if (typeof ch["reason"] !== "string" || ch["reason"].length < 10) problems.add(cw, "理由（reason）がない");
         checkCites(ch["cites"], docs, cw, problems);
-        checkOne({ state: st, where: cw, problems, commonCount }, ch);
+        const scRules = isObj(sc["rules"]) ? sc["rules"] : {};
+        checkOne({ state: st, where: cw, problems, commonCount, comparisonMapping: scRules["comparisonMapping"] === "EX-06-mapping" ? ex06Mapping : undefined }, ch);
       }
     }
   }
@@ -1656,7 +1861,7 @@ export function validateLedger(files: LedgerFiles, docs: ContractDocs): string[]
   // 制度のケース
   if (files.regime.length === 0) problems.add("regime", "制度のケースのファイルがない");
   for (const { file, data } of files.regime) {
-    if (data["schemaVersion"] !== 1) problems.add(file, "schemaVersion 1");
+    if (data["schemaVersion"] !== 1 || data["contractVersion"] !== LEDGER_CONTRACT_VERSION) problems.add(file, `schemaVersion 1・contractVersion ${LEDGER_CONTRACT_VERSION}`);
     const list = data["cases"];
     if (!Array.isArray(list) || list.length === 0) problems.add(file, "casesがない");
     else {
@@ -2315,3 +2520,121 @@ test("台帳のIDの接頭辞は契約の表と同じ", () => {
   assert.ok(isIdOf("pay_101", "pay"));
   assert.ok(!isIdOf("pay_", "pay"));
 });
+
+test("検査の自己確認: 共通の設定・ケース・制度のケースの契約版が台帳の契約版と違えば見つける", () => {
+  assert.deepEqual(mutated(() => undefined), []);
+  const regime = mutated((copy) => {
+    const r = copy.regime[0];
+    assert.ok(r);
+    r.data["contractVersion"] = "1.0";
+  });
+  assert.ok(regime.some((x) => x.startsWith("regime/") && x.includes("contractVersion")), regime.join(" / "));
+  const kase = mutated((copy) => (firstCase(copy, "EX-01")["contractVersion"] = "1.0"));
+  assert.ok(kase.some((x) => x.includes("EX-01") && x.includes("contractVersion")), kase.join(" / "));
+  const common = mutated((copy) => (copy.commonSetup["contractVersion"] = "1.0"));
+  assert.ok(common.some((x) => x.startsWith("common-setup") && x.includes("contractVersion")), common.join(" / "));
+});
+
+test("検査の自己確認: 拡張できる列挙の知らない値と知らない項目は、保存の検査では違反、読取・復元の検査では違反でなく、値を書き換えない（共通の型の1）", () => {
+  const record = expandRecord(
+    {
+      id: "pay_X1",
+      recordType: "payslip",
+      body: {
+        employerId: "emp_1",
+        paymentKind: { state: "known", value: "bonus" },
+        incomeTimingKind: { state: "known", value: "officer-bonus" },
+        resolutionDate: { state: "known", value: "2026-12-10" },
+        scheduledPayDate: { state: "known", value: "2026-12-25" },
+        grossPay: { state: "known", value: 200000 },
+      },
+    },
+    { scenarioId: "self-check", opId: "o1", previous: undefined },
+  );
+  const kind = (record["body"] as Obj)["incomeTimingKind"];
+  assert.deepEqual(kind, { state: "known", value: "officer-bonus" });
+  // 共通の型の1の「読む処理が知らない項目」: 新しいマイナー版の項目も書き換えずに持つ。
+  assert.deepEqual((record["body"] as Obj)["resolutionDate"], { state: "known", value: "2026-12-10" });
+  const save = checkRecordStatic(record, "save");
+  assert.ok(save.some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")), JSON.stringify(save));
+  assert.ok(save.some((v) => v.code === "shape" && v.path.includes("resolutionDate")), JSON.stringify(save));
+  // 読取でも、Factの形でない知らない項目は違反のまま。
+  const notFact = { ...record, body: { ...(record["body"] as Obj), resolutionDate: "2026-12-10" } };
+  assert.ok(checkRecordStatic(notFact, "read").some((v) => v.path.includes("resolutionDate")));
+  assert.deepEqual(checkRecordStatic(record, "read"), []);
+  // 読取でも、拡張できない列挙の知らない値と、空の文字列は違反のまま。
+  const body = record["body"] as Obj;
+  const notOpen = { ...record, body: { ...body, paymentKind: { state: "known", value: "officer-bonus" } } };
+  assert.ok(checkRecordStatic(notOpen, "read").some((v) => v.code === "value-invalid" && v.path.includes("paymentKind")));
+  const empty = { ...record, body: { ...body, incomeTimingKind: { state: "known", value: "" } } };
+  assert.ok(checkRecordStatic(empty, "read").some((v) => v.code === "value-invalid" && v.path.includes("incomeTimingKind")));
+  // 台帳の場面: EX-05-hの復元は違反なし、TC-02-aのo05dの新しい保存は拒否。
+  const h = mutated((copy) => (op(scenario(firstCase(copy, "EX-05"), "EX-05-h"), "o1")["expectedViolations"] = ["value-invalid"]));
+  assert.ok(h.some((x) => x.includes("EX-05-h") && x.includes("expectedViolations")), h.join(" / "));
+});
+
+test("検査の自己確認: payslip-by-income-yearの集計の期待値はcoverage（not-applicable）を省けない（共通の型の11）", () => {
+  const p = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    const values = (chk["expect"] as Obj)["values"] as Obj[];
+    for (const v of values) delete v["coverage"];
+  });
+  assert.ok(p.some((x) => x.includes("EX-05-a c05") && x.includes("payslip-by-income-yearのcoverageを書く")), p.join(" / "));
+  const q = mutated((copy) => {
+    const c = scenario(firstCase(copy, "EX-05"), "EX-05-a")["checks"] as Obj[];
+    const chk = c.find((x) => x["checkId"] === "c05");
+    assert.ok(chk);
+    ((chk["expect"] as Obj)["values"] as Obj[]).forEach((v) => (v["coverage"] = { state: "known", value: "entered-records-only" }));
+  });
+  assert.ok(q.some((x) => x.includes("EX-05-a c05") && x.includes("not-applicable")), q.join(" / "));
+});
+
+test("検査の自己確認: 例示の対応表の形・項目・一意性・排他性・引用と、比較の期待値との整合（PR36-R006）", () => {
+  const mapping = (copy: LedgerFiles): Obj => (copy.commonSetup["illustrativeRules"] as Obj)["EX-06-mapping"] as Obj;
+  const cases: [string, (copy: LedgerFiles) => void, string][] = [
+    ["notCompared を消す", (c) => delete mapping(c)["notCompared"], "EX-06-c5 c01"],
+    ["notCompared に未知の項目", (c) => ((mapping(c)["notCompared"] as unknown[]).push("unknownItem")), "notCompared[1]"],
+    ["notCompared の重複", (c) => ((mapping(c)["notCompared"] as unknown[]).push("incomeAfterEmploymentDeduction")), "重なる"],
+    ["pairs と notCompared の両方", (c) => ((mapping(c)["notCompared"] as unknown[]).push("paymentAmount")), "両方"],
+    ["pairs の未知の明細の項目", (c) => (((mapping(c)["pairs"] as Obj[])[0] as Obj)["payslip"] = "unknownItem"), "pairs[0].payslip"],
+    ["pairs の重複", (c) => (mapping(c)["pairs"] as Obj[]).push({ annual: "paymentAmount", payslip: "grossPay" }), "重なる"],
+    ["対応表の引用の誤り", (c) => (((mapping(c)["cites"] as Obj[])[0] as Obj)["quote"] = "契約にない語句"), "EX-06-mapping"],
+    ["例示の規則の名前の欠け", (c) => delete (c.commonSetup["illustrativeRules"] as Obj)["EX-05-scheduled-pay-date-year"], "名前"],
+    ["対応表で比べる項目を比べないとして期待する", (c) => {
+      const chk = (scenario(firstCase(c, "EX-06"), "EX-06-a")["checks"] as Obj[]).find((x) => x["checkId"] === "c01");
+      assert.ok(chk);
+      chk["expect"] = { state: "not-compared" };
+    }, "EX-06-a c01"],
+  ];
+  for (const [name, f, word] of cases) {
+    const p = mutated(f);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+
+test("検査の自己確認: 信頼の回復と修復の規則（共通の型の9）を台帳の検査が見落とさない", () => {
+  assert.deepEqual(mutated(() => undefined), []);
+  const opOf = (c: LedgerFiles, sid: string, oid: string): Obj => op(scenario(firstCase(c, sid.startsWith("EX-07") ? "EX-07" : sid.startsWith("EX-05") ? "EX-05" : "TC-02"), sid), oid);
+  const cases: [string, (c: LedgerFiles) => void, string][] = [
+    ["changeNoteのない修復をacceptedにする", (c) => (opOf(c, "TC-02-c", "o2")["expect"] = { outcome: "accepted" }), "TC-02-c o2"],
+    ["修復でない通常の取消のbodyの変更をacceptedにする", (c) => {
+      const o = opOf(c, "TC-02-g", "o4");
+      (o["record"] as Obj)["body"] = { grossPay: { state: "known", value: 1 } };
+    }, "TC-02-g o4"],
+    ["未来の把握日の修復をacceptedにする", (c) => (opOf(c, "TC-02-e", "o3")["expect"] = { outcome: "accepted" }), "TC-02-e o3"],
+    ["信頼できない記録の行を指す配分をacceptedにする", (c) => (opOf(c, "EX-07-e2", "o3")["expect"] = { outcome: "accepted" }), "EX-07-e2 o3"],
+    ["知らない値を持つ記録の取消をacceptedにする", (c) => (opOf(c, "EX-05-h2", "o2")["expect"] = { outcome: "accepted" }), "EX-05-h2 o2"],
+    ["uncheckedの改訂の再送をreplayedにする", (c) => (opOf(c, "TC-02-h", "o2")["expect"] = { outcome: "replayed", of: "o1" }), "TC-02-h o2"],
+    ["一度消えた行IDを保つ修復をacceptedにする", (c) => (opOf(c, "TC-02-i", "o2")["expect"] = { outcome: "accepted" }), "TC-02-i o2"],
+    ["changeNoteのない修復の訂正をacceptedにする", (c) => (opOf(c, "TC-02-d", "o1b")["expect"] = { outcome: "accepted" }), "TC-02-d o1b"],
+    ["bodyを直さない修復の取消をacceptedにする", (c) => (opOf(c, "TC-02-c", "o1b")["expect"] = { outcome: "accepted" }), "TC-02-c o1b"],
+    ["activeからの修復の取消でbodyを変えてacceptedにする", (c) => (opOf(c, "TC-02-j", "o2")["expect"] = { outcome: "accepted" }), "TC-02-j o2"],
+  ];
+  for (const [name, f, word] of cases) {
+    const p = mutated(f);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+

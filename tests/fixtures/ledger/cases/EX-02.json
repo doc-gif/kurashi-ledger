@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "1.0",
+  "contractVersion": "2.0",
   "caseId": "EX-02",
   "title": "分割入金と合算入金（過剰配分の拒否、使えない配分による保留、復元したデータの上限）",
   "consumers": ["T06", "T11"],
@@ -521,9 +521,13 @@
          "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "unknown・not-statedなら入金の側だけを確かめる"}]},
         {"checkId": "c04", "afterOp": "end",
          "query": {"kind": "unreconciled", "record": "pay_204"},
-         "expect": {"notKnown": true},
-         "reason": "bankTransferAmountがknownでなければ、未照合の振込額もknownにしない（どの状態で示すかは契約が決めていないので、knownでないことだけを検査する）。",
-         "cites": [{"doc": "reconciliation.md", "section": "3", "quote": "bankTransferAmountがknownでなければ、未照合の振込額もknownにしない"}]}
+         "expect": {"amount": {"state": "not-stated"}},
+         "reason": "bankTransferAmountがknownでなければ、未照合の振込額もknownにしない。振込額は記載なし（not-stated）で、振込がない明細でも使えない配分もないので、照合の残高の表の順3により振込額と同じnot-stated（契約版2.0で状態を決めた。台帳の未決事項3）。",
+         "cites": [
+           {"doc": "reconciliation.md", "section": "3", "quote": "bankTransferAmountがknownでなければ、未照合の振込額もknownにしない"},
+           {"doc": "reconciliation.md", "section": "3", "quote": "その項目と同じ状態（unknownかnot-stated。記載なしの振込額はnot-stated）"},
+           {"doc": "examples.md", "section": "EX-02", "quote": "状態は記載なし（not-stated。振込額と同じ状態"}
+         ]}
       ]
     }
   ]
