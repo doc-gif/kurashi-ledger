@@ -37,6 +37,11 @@
       "description": "PR51の粗探し（記録5977292218）のP1・P2・P3と、調整係の指示（2026-10-04）: cwd・設定・MCPの穴、Read/Grep/Globの範囲、購読認証の確認、Appの鍵と同じACLのキーチェーン項目。起動器が満たすべき条件で、固定版にflagがなければ起動不可にする",
       "state": "resolved",
       "resolution": "--restricted・--safe-mode・--strict-mcp-config（空の--mcp-config）・--disallowedTools mcp__*・disableAllHooksを必須とし、checkPlanが欠落をdisabledにする。固定版がv2.1.259未満なら起動を拒否。資料の木の全体（再帰）に.claude・.mcp.json・CLAUDE.md・AGENTS.md・.codex・.gitやsymlinkがあれば拒否。Read規則を資料に限り（文書上GrepとGlobにも適用）、config・runtime・run HOME/TMPへのdeny規則とblockReadsOutsideWorkingDirectoriesを置く。Grep/Globのpath規則は文書上参照されないので書かない（報告に理由）。`claude auth status`のauthMethod claude.aiとconfigDirectoryをdoctorが要求。envからANTHROPIC_*等を明示的に拒否、settingsのapiKeyHelperを拒否。キーチェーンのprobeはCLI profileでも実行し、claudeでsecurityへ届けばdisabled（所有者の代替の決定まで）。実CLIでの合成PR・注入の否定試験は測定ハーネス（実行器を注入）として実装し、CIはfakeで試験する"
+    },
+    {
+      "description": "所有者の決定（Issue #50 受領記録5977365862: O2-token、keychain、Codex）と、PR51第3回・PR53の粗探しの追加（2026-10-04、調整係経由）。前回のPR54は、Claudeのキーチェーン利用（disabled）とtool.sbの入れ子（不可）を未決として残した",
+      "state": "resolved",
+      "resolution": "Claudeは`claude setup-token`の長期トークンを、所有者だけが読める専用ファイル（repo・作業領域の外、mode 600/400、所有者一致、親dirは他者書込み不可、symlink・hard link拒否）から起動器が読み、文書にあるCLAUDE_CODE_OAUTH_TOKENだけで渡す。値はargv・stdin・hash・記録・エラー文に出さない。cli.sbはキーチェーンを一切拒否（securitydのmach-lookup、/usr/bin/security、keychainファイルを末尾の明示denyで上書き）。doctorは使い捨てのkeychain fileにAppの鍵と同じACL（-T /usr/bin/security）の合成項目を作り、cli.sbから読めないことを実機で確かめる（exec denyだけを外した派生profileで、mach/fileのdenyが効くことを示す）。auth statusはauthMethod oauth_token（文書の値）とconfigDirectoryを要求。envはallowlistだけで、ANTHROPIC_*（BASE_URL含む）・CLAUDE_CODE_USE_*（Bedrock/Vertex/Foundry）等を明示拒否、--settingsは決まったkeyだけ（env・apiKeyHelper・gateway系なし）。専用config dirのenv・apiKeyHelper・enabledPlugins・mcpServers等と、managed settingsの有無をdoctorが検査。入れ子は不可なのでtool.sbを削除し、tool-child-confinedはcli.sbの継承の検査（cli.sbの中の子が起動した孫で同じprobeが拒否される）に置き換える。Codexは外側のSeatbeltなしで--sandbox read-onlyだけ。合成probeは適用しない。実機の測定（秘密の代役・DB/policyの読取りと書込み・トークンの代役・合成keychain項目・network・supervisorのsocket・PRのAGENTS.md/.codex設定）がすべてdeniedになるまでunverified/disabled。中立なcwdの規則はCodexにも同じく適用。deny-supervisorを必須probeに追加: supervisorの代役（doctor自身）へのsignalとunixの制御socketを、cli.sbとその孫から拒否し、cli.sbの静的lintがprocess-info・mach-task・signal・keychainのallowを拒む"
     }
   ],
   "assessments": [
@@ -146,10 +151,10 @@
     {
       "id": "B3",
       "direction": "exit",
-      "location": "launcher.tsの起動計画（/usr/bin/sandbox-execへのargvとenv、shellなし）",
+      "location": "launcher.tsの起動計画（Claude: /usr/bin/sandbox-exec + cli.sb、Codex: codex本体を直接。shellなし）",
       "data": "CLIのフラグ・Seatbeltのparam・allowlistのenv",
       "trust": "trusted",
-      "control": "shell:false、envはallowlistから作り直し親の環境を展開しない。Claudeは公式文書にあるフラグだけ（--restricted・--safe-mode・--tools・--allowedTools・--disallowedTools・--permission-mode dontAsk・--permission-prompts none・--settings・--mcp-config・--strict-mcp-config・--no-session-persistence・--disable-slash-commands・--output-format json・--json-schema）、--bareとAPI鍵は使わない。Codexはcodex exec --json --sandbox read-only等の文書化されたフラグだけ。checkPlan()が計画を独立に再検査する"
+      "control": "shell:false、envはallowlistから作り直し親の環境を展開しない。Claudeは公式文書にあるフラグだけ（--restricted・--safe-mode・--tools・--allowedTools・--disallowedTools・--permission-mode dontAsk・--permission-prompts none・--settings・--mcp-config・--strict-mcp-config・--no-session-persistence・--disable-slash-commands・--output-format json・--json-schema）、--bareとAPI鍵は使わない。Codexはcodex exec --json --sandbox read-only等の文書化されたフラグだけ。checkPlan()が計画を独立に再検査する。Codexは外側のSeatbeltで包まない（checkPlanがcodex-wrappedとして拒否）。Claudeのenvはallowlistだけで、setup-tokenはCLAUDE_CODE_OAUTH_TOKENだけで渡す"
     },
     {
       "id": "B4",
@@ -198,6 +203,22 @@
       "data": "罠の資料（.claude/settings.jsonのhooks・.mcp.json・CLAUDE.md・AGENTS.md・注入の指示）、config dirへの一時の罠ファイル、合成の秘密ファイル、Seatbeltなしのflag層だけの実行",
       "trust": "partially-trusted",
       "control": "所有者の新しい空のrootとnonceだけを使い、罠のhookはmarkerをtouchするだけ。config dirの罠は実行後に消す。判定はmarkerとnonceだけで、CONTROLのnonceが出なければinconclusive。実鍵・実キーチェーン項目を使わない"
+    },
+    {
+      "id": "B10",
+      "direction": "entry",
+      "location": "launcher.ts readTokenFile()（所有者が置くsetup-tokenのファイル）",
+      "data": "Claudeの購読の長期トークン",
+      "trust": "partially-trusted",
+      "control": "正規化した絶対パス、作業領域と重ならない、lstatで通常ファイル・所有者一致・mode 600/400・nlink 1、親dirは所有者一致で他者書込み不可、O_NOFOLLOWで開いてfstatで同一性を確認、サイズと文字種を検査。エラー文に値を含めない。cli.sbのdenyで子からは読めない（doctorのtoken-file probe）"
+    },
+    {
+      "id": "B11",
+      "direction": "exit",
+      "location": "doctor.ts seatbeltHost()の合成keychain file（security create-keychain）とsupervisorの代役socket",
+      "data": "合成の項目（SYNTHETIC値）、doctor自身のpid、一時のunix socket",
+      "trust": "trusted",
+      "control": "fixtureの一時dirに作り、利用者の検索リストに加えない（実機で確認）。終了時にdelete-keychainとrmで消す。実キーチェーン・実項目に触れない"
     }
   ],
   "variant_analysis": [
@@ -221,6 +242,14 @@
         {
           "location": "doctor.ts runDoctor()の認証",
           "result": "auth statusがない・claude.ai以外・configDirectoryの不一致はunverified/disabled"
+        },
+        {
+          "location": "launcher.ts readTokenFile()・checkPlan()",
+          "result": "トークンファイルの所有者・mode・リンク・内容の不備は起動拒否。Claudeの計画にトークンがなければno-subscription-token、Codexにあればcredential-env"
+        },
+        {
+          "location": "doctor.ts runDoctor()（Codex）",
+          "result": "外側のSeatbeltがないので合成probeは使わず、実機の測定がすべてdeniedになるまでunverified、allowedならdisabled"
         }
       ]
     },
@@ -251,6 +280,10 @@
         {
           "location": "launcher.tsの例外文",
           "result": "固定の文だけで、渡された値（パス・プロンプト）を含めない"
+        },
+        {
+          "location": "argvTemplateHash()・measurementRecord()",
+          "result": "トークンの値は<token>に置き換え、hash・記録・診断に入らない"
         }
       ]
     },
