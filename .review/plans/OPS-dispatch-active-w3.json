@@ -25,7 +25,7 @@
     {
       "description": "Issue #50は W1〜W3 を並行で進める。W3の担当ファイルは store.ts・evidence.ts・github.ts・新しいhost検査。R011（本文の正規化）は broker.ts（W2）、R011（過大な配送）は webhook.ts（W4の受け口）、R008（workflowの信頼）は model.ts の policy、host検査の接続は review-dispatch.ts（W4）に触れる",
       "state": "resolved",
-      "resolution": "共有ファイルへの変更は最小で追加的にする。broker.ts は render の出力を canonicalBody で包む1行と、回復時に marker が一致して hash が違う投稿を uncertain にする数行だけ。webhook.ts は過大な本文の署名を流しながら確かめて印を残す関数を足し、既存の ingest の判定は変えない。model.ts は任意の欄 trustedWorkflowTrees とその検査だけを足す。review-dispatch.ts は policy の読取りを host 検査に替え、時計と過大な配送の印の扱いを足すだけ。報告で全てを共有ファイルの変更として挙げ、W4 の統合に任せる"
+      "resolution": "共有ファイルへの変更は最小で追加的にする。broker.ts は render の出力を canonicalBody で包む1行と、回復時に marker が一致して hash が違う投稿を uncertain にする数行だけ。webhook.ts は過大な本文の署名を流しながら確かめて印を残す関数を足し、既存の ingest の判定は変えない。model.ts は任意の欄 trustedCiDigests（当初は trustedWorkflowTrees）とその検査だけを足す。review-dispatch.ts は policy の読取りを host 検査に替え、時計と過大な配送の印の扱いを足すだけ。報告で全てを共有ファイルの変更として挙げ、W4 の統合に任せる"
     },
     {
       "description": "PR48-R007 の「未解消の指摘」を何で判定するか。REST の行コメントには thread の resolve 状態がなく、GraphQL は今の GhReader（/repos/ の GET だけ）の外。Review 本文や行コメントは write 権限者が編集でき、REST の Review には編集時刻がない",
@@ -35,7 +35,7 @@
     {
       "description": "PR48-R008 の workflow の信頼の単位。ci.yml の blob だけを比べると、PRが別のworkflowファイルに name: CI を付けて同名のジョブを成功させられる。.github 全体を比べると PR テンプレート等の変更も止まる",
       "state": "resolved",
-      "resolution": "安全側をとり、.github の tree SHA を base と head で比べる。違えば unknown のまま止め、owner が独立レビュー後に policy の trustedWorkflowTrees へその tree SHA を記録した場合だけ信頼する（policy の revision 更新で新しい Ready が要る）。さらに CI run は path が .github/workflows/ci.yml のものだけを選ぶ。commit status と check run は今の判定に使わない補助取得のまま"
+      "resolution": "（初版。粗探しと所有者決定 issuecomment-5977404200 で置き換え、最後の衝突の(d)を参照）安全側をとり、.github の tree SHA を base と head で比べる。違えば unknown のまま止め、owner が独立レビュー後に policy の trustedWorkflowTrees へその tree SHA を記録した場合だけ信頼する（policy の revision 更新で新しい Ready が要る）。さらに CI run は path が .github/workflows/ci.yml のものだけを選ぶ。commit status と check run は今の判定に使わない補助取得のまま"
     },
     {
       "description": "PR48-R009 の時計の後退。許容幅を設けるか、運用手順だけにするか",
@@ -45,7 +45,7 @@
     {
       "description": "粗探しの記録（PR #52 issuecomment-5977379116、head 05aebcc）: P2が4件（RT-P2-1 承認後の会話コメント、RT-P2-2 削除・編集で指摘が消える、RT-P2-3 workflowの信頼の範囲、RT-P2-4 #53とのbroker.tsの衝突）、P3が7件。個別に直すと、指摘の入力元・解消の規則・信頼の単位がばらばらに増える",
       "state": "resolved",
-      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 信頼する路の集合を1つの定数WORKFLOW_TRUST_PATHSにし、今は所有者決定どおり.githubだけ。package.jsonのscriptsやtools/review_guard等、CIの結果を決めるほかの路は独立した内容レビューに頼ることを導入前チェックの表と実装文書に明記する。所有者が広げると決めたら定数に足すだけにする。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
+      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 所有者が範囲を広げた（issuecomment-5977404200）。CIの判定を決めるファイル（.github/全体、package.json、tools/review_guard/、scripts/check-test-skips.tsとscripts/lib/test-skips.ts）を1つの定数CI_TRUST_PATHSにし、試験の中身（tests/、*.test.ts、test_*.py）をCI_TRUST_EXCLUDEDで除く。tree SHAでは除外を表せないので、headの再帰treeから範囲のファイルの`git ls-tree`行をバイト順に並べたSHA-256（要約）で比べ、ownerは同じ要約をpolicyのtrustedCiDigestsへ記録する（ownerが再現するコマンドを文書に書き、実装と一致することを確かめる）。範囲の外は独立した内容レビューに頼ると明記する。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
     }
   ],
   "assessments": [
@@ -196,18 +196,18 @@
     {
       "id": "B6",
       "direction": "entry",
-      "location": "github.ts collect（git/commits、git/trees、actions/runs）",
-      "data": "base と head の .github の tree SHA、workflow run の path",
+      "location": "github.ts collect（git/commits、git/trees/<root>?recursive=1、actions/runs）",
+      "data": "base と head の、CIの判定を決めるファイルの一覧（mode・type・SHA・path）と workflow run の path",
       "trust": "untrusted",
-      "control": "SHA の形式を検査し、truncated の tree は EvidenceError。信頼する路は定数 WORKFLOW_TRUST_PATHS（今は .github だけ）。路ごとの object SHA が base と違えば、policy の trustedWorkflowTrees に head の SHA がある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。package.json の scripts や tools/review_guard など、ほかの CI を決める路は独立した内容レビューに頼る（文書に明記）"
+      "control": "truncated の tree・不正な mode/type/path は EvidenceError。範囲は定数 CI_TRUST_PATHS（.github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts）から CI_TRUST_EXCLUDED（tests/、*.test.ts、test_*.py）を除いたもの。その git ls-tree 行のSHA-256が base と違えば、policy の trustedCiDigests にある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。範囲の外は独立した内容レビューに頼る"
     },
     {
       "id": "B7",
       "direction": "entry",
-      "location": "policy の trustedWorkflowTrees（model.ts validatePolicy）",
-      "data": "所有者が独立レビュー後に記録した .github の tree SHA",
+      "location": "policy の trustedCiDigests（model.ts validatePolicy）",
+      "data": "所有者が独立レビュー後に記録した、CIの判定を決めるファイルの要約（SHA-256）",
       "trust": "partially-trusted",
-      "control": "40桁の小文字16進数で重複なしの配列だけを受け付ける。B1 の host 検査を通った policy からだけ読む"
+      "control": "64桁の小文字16進数で重複なしの配列だけを受け付ける。B1 の host 検査を通った policy からだけ読む。記録すると policy の revision が変わり、開いている全PRで Ready のやり直しが要る（所有者の手順に記載）"
     },
     {
       "id": "B8",
@@ -294,16 +294,20 @@
           "result": "EvidenceError。.github がない場合は差分ありとして unknown"
         },
         {
-          "location": "WORKFLOW_TRUST_PATHS（github.ts）",
-          "result": "今は .github だけ（所有者決定）。広げるときは定数に足す"
-        },
-        {
-          "location": "package.json の scripts、tools/review_guard、scripts/**（checks・review tools のジョブが候補の commit から実行する）",
-          "result": "R008 の対象外。独立した内容レビューに頼ることを導入前チェックと実装文書に明記する"
-        },
-        {
           "location": "review plan のジョブ",
           "result": "base の検査器を実行するので、候補の変更では変わらない（既存）"
+        },
+        {
+          "location": "CI_TRUST_PATHS（github.ts）",
+          "result": "所有者決定で .github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts。各路の変更でだけ unknown になり、範囲外・試験の中身では変わらないことを試験する"
+        },
+        {
+          "location": "docs/development.md（check-test-skips が実行時に読む飛ばしてよい試験の表）",
+          "result": "所有者の範囲に含まれない。試験の表は内容レビューに頼る。範囲に加えるかは調整役へ確認事項として報告する"
+        },
+        {
+          "location": "所有者が要約を求めるコマンド",
+          "result": "文書のコマンドを zsh と bash で実行し、ciTrustDigest と同じ値になることを確かめた"
         }
       ]
     },
@@ -419,6 +423,11 @@
       "date": "2026-10-04",
       "source": "Issue #50 所有者決定の受領記録 issuecomment-5977365862",
       "decision": "R009: 時計の後退を許す幅は5秒。R008: workflowの信頼を記録する単位は.github全体（範囲を広げるかは所有者が別途判断中。今は.githubだけ）"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 所有者決定の受領記録（追加）issuecomment-5977404200",
+      "decision": "R008の信頼の単位を、CIの判定を決めるファイル（.github全体、package.json、tools/review_guard/、scripts/check-test-skips.tsとその読む部品）へ広げる。試験の中身は含めず、独立した内容レビューで守る"
     }
   ],
   "deferred": [
@@ -435,16 +444,16 @@
       "reason": "REST の Review に編集時刻がなく、GraphQL は今の取得経路の外。残る危険として文書に書く"
     },
     {
-      "item": "信頼した tree SHA の base・PR への結び付け（粗探しP3）",
-      "reason": "W4 の active の CLI・policy の運用で決める。今は内容で結び付き（同じ内容の .github だけ信頼）、記録の後は Ready のやり直しが要る"
-    },
-    {
       "item": "Webhook の pull_request_review.edited・pull_request_review_comment.deleted・issue_comment の印（粗探しRT-P2-2）",
       "reason": "W4 の受け口。このPRは照合での観測比較で検出する"
     },
     {
       "item": "#53 と broker.ts の順序（粗探しRT-P2-4）",
       "reason": "publicationFindings はこの base にない。W4 の統合で canonicalBody → 公開検査 → hash → POST に固定する"
+    },
+    {
+      "item": "信頼した要約の base・PR への結び付け（粗探しP3）",
+      "reason": "W4 の active の CLI・policy の運用で決める。今は内容で結び付き（同じ内容の範囲だけ信頼）、記録の後は Ready のやり直しが要る"
     }
   ]
 }
