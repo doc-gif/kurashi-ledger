@@ -11,95 +11,95 @@
   ],
   "conflicts": [
     {
-      "description": "Issue #50 W1-W3 run in parallel and implement the launcher, signing/Broker and host checks. If W0 adds launch requirements that W1 does not implement, the design and code disagree.",
+      "description": "W1-W3 run in parallel; W0 launch requirements could diverge from W1's launcher.",
       "state": "resolved",
-      "resolution": "W0 records the owner's O2 layer list as the required set. Extra documented flags (--tools, --strict-mcp-config, --safe-mode, --permission-prompts none, --no-session-persistence) are listed as 'adopt if the pinned version supports them; otherwise doctor reports unverified'. W0 changes no code. W4 integrates and reconciles the design with the merged launcher."
+      "resolution": "W0 changes no code. §7 lists the required layers; W1 implements the same flags. Superseded in part by entry 4 (all layers mandatory)."
     },
     {
-      "description": "pr-review-loop deferred the identity that posts the red-team record in active mode to this migration PR. Current manual practice lets a same-vendor subagent red-team, but merged reducer.ts/broker.ts require the faultfinding actor to be reviewerEligible (assigned reviewer, independent person from implementer/author/pushers).",
+      "description": "Who posts the red-team record in active mode (deferred to this PR). Merged reducer.ts/broker.ts require an independent assigned reviewer.",
       "state": "resolved",
-      "resolution": "Follow the merged code: in active mode the faultfinding Job runs as an assigned reviewer and its record is posted by that reviewer's Broker. The implementer's App never posts an active red-team record. Manual mode keeps the current rule unchanged."
+      "resolution": "Follow the code: one independent assigned reviewer (AI Job via its Broker, or a human by hand). The implementer's App never posts it."
     },
     {
-      "description": "T23 (PR #38, paused) owns state judgement and notification today; T24 owns external AI polling. Active mode needs exactly one judge/notifier per PR.",
+      "description": "T23/T24 and patrols judge and notify today; active needs one judge/notifier per PR.",
       "state": "resolved",
-      "resolution": "Per migrated PR, the Issue45 dispatcher is the only judge and notifier. T23/T24 and the existing patrols skip migrated PRs; T23 keeps CI-policy protection for all PRs. No paused PR38/44 code is imported or resumed."
+      "resolution": "For dispatcher targets, only the dispatcher judges and notifies; patrols skip them; T23 keeps CI-policy protection. No paused PR38 code is used."
     },
     {
-      "description": "Red team on 6ceb1bf (issuecomment-5977292218): 2 P1, 4 P2, 4 P3 at design level. Fixed holistically, by root cause, not finding by finding.",
+      "description": "RT1 (5977292218): isolation layers, Read scope, keychain, red-team timing, notice, auto-fix, decision scope.",
       "state": "resolved",
-      "resolution": "C1 (P1 layers, P1 Read scope, P2 keychain, P3 auth-status): each isolation layer must name the documented mechanism, be mandatory, and have a doctor negative probe; any missing flag/setting or failed probe disables the capability. No 'adopt if supported' for required layers. Read runs inside the CLI process, so the CLI Seatbelt profile and scoped Read rules (not the tool-child profile) bound it; Read rules reach Grep/Glob only best-effort, so Seatbelt is the hard bound. Keychain: owner decision 2026-10-04 - if the probe reads an App key or a synthetic item with the same ACL shape, the owner moves App keys to a dedicated keychain file; launch stays disabled until then. Broker runs a publication check before posting (W2). Auth-status check left to W1. C2 (P2 timing, P2 notice, P3 rollback reviewers, P3 who posts red team): active changes how conditions are evaluated, so record it as an owner-approved reinterpretation (2026-10-04: Ready = request review; red team after Ready, before the review job, same head/base) and stop claiming 'unchanged'; give non-dispatcher actors one information-only dispatch-notice per switch/rollback with mode, policy revision and required reviewers; missing/ambiguous notice = old rules and no merge; rollback reuses APPROVEs only when all required reviewers approved; red team by one independent assigned reviewer (human posts manually in the same format), matching reducer.ts. C3 (P2 auto-fix, P3 O1 scope): record only what the owner decided; auto-fix disabled until a separate implementer-job isolation design is accepted; Cloudflare Tunnel, receive App and Codex argv are design proposals, the owner picks the tunnel in W4. Variant sweep: design §3/§5/§6/§7/§8/§9, pr-review-loop (red-team section, active section), operations (merge conditions, roles, polling), T23/T24, external-worker."
+      "resolution": "All §7 layers mandatory with documented flags and doctor probes; missing = disabled. Seatbelt bounds in-process Read. Keychain per owner decision. Timing recorded as an owner-approved reinterpretation. Auto-fix disabled. Decisions split from design proposals."
     },
     {
-      "description": "Red team round 2 on 9af6c88 (issuecomment-5977366093): new P1 notice forgery (Codex implementer posts via Codex App; doc-gif is shared by AIs), P2 notice kinds, P2 missing decision evidence; P3s. Owner receipt issuecomment-5977365862 adds O2-token, Codex without outer Seatbelt, R009=5s, R008=.github.",
+      "description": "RT2 (5977366093): dispatch-notice forgeable; decision evidence missing. Receipt 5977365862: O2-token, Codex, R008, R009.",
       "state": "resolved",
-      "resolution": "Root cause: a GitHub comment that any AI identity can author was used as an input to rule choice and merge. Fix: dispatch-notice is display-only and never an input to the merge judgement or to old-vs-active choice. The active PR set and required reviewers come only from owner-confirmed records (the owner's instruction received by the coordinator and posted as a receipt, like issuecomment-5977365862); the PR's implementer never writes it; without it the old rules apply and nothing merges on active evidence. Old-patrol exclusion is an owner setting only. Notice kinds (switch/change/rollback) stay for display. Link the receipt from design §8 and the reinterpretation paragraph. §7: Claude gets CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` via the supervisor; the Claude profile denies all keychain access; env allowlist excludes ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN (higher precedence). Codex runs only with its own --sandbox read-only (no outer Seatbelt, macOS rejects nesting); keychain/App-key reach is a real-Mac measurement. R009/R008 recorded in §8. P3: Read() only; moving App keys needs a separate independently reviewed App-procedure PR; config-dir residual settings check is W1. Variant sweep: every place that reads the notice (pr-review-loop 対象/担当/マージ表/切替/rollback, operations merge+polling, external-worker, design §6)."
+      "resolution": "Notice is display-only. Receipts linked from §8. §7: setup-token via supervisor, no keychain; Codex with its own sandbox. Superseded in part by entry 5."
     },
     {
-      "description": "Red team round 3 on e431a86 (issuecomment-5977423642): the forgery moved from the notice to the receipt (Claude implementer and coordinator share the Claude App). Escalated as an oscillation; owner decided active-merge (issuecomment-5977430810). Also P2 Codex read scope, P3 auth precedence, R008 replaced (issuecomment-5977404200).",
+      "description": "RT3 (5977423642): receipt forgeable as well. Receipt 5977430810 (active-merge).",
       "state": "resolved",
-      "resolution": "Root cause: the AIs share every identity (Mac, account, Apps), so no owner-only signal exists inside GitHub; any rule that lets a comment decide active-vs-old for merging is forgeable. Fix by removing merge authority instead of moving the signal: AIs never merge active PRs; the owner merges in the GitHub UI after checking the unchanged conditions (red-team timing reinterpreted). The dispatcher only launches and posts reviews and red team. Receipts and notices are display/guidance only. Old patrols skip only PRs listed in the owner's out-of-repo setting. Implementers stop at the handoff; a PR that was ever active stays owner-merged (forgery can only stop an AI merge). Residual risk stated: the design guards mistakes and injection, not an AI breaking rules on the shared account (incl. forged doc-gif approvals). Codex stays disabled until probes show no reads outside materials and no PR AGENTS.md/config load; neutral cwd applies to Codex. §7 env allowlist excludes all higher-precedence auth sources; W1 checks authMethod. §8: active-merge row, R008 replaced."
+      "resolution": "Root cause: every identity is shared. AIs never merge active PRs; the owner merges in the UI; receipts and notices carry no authority. Residual risk recorded in design §7."
     },
     {
-      "description": "Codex review 5404811070 on 51ebdaf (CHANGES_REQUESTED): R001 P1 owner-merge-only lost at rollback (policy target and patrol exclusion are both removed, comments must not decide); R002 P2 AI v1 body vs human standard operations; R003 P2 Codex read-only does not restrict reads; R004 P3 nesting claim. Owner receipt 5977523656: Codex auto-launch deferred, net-443 accepted with loopback blocked, .npmrc in R008.",
+      "description": "Codex review 5404811070: R001 merge authority lost at rollback; R002 AI vs human evidence; R003 Codex reads; R004 nesting. Receipts 5977523656, 5977629581.",
       "state": "resolved",
-      "resolution": "Regression check against RT1-RT4 (5977292218, 5977366093, 5977423642, 5977472008, 5977490017): no earlier fix is reverted. RT3's 'ever active (receipt/notice/policy) stays owner-merged' is replaced by a stronger, comment-free source; receipts/notices stay display/guidance only (RT2/RT3). Root cause of R001: launch mode and merge authority were one state, and that state is deleted at rollback. Fix: separate them. The owner's out-of-repo setting (per worker environment) holds two lists: active (old patrols skip; launch mode) and owner-merge-only (merge authority; persistent; survives rollback; only the owner removes entries). Every AI worker reads it before any merge; listed, missing or unreadable means no merge (an empty list is a valid setting). The setting also selects the procedure (active: Ready then red team; otherwise red team then Ready); a wrong guess cannot enable a merge. Worked example active -> rollback -> fresh old worker shows receipts/notices change nothing. Root cause of R002: one evidence format for AI and humans. Fix: AI reviewers keep the v1 body (commit_id + base_sha); humans use standard Ready/Approve and the owner checks the dispatcher's stored authorised binding (actor, commit_id, base at acceptance, policy revision); unprovable = hold; no self-reported SHA. Example with human-only operations. R003: §7 states read-only allows full-disk reads (Codex 0.160.0 sources), Codex auto-launch deferred per receipt, Codex stays with human hand-off, shipped disabled; net-443 residual risk with loopback blocked; R008 adds .npmrc. R004: nesting rejection is version/profile dependent and unmeasured for the real Codex profile. Variant sweep: merge conditions, roles, state transitions, polling, §5 table, §7, §8, pr-review-loop active section, external-worker Prompt, T24. Owner receipt 5977629581 (start-small) is folded into the same round: §8 row with link; switch procedure states the initial scope (1 PR, 1 required reviewer, Claude-only auto-launch, manual fixes, owner merge) and the widening criterion (measured launch count, duplicate launches, Ready-to-result time; widen only after the effect is shown, by owner decision)."
+      "resolution": "No earlier RT fix reverted. Merge authority separated from launch mode (see entries 7-8). AI v1 body vs human stored binding; unprovable = hold. Codex auto-launch deferred. Nesting is version/profile dependent. Start-small scope in the switch procedure."
     },
     {
-      "description": "RT5 (5977666664): P2 setting location/format/bootstrap undefined; P2 per-environment copies can diverge. Owner receipt 5977666899: OWNER_MERGE_ONLY repository variable, condition added to all PRs. Coordinator: also shorten this PR's added text (google-technical-writing).",
+      "description": "RT5 (5977666664): setting location and per-environment copies. Receipt 5977666899.",
       "state": "resolved",
-      "resolution": "One source: repository variable OWNER_MERGE_ONLY (owner writes; AI Apps lack Variables permission). Format: PR numbers separated by commas or newlines; `none` means no PR; anything else is unreadable. Read: GET /repos/{owner}/{repo}/actions/variables/{name} needs collaborator access (classic: repo scope; App: Variables read, which the AI Apps lack), so workers read with the doc-gif gh login, read only; a Variables:read purpose is a separate App-procedure PR. 404/error/bad format = no merge. Bootstrap: owner creates the variable, then #51 merges. Merge-conditions text records the owner-added condition. Active list is no longer a worker input: patrols use their owner-managed run setting; implementers pick the order from guidance, which cannot enable a merge. R004 wording fixed. Text shortened without changing decisions."
+      "resolution": "One source: repository variable OWNER_MERGE_ONLY; format PR numbers or `none`; unreadable = no merge; condition recorded as an owner decision."
     },
     {
-      "description": "RT6 (5977715032): P2 doc-gif read conflicts with the App rule; P2 owner head check dropped. Owner receipt 5977715281: AIs read OWNER_MERGE_ONLY only with their App (merge-check purpose, W5); until then nothing merges.",
+      "description": "RT6 (5977715032): doc-gif read conflicts with the App rule; owner head check dropped. Receipt 5977715281.",
       "state": "resolved",
-      "resolution": "Read via the App merge-check purpose (W5 PR); until W5 merges and the owner adds Variables: Read-only, AIs treat the variable as unreadable and merge nothing. Restore residual risk (doc-gif can rewrite the variable) and the owner's UI head check (head equals the APPROVE commit_id). Bootstrap: variable (none) and App permission, then W5, then #51."
+      "resolution": "Read with the App merge-check purpose (#55). Owner UI head check restored. Residual risk: doc-gif can rewrite the variable. Owner review 5404975423: one home per concept, links elsewhere."
     }
   ],
   "assessments": [
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "Docs only. The new text names flags, paths classes and procedures, never keys, tokens, tunnel hostnames, account names or personal paths.",
+      "reason": "Docs only; no keys, tokens, hostnames or personal paths.",
       "checks": [
         {
           "id": "public",
-          "method": "Read the full staged diff. Run node scripts/check-public.ts --staged. Grep the diff for hostnames, keychain service values, home paths and token-like strings.",
-          "expected": "No secrets, real URLs of the tunnel, personal paths or real data. Subscription login stays in an owner-only config dir that the docs only name as a class."
+          "method": "Read the staged diff; run check-public --staged; grep for hostnames, keychain values, home paths, tokens.",
+          "expected": "No secrets, tunnel URLs, personal paths or real data."
         }
       ]
     },
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "The merge conditions stay. Active mode changes only how 'accepted' and the red-team record are evaluated for migrated PRs: native APPROVE and dispatcher Job records bound to the exact head/base, never a converted COMMENT.",
+      "reason": "Merge conditions keep their wording; owner decisions add OWNER_MERGE_ONLY and reinterpret red-team timing for active PRs.",
       "checks": [
         {
           "id": "duplicates",
-          "method": "Trace one migrated PR through switch, Ready, faultfinding, review, push, main update and rollback. Check that exactly one notifier posts per state and that old patrols skip the PR.",
-          "expected": "No double notice, no double review Job, no re-post after uncertain POST. Finding IDs keep the PR<N>-R format across the switch."
+          "method": "Trace one target PR through switch, Ready, red team, review, push, main update and rollback.",
+          "expected": "One notifier per state; no double Job; no re-post after uncertain POST; finding IDs stay PR<N>-R."
         },
         {
           "id": "trust",
-          "method": "Compare the new active rules with design §1/§5/§6, reducer.ts accepted()/reviewerEligible() and broker.ts. Check rollback does not turn shadow records or old COMMENT accepted into approvals.",
-          "expected": "Only an assigned independent reviewer's APPROVE at the exact pair counts. Red-team evidence must come from an independent reviewer Job at the exact pair. Labels, notices and prose grant nothing. The dispatcher never merges."
+          "method": "Compare the rules with design §1/§5/§6 and reducer.ts accepted()/reviewerEligible(); check rollback.",
+          "expected": "Only an independent assigned reviewer's APPROVE at the exact pair counts; comments grant nothing; AIs never merge OWNER_MERGE_ONLY PRs."
         }
       ]
     },
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "The migration defines responsibilities but grants no activation. Activation still needs W1-W4 merged, doctor/host checks passing and the owner's per-PR policy change.",
+      "reason": "Defines responsibilities; grants no activation (needs W1-W4, doctor/host checks, owner policy).",
       "checks": [
         {
           "id": "dependencies",
-          "method": "Compare the T23/T24 rows, design §8 and review-dispatch-implementation.md pre-activation checklist (PR48-R003, R007-R011).",
-          "expected": "Active cannot start before the checklist items and W1-W4 are merged. T23 CI-policy protection stays. Windows needs no new backend."
+          "method": "Compare T23/T24 rows, design §8 and the PR48 pre-activation checklist.",
+          "expected": "Active cannot start before W1-W4 and the checklist; T23 CI-policy protection stays; no Windows backend."
         },
         {
           "id": "entrypoints",
-          "method": "Read pr-review-loop, github-agent-operations, implementation-tasks T23/T24, external-worker and project-status together after the change.",
-          "expected": "All entry points say: non-migrated PRs use the current manual protocol; migrated PRs use the dispatcher. Files outside W0 ownership that still say 'separate migration PR' are listed for W4."
+          "method": "Read pr-review-loop, operations, T23/T24, external-worker and project-status together.",
+          "expected": "Each concept has one home; other entry points link to it. Out-of-scope stale text is listed for W4."
         }
       ]
     }
@@ -108,88 +108,72 @@
     {
       "id": "B1",
       "direction": "exit",
-      "location": "docs/review-dispatch-design.md, docs/pr-review-loop.md, docs/github-agent-operations.md, docs/implementation-tasks.md (public repo)",
-      "data": "Operating rules, owner decisions O1-O3/Windows, CLI flag names",
+      "location": "The changed docs and plan (public repo)",
+      "data": "Operating rules, owner decisions, CLI flag names",
       "trust": "untrusted",
-      "control": "Public diff review and check-public --staged. No secrets, hostnames or personal paths."
+      "control": "Public diff review and check-public --staged."
     },
     {
       "id": "B2",
       "direction": "entry",
-      "location": "Claude CLI docs (code.claude.com headless and cli-reference), fetched 2026-10-04",
-      "data": "Flag names and documented behaviour",
+      "location": "Claude/Codex/GitHub docs fetched 2026-10-04",
+      "data": "Flag names, API permissions, documented behaviour",
       "trust": "partially-trusted",
-      "control": "Cite only documented flags. State that docs are not a run; the doctor's negative tests on the pinned version decide the capability."
+      "control": "Cite documented behaviour only; docs are not a run; doctor probes decide the capability."
     },
     {
       "id": "B3",
       "direction": "entry",
-      "location": "AI workers and old patrols reading these docs as instructions",
-      "data": "Who judges, notifies, posts reviews and red-team records; switch and rollback steps",
+      "location": "AI workers and patrols reading these docs as instructions",
+      "data": "Who judges, notifies, posts and merges; switch and rollback",
       "trust": "partially-trusted",
-      "control": "Rules say a label/notice/prose never grants authority; only the owner's policy revision migrates a PR; skip-on-notice only stops work."
+      "control": "Labels, receipts, notices and prose grant nothing; merge authority comes only from OWNER_MERGE_ONLY and the owner."
     }
   ],
   "variant_analysis": [
     {
       "invariant_id": "INV-REVIEW",
       "cause_key": "credential-fallback-on-mint-failure",
-      "pattern": "Docs that let a launcher fall back to another credential (API key, doc-gif login, other App) when subscription login or App token fails",
+      "pattern": "Fallback to another credential when login or App token fails",
       "places": [
         {
-          "location": "design §7 Claude row and O2 paragraph",
-          "result": "Fail closed; no API key, no --bare, no switch to another service without owner approval"
+          "location": "design §7 O2",
+          "result": "Fail closed; no API key or --bare"
         },
         {
-          "location": "design §3 receive/notify identities",
-          "result": "Unchanged Codex App; no doc-gif fallback"
+          "location": "operations OWNER_MERGE_ONLY read",
+          "result": "App only; no doc-gif read"
         }
       ]
     },
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "token-scope-fail-open",
-      "pattern": "Text that widens what a worker can read (keychain, config dir) when a probe is unknown; also: an isolation layer written as intent or optional, so an unsupported flag or in-process tool silently widens access (PR51 RT P1 x2, P2 keychain)",
+      "pattern": "An isolation layer that is optional or unknown widens what a worker can read",
       "places": [
         {
-          "location": "design §7 Seatbelt/doctor paragraph",
-          "result": "CLI profile may read only its dedicated config dir login; tool-child profile reads no credential; unknown probe = disabled"
-        },
-        {
-          "location": "design §7 layer table",
-          "result": "Every row names a documented flag/setting; all mandatory; missing = disabled"
+          "location": "design §7 layer table and probes",
+          "result": "All layers mandatory; missing or failed probe = disabled"
         },
         {
           "location": "design §7 Read/Grep/Glob",
-          "result": "Scoped rules to materials + config-dir deny; CLI profile limited to materials/runtime/config dir; Seatbelt is the hard bound because Read rules reach Grep/Glob best-effort"
+          "result": "Scoped Read() rules and config-dir deny; Seatbelt is the hard bound"
         },
         {
-          "location": "design §7 keychain",
-          "result": "Synthetic same-ACL probe; owner moves App keys to a dedicated keychain file on failure; disabled until probe passes"
+          "location": "design §7 auth and keychain",
+          "result": "setup-token via supervisor; no keychain; higher-precedence auth excluded; App keys moved if readable"
+        },
+        {
+          "location": "design §7 Codex",
+          "result": "read-only reads the whole disk; auto-launch deferred; disabled"
+        },
+        {
+          "location": "design §7 network",
+          "result": "443 allowed, loopback blocked (net-443 residual)"
         },
         {
           "location": "design §6 Broker",
           "result": "Publication check before posting (W2)"
-        },
-        {
-          "location": "design §7 auth row and Codex row",
-          "result": "Claude: setup-token via supervisor env, no keychain at all; Codex: own read-only sandbox only, keychain reach measured on the real Mac"
-        },
-        {
-          "location": "design §7 Codex row and doctor probes",
-          "result": "Codex disabled until no reads outside materials and no PR AGENTS.md/config load; neutral cwd for Codex"
-        },
-        {
-          "location": "design §7 auth row",
-          "result": "env allowlist excludes every auth source with higher precedence than CLAUDE_CODE_OAUTH_TOKEN"
-        },
-        {
-          "location": "design §7 Codex row",
-          "result": "read-only allows full-disk reads; Codex auto-launch deferred and disabled; human hand-off"
-        },
-        {
-          "location": "design §7 OS row",
-          "result": "Claude CLI may reach outbound 443; loopback blocked; accepted residual (net-443)"
         }
       ]
     },
@@ -199,66 +183,30 @@
       "pattern": "A PR changes the rules that judge it",
       "places": [
         {
-          "location": "pr-review-loop active section",
-          "result": "This PR is judged by current rules; active applies only after merge and owner policy change"
+          "location": "this PR",
+          "result": "Judged by current rules; new rules apply after merge and the owner's setup"
         },
         {
           "location": "T23 row",
-          "result": "Dispatcher paths added to policy_paths requirement (I007)"
+          "result": "Dispatcher paths added to policy_paths (I007)"
         }
       ]
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2); also: an AI-authorable comment (dispatch-notice) used as authority for rule choice, reviewer set or patrol skip (PR51 RT2 P1); also: any comment (receipt or notice) that decides active-vs-old rules for merging, when every identity is shared (PR51 RT3 P1); also: merge authority stored in a state that rollback deletes, and one evidence format for AI and human approvals (PR51-R001/R002)",
+      "pattern": "Forgeable or deletable signals decide judge, notifier or merge authority; one evidence format for AI and humans",
       "places": [
         {
-          "location": "github-agent-operations 分担/定期実行",
-          "result": "Migrated PRs: dispatcher only; patrols skip"
+          "location": "operations dispatch-active and owner-merge-only",
+          "result": "AIs never merge active or listed PRs; unreadable = no merge; comments change nothing"
         },
         {
-          "location": "design §5 table and rollback",
-          "result": "No COMMENT->APPROVE conversion; shadow records never count"
+          "location": "pr-review-loop active section",
+          "result": "One judge/notifier; no COMMENT->APPROVE conversion; shadow records never count"
         },
         {
-          "location": "github-agent-operations merge conditions",
-          "result": "Owner-approved reinterpretation recorded with date"
-        },
-        {
-          "location": "pr-review-loop red-team section and active section",
-          "result": "Same reinterpretation; notice per switch/rollback; missing/ambiguous = old rules, no merge"
-        },
-        {
-          "location": "design §5",
-          "result": "Red team after Ready and before the review job, same pair"
-        },
-        {
-          "location": "rollback step",
-          "result": "Reuse APPROVEs only with all required reviewers"
-        },
-        {
-          "location": "pr-review-loop 対象/マージ表/rollback, operations, external-worker",
-          "result": "Notice is display-only; active set and reviewers only from owner receipts; patrol exclusion only by owner setting"
-        },
-        {
-          "location": "design §6 notice sentence",
-          "result": "Display-only, never an input"
-        },
-        {
-          "location": "pr-review-loop active section, operations merge/roles/polling, external-worker, T24, design §5",
-          "result": "AIs never merge active PRs; owner merges in the UI; receipts/notices are display only; patrol skip only via owner out-of-repo setting"
-        },
-        {
-          "location": "github-agent-operations merge conditions, roles, state transitions; pr-review-loop active section; external-worker Prompt; T24; design §5 table",
-          "result": "Persistent owner-merge-only list read by every AI worker; missing/unreadable = no merge; receipts/notices never change authority"
-        },
-        {
-          "location": "pr-review-loop owner check table; design §5",
-          "result": "AI: v1 body; human: dispatcher's stored binding; unprovable = hold"
-        },
-        {
-          "location": "operations merge conditions, pr-review-loop, external-worker, T24, design §5/§8",
-          "result": "OWNER_MERGE_ONLY repository variable is the only source; no per-environment copies"
+          "location": "pr-review-loop owner check",
+          "result": "AI v1 body vs human stored binding; unprovable = hold"
         }
       ]
     },
@@ -268,12 +216,12 @@
       "pattern": "Entry points disagree on when active starts",
       "places": [
         {
-          "location": "design header, §5, §8",
+          "location": "design §8, pr-review-loop switch",
           "result": "Same preconditions"
         },
         {
-          "location": "review-dispatch-implementation.md line 61, project-status.md",
-          "result": "Outside W0 ownership; reported to W4"
+          "location": "review-dispatch-implementation.md, project-status.md",
+          "result": "Outside W0; reported to W4"
         }
       ]
     },
@@ -283,302 +231,61 @@
       "pattern": "Docs claim active is running",
       "places": [
         {
-          "location": "all four files",
-          "result": "State says activation is pending owner switch"
+          "location": "changed docs",
+          "result": "Activation pending the owner's switch"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "draft-open-entrypoint-coherence",
-      "pattern": "Draft/Open/ready-for-review meaning differs between manual and active mode",
+      "pattern": "Draft/Ready meaning differs between old and active mode",
       "places": [
         {
           "location": "pr-review-loop §1 and active section",
-          "result": "Manual: handoff ready-for-review. Active: standard Draft->Ready by implementer/owner; handoff is optional information"
+          "result": "Old: red team then ready-for-review. Active: Draft->Ready then red team"
         },
         {
-          "location": "external-worker.md prompt",
-          "result": "One sentence added: migrated PRs follow the active section (standard Draft->Ready; dispatcher runs red team after Ready), avoiding a wait for a pre-Ready red team that never comes"
+          "location": "external-worker prompt",
+          "result": "Explicit IF/THEN branch"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "dependency-before-consumer",
-      "pattern": "Active rules usable before their providers (W1 launcher, W2 signing/Broker, W3 host checks, W4 CLI/webhook) are merged",
+      "pattern": "Active rules usable before W1-W4 and #55 exist",
       "places": [
         {
-          "location": "design §8 and pr-review-loop active preconditions",
-          "result": "Listed as preconditions; doctor/host check failure keeps capability disabled"
+          "location": "design §8, pr-review-loop switch, operations bootstrap",
+          "result": "Listed as preconditions; failures keep capabilities disabled or block merges"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "review-role-spelling",
-      "pattern": "New role names in active records that old parsers do not normalise",
+      "pattern": "New role names old parsers do not normalise",
       "places": [
         {
           "location": "pr-review-loop active section",
-          "result": "Broker bodies keep v1 markers and roles codex-reviewer/claude-reviewer; no new role spelling"
+          "result": "v1 markers and existing roles only"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
-      "pattern": "Recording more than the owner decided or enabling an undesigned capability (RT P2 auto-fix, P3 O1 scope)",
+      "pattern": "Recording more than the owner decided, or enabling an undesigned capability",
       "places": [
         {
-          "location": "design §8 decision table",
-          "result": "Decision vs design proposal columns split"
+          "location": "design §8",
+          "result": "Decisions split from design proposals"
         },
         {
-          "location": "T24 row, pr-review-loop roles table, design §6",
-          "result": "Auto-fix disabled until implementer-job isolation design is accepted"
+          "location": "T24 row, pr-review-loop, design §6",
+          "result": "Auto-fix disabled until an implementer-job isolation design is accepted"
         }
       ]
     }
-  ],
-  "context": {
-    "INV-PRIVACY": {
-      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
-      "scenarios": [
-        {
-          "id": "public",
-          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
-        }
-      ],
-      "history": [
-        {
-          "id": "PR12-R002",
-          "invariant_id": "INV-PRIVACY",
-          "cause_key": "public-path-exception-scope",
-          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
-          ]
-        },
-        {
-          "id": "PR42-R001",
-          "invariant_id": "INV-PRIVACY",
-          "cause_key": "token-scope-fail-open",
-          "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
-          ]
-        },
-        {
-          "id": "PR42-R006",
-          "invariant_id": "INV-PRIVACY",
-          "cause_key": "credential-tool-from-untrusted-checkout",
-          "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
-          ]
-        },
-        {
-          "id": "PR37-R001",
-          "invariant_id": "INV-PRIVACY",
-          "cause_key": "logged-value-carries-data",
-          "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
-            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
-          ]
-        }
-      ]
-    },
-    "INV-REVIEW": {
-      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
-      "scenarios": [
-        {
-          "id": "duplicates",
-          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
-        },
-        {
-          "id": "trust",
-          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
-        }
-      ],
-      "history": [
-        {
-          "id": "PR4-R001",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "workflow-self-modification",
-          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847",
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
-          ]
-        },
-        {
-          "id": "PR4-R009",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "known-path-routing-gap",
-          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
-          ]
-        },
-        {
-          "id": "PR4-R014",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "multiple-plan-exemption",
-          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
-          ]
-        },
-        {
-          "id": "PR4-R018",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "plan-task-identity",
-          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
-          ]
-        },
-        {
-          "id": "PR4-R020",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "finding-id-normalization",
-          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
-          ]
-        },
-        {
-          "id": "PR4-R021",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "cause-key-whitespace",
-          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
-          ]
-        },
-        {
-          "id": "PR4-R023",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "batch-cause-duplication",
-          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
-          ]
-        },
-        {
-          "id": "PR11-R112",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "plan-assessment-drift",
-          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
-          ]
-        },
-        {
-          "id": "PR42-R004",
-          "invariant_id": "INV-REVIEW",
-          "cause_key": "credential-fallback-on-mint-failure",
-          "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。 子プロセスに渡す場合も、ghとgitが読む保存済みの資格情報（.netrc、利用者・repoの設定のhelperやheader）を打ち消す。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029",
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565"
-          ]
-        }
-      ]
-    },
-    "INV-TASKS": {
-      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
-      "scenarios": [
-        {
-          "id": "dependencies",
-          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
-        },
-        {
-          "id": "entrypoints",
-          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
-        }
-      ],
-      "history": [
-        {
-          "id": "PR2-R003",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "dependency-before-consumer",
-          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
-            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
-            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
-          ]
-        },
-        {
-          "id": "PR2-R008",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "entrypoint-order",
-          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
-            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
-          ]
-        },
-        {
-          "id": "PR4-R019",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "review-role-spelling",
-          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
-          ]
-        },
-        {
-          "id": "PR4-R022",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "draft-open-entrypoint-coherence",
-          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
-          ]
-        },
-        {
-          "id": "PR10-R004",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "status-docs-current-state-coherence",
-          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
-            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
-            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
-            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
-            "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
-          ]
-        }
-      ]
-    }
-  }
+  ]
 }
