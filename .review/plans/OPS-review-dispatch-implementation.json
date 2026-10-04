@@ -13,6 +13,8 @@
     "scripts/lib/github-app-token.ts",
     "scripts/lib/review-dispatch/broker.test.ts",
     "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/evidence.test.ts",
+    "scripts/lib/review-dispatch/evidence.ts",
     "scripts/lib/review-dispatch/github.test.ts",
     "scripts/lib/review-dispatch/github.ts",
     "scripts/lib/review-dispatch/model.ts",
@@ -39,6 +41,16 @@
       "description": "AGENTS merge summary still mentions the removed Copilot gate; design status still says unimplemented despite this implementation PR.",
       "state": "resolved",
       "resolution": "Align summary with canonical PR47/direct owner decision and link default-off implementation/runbook; preserve all independent acceptance/CI/base/merge conditions. No activation or authority expansion."
+    },
+    {
+      "description": "PR48-R001-R012 independently identified disconnected evidence flow, protocol injection, nonsticky quota, fixture-only result signing and unusable shadow composition. Assess entire set with PR46-D005/D007/D009 and PR42 auth regressions before code.",
+      "state": "resolved",
+      "resolution": "Fix R001/R002/R004/R005/R012 in this PR. R003 uses reviewer option(b): label HMAC as fixture integrity only; real run endpoint signing remains disabled and tracked before real runner. Connect signed Inbox to immutable ready/review bindings and processed tombstones atomically, persist stable server observation windows/revision invalidation, use activity chain with explicit owner migration anchor (never author/date guesses), reconcile missing deliveries only in a proved stable window, record shadow-v1 decision differences. Keep unknown/ambiguous histories fail closed. R006-R011 carry concrete rollout gates/timing without claiming live proof."
+    },
+    {
+      "description": "Evidence integration is isolated into evidence.ts/evidence.test.ts. New persistent evidence/quota/shadow tables change the DB format.",
+      "state": "resolved",
+      "resolution": "Add explicit module paths to the existing batch plan before further integration/test work. Bump schema to 2; schema1 is rejected read-only, no implicit live migration. Owner migration requires quiesced backup and separately reviewed conversion. No live dispatcher DB exists in this task."
     }
   ],
   "assessments": [
@@ -66,8 +78,8 @@
       "checks": [
         {
           "id": "public",
-          "method": "Stage explicit paths/public checker; injected gh/token endpoints, worker env/tool/file/OS capability-negative probes, wrong repo/install/actor/result rejection. Add dispatch-read with exact read-only grant tests; no production credential invocation from candidate code.",
-          "expected": "No real secrets/private paths in diffs/logs/DB. Missing token stops before gh, empty gh config blocks fallback, fake broker verifies run/actor/hash without keys. Unverified actual AI isolation remains disabled and listed (I001/I008)."
+          "method": "Stage explicit paths/public checker; injected gh/token endpoints, worker env/tool/file/OS capability-negative probes, wrong repo/install/actor/result rejection. Add dispatch-read with exact read-only grant tests; no production credential invocation from candidate code. Fixed owner-configured Broker role + run ID; reject multiline one-line fields and control/protocol/HTML/mention injection, quote plain summary. Fixture HMAC tests named integrity checks only; no actual run-origin claim. Supervisor daemon forwards only GH_TOKEN explicitly and strips auth from workers; test fake token/fake gh composition.",
+          "expected": "No real secrets/private paths in diffs/logs/DB. Missing token stops before gh, empty gh config blocks fallback, fake broker verifies run/actor/hash without keys. Unverified actual AI isolation remains disabled and listed (I001/I008). No result prose can create protocol blocks/mentions. Only daemon can receive scoped token; run-fixture receives none. Real worker origin remains disabled until outside-worker signing and key isolation are implemented/probed."
         }
       ]
     },
@@ -100,8 +112,8 @@
         },
         {
           "id": "trust",
-          "method": "Synthetic tests cover Ready/main ancestry, all pages/CI/tested parents/tree, optional Copilot, pusher independence, authenticated result hash and dismissal. Actual AI tool/OS negative probes remain disabled rollout checks I001/I008/I009; legacy shared identity is unknown.",
-          "expected": "Only fresh stable main/head, authenticated Ready, CI and independent actor admit work. Copilot response/quota is optional per owner decision; evaluate material findings, never fabricate acceptance. Actual CLI capabilities remain disabled until owner-approved isolation probes. Claude reviews implementation independently."
+          "method": "Synthetic tests cover Ready/main ancestry, all pages/CI/tested parents/tree, optional Copilot, pusher independence, authenticated result hash and dismissal. Actual AI tool/OS negative probes remain disabled rollout checks I001/I008/I009; legacy shared identity is unknown. Fake gh + real SQLite integration: signed delivery drain/atomic rollback/duplicate and reversed delivery, Ready and native Review bindings across restart, activity actor chain including force pushes and self pusher, stable server window recovery without webhook, missing/gapped history/main change denies recovery; shadow comparison retains exact pair. Quota persisted owner pause across 24h/policy/restart, owner unpause requires new Ready.",
+          "expected": "Only fresh stable main/head, authenticated Ready, CI and independent actor admit work. Copilot response/quota is optional per owner decision; evaluate material findings, never fabricate acceptance. Actual CLI capabilities remain disabled until owner-approved isolation probes. Claude reviews implementation independently. A complete default-off decision path can reach eligible from proved evidence; unknown cannot. No actual AI/post. No current base attached to old events. Pauses and identity history cannot reset by generation or elapsed time."
         }
       ]
     },
@@ -156,8 +168,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "README links proposed design/runbook and off/shadow CLI; runbook maps D01-D10/I001-I011 actual evidence, active migration prerequisites, notice dedup and original 5-minute poll ownership. Compare help, defaults, token-purpose docs and final handoff.",
-          "expected": "Clear Japanese user instructions/English AI job schema. No policy overriden via prompt, automatic old-job restart, App/ruleset change or deployment. Only final implementation PR closes Issue45; remaining assigned reviews resume after verified infrastructure completion."
+          "method": "README links proposed design/runbook and off/shadow CLI; runbook maps D01-D10/I001-I011 actual evidence, active migration prerequisites, notice dedup and original 5-minute poll ownership. Compare help, defaults, token-purpose docs and final handoff. Align HELP/runbook to token wrapper -> supervisor daemon -> trusted Node shadow with explicit absolute --gh and numeric wrapper IDs as argv; append dispatch-read purpose row. Add R006-R011 before-activation checkpoints, include proof-window limits and fixture-only HMAC.",
+          "expected": "Clear Japanese user instructions/English AI job schema. No policy overriden via prompt, automatic old-job restart, App/ruleset change or deployment. Only final implementation PR closes Issue45; remaining assigned reviews resume after verified infrastructure completion. Shadow instructions executable with synthetic token/gh; no live credential test of candidate wrapper. No Issue45 completion before independent acceptance; no new active migration claim."
         }
       ]
     },
