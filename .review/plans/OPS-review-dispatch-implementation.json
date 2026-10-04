@@ -4,8 +4,10 @@
   "task_id": "OPS-review-dispatch",
   "planned_paths": [
     ".review/tests/test_dispatch_supervisor.py",
+    "AGENTS.md",
     "README.md",
     "docs/github-apps.md",
+    "docs/review-dispatch-design.md",
     "docs/review-dispatch-implementation.md",
     "scripts/github-app-token.test.ts",
     "scripts/lib/github-app-token.ts",
@@ -32,6 +34,11 @@
       "description": "Design PR46 and policy PR47 merged/verified. Paused T23/PR38 and PR44 overlap eventual migration. Legacy shared human identity remains ambiguous.",
       "state": "resolved",
       "resolution": "Implement default-off infrastructure on verified latest main. No paused code import or active canonical migration. Keep ambiguous shared identities disabled; distinct human/AI identities tested synthetically. Actual CLI isolation, live App delivery and O1-O3 are owner rollout checks."
+    },
+    {
+      "description": "AGENTS merge summary still mentions the removed Copilot gate; design status still says unimplemented despite this implementation PR.",
+      "state": "resolved",
+      "resolution": "Align summary with canonical PR47/direct owner decision and link default-off implementation/runbook; preserve all independent acceptance/CI/base/merge conditions. No activation or authority expansion."
     }
   ],
   "assessments": [
