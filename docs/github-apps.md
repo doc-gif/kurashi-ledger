@@ -267,7 +267,7 @@ ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflows�
 
 ## マージ前の確認（merge-check）
 
-2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値の書式と判定は、[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節（Issue #50のW0、PR #51で追加）に従う。
+2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値は、PR番号をカンマか改行で区切ったもの。`none`は「なし」。ほかの値は読めない扱い。判定の正本は[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節になる予定（PR #51で追加。#51のマージまでは経過措置として、この1行に従う）。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|claude> --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
@@ -300,46 +300,58 @@ for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file
 
 1. `cd "$HOME" && zsh -i`を実行する。期待: IDの環境変数を読み込んだシェルになる。
 2. `export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/<マージのSHA>"`を実行する。
-3. ClaudeのAppで読む。期待: `none`。
+3. `merge-check`のトークンで、触れるrepoを読む（スクリプトは子の前にも同じ確認をする）。期待: `1`と`["doc-gif/kurashi-ledger"]`。失敗すると、この用途は使えない。スクリプトは125で終わり、コマンドを実行しない（安全側）。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api /installation/repositories --jq '.total_count, [.repositories[].full_name]'
+```
+
+4. ClaudeのAppで変数を読む。期待: `none`。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
-4. CodexのAppで同じように読む（所有者だけ）。期待: `none`。
+5. CodexのAppで同じように読む（所有者だけ）。期待: `none`。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
-5. `review`では読めないことを確かめる。期待: `HTTP 403`か`HTTP 404`。`--purpose implement`でも同じ。
+6. `review`では読めないことを確かめる。期待: `HTTP 403`か`HTTP 404`。`--purpose implement`でも同じ。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose review -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
-6. `merge-check`で変数を作れないことを確かめる（名前を空にしてあるので、権限があっても作られず422になる）。期待: `HTTP 403`。
+7. `merge-check`で変数を作れないことを確かめる（名前を空にしてあるので、権限があっても作られず422になる）。期待: `HTTP 403`。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/actions/variables -f name= -f value=x
 ```
 
-7. `merge-check`で変数を変えられないことを確かめる（同じ値`none`を送るので、万一通っても値は変わらない）。期待: `HTTP 403`。
+8. `merge-check`で変数を変えられないことを確かめる（同じ値`none`を送るので、万一通っても値は変わらない）。期待: `HTTP 403`。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X PATCH repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY -f value=none
 ```
 
-8. `merge-check`でcontentsとPRに書けないことを確かめる（bodyは無効）。期待: どちらも`HTTP 403`。このrepoはpublicなので、contentsとPRの読取りは権限がなくても成功しうる。トークンの権限は、スクリプトが子を起動する前に完全一致で確かめている。
+9. `merge-check`でsecretsの一覧を読めないことを確かめる。期待: `HTTP 403`。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/secrets
+```
+
+10. `merge-check`でcontentsとPRに書けないことを確かめる（bodyは無効）。期待: どちらも`HTTP 403`。このrepoはpublicなので、contentsとPRの読取りは権限がなくても成功しうる。トークンの権限は、スクリプトが子を起動する前に完全一致で確かめている。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/pulls -f title= -f head= -f base=
 ```
 
-9. 結果をIssue #50に記録する。5〜8で2xxが出たら、すぐ記録し、AIのマージを止めたままにする。
+11. 結果をIssue #50に記録する。6〜10で2xxが出たら、すぐ記録し、AIのマージを止めたままにする。
 
-**発行が失敗したとき:** 3・4で`none`が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。続きは`GitHubがトークンを発行しなかった（HTTP 422）`や`権限（actions_variables: read）が付かなかった`等。権限の名前`actions_variables`が違うおそれがある。そのときは:
+**発行が失敗したとき:** 3〜5で期待の値が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。GitHubが発行を拒む（多くは`HTTP 422`）か、発行されたトークンが完全一致の照合で失敗する（例: `権限（actions_variables: read）が付かなかった`）。どちらでもコマンドは実行しない。権限の名前`actions_variables`が違うおそれがある。そのときは:
 
 1. 標準エラーの文をIssue #50に記録する（トークン・鍵は表示されない）。
 2. AIは変数を読めない扱いのままにし、マージしない。照合を緩めない。doc-gifで読まない。
