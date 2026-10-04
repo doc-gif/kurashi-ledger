@@ -209,6 +209,164 @@
       "description": "2026-10-04のmain（409bd3f。#40の規則の集約、#42のAIのGitHub App、#46・#48のreview-dispatch、#47のCopilotを任意にした変更）の取込みと、いまopenのPRとの共有資源の重なり。取込みで、.github/copilot-instructions.md・AGENTS.md・README.md・docs/development.md・docs/project-status.mdが競合した。openのPRとの重なり: #28（T06）・#29（T14）・#33（Issue #19）・#36・#37・#38がREADME.md・docs/implementation-tasks.md・docs/project-status.mdを、#33・#37がdocs/development.md（#33はskipの表）を、#28・#33が.github/copilot-instructions.mdを、#28がAGENTS.md・docs/github-agent-operations.mdを、#28・#29・#33がdocs/testing.mdを、#33・#37がdocs/adr/README.mdを変える。#44は重ならない。",
       "state": "resolved",
       "resolution": "第1段階（所有者の指示「コンフリクトだけ一気に片付けたい」）では、競合の解消だけを行い、内容の変更はしない。#40・#47の正本の文と構成を優先し、T26の追記は#40が定めた場所に置き、規則は書き写さずにリンクする（削除された文を戻さない）。AGENTS.mdはmainの版のまま（T26の追記は開発環境へのリンクで足りる）。.github/copilot-instructions.md・README.md・docs/project-status.mdは、mainの文に、製品の試験がT26のHTTPの境界から始まったこと・npm startの1行・T26の行だけを加えた。docs/development.mdのskipの表は、mainの行（scripts/github-app-token.test.tsの2件）とT26の行（src/start.test.tsの1件）を両方残し、Windowsの件数を7件から8件にした。openのPRとは、同じ文書の別の行・別の節を変えるので、あとからマージする側がmainを取り込んで解消する（#33がskipの表を変える場合は、件数の文を両方の行に合わせる）。所有者の決定1〜3とF1〜F16の対応（レッドチームの事前レビュー）は第2段階で行い、この計画にそのとき全体の方針を書く。"
+    },
+    {
+      "description": "第2段階: 独立レッドチームの事前レビュー（e10d68c。P1なし、P2のF1〜F4、P3のF5〜F16）と、所有者の決定（PR #25の5970580816、AIによる転記: 1「構造を変えてまとめて閉じる」、2「契約を『最初の1つが正』に変える」、3「表現を直し、実機で確かめる」）、Codex 5401315825（PR25-R009の継続: writeHeadの1xx・res.statusCode=103・別名writeHeaderの迂回）をまとめて読んだ全体の方針。原因: 応答の出口とHTMLの認識で、Node.jsの引数の解釈やNode自身が書く応答を部分的に再実装・列挙し、自作の字句解析をブラウザの解析と一致させようとしていたので、兄弟の指摘が出続けた（R008→R009→今回）。2026-10-04の所有者の全体の決定（製品の試験の記述を中立に、状態資料に作業中を書かない、Copilotは任意）も適用する。",
+      "state": "resolved",
+      "resolution": "構造で閉じる。(1) 応答の出口: Nodeに自分で応答を書かせない（createServer({requireHostHeader:false})でHostのない要求をcheckHostの403へ、checkContinue・checkExpectation・clientError・upgrade・connectのlistenerを常設し、connectは何も書かずにdestroy）。writeHeadの包みを1か所（response-headers.tsのenforceResponseHeaders）にし、Node.jsと同じ規則（typeof reason==='string' ? obj : (obj ?? reason)）でヘッダの引数を解き、配列はremoveHeader→appendHeader、objectはsetHeaderへ移し、最後に必須のヘッダを付け直してCORSと理由のヘッダを外し、元の関数には状態（整数）と文字列のreasonだけを渡す。状態は200〜599の整数だけを受け付け、それ以外はERR_KL_INFORMATIONAL_RESPONSE_FORBIDDENで何も書かない（明示のwriteHead、res.statusCode経由の暗黙のwriteHead（_implicitHeaderはthis.writeHeadを呼ぶ）、別名writeHeaderのすべて）。APIの応答の状態もsendJsonで同じ検査をする。addTrailersも1xxと同じく禁止する。prototypeの直接呼出し・内部メソッド・res.socket.writeは公開のインスタンスのAPIではないので、組み込むコード（T08のVite）の責任としてADR-0009に明記し、ADRの「変えようとしても外れない」をインスタンスのAPIに狭める（F15）。COOP（same-origin）を必須のヘッダに加える（任意の強化、安い）。(2) エラーの入口: 応答（res）・Expectの応答・upgradeとconnectのソケット（処理の最初に付ける）・serverの常設の'error'のlistenerを置き、maxConnectionsと、最初の要求までの時間切れ（接続したまま何も送らないソケットを閉じる）を設ける。npm startはuncaughtException・unhandledRejectionを受け、許可した符号だけを出し、後始末（close。上限時間つき）を試みて1で終える。ログは構造化した1つの関数（formatLogLine）だけを通し、理由の符号はヘッダではなくサーバーが持つWeakMapから読む（middlewareが付けた理由のヘッダは出口で外す）。本文を読み切らずに拒否したとき（本文のある要求で未完了）はConnection: closeを付け、同じ接続に2つ目の応答を書かない。(3) 起動の識別子: 所有者の決定2で、契約を「文書の木の順で最初のmetaが正」に変える。<head>の開始タグまでの前置き（BOM・doctype・コメント・ASCIIの空白・<html>の開始タグ）だけを、ASCIIの空白で区切る狭い規則で読み、その直後に入れる（読めなければ500）。文書全体の重複の走査は保証ではなく補助の検査に下げ、見つけたときだけ500にする（読めない形は配信を止めない）。R003の完了条件「DOMでちょうど1つ」を置き換える。依存は増やさない。(4) 履歴: 所有者の決定3で、ADR-0003の4の「履歴に残さない」を、タブの履歴の項目はreplaceStateで置き換え、閲覧履歴（ブラウザの履歴のDB）には使用済みで終了時に無効になるトークン付きURLが残りうる、という正確な表現に直し、e2eの試験名を確かめている内容（戻る操作でトークン付きURLに戻らない）に合わせ、実際のブラウザの閲覧履歴の確認をT13の受入に加える（F16）。(5) 静的配信: ディスクの読み出し元は、realpathのあとの配信ルートからの相対のセグメントが、要求のセグメントと（大文字小文字を無視して）一致しないか、.で始まれば返さない（Windowsの8.3の短縮名・別名、配信ルートの中のリンクも返さなくなる。F11）。(6) VerifiedDirectoryは、verifyTokenDirectoryが返して凍結したものだけをモジュールのWeakSetで受け付け、chainが空のもの・chain[0].pathがpathでないものも拒否する（F12）。(7) 後のタスクへ: F13（パスで操作するrestrictToOwner。いまは試験だけが使う）はT07の受入へ、F14（開発時のmiddlewareへ届く生の要求の対象）はT08の受入へ、理由を添えて台帳に書く。後退・衝突: R003の完了条件の置換は所有者の決定による契約の変更。配信ルートの中のリンクを返さなくなるのは、F11の規則による挙動の変更（T09はメモリの読み出し元を使う）。いずれも既存の試験の期待を直す場合は、契約の変更として引継ぎに書く。既存の指摘（R001〜R012、D001〜D003）の対応は崩さない。崩す場合は止めて報告する。",
+      "boundary_inventory": [
+        {
+          "entry": "requestの通常の応答",
+          "node_site": "Node.js v24.21.0の_http_server.js:407 writeHead、:404 _implicitHeader→this.writeHead、:502 writeHeader=prototype.writeHead",
+          "invariant": "必須のヘッダ（CSP・no-store・Referrer-Policy・nosniff・CORP・XFO・COOP）、CORSなし、200〜599だけ",
+          "control": "インスタンスのwriteHead・writeHeaderを同じ正規化の包みに置き換える（F1・F2・R009）"
+        },
+        {
+          "entry": "informational（1xx）",
+          "node_site": "Node.js v24.21.0の_http_server.js:356 writeInformation→_writeRaw、writeContinue・writeProcessing・writeEarlyHints",
+          "invariant": "所有者の決定で禁止",
+          "control": "4つのメソッドを置き換え済み。writeHead経由も状態の検査で拒否（F2）"
+        },
+        {
+          "entry": "trailers",
+          "node_site": "_http_outgoing.js:1052 addTrailers",
+          "invariant": "必須のヘッダ・CORSなし",
+          "control": "インスタンスのaddTrailersを禁止（F15）"
+        },
+        {
+          "entry": "Hostのない要求",
+          "node_site": "Node.js v24.21.0の_http_server.js:1249–1251 requireHostHeader→writeHead(400)",
+          "invariant": "必須のヘッダ、理由の符号、ログ",
+          "control": "requireHostHeader:falseでcheckHostの403へ（F3）"
+        },
+        {
+          "entry": "dropRequest",
+          "node_site": "Node.js v24.21.0の_http_server.js:1263–1271 maxRequestsPerSocket→writeHead(503)",
+          "invariant": "起きないこと",
+          "control": "maxRequestsPerSocketを設定しない（変えない）"
+        },
+        {
+          "entry": "Expect: 100-continue・その他",
+          "node_site": "Node.js v24.21.0の_http_server.js:1273–1287 writeContinue・writeHead(417)",
+          "invariant": "出口を通す、終了中は503",
+          "control": "checkContinue・checkExpectationの常設のlistener（R011。変えない）"
+        },
+        {
+          "entry": "解析器の拒否",
+          "node_site": "Node.js v24.21.0の_http_server.js:1003–1032 socketOnError→clientError、なければ生の400・408・413・431",
+          "invariant": "必須のヘッダ、2つ目の応答を書かない",
+          "control": "clientErrorの常設のlistener（R009）。本文を読み切らずに拒否した応答にConnection: close（F9）"
+        },
+        {
+          "entry": "upgrade",
+          "node_site": "Node.js v24.21.0の_http_server.js:1053–1073 socketOnErrorを外してemit('upgrade')",
+          "invariant": "拒否は必須のヘッダ、例外・ソケットの誤りをプロセスへ漏らさない",
+          "control": "処理の最初にsocketの'error'のlistener（F4）、拒否はwriteRawRefusal（R008）"
+        },
+        {
+          "entry": "CONNECT",
+          "node_site": "Node.js v24.21.0の_http_server.js:1060–1073 emit('connect')、なければdestroy",
+          "invariant": "応答を書かない",
+          "control": "常設のlistenerで'error'を受けてからdestroyし、ログに出す"
+        },
+        {
+          "entry": "PRI",
+          "node_site": "Node.js v24.21.0の_http_server.js:1074–1076 destroy",
+          "invariant": "応答を書かない",
+          "control": "Nodeの既定（変えない）"
+        },
+        {
+          "entry": "captureRejections",
+          "node_site": "Node.js v24.21.0の_http_server.js:719–735 'request'のrejectで500",
+          "invariant": "起きないこと",
+          "control": "requestのlistenerはPromiseを返さない。仮に書いてもインスタンスのwriteHeadを通る"
+        },
+        {
+          "entry": "accept・serverの誤り",
+          "node_site": "net.js:2702 emit('error', accept)、:2706 maxConnections→drop",
+          "invariant": "プロセスが落ちない、fdを使い切られない",
+          "control": "常設のserverの'error'のlistener、maxConnections、最初の要求までの時間切れ（F6）"
+        },
+        {
+          "entry": "resの'error'",
+          "node_site": "_http_outgoing.js:909–928 onError→emit('error')（終えたあとの書込み等）",
+          "invariant": "プロセスが落ちない",
+          "control": "requestとExpectの入口でres.on('error')（F5）"
+        },
+        {
+          "entry": "reqの'error'",
+          "node_site": "_http_incoming.js:512–520（listenerがあるときだけ出す）",
+          "invariant": "プロセスが落ちない",
+          "control": "Nodeの既定で、listenerのないときは出ない（変えない）"
+        },
+        {
+          "entry": "プロセスの段",
+          "node_site": "uncaughtException・unhandledRejection",
+          "invariant": "許可した符号だけを出す、後始末",
+          "control": "start.tsで受ける（F7）"
+        },
+        {
+          "entry": "ログ",
+          "node_site": "—",
+          "invariant": "方法・パス・状態・サーバーが決めた理由・許可した符号だけ",
+          "control": "formatLogLineの1か所、理由はWeakMap（F8）"
+        },
+        {
+          "entry": "prototypeの直接呼出し・内部メソッド・socket.write",
+          "node_site": "ServerResponse.prototype.*、_writeRaw、_storeHeader、res.socket",
+          "invariant": "—",
+          "control": "公開のインスタンスのAPIではない。T08の責任としてADR-0009に明記（F15）"
+        }
+      ],
+      "variant_analysis": [
+        {
+          "class": "応答の出口の迂回（R008・R009・F1・F2・F3・F15、Codex 5401315825）",
+          "variants": "writeHeadの引数の形（object・平らな配列・reasonとobject・objectとundefined・objectとnull・配列とundefined・余分な4番目）、状態（1xx・600以上・非整数・文字列）、res.statusCode=103とend・write・flushHeaders、writeHeader、addTrailers、APIの{status:101/103}、Hostのない要求",
+          "test": "開発時のmiddlewareで各形を試し、生の応答を読んで、1xxの行がなく、必須のヘッダが定義の値で、CORSがなく、応答が1つであること"
+        },
+        {
+          "class": "外部とのやりとりの例外がプロセスへ抜ける（R006・F4・F5・F6・F7）",
+          "variants": "upgradeの拒否・受理の途中のソケットの誤り、RST、next()のあとのres.end、serverの'error'、受けていない例外",
+          "test": "ソケット・res・serverに誤りを出してもプロセスが続き、ログは許可した符号だけ。RSTの繰返し。start.tsの受けの関数を偽のprocessで"
+        },
+        {
+          "class": "ログの抜け道（R012・F7・F8）",
+          "variants": "middlewareが付けた理由のヘッダ、プロセスの既定の出力",
+          "test": "middlewareのX-Kurashi-Ledger-Reasonがログにもクライアントにも出ない"
+        },
+        {
+          "class": "2つ目の応答（R009・F9）",
+          "variants": "本文の途中の解析器の誤り（chunked）",
+          "test": "識別子なしのchunkedのPOSTに403のあと、壊れたchunkを送っても2つ目の応答がない"
+        },
+        {
+          "class": "HTMLの要素の認識（R003・F10）",
+          "variants": "svg・mathのtitle、</titlex、scriptのdouble-escape、NBSP、BOM、属性の'>'",
+          "test": "注入したmetaが<head>の最初の子で、querySelectorの最初になる。前置きの読めない形は500"
+        },
+        {
+          "class": "確かめた結果の同一性・別名（R005・F11・F12）",
+          "variants": "8.3の短縮名・大文字小文字の別名・配信ルートの中のリンク、偽造したVerifiedDirectory・空のchain",
+          "test": "静的配信が返さない。偽造したものでは起動しない"
+        }
+      ],
+      "deferred": [
+        {
+          "id": "F13",
+          "to": "T07",
+          "reason": "restrictToOwnerは試験と、作ったばかりのものにだけ使い、信頼できないパスには使わない。T07が判定の部品を再利用するときに、ハンドルで操作する形にする受入を台帳に置く"
+        },
+        {
+          "id": "F14",
+          "to": "T08",
+          "reason": "開発時のmiddleware（Vite）へ届く生の要求の対象は、実際のViteで試験する必要がある。共通の前の検査（バックスラッシュ・%2F・%5C・制御文字・..・先頭の//）と試験を台帳のT08に置く"
+        },
+        {
+          "id": "F16の実機の確認",
+          "to": "T13",
+          "reason": "閲覧履歴のDBへの記録は、実際のブラウザで確かめる"
+        }
+      ]
     }
   ],
   "assessments": [
