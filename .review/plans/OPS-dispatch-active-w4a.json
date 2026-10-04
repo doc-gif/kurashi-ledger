@@ -52,6 +52,11 @@
       "description": "DBの表を足す（blocked・run_keys・capability・marks）にはschemaを上げる。設計は暗黙のmigrationを禁じ、未知のschemaには書き込まない",
       "state": "resolved",
       "resolution": "schemaを3にする。schema 2のDBは今までどおり書かずに止まる（未知のschema）。実hostのshadowはまだ始まっていないので、所有者は新しい専用rootをinitする。2→3の移行コマンドは作らない（必要になったら停止状態のbackupと独立レビューで別に作る）"
+    },
+    {
+      "description": "PR #56の粗探し（issuecomment-5978679673: P1 1件、P2 4件、P3 7件）と所有者決定（issuecomment-5978676604: リンクの許可一覧、CIの信頼をmainへ結び付ける）への対応。局所の修正を重ねず、全体を1つの方針で直す",
+      "state": "resolved",
+      "resolution": "全体方針: (1) 『終わった』『起動していない』『投稿してよい』の3つの証明を、それぞれ1か所の判定に寄せる。終わった＝supervisorが正常終了のあとprocess groupが空（killpgとESRCH）であることを確かめ、残っていればgroupごと止めて空を確かめてから証明し、さらにrun lockを取り直す（setsidで抜けた子孫用）。measureは子を作るrun（Grep）でgroupの各子がrun lockを持つことをlsofで実測し、子を観測できなければdescendantLockはfalse。起動していない＝run-keyを受けていないかackを送っていない、またはmanifestがなくrun lockが空いている。どちらもneverStartedとして扱い、leaseを外せる。投稿してよい＝APPROVEの前にaccepted()と同じ止め方（自分以外の最新の決定的なCHANGES_REQUESTED、自分以外が挙げた未解消の指摘）を確かめ、当たればCOMMENT（decision: needs-owner、止めたIDを本文に書く）。accepted()も『最新』を決定的な状態（APPROVED・CHANGES_REQUESTED・DISMISSED）で数える。(2) 資料は欠けたら起動しない（差分も中身もないファイル、上限超え）。未解消の指摘ID、前の粗探しの記録、信頼した写しのguard checkの出力を資料に入れる。(3) 粗探しは正本の書式で出す: 結果schemaに原因ごとの判定（causes）と前のRTの扱い（previous）を足し、台帳の全原因（invariant_id/cause_key）の判定が揃わなければ未解消とする。plan_pathと台帳の件数は受付が資料を作るときにDBへ記録した値を使う。RTのIDは正本どおりRT-<番号>。(4) 編集・削除の印は、割り当てたreviewerとownerが書いた項目の配送だけに付ける。印があれば結果を保持して照合をやり直し、最大3回で消えなければdeferred（leaseと結果を保持し、次のcycleで同じJobの投稿をやり直す。通知は1回）。Outboxは印が消えてから作るので、本文が変わってもOutboxの衝突は起きない。(5) リンクはgithub.comと固定の公式文書ドメインだけ（過去に止まった本文が使ったもの＋nodejs.org）。(6) CIの信頼はpolicyのtrustedCi（mainの要約→headの要約の組）にし、旧trustedCiDigestsは拒否する。(7) P3: checkpointのbusyを見て再試行し、だめなら通知。supervisorのread_planはsandbox-exec・cli.sb・実行ファイルの位置を固定し、起動の直前にcli.sbと実行ファイルのsha256を照合する。review JobのIDはRだけ。試験の空のassertと、許す集合が広すぎる試験を直す"
     }
   ],
   "owner_decisions": [
@@ -69,6 +74,11 @@
       "date": "2026-10-04",
       "source": "Issue #50 受領記録 5977523656",
       "decision": ".npmrcをCIの信頼の範囲に加える。閉じ込めたClaudeの443番への通信は残余リスクとして受け入れ、localhostは塞ぐ"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 受領記録 issuecomment-5978676604",
+      "decision": "リンクはgithub.comと少数の公式文書ドメインだけ許す。CIの信頼の記録はmainのCI設定の要約からheadの要約への組にし、mainの要約が変われば記録し直す"
     }
   ],
   "assessments": [
@@ -289,6 +299,22 @@
       "data": "状態の表示",
       "trust": "trusted",
       "control": "PR番号・理由ID・件数だけ。tokenや本文やpathを出さない。triggerは中身のない0600のファイルの時刻を変えるだけ"
+    },
+    {
+      "id": "B11",
+      "direction": "exit",
+      "location": "active.ts buildMaterials → 信頼した写しのtools/review_guard/guard.py check",
+      "data": "PRの計画・変更パス・baseの台帳と条件（資料の写し）",
+      "trust": "untrusted",
+      "control": "信頼した写しのguard.pyを固定のpythonとargvで起動し（shellなし、env最小、60秒）、出力は資料のファイルとして書くだけ。PRのコードは実行しない"
+    },
+    {
+      "id": "B12",
+      "direction": "entry",
+      "location": "supervisor.py run-worker --probe-descendants（measureだけ）",
+      "data": "process groupの子と、run lockを開いているprocess（/bin/ps、/usr/sbin/lsof）",
+      "trust": "trusted",
+      "control": "IDの件数だけをmanifestに書く。子を観測できなければ継承は未確認"
     }
   ],
   "variant_analysis": [
@@ -476,6 +502,47 @@
           "result": "行ごとに済み・残すと理由を書く。W4bで全体を整理する"
         }
       ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "cause_key": "restore-lock-identity",
+      "pattern": "子孫が残ったままleaseを外す・終了を証明する",
+      "places": [
+        {
+          "location": "supervisor.py runの正常終了",
+          "result": "process groupが空でなければgroupごと止め、空を確かめてから証明。run lockの取り直しも続ける"
+        },
+        {
+          "location": "supervisor.py runの取消",
+          "result": "SIGKILLのあとにgroupの空を確かめる"
+        },
+        {
+          "location": "measure",
+          "result": "子を作るrunで継承を実測"
+        },
+        {
+          "location": "supervisor.py inspect",
+          "result": "manifestがなくlockが空いていればneverStarted"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "他者の未解消の判断があるのに承認の形で投稿する",
+      "places": [
+        {
+          "location": "broker.ts（APPROVE）",
+          "result": "accepted()と同じ止め方。当たればCOMMENT"
+        },
+        {
+          "location": "reducer.ts accepted",
+          "result": "決定的な状態の最新で数える"
+        },
+        {
+          "location": "active.ts資料",
+          "result": "未解消の指摘IDを入れる"
+        }
+      ]
     }
   ],
   "deferred": [
@@ -484,16 +551,8 @@
       "reason": "通知Broker（Codex AppのPRコメント）はまだ作らない。start-smallでは受付の通知はローカルの記録とログだけで、周知は調整係の受領記録で行う（pr-review-loopの切替4はどちらかでよい）"
     },
     {
-      "item": "W4の表の9（trustedCiDigestsをbase・PRへ結び付けるか）",
-      "reason": "結び付けない案を採る。要約は範囲のファイルの内容そのもののhashなので、同じ内容なら同じ判断になる。所有者の確認を報告で求める"
-    },
-    {
       "item": "W4の表の15（導入手順）",
       "reason": "W4bで書く"
-    },
-    {
-      "item": "github.com以外のリンクの扱い",
-      "reason": "過去の公開v1本文の11件が公式文書（code.claude.com・docs.github.com・www.nta.go.jp等）へのリンクで止まる。W2の決定（github.comだけ）を変えるのは所有者の判断。今は止めたまま（blocked）にし、報告で選択肢を示す"
     },
     {
       "item": "PR48-R013〜R016、R014の人の粗探しの記録",
