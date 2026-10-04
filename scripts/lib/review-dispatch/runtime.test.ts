@@ -263,3 +263,33 @@ test("PR53 round 3: a non-fixture runner without redact is refused at constructi
     d.cleanup();
   }
 });
+
+test("W4 capabilityReady refuses Codex always and Claude without a bound argv template", () => {
+  const probes = Object.fromEntries(REQUIRED_PROBES.map((k) => [k, true]));
+  const base = { version: "2.1.300", codeHash: "a".repeat(64), profileHash: "b".repeat(64), probes };
+  assert.equal(capabilityReady({ ...base, backend: "codex", argvHash: "c".repeat(64) }), false);
+  assert.equal(capabilityReady({ ...base, backend: "claude" }), false);
+  assert.equal(capabilityReady({ ...base, backend: "claude", argvHash: "short" }), false);
+  assert.equal(capabilityReady({ ...base, backend: "claude", argvHash: "c".repeat(64) }), true);
+});
+
+test("W4 activeCycle launches only a ready Claude runner, never the fixture or Codex", async () => {
+  const d = database();
+  try {
+    const p = policy(),
+      s = snapshot(),
+      engine = new Dispatcher(p, d.store);
+    const probes = Object.fromEntries(REQUIRED_PROBES.map((k) => [k, true]));
+    const never = async () => assert.fail("launch");
+    const broker = { submit: async () => assert.fail("post") } as unknown as ReviewBroker;
+    for (const runner of [
+      { capability, run: never },
+      { capability: { ...capability, backend: "codex" as const, argvHash: "c".repeat(64), probes }, run: never, redact: async () => {} },
+      { capability: { ...capability, backend: "claude" as const, probes }, run: never, redact: async () => {} }, // no argvHash
+    ] as Runner[])
+      assert.equal(await engine.activeCycle(s, 30, "faultfinding", runner, broker, async () => s, 100), "capability-disabled");
+    assert.equal(d.store.status("1:1").jobs.length, 0);
+  } finally {
+    d.cleanup();
+  }
+});

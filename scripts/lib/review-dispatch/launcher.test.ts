@@ -13,6 +13,7 @@ import {
   argvTemplateHash,
   buildAuthStatus,
   buildLaunch,
+  buildMeasurementLaunch,
   checkPlan,
   claudeVersionSupported,
   readTokenFile,
@@ -141,8 +142,10 @@ test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, p
 });
 
 test("Codex launch: codex exec --sandbox read-only only, no outer Seatbelt, no token", () => {
+  // The dispatcher never launches Codex (owner decision 5977523656); only the measurement harness builds it.
+  assert.throws(() => buildLaunch(policy(), job(20), codexInstall(), run(), opts), /codex automatic launch is deferred/);
   let read = 0;
-  const p = buildLaunch(policy(), job(20), codexInstall(), run(), { ...opts, readToken: () => String(++read) });
+  const p = buildMeasurementLaunch(policy(), job(20), codexInstall(), run(), { ...opts, readToken: () => String(++read) });
   assert.equal(read, 0);
   assert.equal(p.file, codexInstall().executable);
   assert.deepEqual(p.args, [
@@ -174,11 +177,11 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     ["home overlaps tmp", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), tmp: "/srv/synthetic/runs/r1/home/tmp", schemaFile: "/srv/synthetic/runs/r1/home/tmp/s.json" }, opts)],
     ["writable runtime", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), home: "/opt/synthetic/claude/2.1.300/home" }, opts)],
     ["executable outside runtime", () => buildLaunch(policy(), job(30), { ...claudeInstall(), executable: "/usr/local/bin/claude" }, run(), opts)],
-    ["schema outside tmp", () => buildLaunch(policy(), job(20), codexInstall(), { ...run(), schemaFile: "/srv/synthetic/runs/r1/materials/s.json" }, opts)],
+    ["schema outside tmp", () => buildMeasurementLaunch(policy(), job(20), codexInstall(), { ...run(), schemaFile: "/srv/synthetic/runs/r1/materials/s.json" }, opts)],
     ["claude without token file", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: null }, run(), opts)],
     ["claude without profile", () => buildLaunch(policy(), job(30), { ...claudeInstall(), cliProfile: null }, run(), opts)],
-    ["codex with profile", () => buildLaunch(policy(), job(20), { ...codexInstall(), cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb" }, run(), opts)],
-    ["codex with token", () => buildLaunch(policy(), job(20), { ...codexInstall(), tokenFile: "/srv/synthetic/owner-secrets/t" }, run(), opts)],
+    ["codex with profile", () => buildMeasurementLaunch(policy(), job(20), { ...codexInstall(), cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb" }, run(), opts)],
+    ["codex with token", () => buildMeasurementLaunch(policy(), job(20), { ...codexInstall(), tokenFile: "/srv/synthetic/owner-secrets/t" }, run(), opts)],
     ["token in config", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/dispatch/claude-config/token" }, run(), opts)],
     ["token in materials", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/materials/token" }, run(), opts)],
     ["token in home", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/home/token" }, run(), opts)],
@@ -295,7 +298,7 @@ test("checkPlan catches tampered plans independently of the builder", () => {
     assert.ok(edit((p) => p.args.splice(p.args.indexOf(f), 1)).includes("isolation"), f);
   assert.ok(edit((p) => p.args.push("--plugin-dir", "/x")).includes("forbidden-flag"));
   assert.ok(edit((p) => (p.file = "/bin/sh")).includes("not-sandboxed"));
-  const codex = () => buildLaunch(policy(), job(20), codexInstall(), run(), opts);
+  const codex = () => buildMeasurementLaunch(policy(), job(20), codexInstall(), run(), opts);
   const c1 = codex();
   c1.args.push("--dangerously-bypass-approvals-and-sandbox");
   assert.ok(checkPlan(c1, codexInstall(), run()).includes("forbidden-flag"));
