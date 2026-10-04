@@ -249,12 +249,15 @@ export const scanTree: Scan = (dir) =>
 export const nameKey = (name: string): string => name.normalize("NFC").toLowerCase();
 const FORBIDDEN_KEYS = (): Set<string> => new Set(CWD_FORBIDDEN.map(nameKey));
 export type Exists = (path: string) => boolean;
+// Absent only when the system says so (ENOENT/ENOTDIR). Any other error cannot prove that no instruction file
+// is there, so it counts as present and the launch is refused (red team round 6 RT-3).
 export const lexists: Exists = (path) => {
   try {
     lstatSync(path);
     return true;
-  } catch {
-    return false;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    return code !== "ENOENT" && code !== "ENOTDIR";
   }
 };
 
@@ -283,7 +286,7 @@ export function jobText(j: Job): string {
       ? [
           "Task: pre-review red team of this pull request, following context/review-loop.md (section on the pre-review red team).",
           "Judge every cause of context/findings.json as invariant_id/cause_key in causes (該当, 該当なし or 確認できない, with the places checked), use context/guard-check.json (causes_not_analyzed first), and check the plan's boundaries and variant analysis against the diff.",
-          "For every RT of the earlier red-team records in pr/previous-redteam.md, set previous to 解消, 対応不要 or 未解消 with the reason. A record whose findings have no RT ID (headed ## record-comment-<id> or ## record-review-<id>) is re-checked as a whole: use that heading as the previous id.",
+          "For every earlier red-team record in pr/previous-redteam.md (headed ## record-comment-<id> or ## record-review-<id>), re-check the whole record and every finding in it, numbered or not: add one previous entry with that heading as the id, and one per RT ID it mentions; set 解消, 対応不要 or 未解消 with the reason.",
           "Report each new defect as a finding with ID RT-1, RT-2, ... Decision: accepted only when there is no finding and no earlier RT is 未解消, changes-requested otherwise, needs-owner when an owner decision is required. Do not use table separators (|) in any field.",
         ]
       : [

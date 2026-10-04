@@ -190,34 +190,32 @@ async function content(reader: GhReader, path: string, ref: string): Promise<Con
   const bytes = Buffer.from(v["content"], "base64");
   return bytes.length > MAX_FILE ? { bytes: null, note: "too-large" } : { bytes, note: null };
 }
-// `guard`: the trusted guard check ran on the PR's plan ("ok"), could not run or gave nothing ("unavailable"),
-// or there is no single plan to check ("none"). An unavailable check keeps the red team unresolved (RT-4).
+// `guard`: the trusted guard check accepted the PR's plan ("ok": exit 0 with its JSON result), refused it
+// ("refused": exit 1), could not give a verdict ("unavailable"), or there is no single plan to check
+// ("none"). "refused" and "unavailable" keep the red team unresolved (red team rounds 4 and 6).
+export type GuardState = "ok" | "refused" | "unavailable" | "none";
 export type MaterialsMeta = {
   planPath: string | null;
   ledger: string[];
   previousRts: string[];
-  guard: "ok" | "unavailable" | "none";
+  guard: GuardState;
 };
-// The trusted guard check (tools/review_guard/guard.py from the trusted copy) over copies of the PR's plan,
-// its changed paths and the base's catalog and ledger. `available` is false when it could not run (missing,
-// timed out, killed) or printed nothing; a guard verdict that fails the plan is still available output.
+// The trusted guard check (tools/review_guard/guard.py from the trusted copy). The plan is placed under its own
+// repository path inside `cwd` (`.review/plans/<name>`), so guard.py's file name check and its `--plan` versus
+// changed-path comparison see the same path as in the PR (red team round 6 RT-1).
 export type GuardCheck = (input: {
-  plan: string;
+  cwd: string;
+  plan: string; // repository-relative, resolved against cwd
   paths: string;
   base: string;
   catalog: string;
   ledger: string;
-}) => { available: boolean; output: string };
+}) => { state: "ok" | "refused" | "unavailable"; output: string };
 // A red-team record starts with its marker (any spacing) on the first non-empty line. A comment that only
 // quotes or mentions the marker further down is not a record (red team round 5).
 const RED_TEAM_MARK = /^\s*<!--\s*kurashi-ledger:red-team:v1\s*-->[ \t]*(?:\r?\n|$)/;
 // Every RT ID anywhere in a record (bullets, tables, "[RT-1][P2]", prose), not only "RT-1:" at a line start.
 const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
-// A finding line without an RT ID (for example a "[P1]" item) cannot be re-checked by ID. One such line
-// anywhere in a record, even next to numbered RTs, requires the whole-record re-check (Codex PR56-R004).
-const FINDING_TAG = /\[P[0-3]\]/;
-const unnumberedFinding = (body: string): boolean =>
-  body.split(/\r?\n/).some((line) => FINDING_TAG.test(line) && !/\bRT-[1-9][0-9]{0,2}\b/.test(line));
 // Every cause of the base ledger, as `invariant_id/cause_key` (the red-team table's rows).
 export function ledgerCauses(raw: Buffer | null): string[] {
   if (!raw) return refuse("materials-incomplete");
@@ -319,8 +317,9 @@ export async function buildMaterials(
       const body = o["body"].normalize("NFKC");
       const ids = [...body.matchAll(RT_ID)].map((m) => `RT-${m[1]}`);
       for (const id of ids) previousRts.add(id);
-      // Any finding without an RT ID: the record as a whole stays to be re-checked, so it never reads as clear.
-      if (unnumberedFinding(body)) previousRts.add(`record-${kind}-${String(o["id"])}`);
+      // Every record is also re-checked as a whole (red team round 6 RT-2): finding formats vary, and a
+      // finding without an RT ID must not be skipped.
+      previousRts.add(`record-${kind}-${String(o["id"])}`);
     }
   write("pr/previous-redteam.md", earlier.length ? earlier.join("\n") : "なし\n");
   const base: Record<string, Buffer | null> = {};
@@ -332,23 +331,26 @@ export async function buildMaterials(
   const ledger = ledgerCauses(base[".review/findings.json"] ?? null);
   const plan = plans.length === 1 ? plans[0]! : null;
   let guardOut = JSON.stringify({ result: plans.length ? "multiple-plans" : "no-plan" });
-  let guardState: MaterialsMeta["guard"] = plans.length ? "unavailable" : "none";
+  let guardState: GuardState = plans.length ? "unavailable" : "none";
   if (plan && guard && base[".review/invariants.json"]) {
     const work = join(dir, "context", "guard-input");
-    mkdirSync(work, { mode: 0o700 });
+    mkdirSync(join(work, ".review", "plans"), { recursive: true, mode: 0o700 });
     const input = (name: string, data: Buffer | string) => {
       writeFileSync(join(work, name), data, { mode: 0o600, flag: "wx" });
       return join(work, name);
     };
+    // The plan keeps its repository path (only .review/plans/<name>.json reaches here; the name has no "/").
+    input(plan.path, plan.bytes);
     const g = guard({
-      plan: input("plan.json", plan.bytes),
+      cwd: work,
+      plan: plan.path,
       paths: input("paths.json", JSON.stringify([...changed].sort())),
       base: s.pair.base,
       catalog: input("invariants.json", base[".review/invariants.json"]!),
       ledger: input("findings.json", base[".review/findings.json"]!),
     });
     guardOut = g.output;
-    guardState = g.available ? "ok" : "unavailable";
+    guardState = g.state;
   }
   write("context/guard-check.json", `${guardOut.trim()}\n`);
   return {
@@ -366,15 +368,24 @@ export function trustedGuard(python: string, guardPy: string): GuardCheck {
     const r = spawnSync(
       python,
       [guardPy, "check", "--plan", i.plan, "--paths-file", i.paths, "--base-sha", i.base, "--catalog", i.catalog, "--ledger", i.ledger],
-      { encoding: "utf8", timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } },
+      { cwd: i.cwd, encoding: "utf8", timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } },
     );
-    // A verdict goes to stdout (JSON) or stderr (a refusal such as unplanned paths); both are kept as data.
-    const ran = !r.error && r.signal === null && typeof r.status === "number";
-    const available = ran && (r.stdout.trim() !== "" || r.stderr.trim() !== "");
+    // "ok" only for exit 0 with the JSON check output; exit 1 is guard.py's refusal; anything else has no verdict.
+    let state: "ok" | "refused" | "unavailable" = "unavailable";
+    if (!r.error && r.signal === null && r.status === 0) {
+      try {
+        const v = JSON.parse(r.stdout) as Record<string, unknown>;
+        if (v && typeof v === "object" && typeof v["result"] === "string") state = "ok";
+      } catch {
+        state = "unavailable";
+      }
+    } else if (!r.error && r.signal === null && r.status === 1) state = "refused";
     return {
-      available,
+      state,
       output: JSON.stringify(
-        available ? { exit: r.status, stdout: r.stdout, stderr: r.stderr } : { result: "guard-unavailable" },
+        state === "unavailable"
+          ? { result: "guard-unavailable" }
+          : { exit: r.status, stdout: r.stdout, stderr: r.stderr },
       ),
     };
   };

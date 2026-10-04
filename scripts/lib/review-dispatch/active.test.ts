@@ -209,11 +209,19 @@ test("W4 materials: neutral names, others' blockers, earlier red-team records, t
     const guarded: Record<string, string>[] = [];
     const guard = (i: Record<string, string>) => {
       guarded.push(i);
-      return { available: true, output: '{"result":"metadata-complete"}' };
+      return { state: "ok" as const, output: '{"result":"metadata-complete"}' };
     };
     const r = await buildMaterials(new GhReader("synthetic/repository", materialsTransport(PR_FILES, PR_CONTENTS)), prView, dir, guard, [10, 20, 30, 40]);
     assert.equal(r.files, 5);
-    assert.deepEqual(r.previousRts, ["RT-1", "RT-2", "RT-3", "RT-4", "RT-5", "record-comment-75"]);
+    // Every registered record is also re-checked as a whole (round 6 RT-2); the quoted one (77) and the
+    // unregistered one (73) are not records.
+    assert.deepEqual(r.previousRts, [
+      "RT-1", "RT-2", "RT-3", "RT-4", "RT-5",
+      "record-comment-71", "record-comment-74", "record-comment-75", "record-comment-76",
+    ]);
+    // The plan keeps its repository path under the guard's working directory.
+    assert.equal(guarded[0]!["plan"], ".review/plans/T99.json");
+    assert.equal(fs.readFileSync(join(guarded[0]!["cwd"]!, ".review/plans/T99.json"), "utf8"), '{"task_id":"T99"}\n');
     assert.equal(r.guard, "ok");
     assert.equal(r.planPath, ".review/plans/T99.json");
     assert.deepEqual(r.ledger, ["INV-LOCK/restore-lock-identity", "INV-STORAGE/database-journal-pair"]);
@@ -974,7 +982,7 @@ test("Round 4 RT-4: a plan whose trusted guard check is missing or failed keeps 
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "materials-")));
   try {
     const r = await buildMaterials(new GhReader("synthetic/repository", materialsTransport(PR_FILES, PR_CONTENTS)), prView, dir,
-      () => ({ available: false, output: '{"result":"guard-unavailable"}' }), [10, 30]);
+      () => ({ state: "unavailable" as const, output: '{"result":"guard-unavailable"}' }), [10, 30]);
     assert.equal(r.guard, "unavailable");
     assert.equal(fs.readFileSync(join(dir, "context", "guard-check.json"), "utf8"), '{"result":"guard-unavailable"}\n');
   } finally {
@@ -1012,7 +1020,7 @@ test("Codex PR56-R004 (re-review): a record mixing RT-1 with an unnumbered [P1] 
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "materials-")));
   let previousRts: string[];
   try {
-    const meta = await buildMaterials(new GhReader("synthetic/repository", transport), prView, dir, () => ({ available: true, output: "{}" }), [30]);
+    const meta = await buildMaterials(new GhReader("synthetic/repository", transport), prView, dir, () => ({ state: "ok" as const, output: "{}" }), [30]);
     previousRts = meta.previousRts;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -1034,4 +1042,57 @@ test("Codex PR56-R004 (re-review): a record mixing RT-1 with an unnumbered [P1] 
       x.d.cleanup();
     }
   }
+});
+
+test("Round 6 RT-1: the REAL guard.py accepts a PR's changed plan (ok), refuses an unplanned path (refused), and a missing interpreter is unavailable", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher and its guard call run on macOS only");
+    return;
+  }
+  const { spawnSync } = await import("node:child_process");
+  const { trustedGuard } = await import("./active.ts");
+  const fs = await import("node:fs");
+  const repo = (rel: string) => new URL(`../../../${rel}`, import.meta.url);
+  const python = ["python3", "python"]
+    .map((n) => spawnSync(n, ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }))
+    .find((r) => r.status === 0)
+    ?.stdout.trim();
+  assert.ok(python, "python is needed for the guard check");
+  const planPath = ".review/plans/OPS-dispatch-active-w4a.json";
+  const planText = fs.readFileSync(repo(planPath));
+  const plan = JSON.parse(planText.toString("utf8")) as { base_sha: string; planned_paths: string[] };
+  const contents: Record<string, Buffer | null> = {
+    ...PR_CONTENTS,
+    ".review/invariants.json": fs.readFileSync(repo(".review/invariants.json")),
+    ".review/findings.json": fs.readFileSync(repo(".review/findings.json")),
+    [planPath]: planText,
+  };
+  const guardPy = new URL("../../../tools/review_guard/guard.py", import.meta.url).pathname;
+  const view = { ...prView, pair: { head: HEAD, base: plan.base_sha } };
+  const run = async (extra: string[], guard = trustedGuard(python!, guardPy)) => {
+    const files = [...plan.planned_paths, planPath, ...extra].map((filename) => ({ filename, status: "modified", patch: "+synthetic" }));
+    for (const f of [...plan.planned_paths, ...extra]) contents[f] ??= Buffer.from("synthetic\n");
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "materials-")));
+    try {
+      const meta = await buildMaterials(new GhReader("synthetic/repository", materialsTransport(files, contents)), view, dir, guard, [30]);
+      return { meta, output: fs.readFileSync(join(dir, "context", "guard-check.json"), "utf8") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const ok = await run([]);
+  assert.equal(ok.meta.guard, "ok", ok.output);
+  assert.match(ok.output, /metadata-complete/);
+  const refused = await run(["src/unplanned-synthetic.ts"]);
+  assert.equal(refused.meta.guard, "refused", refused.output);
+  assert.match(refused.output, /unplanned paths/);
+  const missing = await run([], trustedGuard("/nonexistent/python3", guardPy));
+  assert.equal(missing.meta.guard, "unavailable");
+  // Both keep the red team unresolved.
+  const { redTeamOpen } = await import("./broker.ts");
+  const j = { id: "j6", key: "1:1", generation: 1, actor: 30, kind: "faultfinding" as const, run: "00000000-0000-4000-8000-0000000000c6", pair: view.pair, policy: "p1" };
+  const clear = { ...fixtureResult(j), decision: "accepted" as const, unverified: [] };
+  assert.deepEqual(redTeamOpen(clear, { ...refused.meta, ledger: [], previousRts: [] }), ["guard-refused"]);
+  assert.deepEqual(redTeamOpen(clear, { ...missing.meta, ledger: [], previousRts: [] }), ["guard-unavailable"]);
+  assert.deepEqual(redTeamOpen(clear, { ...ok.meta, ledger: [], previousRts: [] }), []);
 });

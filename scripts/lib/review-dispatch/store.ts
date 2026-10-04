@@ -709,12 +709,31 @@ export class Store {
     return false;
   }
   // The dispatcher's own record of a run's materials (plan path, ledger causes); written once by the runner.
-  saveRunMaterials(run: string, value: { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "unavailable" | "none" }): void {
+  saveRunMaterials(run: string, value: { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "refused" | "unavailable" | "none" }): void {
     this.db.prepare("INSERT INTO run_materials VALUES(?,?)").run(run, JSON.stringify(value));
   }
-  runMaterials(run: string): { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "unavailable" | "none" } | null {
+  runMaterials(run: string): { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "refused" | "unavailable" | "none" } | null {
     const r = this.db.prepare("SELECT value FROM run_materials WHERE run=?").get(run) as Row | undefined;
-    return r ? (JSON.parse(String(r["value"])) as { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "unavailable" | "none" }) : null;
+    if (!r) return null;
+    // Validated, not trusted by shape: anything malformed is no record (the Broker then reports ledger-incomplete).
+    let v: unknown;
+    try {
+      v = JSON.parse(String(r["value"]));
+    } catch {
+      return null;
+    }
+    const m = v as Record<string, unknown>;
+    const strings = (x: unknown) => Array.isArray(x) && x.every((y) => typeof y === "string");
+    if (
+      !m ||
+      typeof m !== "object" ||
+      !(m["planPath"] === null || typeof m["planPath"] === "string") ||
+      !strings(m["ledger"]) ||
+      !strings(m["previousRts"]) ||
+      !(m["guard"] === undefined || ["ok", "refused", "unavailable", "none"].includes(String(m["guard"])))
+    )
+      return null;
+    return m as { planPath: string | null; ledger: string[]; previousRts: string[]; guard?: "ok" | "refused" | "unavailable" | "none" };
   }
   // A leased job whose result waits for its post (Broker "deferred"): the next cycle retries the same job.
   deferred(key: string): { job: Job; result: string; origin: unknown } | null {

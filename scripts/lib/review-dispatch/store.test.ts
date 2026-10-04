@@ -582,3 +582,29 @@ test("Sweep: a posted red-team record without its finding list is unknown, never
     d.cleanup();
   }
 });
+
+test("Round 6 RT-3: a run materials record of the wrong shape is no record (the Broker reports ledger-incomplete)", async () => {
+  const { redTeamOpen } = await import("./broker.ts");
+  const { fixtureResult } = await import("./runtime.ts");
+  const d = database();
+  try {
+    const good = { planPath: null, ledger: ["INV-LOCK/x"], previousRts: [], guard: "none" as const };
+    d.store.saveRunMaterials("run-good", good);
+    assert.deepEqual(d.store.runMaterials("run-good"), good);
+    for (const [run, value] of [
+      ["run-1", { planPath: null, ledger: "INV-LOCK/x", previousRts: [] }],
+      ["run-2", { planPath: 3, ledger: [], previousRts: [] }],
+      ["run-3", { planPath: null, ledger: [], previousRts: [7] }],
+      ["run-4", { planPath: null, ledger: [], previousRts: [], guard: "maybe" }],
+    ] as const) {
+      d.store.db.prepare("INSERT INTO run_materials VALUES(?,?)").run(run, JSON.stringify(value));
+      assert.equal(d.store.runMaterials(run), null, run);
+    }
+    d.store.db.prepare("INSERT INTO run_materials VALUES(?,?)").run("run-5", "{");
+    assert.equal(d.store.runMaterials("run-5"), null);
+    const j = { id: "j", key: "1:1", generation: 1, actor: 30, kind: "faultfinding" as const, run: "r", pair: { head: "a".repeat(40), base: "b".repeat(40) }, policy: "p1" };
+    assert.ok(redTeamOpen({ ...fixtureResult(j), decision: "accepted", unverified: [] }, d.store.runMaterials("run-1")).includes("ledger-incomplete"));
+  } finally {
+    d.cleanup();
+  }
+});

@@ -22,6 +22,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -341,11 +342,25 @@ export function lintProfile(text: string): string[] {
 
 // ---- Claude host facts ----
 
-const existsSafe = (p: string): boolean => {
+// Present unless the system says it does not exist. Any other error (EACCES, ELOOP, ...) cannot prove absence,
+// so it counts as present: the check fails closed (red team round 6 RT-3).
+export const existsSafe = (p: string): boolean => {
   try {
-    return existsSync(p);
+    lstatSync(p);
+    return true;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    return code !== "ENOENT" && code !== "ENOTDIR";
+  }
+};
+// A file that exists but cannot be read is a problem, never "no file".
+const UNREADABLE = "\u0000unreadable";
+const readSafe = (p: string): string | null => {
+  if (!existsSafe(p)) return null;
+  try {
+    return readFileSync(p, "utf8");
   } catch {
-    return false;
+    return UNREADABLE;
   }
 };
 // Keys that would add credentials, commands, plugins or servers if the dedicated config
@@ -363,7 +378,7 @@ const FORBIDDEN_CONFIG_KEYS = [
 ];
 export function inspectConfigDir(
   dir: string,
-  read: (path: string) => string | null = (p) => (existsSafe(p) ? readFileSync(p, "utf8") : null),
+  read: (path: string) => string | null = readSafe,
   exists: (path: string) => boolean = existsSafe,
 ): string[] {
   const problems: string[] = [];
@@ -375,8 +390,17 @@ export function inspectConfigDir(
       }
   };
   for (const name of ["settings.json", "settings.local.json", ".claude.json"]) {
-    const raw = read(join(dir, name));
+    let raw: string | null;
+    try {
+      raw = read(join(dir, name));
+    } catch {
+      raw = UNREADABLE;
+    }
     if (raw === null) continue;
+    if (raw === UNREADABLE) {
+      problems.push(`unreadable:${name}`);
+      continue;
+    }
     let v: unknown;
     try {
       v = JSON.parse(raw);
@@ -396,12 +420,18 @@ export function inspectConfigDir(
 // refuses instruction files, rules, prompts, skills and config that adds servers or hooks.
 export function inspectCodexHome(
   dir: string,
-  read: (path: string) => string | null = (p) => (existsSafe(p) ? readFileSync(p, "utf8") : null),
+  read: (path: string) => string | null = readSafe,
   exists: (path: string) => boolean = existsSafe,
 ): string[] {
   const problems: string[] = [];
-  const config = read(join(dir, "config.toml"));
-  if (config !== null)
+  let config: string | null;
+  try {
+    config = read(join(dir, "config.toml"));
+  } catch {
+    config = UNREADABLE;
+  }
+  if (config === UNREADABLE) problems.push("unreadable:config.toml");
+  else if (config !== null)
     for (const key of ["mcp_servers", "hooks", "notify", "profiles", "model_provider", "shell_environment_policy", "sandbox_mode", "approval_policy"])
       if (new RegExp(`(^|\\n)\\s*\\[?\\s*${key}\\b`).test(config)) problems.push(`${key}:config.toml`);
   for (const name of ["AGENTS.md", "AGENTS.override.md", "rules", "prompts", "skills", "hooks.json"])
@@ -904,7 +934,8 @@ export function trapPrRun(
   return {
     plan,
     judge(r) {
-      const fired = ["hook-session", "hook-tool", "mcp", "codex-mcp"].some((m) => existsSync(marker(m)));
+      // A marker whose presence cannot be checked counts as fired (fails closed).
+      const fired = ["hook-session", "hook-tool", "mcp", "codex-mcp"].some((m) => existsSafe(marker(m)));
       if (fired || r.stdout.includes(trap)) return "allowed";
       const ev = parseEvents(install.backend, r.stdout);
       if (!ev.started) return "inconclusive";

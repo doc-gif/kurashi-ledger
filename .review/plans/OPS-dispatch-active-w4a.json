@@ -88,6 +88,11 @@
       "description": "Codexの再レビュー（pullrequestreview-5405980420）: R001（groupの列挙の失敗を『子なし』として数える）、R004（番号のRTと番号のない指摘が混ざる記録）。あわせて『不明を空・なしとして扱う』箇所の掃き出し",
       "state": "resolved",
       "resolution": "R001: 列挙の失敗（None・ps失敗・時間切れ・例外）を`blind`として数え、1回でもあれば証明しない（受付側もblind=0を要求）。R004: 番号のない指摘の行が1つでもある記録は、番号のRTがあっても記録ごとの再確認を要求する。掃き出しで直した: openFindingsが無いsnapshotを『指摘なし』とせず、acceptedはfalse、APPROVEの前の確認は`findings-unknown`で止める。指摘一覧の無い粗探しの投稿記録を『clear』とせず`faultfinding-record-unknown`にする。確かめて直さなかったもの: allowedForのcommitsなし（許す範囲が狭くなるだけ）、trustedCiなし（信頼しない側）、recordIds(null)（拒否する側）、Webhookの印で作者が読めない配送（印は付く。記録は作らないが、照合の観測比較が既知の項目の変更を拾う）"
+    },
+    {
+      "description": "粗探し6回目: 本番では計画を`plan.json`として渡すためguard.pyが必ず拒否するのに`ok`と記録していた（RT-1）、番号のない指摘を`[Pn]`の書式でしか見つけない（RT-2）、存在の確認でENOENT以外の失敗を『ない』とみなす・runMaterialsの形を確かめない（RT-3）",
+      "state": "resolved",
+      "resolution": "RT-1: 作業dirに`.review/plans/<名前>`として置き、cwdをその作業dirにしてguard.pyを動かす。終了0でJSONの結果を出したときだけok、終了1はrefused、ほかはunavailable。refused・unavailableは未解消。repoの実際のguard.pyを使う試験を足した。RT-2: 登録した参加者の記録は書式によらず毎回記録ごとの再確認を求め、RTのIDも並べる。RT-3: doctorとlauncherの存在確認はENOENT・ENOTDIRだけを『ない』とし、ほかの失敗は『ある』（拒否する側）。読めない設定は問題として挙げる。runMaterialsは形を確かめ、違えばnull（Brokerがledger-incompleteにする）"
     }
   ],
   "owner_decisions": [

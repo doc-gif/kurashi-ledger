@@ -430,7 +430,7 @@ export type RunMaterials = {
   planPath: string | null;
   ledger: string[];
   previousRts: string[];
-  guard?: "ok" | "unavailable" | "none";
+  guard?: "ok" | "refused" | "unavailable" | "none";
 };
 // Codex PR56-R004: clear only when every required ledger cause was judged and none of them is 確認できない,
 // and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear.
@@ -445,7 +445,8 @@ export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[
     ...ledger.filter((c) => judged.get(c) === "確認できない").map((c) => `unconfirmed:${c}`),
     ...(meta?.previousRts ?? []).filter((id) => !rechecked.has(id)).map((id) => `unchecked:${id}`),
     // A plan whose trusted guard check is missing or failed (RT-4): the red team had no guard output to start from.
-    ...(meta !== null && (meta.guard === "unavailable" || (meta.planPath !== null && meta.guard !== "ok"))
+    ...(meta !== null && meta.guard === "refused" ? ["guard-refused"] : []),
+    ...(meta !== null && (meta.guard === "unavailable" || (meta.planPath !== null && meta.guard !== "ok" && meta.guard !== "refused"))
       ? ["guard-unavailable"]
       : []),
     ...(r.decision === "needs-owner" ? ["needs-owner"] : []),
