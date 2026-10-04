@@ -39,6 +39,11 @@
       "description": "PR #53の粗探し（issuecomment-5977420814、P1なし、P2-1〜P2-6・P3）。個別に塞ぐと、検査の経路・身元の型・状態の意味がまたずれる",
       "state": "resolved",
       "resolution": "全体方針: (1) 署名の型の境界: RunChannel（封ができる）をtests/fixturesへ移し、本物のBroker生成（createClaudeReviewBroker）はRunVerifierの実体だけを受ける。固定ベクトルのjobをStoreへ置き、supervisorが署名した結果がClaude Brokerを通る正常系を試験する。(2) 公開検査は1つの新しいモジュールpublication.tsに集め、parseResult・store.resultの前・投稿直前の本文の3か所で同じ正規化（NFKC、\\p{Cf}は拒否）と同じ規則を使う。SHA/UUIDの例外はそのjobのpair・run・evidenceにある値だけ。github.com以外のURLを散文で拒否。区切り・空白を除いた詰めた文字列にも同じ規則を掛ける。これは緩和であり、PR51のP1を閉じる条件はW1の否定試験（秘密を読めないこと）に置く。(3) 当たった結果はDBへ平文で残さず、hashだけの記録を保存する。(4) blockedの意味を今決める: 持続するneeds-owner。leaseを保持（uncertain）し、ownerが解除するまで同じPRで起動しない。状態の永続化（store.ts）はW3が変更中なので触らず、W4の必須項目として実装資料に書く。(5) 鍵・制御パイプの否定試験（deny-supervisor）はW1が持つ。参照だけ。(6) #52との統合: 検査とhashは正規化後の本文に掛ける（引継ぎに書く）。(7) P3: submitごとにtransportを作り必ず閉じる、試験ベクトルに別の道具（shasum）で出したdigestを記録する。HOME/TMPDIRのrunごとの分離と誤検知の資料はW4へ回す"
+    },
+    {
+      "description": "PR #53の粗探し2回目（issuecomment-5977500358）: N1 SHAの許可がworkerの書くevidenceから作られる。N2 blockedの結果の平文がDB（最終本文だけで当たる経路）とsupervisorの署名済み封筒に残る",
+      "state": "resolved",
+      "resolution": "N1（締め付け。前回の推奨の穴を塞ぐ）: 許可するSHAは、Brokerと受付が自分で取り直したsnapshotで確かめられる値（pair、finalPair、timelineのpush等のhead/base）とrun IDだけ。evidenceはparseResultで固定の形（actions/runs/<数字>、pull/<n>#pullrequestreview-<数字>、commit/<40桁>）に限り、公開検査でrepoがpolicyのrepoであること、commitのSHAが許可集合にあることを確かめる。PR全commitの一覧はsnapshotにないので、それ以外のcommitリンクは安全側に止まる（一覧の取得はW3/W4）。N2: (b) Brokerがblockedを返したら、DBの結果をhashだけの形へ置き換える（store.tsはW3が変更中なので、publication.tsの関数が同じjobのhash一致を条件にUPDATEする。Store APIへの移動はW4）。(a) supervisorにredact操作を足し、封筒をhashだけの内容に置き換える。受付はRunnerの任意のredactをblockedのときに呼ぶ（実接続はW4）。封筒の置き場をworkerのHOME/TMPDIRから分けるのはW4の必須項目(5)"
     }
   ],
   "assessments": [
@@ -402,6 +407,14 @@
         {
           "location": "createClaudeReviewBroker",
           "result": "RunVerifierの実体以外を拒否（RunChannelは試験のfixtureだけ）"
+        },
+        {
+          "location": "publication.ts allowedFor",
+          "result": "snapshot（pair・finalPair・timelineのhead/base）とrunだけ。evidence由来の値は使わない"
+        },
+        {
+          "location": "parseResult evidence",
+          "result": "固定の3つの形だけ。commitのSHAは公開検査で許可集合と照合"
         }
       ]
     },
@@ -477,6 +490,14 @@
         {
           "location": "parseResult（結果の受入れ）",
           "result": "既存の検査（gh token・秘密鍵・macOSのホームのパス）は維持。公開検査は最終本文で行う"
+        },
+        {
+          "location": "Brokerのblocked（最終本文だけで当たる）",
+          "result": "DBの結果をhashだけに置き換える"
+        },
+        {
+          "location": "supervisorの署名済み封筒 run-<id>-result.json",
+          "result": "blockedのときredact操作でhashだけにする。置き場の分離はW4(5)"
         }
       ]
     }
