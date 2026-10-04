@@ -45,7 +45,7 @@
     {
       "description": "粗探しの記録（PR #52 issuecomment-5977379116、head 05aebcc）: P2が4件（RT-P2-1 承認後の会話コメント、RT-P2-2 削除・編集で指摘が消える、RT-P2-3 workflowの信頼の範囲、RT-P2-4 #53とのbroker.tsの衝突）、P3が7件。個別に直すと、指摘の入力元・解消の規則・信頼の単位がばらばらに増える",
       "state": "resolved",
-      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 所有者が範囲を広げた（issuecomment-5977404200）。CIの判定を決めるファイル（.github/全体、package.json、tools/review_guard/、scripts/check-test-skips.tsとscripts/lib/test-skips.ts）を1つの定数CI_TRUST_PATHSにし、試験の中身（tests/、*.test.ts、test_*.py）をCI_TRUST_EXCLUDEDで除く。tree SHAでは除外を表せないので、headの再帰treeから範囲のファイルの`git ls-tree`行をバイト順に並べたSHA-256（要約）で比べ、ownerは同じ要約をpolicyのtrustedCiDigestsへ記録する（ownerが再現するコマンドを文書に書き、実装と一致することを確かめる）。範囲の外は独立した内容レビューに頼ると明記する。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
+      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 所有者が範囲を広げた（issuecomment-5977404200）。CIの判定を決めるファイル（.github/全体、package.json、tools/review_guard/、scripts/check-test-skips.tsと、それが読むscripts/lib/test-skips.ts・docs/development.mdの試験の表）を1つの定数CI_TRUST_PATHSにし、試験の中身（tests/、*.test.ts、test_*.py）をCI_TRUST_EXCLUDEDで除く。tree SHAでは除外を表せないので、headの再帰treeから範囲のファイルの`git ls-tree`行をバイト順に並べたSHA-256（要約）で比べ、ownerは同じ要約をpolicyのtrustedCiDigestsへ記録する（ownerが再現するコマンドを文書に書き、実装と一致することを確かめる）。範囲の外は独立した内容レビューに頼ると明記する。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
     }
   ],
   "assessments": [
@@ -199,7 +199,7 @@
       "location": "github.ts collect（git/commits、git/trees/<root>?recursive=1、actions/runs）",
       "data": "base と head の、CIの判定を決めるファイルの一覧（mode・type・SHA・path）と workflow run の path",
       "trust": "untrusted",
-      "control": "truncated の tree・不正な mode/type/path は EvidenceError。範囲は定数 CI_TRUST_PATHS（.github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts）から CI_TRUST_EXCLUDED（tests/、*.test.ts、test_*.py）を除いたもの。その git ls-tree 行のSHA-256が base と違えば、policy の trustedCiDigests にある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。範囲の外は独立した内容レビューに頼る"
+      "control": "truncated の tree・不正な mode/type/path は EvidenceError。範囲は定数 CI_TRUST_PATHS（.github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts、docs/development.md）から CI_TRUST_EXCLUDED（tests/、*.test.ts、test_*.py）を除いたもの。その git ls-tree 行のSHA-256が base と違えば、policy の trustedCiDigests にある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。範囲の外は独立した内容レビューに頼る"
     },
     {
       "id": "B7",
@@ -299,11 +299,11 @@
         },
         {
           "location": "CI_TRUST_PATHS（github.ts）",
-          "result": "所有者決定で .github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts。各路の変更でだけ unknown になり、範囲外・試験の中身では変わらないことを試験する"
+          "result": "所有者決定で .github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts、docs/development.md（飛ばしてよい試験の表）。各路の変更でだけ unknown になり、範囲外・試験の中身では変わらないことを試験する"
         },
         {
           "location": "docs/development.md（check-test-skips が実行時に読む飛ばしてよい試験の表）",
-          "result": "所有者の範囲に含まれない。試験の表は内容レビューに頼る。範囲に加えるかは調整役へ確認事項として報告する"
+          "result": "受領記録（issuecomment-5977404200）の『scripts/check-test-skips.ts とその読む部品』に含まれる（調整役の確認）。CI_TRUST_PATHS に加え、この変更で unknown になることを試験する"
         },
         {
           "location": "所有者が要約を求めるコマンド",
