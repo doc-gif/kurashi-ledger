@@ -24,7 +24,7 @@
 - 最新mainを取り込んでおり、確認したbaseが変わっておらず、競合がない。
 - `--match-head-commit`付きのマージコミットで、1件ずつマージする。auto-mergeは使わない。
 
-**受付がactiveのPRでの読み替え（2026-10-04の所有者承認）:** Readyは「レビューの依頼」を意味する。「提出前の粗探し」は、Readyのあと・レビューJobの前に、同じhead/baseで行う。ほかの条件の文言は変えず、[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)の記録で確かめる。activeかどうかと必要なreviewerは切替の通知で知る。通知がない・曖昧なら旧規則に従い、activeの記録だけでマージしない。
+**受付がactiveのPRでの読み替え（2026-10-04の所有者承認、[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)）:** Readyは「レビューの依頼」を意味する。「提出前の粗探し」は、Readyのあと・レビューJobの前に、同じhead/baseで行う。ほかの条件の文言は変えず、[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)の記録で確かめる。activeかどうかと必要なreviewerは、所有者の指示の受領記録だけで知る。受付の通知は表示だけで、判定に使わない。受領記録がない・曖昧なら旧規則に従い、activeの記録だけでマージしない。
 
 マージ直前にmain先端と確認したbase_shaを照合する。`--match-head-commit`はheadだけを固定するので、マージ後に第1親がそのbase_shaと一致することも確認する。異なれば組み合わせを再検証し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
 
@@ -62,7 +62,7 @@ Open PRだから完成、Draftだから絶対未完成とはみなさない。�
 
 確認間隔・job ID・稼働状態は実行環境の設定を正本とする。2026-10-03の[所有者の直接指示を受領した記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)により、Codexレビューは受付とPR専用担当に分け、5分間隔・専用担当最大10件（受付を除く）とした。1 PRに1担当を再利用し、変更なし・作業中・レビュー待ちでは投稿しない。実装側は所有者指定の10分を現在の基準とする。頻度は別設定で、レビュー頻度から変更を推定しない。前runが作業中なら同じ担当を二重起動しない。
 
-受付がactiveのPRは、ownerが旧巡回（Codex・Claudeのレビュー巡回、T23の巡回）の設定から外す。旧巡回は、設定にあっても`mode: active`の切替の通知があるPRを判定・通知しない。戻すときは[rollback](pr-review-loop.md#受付がactiveのpr)の手順に従う。
+受付がactiveのPRは、ownerが旧巡回（Codex・Claudeのレビュー巡回、T23の巡回）の設定から外す。除外はownerの設定だけで行い、受付の通知では外さない。戻すときは[rollback](pr-review-loop.md#受付がactiveのpr)の手順に従う。
 
 巡回は、停止設定→最新mainの規約→GitHubの全必要ページ→既存担当とPR→未対応指摘→承認済み担当タスクの順に確認する。APIの一部取得・認証失敗・rate limitを「PRなし」とみなさない。同じ障害の通知はまとめる。
 
