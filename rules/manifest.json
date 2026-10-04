@@ -567,7 +567,7 @@
             "tax-return"
           ],
           "type": "array",
-          "meaning": "給与等の収入金額・源泉徴収税額の元になった年間資料の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形と、採用した資料の支払金額・源泉徴収税額の合計がsalaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計がsocialInsuranceDeduction以下であることを検査が確かめる"
+          "meaning": "給与等の収入金額・源泉徴収税額・社会保険料等の元になった源泉徴収票の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形、採用の範囲（確定し、重ならず、採用しない資料は同じ金額で含まれる）を確かめ、採用した資料とpayslipDerivedValues（源泉徴収票のない支払者の明細から示す値）の合計が、salaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計とsocialInsuranceAdditionalの和がsocialInsuranceDeductionと同じことを検査が確かめる"
         },
         {
           "path": "payslipDerivedValues",
@@ -575,7 +575,15 @@
             "tax-return"
           ],
           "type": "array",
-          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は以上）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない"
+          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は、その合計とsocialInsuranceAdditionalの和）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない。明細から示す値を既知の金額で使うrunは、契約版1.0の計算結果の2の表の4行（coverageがentered-records-only）なのでprovisional"
+        },
+        {
+          "path": "socialInsuranceAdditional",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen",
+          "meaning": "確定申告で足す社会保険料等の額（源泉徴収票・明細に含まれない、本人が申告で加える分）。0以上の整数かunknown。annualValuesかpayslipDerivedValuesがあるときは必須で、socialInsuranceDeductionは、採用した資料と明細の社会保険料等の金額の合計と、この額の和と同じ（二重に数えない）"
         },
         {
           "path": "taxpayer",
@@ -892,7 +900,7 @@
             "tax-return"
           ],
           "type": "array",
-          "meaning": "給与等の収入金額・源泉徴収税額の元になった年間資料の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形と、採用した資料の支払金額・源泉徴収税額の合計がsalaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計がsocialInsuranceDeduction以下であることを検査が確かめる"
+          "meaning": "給与等の収入金額・源泉徴収税額・社会保険料等の元になった源泉徴収票の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形、採用の範囲（確定し、重ならず、採用しない資料は同じ金額で含まれる）を確かめ、採用した資料とpayslipDerivedValues（源泉徴収票のない支払者の明細から示す値）の合計が、salaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計とsocialInsuranceAdditionalの和がsocialInsuranceDeductionと同じことを検査が確かめる"
         },
         {
           "path": "payslipDerivedValues",
@@ -900,7 +908,15 @@
             "tax-return"
           ],
           "type": "array",
-          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は以上）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない"
+          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は、その合計とsocialInsuranceAdditionalの和）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない。明細から示す値を既知の金額で使うrunは、契約版1.0の計算結果の2の表の4行（coverageがentered-records-only）なのでprovisional"
+        },
+        {
+          "path": "socialInsuranceAdditional",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen",
+          "meaning": "確定申告で足す社会保険料等の額（源泉徴収票・明細に含まれない、本人が申告で加える分）。0以上の整数かunknown。annualValuesかpayslipDerivedValuesがあるときは必須で、socialInsuranceDeductionは、採用した資料と明細の社会保険料等の金額の合計と、この額の和と同じ（二重に数えない）"
         },
         {
           "path": "taxpayer",
