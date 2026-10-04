@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "base_sha": "843879d2786c6185e0fa4a1f89f7b07e9d5bed02",
   "task_id": "OPS-dispatch-active",
   "planned_paths": [
     "scripts/lib/review-dispatch/doctor.test.ts",
