@@ -10,6 +10,9 @@ import {
   snapshot,
 } from "../../../tests/fixtures/review-dispatch.ts";
 
+// Fixture run endpoint. The Broker only verifies with it; sealing happens on the endpoint side.
+const channel = new RunChannel(Buffer.alloc(32, 7));
+
 test("D03 actual outbox recovery recognizes posted review without repeat POST", async () => {
   const d = database();
   try {
@@ -40,9 +43,9 @@ test("D03 actual outbox recovery recognizes posted review without repeat POST", 
         list: async () => rows,
       },
       d.store,
-      new RunChannel(Buffer.alloc(32, 7)),
+      channel,
     );
-    const origin = b.channel.seal(j, raw);
+    const origin = channel.seal(j, raw);
     assert.equal(await b.submit(p, j, raw, origin, async () => s), "posted");
     assert.equal(posts, 1);
   } finally {
@@ -69,9 +72,9 @@ test("D03 uncertain POST without remote proof never sends again", async () => {
           list: async () => [],
         },
         d.store,
-        new RunChannel(Buffer.alloc(32, 7)),
+        channel,
       ),
-      origin = b.channel.seal(j, raw);
+      origin = channel.seal(j, raw);
     assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
     assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
     assert.equal(posts, 1);
@@ -98,9 +101,9 @@ test("D06 fixture integrity rejects wrong actor/run/hash/tag; self pusher cannot
         list: async () => [],
       },
       d.store,
-      new RunChannel(Buffer.alloc(32, 7)),
+      channel,
     );
-    const origin = b.channel.seal(j, raw);
+    const origin = channel.seal(j, raw);
     for (const invalid of [
       { ...origin, actor: 20 },
       { ...origin, run: "other" },
@@ -128,11 +131,11 @@ test("D04 before-post head/base/Ready is fetched again; active identity cannot c
       30,
       { post: async () => assert.fail("stale POST"), list: async () => [] },
       d.store,
-      new RunChannel(Buffer.alloc(32, 7)),
+      channel,
     );
     s.pair.base = "d".repeat(40);
     assert.equal(
-      await b.submit(p, j, raw, b.channel.seal(j, raw), async () => s),
+      await b.submit(p, j, raw, channel.seal(j, raw), async () => s),
       "stale",
     );
   } finally {

@@ -7,7 +7,7 @@ import {
   type Job,
 } from "./model.ts";
 import { Store } from "./store.ts";
-import { parseResult, ReviewBroker } from "./broker.ts";
+import { parseResult, ReviewBroker, type Provenance } from "./broker.ts";
 
 export type Capability = {
   backend: "fixture" | "codex" | "claude";
@@ -50,9 +50,13 @@ export function workerEnvironment(
 }
 export type Runner = {
   capability: Capability;
-  run(
-    j: Job,
-  ): Promise<{ result: string; treeEnded: boolean; uncertain: boolean }>;
+  // origin comes from the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
+  run(j: Job): Promise<{
+    result: string;
+    treeEnded: boolean;
+    uncertain: boolean;
+    origin: Provenance | null;
+  }>;
 };
 export class Dispatcher {
   readonly policy: Policy;
@@ -107,15 +111,16 @@ export class Dispatcher {
       }
       parseResult(value.result, j);
       this.store.result(j, value.result);
-      // Fixture integrity tag only: dispatcher signs its fake runner return. This does NOT authenticate a real run endpoint.
+      // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
       const outcome = await broker.submit(
         this.policy,
         j,
         value.result,
-        broker.channel.seal(j, value.result),
+        value.origin,
         fetchFresh,
       );
-      if (outcome === "uncertain") {
+      if (outcome === "uncertain" || outcome === "blocked") {
+        // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner).
         this.store.uncertain(j);
         return outcome;
       }

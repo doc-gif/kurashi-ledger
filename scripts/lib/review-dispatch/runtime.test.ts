@@ -41,6 +41,8 @@ test("D08 complete fake-runner cycle posts once and ignores unchanged replay", a
       posts = 0;
     const rows: { id: string; actor: number; head: string; body: string }[] =
       [];
+    // The fake run endpoint seals; the dispatcher only forwards and the Broker only verifies.
+    const endpoint = new RunChannel(Buffer.alloc(32, 7));
     const broker = new ReviewBroker(
       30,
       {
@@ -51,16 +53,18 @@ test("D08 complete fake-runner cycle posts once and ignores unchanged replay", a
         list: async () => rows,
       },
       d.store,
-      new RunChannel(Buffer.alloc(32, 7)),
+      endpoint,
     );
     const runner = {
       capability,
       run: async (j: Parameters<typeof fixtureResult>[0]) => {
         launches++;
+        const result = JSON.stringify(fixtureResult(j));
         return {
-          result: JSON.stringify(fixtureResult(j)),
+          result,
           treeEnded: true,
           uncertain: false,
+          origin: endpoint.seal(j, result),
         };
       },
     };
@@ -136,6 +140,7 @@ test("D03 runner uncertainty retains lease after dispatcher restart", async () =
             result: JSON.stringify(fixtureResult(j)),
             treeEnded: false,
             uncertain: true,
+            origin: null,
           }),
         },
         broker,
@@ -158,5 +163,69 @@ test("D03 runner uncertainty retains lease after dispatcher restart", async () =
     );
   } finally {
     d.cleanup();
+  }
+});
+
+test("PR48-R003 dispatcher never signs: a runner result without run provenance is not posted", async () => {
+  const variants = [
+    (): null => null,
+    // Sealed by a different endpoint key: the dispatcher cannot launder it into a valid origin.
+    (j: Parameters<typeof fixtureResult>[0], r: string) =>
+      new RunChannel(Buffer.alloc(32, 8)).seal(j, r),
+  ];
+  for (const origin of variants) {
+    const d = database();
+    try {
+      const p = policy(),
+        s = snapshot(),
+        engine = new Dispatcher(p, d.store);
+      let posts = 0;
+      const broker = new ReviewBroker(
+        30,
+        {
+          post: async () => {
+            posts++;
+          },
+          list: async () => [],
+        },
+        d.store,
+        new RunChannel(Buffer.alloc(32, 7)),
+      );
+      const result = await engine.fixtureCycle(
+        s,
+        30,
+        {
+          capability,
+          run: async (j) => {
+            const r = JSON.stringify(fixtureResult(j));
+            return {
+              result: r,
+              treeEnded: true,
+              uncertain: false,
+              origin: origin(j, r),
+            };
+          },
+        },
+        broker,
+        async () => s,
+        100,
+      );
+      assert.equal(result, "uncertain");
+      // The lease stays held for owner reconciliation; nothing relaunches.
+      assert.equal(
+        await engine.fixtureCycle(
+          s,
+          30,
+          { capability, run: async () => assert.fail("relaunch") },
+          broker,
+          async () => s,
+          101,
+        ),
+        "waiting",
+      );
+      assert.equal(posts, 0);
+    } finally {
+      d.cleanup();
+    }
   }
 });

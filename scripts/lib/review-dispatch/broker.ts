@@ -9,6 +9,8 @@ import {
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
+import type { ResultVerifier } from "./provenance.ts";
+import { textFindings } from "../public-policy.ts";
 
 export function parseResult(raw: string, j: Job): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
@@ -108,6 +110,41 @@ export function parseResult(raw: string, j: Job): WorkerResult {
     throw new Error("Unsafe result prose");
   return r;
 }
+// Publication check on the exact body the Broker would post to the public repo (PR51 red team, P1): a prompt
+// injection could make a reviewer read a secret and echo it. Same rules as scripts/check-public.ts
+// (public-policy textFindings), plus anything shaped like a key/token and any local absolute path.
+const TOKEN_SHAPES: readonly RegExp[] = [
+  /\bgh[pousr]_[A-Za-z0-9._-]{16,}/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|CERTIFICATE)/,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, // JWT
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/i,
+  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*\S{6,}/i,
+  /\b(?:sk|pk|rk)[-_](?:live|test|ant|proj)[-_][A-Za-z0-9_-]{8,}/,
+];
+const LOCAL_PATHS: readonly RegExp[] = [
+  /(?:^|[^A-Za-z0-9_.~:/-])~\/[^\s]/,
+  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|opt|Volumes|root|usr|Library|System|Applications|mnt|srv|proc|dev|run|nix)(?:\/|\b)/,
+  /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/,
+  /\\\\[A-Za-z0-9._-]+\\/, // UNC
+  /\bfile:\/\//i,
+];
+export function publicationFindings(body: string): string[] {
+  const findings = new Set(textFindings(body));
+  if (TOKEN_SHAPES.some((re) => re.test(body))) findings.add("key/token");
+  // Long opaque runs (keys, tokens, encoded secrets). Commit SHAs and run UUIDs are the only allowed long IDs.
+  for (const run of body.match(/[A-Za-z0-9+=_-]{32,}/g) ?? [])
+    if (
+      /[0-9]/.test(run) &&
+      /[A-Za-z]/.test(run) &&
+      !/^[a-f0-9]{40}$/.test(run) &&
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(run)
+    )
+      findings.add("opaque key-like string");
+  if (LOCAL_PATHS.some((re) => re.test(body)))
+    findings.add("local absolute path");
+  return [...findings];
+}
 export type PostedReview = {
   id: string;
   actor: number;
@@ -129,9 +166,9 @@ export type Provenance = {
   resultHash: string;
   signature: string;
 };
-// Fixture integrity helper, not an implemented real-run origin/key-isolation boundary.
-// A real runner must receive an outside-worker authenticated endpoint and verifier-only Broker first.
-export class RunChannel {
+// Fixture integrity helper for fake runners only. It can seal, so it is never the verifier of a real run.
+// Real runs are signed by the supervisor and checked with provenance.ts RunVerifier (verify-only, PR48-R003).
+export class RunChannel implements ResultVerifier {
   private readonly secret: Buffer;
   constructor(secret: Buffer) {
     if (secret.length < 32) throw new Error("Run channel secret missing");
@@ -170,7 +207,8 @@ export class RunChannel {
   }
 }
 export class ReviewBroker {
-  readonly channel: RunChannel;
+  // Verify-only: the Broker checks the run's provenance and never seals or signs a result itself.
+  readonly verifier: ResultVerifier;
   readonly actor: number;
   readonly transport: BrokerTransport;
   readonly store: Store;
@@ -179,22 +217,23 @@ export class ReviewBroker {
     actor: number,
     transport: BrokerTransport,
     store: Store,
-    channel: RunChannel,
+    verifier: ResultVerifier,
   ) {
     this.actor = actor;
     this.transport = transport;
     this.store = store;
-    this.channel = channel;
+    this.verifier = verifier;
   }
   async submit(
     p: Policy,
     j: Job,
     raw: string,
-    origin: Provenance,
+    origin: Provenance | null,
     fetchFresh: () => Promise<Snapshot>,
-  ): Promise<"posted" | "uncertain" | "stale"> {
+  ): Promise<"posted" | "uncertain" | "stale" | "blocked"> {
     if (
-      !this.channel.verify(j, raw, origin) ||
+      !origin ||
+      !this.verifier.verify(j, raw, origin) ||
       origin.actor !== this.actor ||
       this.actor !== j.actor ||
       origin.run !== j.run ||
@@ -227,6 +266,12 @@ export class ReviewBroker {
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
       body = render(result, marker, identityOf(p, this.actor), j.run),
       digest = hash(body);
+    if (publicationFindings(body).length) {
+      // Never posted and no Outbox row: the owner must look at the run. Recorded once as an owner notice;
+      // the caller keeps the lease (uncertain) so nothing relaunches or retries automatically.
+      this.store.notice(`${j.key}:publication-blocked:${j.run}`);
+      return "blocked";
+    }
     if (
       result.decision === "accepted" &&
       (!s.faultfinding ||

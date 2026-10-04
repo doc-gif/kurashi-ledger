@@ -8,7 +8,7 @@ Issue #45の基盤です。**既定はoff、実AI・本番通知・修正pushは
 - `scripts/review-dispatch.ts`: offと、owner管理policyを使った一度のshadow照合。shadowは取得・記録だけで、AI・投稿は0件です。
 - `tools/review_dispatch/supervisor.py`: POSIXの受付排他、合成workerの独立監督・取消・同一runの状態確認。Windowsで起動すると副作用前に拒否します。
 
-実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。このPRから実鍵を使って起動・投稿しないでください。
+実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。Claude App用は`claude-broker.ts`と固定の中継`scripts/review-dispatch-claude-broker.ts`で、token wrapperを`--agent claude --purpose review`に固定して1回の投稿sessionごとに1度だけ起動し、POSTはsessionで1回までです（Issue #50 W2。activeのCLIへの接続はW4）。どのBrokerも投稿直前の本文に`check-public`と同じ規則と、鍵・tokenの形・ローカルの絶対パスの検査を行い、当たればPOSTせず`blocked`としてownerの確認待ち（leaseを保持）にします（PR #51の粗探しP1）。このPRから実鍵を使って起動・投稿しないでください。
 
 ## offとshadow
 
@@ -45,7 +45,7 @@ DBはWAL/FULL同期、schema 2です。schema 1からの暗黙の変換はせず
 | D02/D03/D08/D09 | 実SQLite: tombstone、transaction、全種類PR lease、10枠/実行先枠、24時間6回とowner解除まで保持するquota pause、世代の取消、不明POST・通知の重複 |
 | D03/D09/I009 | POSIX fixture: supervisor死亡、setsid子孫の継承lock、取消、同一runへの再接続。Windowsは未対応を検査しskipしない |
 | D05/D07/I003/I004 | fake ghの全ページ/ETag/rate limit/部分失敗、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
-| D06/D07/D10 | run/身元/pair/結果hashの照合と**fixture用**HMAC整合検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
+| D06/D07/D10 | run/身元/pair/結果hashの照合、supervisorの一度きり署名とTS検証の相互試験ベクトル・改ざん拒否（fixtureのHMACは整合検査だけ）、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
 | I007 | `dispatch-read`の正確なread-only grant、追加write/missing grantではgh起動0 |
 
 TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`を既存CIで実行します。秘密・実AI・実Appをfixtureへ渡しません。実AIのRead/Grep/Glob/shellでの否定試験を、環境変数の単体試験で「合格」とは扱いません。
@@ -57,7 +57,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 - I009: 実AIの全子孫へのFD継承、取消・OS再起動・process tree終了の実測。未確認backendを有効にしません。
 - I010: App作成PRのCopilot依頼・応答の実測は任意の補助情報です。応答や利用枠を起動/マージの条件に戻しません。
 - I011: 共有された従来アカウントの身元移行。ownerがactivity anchorと過去push参加者を検証し、policyの同一人物対応・server境界を設定する。結合と照合のコードは今回追加済み。実repoのmigration設定は未検証。
-- PR48-R003（実runner接続前）: `RunChannel`は受付がfake runnerの返り値に付ける整合tagで、実run endpointの出所証明ではありません。実接続前にworker境界の外のsupervisorがrunごとの鍵で署名し、受付/Brokerは検証のみを行う接口と鍵の作成・保管・アクセス拒否試験を実装するまで、実backendは無効です。
+- PR48-R003: supervisorがrunごとの一度きりの鍵（SHA-256だけのLamport署名。鍵はsupervisorのメモリだけに置く）で結果に署名し、受付・Brokerは`provenance.ts`の`RunVerifier`で検証だけを行います（Issue #50 W2）。鍵の約束値はworkerの起動前にsupervisor自身の標準出力で受付へ渡し、manifestやroot内のファイルの値は信頼しません。`RunChannel`はfake runner専用の整合tagです。残り: 約束値のDBへの永続化と受付の再起動後の検証（W4。それまではuncertainのまま）、workerからsupervisorのメモリ・制御パイプへ届かないことの実Macでの否定試験（W1のSeatbelt/doctor）。これらとowner導入まで実backendは無効です。
 - active、auto-fix、GitHub通知、実Broker接続、旧workerとの交代・rollbackはownerの設定と別の正本移行PR後。dispatcherはマージしません。
 
 導入待ちはIssue #45の基盤受入と分けます。基盤のCIとClaudeの独立accepted後に完了を判定し、残る担当レビューを既存の設定で再開します。
