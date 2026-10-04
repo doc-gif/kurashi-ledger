@@ -281,7 +281,9 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
 // other processes, the keychain or everything at once. Deny-by-default must stay first.
 export function lintProfile(text: string): string[] {
   const problems: string[] = [];
+  // A Windows checkout may carry CRLF line endings; the rules are the same text.
   const code = text
+    .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((l) => l.replace(/;.*$/, "").trim())
     .filter(Boolean)
@@ -481,7 +483,7 @@ export function seatbeltHost(options: {
     // The derived profile is cli.sb minus only its explicit exec deny for /usr/bin/security,
     // so the item probe shows that the mach-lookup and file denials stop a process that
     // has the Security framework inside the profile.
-    const lines = readFileSync(options.cliProfile, "utf8").split("\n");
+    const lines = readFileSync(options.cliProfile, "utf8").replace(/\r\n?/g, "\n").split("\n");
     if (lines.filter((l) => l === SECURITY_DENY_LINE).length !== 1) throw new Error("profile shape");
     writeFileSync(join(root, "derived-cli.sb"), lines.filter((l) => l !== SECURITY_DENY_LINE).join("\n"));
     const server = createServer((c) => c.end());

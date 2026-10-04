@@ -177,6 +177,8 @@ test("doctor: failed control or inconclusive probe leaves the backend unverified
 
 test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   assert.deepEqual(lintProfile(PROFILE), []);
+  // The same rules with CRLF line endings (a Windows checkout) lint the same way.
+  assert.deepEqual(lintProfile(PROFILE.replace(/\r?\n/g, "\r\n")), []);
   const bad: [string, string][] = [
     [PROFILE.replace("(deny default)", "(allow default)"), "not-deny-default"],
     [`${PROFILE}\n(allow process-info* (target others))`, "process-access"],
