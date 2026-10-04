@@ -275,20 +275,75 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 
 終了コードが0でない、または値の書式が違えば、マージしない。
 
-**使えるようにする手順（所有者）:**
+**所有者が済ませたこと（2026-10-04）:** 2つのApp（CodexとClaude）に Variables: Read-only を足し、インストール先で承認した。リポジトリ変数`OWNER_MERGE_ONLY`を`none`で作った。残りは、マージ後の写しの作り直しと実際の鍵での確認（下）。それまで`merge-check`は使えない（古い写しは125で終わる）。
 
-1. 2つのApp（CodexとClaude）のSettings → Permissions & events → Repository permissions で、Variables を Read-only にする。
-2. インストール先で権限の変更を承認する（Installed GitHub Apps → Configure → Review request）。2つとも行う。
-3. この用途を足したPRのマージ後に、マージ後のmainのSHAで信頼した写しを作り直す（上の「信頼した写し」）。古い写しは`merge-check`を知らないので、125で終わる。
+### マージ後の所有者の確認
 
-承認の前は、GitHubが`actions_variables`を付けないので、スクリプトは完全一致の照合で失敗し、コマンドを実行しない（マージしない）。
+#### A. 信頼した写しを作り直す
 
-**否定の確認（実際の鍵で、所有者またはそのAI自身が行う）:**
+1. マージのSHAを調べる: `gh pr view 55 --repo doc-gif/kurashi-ledger --json state,mergeCommit --jq '.state + " " + .mergeCommit.oid'`。期待: `MERGED <40文字のSHA>`。
+2. 変数を設定する: `sha=<1のSHA>`、`repo=<このrepoのcheckout>`（PRのcheckoutではないもの）、`dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"`。
+3. 上の「信頼した写し」のコマンドの3行目以降（`git -C "$repo" fetch`から）を、サブシェル`( … )`で囲んで実行する。期待: 何も表示されずに終わる。
+4. 写しが`sha`の中身と同じか確かめる:
 
-| 確かめること | `--purpose` | コマンドの`--`のあと | 期待 |
-| --- | --- | --- | --- |
-| 読取りに権限が要る | `review` | `gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY` | 403 |
-| 変数を書けない | `merge-check` | `gh api -X POST repos/doc-gif/kurashi-ledger/actions/variables -f name= -f value=x` | 403（書けるなら名前が無効で422。2xxならすぐ所有者に知らせる） |
+```sh
+for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file blob "$sha:scripts/$f" | cmp - "$dir/$f" && echo "OK $f"; done
+```
+
+   期待: `OK github-app-token.ts`と`OK lib/github-app-token.ts`の2行。ほかの表示が出たら、その写しを使わない。
+5. 権限を確かめる: `ls -ld "$dir"`。期待: `drwx------`（中のファイルにほかの利用者は届かない）。
+6. 新しい用途があるか確かめる: `grep -c "'merge-check'" "$dir/lib/github-app-token.ts"`。期待: 1以上。
+
+#### B. 実際の鍵で確かめる
+
+所有者が行う。`--agent codex`は所有者だけが実行する（AIはほかのAIの鍵を読まない）。AIが`--agent claude`で行うときは、各コマンドを`cd "$HOME" && zsh -ic '<コマンド>'`で実行する。
+
+1. `cd "$HOME" && zsh -i`を実行する。期待: IDの環境変数を読み込んだシェルになる。
+2. `export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/<マージのSHA>"`を実行する。
+3. ClaudeのAppで読む。期待: `none`。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+```
+
+4. CodexのAppで同じように読む（所有者だけ）。期待: `none`。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+```
+
+5. `review`では読めないことを確かめる。期待: `HTTP 403`か`HTTP 404`。`--purpose implement`でも同じ。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose review -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+```
+
+6. `merge-check`で変数を作れないことを確かめる（名前を空にしてあるので、権限があっても作られず422になる）。期待: `HTTP 403`。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/actions/variables -f name= -f value=x
+```
+
+7. `merge-check`で変数を変えられないことを確かめる（同じ値`none`を送るので、万一通っても値は変わらない）。期待: `HTTP 403`。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X PATCH repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY -f value=none
+```
+
+8. `merge-check`でcontentsとPRに書けないことを確かめる（bodyは無効）。期待: どちらも`HTTP 403`。このrepoはpublicなので、contentsとPRの読取りは権限がなくても成功しうる。トークンの権限は、スクリプトが子を起動する前に完全一致で確かめている。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/pulls -f title= -f head= -f base=
+```
+
+9. 結果をIssue #50に記録する。5〜8で2xxが出たら、すぐ記録し、AIのマージを止めたままにする。
+
+**発行が失敗したとき:** 3・4で`none`が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。続きは`GitHubがトークンを発行しなかった（HTTP 422）`や`権限（actions_variables: read）が付かなかった`等。権限の名前`actions_variables`が違うおそれがある。そのときは:
+
+1. 標準エラーの文をIssue #50に記録する（トークン・鍵は表示されない）。
+2. AIは変数を読めない扱いのままにし、マージしない。照合を緩めない。doc-gifで読まない。
+3. 名前を直すPRを待つ。
 
 **残る限界:** doc-gifは所有者と共用なので、doc-gifの資格情報で`OWNER_MERGE_ONLY`を書き換えられる。GitHubはこれを止めない。AIはdoc-gifで変数を読まず、書かない（規則）。防ぐには、AIが使えない所有者だけの身元が要る。
 
