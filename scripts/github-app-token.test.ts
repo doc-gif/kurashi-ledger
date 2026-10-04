@@ -23,6 +23,7 @@ import {
   KEYCHAIN_TOOL,
   MAX_KEY_BYTES,
   PURPOSES,
+  PURPOSE_NAMES,
   PUSH_URL,
   REPOSITORY_NAME,
   TOKEN_PATTERN,
@@ -1445,5 +1446,53 @@ test('dispatch-read grants exactly read-only repo/evidence scope; rejects extra/
   for(const permissions of [{...PURPOSES['dispatch-read'],metadata:'read',pull_requests:'write'}, {...PURPOSES['dispatch-read'],metadata:'read',issues:undefined}]){
     const h=harness([{status:201,body:grantedBody('dispatch-read',{permissions})},REVOKED]);
     assert.equal(await run(args,h.deps),EXIT_OWN_FAILURE);assert.equal(h.children.length,0);
+  }
+});
+
+test('merge-checkはこのrepoのactions_variables:readだけを要求し、両方のAIで完全一致のときだけ子を起動する', async () => {
+  assert.deepEqual(PURPOSES['merge-check'], { actions_variables: 'read' });
+  assert.deepEqual(JSON.parse(tokenRequest(INSTALLATION_ID, 'x', 'merge-check').body), {
+    repositories: ['kurashi-ledger'],
+    permissions: { actions_variables: 'read' },
+  });
+  // 用途の名前の一覧（引数の検査・使い方の文）が、権限の表と一致する。
+  assert.deepEqual([...PURPOSE_NAMES].sort(), Object.keys(PURPOSES).sort());
+  const env = { KL_GITHUB_APP_ID_CLAUDE: '99', KL_GITHUB_APP_INSTALLATION_ID_CLAUDE: '98', KL_GITHUB_APP_ID_CODEX: '1', KL_GITHUB_APP_INSTALLATION_ID_CODEX: '2' };
+  const command = ['--', 'gh', 'api', 'repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY', '--jq', '.value'];
+  for (const [agent, service] of [['claude', 'kurashi-ledger-claude-implementer'], ['codex', 'kurashi-ledger-codex-reviewer']] as const) {
+    const ok = harness([{ status: 201, body: grantedBody('merge-check') }, LISTED, REVOKED], { env });
+    assert.equal(await run(['--agent', agent, '--purpose', 'merge-check', ...command], ok.deps), 0, agent);
+    assert.deepEqual(ok.keychainCalls, [[service, 'synthetic-user']]);
+    assert.deepEqual(JSON.parse(ok.calls[0]?.init.body ?? '{}').permissions, { actions_variables: 'read' });
+    assert.equal(ok.children.length, 1);
+    assert.equal(ok.children[0]?.env['GH_TOKEN'], TOKEN);
+  }
+});
+
+test('merge-checkで余分な権限・不足・水準違いが付いたら、子を起動せずに失効させる', async () => {
+  const refused: Record<string, unknown>[] = [
+    // 余分
+    { actions_variables: 'read', metadata: 'read', contents: 'read' },
+    { actions_variables: 'read', metadata: 'read', secrets: 'read' },
+    { actions_variables: 'read', metadata: 'read', administration: 'write' },
+    // 水準違い
+    { actions_variables: 'write', metadata: 'read' },
+    { actions_variables: 'read', metadata: 'write' },
+    // 不足
+    { metadata: 'read' },
+    {},
+  ];
+  for (const agent of ['claude', 'codex'] as const) {
+    for (const permissions of refused) {
+      const h = harness([{ status: 201, body: grantedBody('merge-check', { permissions }) }, REVOKED]);
+      const args = ['--agent', agent, '--purpose', 'merge-check', ...ID_ARGS, '--', 'gh', 'api', 'repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY'];
+      const label = `${agent} ${JSON.stringify(permissions)}`;
+      assert.equal(await run(args, h.deps), EXIT_OWN_FAILURE, label);
+      assert.deepEqual(h.children, [], label);
+      assert.match(h.err.join(''), /範囲が要求と違う.*失効させた/, label);
+      assert.equal(h.calls[1]?.init.method, 'DELETE', label);
+      assert.equal(h.calls[1]?.url, 'https://api.github.com/installation/token', label);
+      assertNoSecrets(h.err.join(''));
+    }
   }
 });

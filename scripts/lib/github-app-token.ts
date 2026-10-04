@@ -37,7 +37,7 @@ export const JWT_BACKDATE_SECONDS = 60;
 export const JWT_LIFETIME_SECONDS = 9 * 60;
 
 export type Agent = 'codex' | 'claude';
-export type Purpose = 'review' | 'dispatch-read' | 'implement' | 'implement-workflows';
+export type Purpose = 'review' | 'dispatch-read' | 'implement' | 'implement-workflows' | 'merge-check';
 export type PermissionLevel = 'read' | 'write';
 
 // AIの身元（GitHub App）ごとの設定。2つのAppは同じ権限を持ち、どちらのAIも実装とレビューを行う。
@@ -76,7 +76,12 @@ export const PURPOSES: Readonly<Record<Purpose, Readonly<Record<string, Permissi
   implement: IMPLEMENT,
   // .github/workflows/を変えるcommitのpushが要るときだけ使う（2026-10-03の所有者決定: 必要なときだけ付ける）。
   'implement-workflows': { ...IMPLEMENT, workflows: 'write' },
+  // マージの直前にリポジトリ変数OWNER_MERGE_ONLYを読むだけ（2026-10-04の所有者決定、Issue #50）。
+  // GitHubの権限名はactions_variables（Appの設定の「Variables」）。doc-gifでは読まない。
+  'merge-check': { actions_variables: 'read' },
 };
+
+export const PURPOSE_NAMES: readonly Purpose[] = Object.freeze(['dispatch-read', 'review', 'implement', 'implement-workflows', 'merge-check']);
 
 // GitHubがトークンの権限に必ず加えるもの。
 const IMPLICIT_PERMISSIONS: Readonly<Record<string, PermissionLevel>> = { metadata: 'read' };
@@ -124,6 +129,7 @@ PRのcheckoutから実行しない（docs/github-apps.md の「信頼した写�
                                     review:              ${permissionList('review')}
                                     implement:           ${permissionList('implement')}
                                     implement-workflows: ${permissionList('implement-workflows')}
+                                    merge-check:         ${permissionList('merge-check')}
   --app-id <数字>                 既定は環境変数（codex: ${AGENTS.codex.appIdEnv}、claude: ${AGENTS.claude.appIdEnv}）
   --installation-id <数字>        既定は環境変数（codex: ${AGENTS.codex.installationIdEnv}、claude: ${AGENTS.claude.installationIdEnv}）
 
@@ -147,7 +153,7 @@ export function isAgent(value: string): value is Agent {
 }
 
 export function isPurpose(value: string): value is Purpose {
-  return value === 'dispatch-read' || value === 'review' || value === 'implement' || value === 'implement-workflows';
+  return (PURPOSE_NAMES as readonly string[]).includes(value);
 }
 
 export function validateId(value: string | undefined, what: string): string {
@@ -190,8 +196,8 @@ export function parseArgs(argv: readonly string[], env: Readonly<Record<string, 
   if (agent === undefined) throw new UsageError('--agentがない（codex か claude）。');
   if (!isAgent(agent)) throw new UsageError('--agentは codex か claude。');
   const purpose = values.get('--purpose');
-  if (purpose === undefined) throw new UsageError('--purposeがない（dispatch-read・review・implement・implement-workflows）。');
-  if (!isPurpose(purpose)) throw new UsageError('--purposeは dispatch-read・review・implement・implement-workflows のどれか。');
+  if (purpose === undefined) throw new UsageError(`--purposeがない（${PURPOSE_NAMES.join('・')}）。`);
+  if (!isPurpose(purpose)) throw new UsageError(`--purposeは ${PURPOSE_NAMES.join('・')} のどれか。`);
   const profile = AGENTS[agent];
 
   const appId = validateId(values.get('--app-id') ?? env[profile.appIdEnv], `AppのID（--app-id か ${profile.appIdEnv}）`);
