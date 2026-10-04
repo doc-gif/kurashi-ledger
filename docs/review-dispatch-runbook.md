@@ -468,6 +468,6 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"`、activeなら14の3 |
+| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"`、activeなら14の3。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直す |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`か手で変え、revisionを上げ、`launchctl kickstart -k "$gui/${label}.serve"`で受け口を再起動する。Readyのやり直しが要る |
