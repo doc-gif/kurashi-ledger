@@ -41,6 +41,11 @@
       "description": "PR48-R009 の時計の後退。許容幅を設けるか、運用手順だけにするか",
       "state": "resolved",
       "resolution": "5秒までの後退は保存済みの時刻を使い続ける（単調な時刻。DBの時刻は戻さない）。それを超える後退は ClockRollbackError で止め、受信は503、claim・retainは拒否、shadow の CLI は待ち時間を示して終了コード3で止める。workerを増やさず、時計を確かめて保存時刻へ追いつくのを待つ手順を文書に書く。許容幅の値は所有者の確認事項として報告する"
+    },
+    {
+      "description": "粗探しの記録（PR #52 issuecomment-5977379116、head 05aebcc）: P2が4件（RT-P2-1 承認後の会話コメント、RT-P2-2 削除・編集で指摘が消える、RT-P2-3 workflowの信頼の範囲、RT-P2-4 #53とのbroker.tsの衝突）、P3が7件。個別に直すと、指摘の入力元・解消の規則・信頼の単位がばらばらに増える",
+      "state": "resolved",
+      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 信頼する路の集合を1つの定数WORKFLOW_TRUST_PATHSにし、今は所有者決定どおり.githubだけ。package.jsonのscriptsやtools/review_guard等、CIの結果を決めるほかの路は独立した内容レビューに頼ることを導入前チェックの表と実装文書に明記する。所有者が広げると決めたら定数に足すだけにする。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
     }
   ],
   "assessments": [
@@ -183,10 +188,10 @@
     {
       "id": "B5",
       "direction": "entry",
-      "location": "github.ts collect → findings.ts unresolvedFindings（pulls/N/reviews、pulls/N/comments）",
-      "data": "Review の本文・state・時刻、行コメントの本文・作成/更新時刻",
+      "location": "github.ts collect → findings.ts unresolvedFindings（pulls/N/reviews、pulls/N/comments、issues/N/comments）と、store の evidence（item・itemchange）",
+      "data": "Review の本文・state・commit_id・時刻、行コメントと会話コメントの本文・作成/更新時刻、前回までに観測した項目の hash と指摘ID",
       "trust": "untrusted",
-      "control": "policy で割り当てた reviewer の項目だけを読む。この PR の番号の ID を行頭だけで拾う（引用の > 行は拾わない）。編集・欠落・不正な時刻は安全側（指摘として残すか EvidenceError）。解消はその reviewer 自身の後の APPROVED だけ"
+      "control": "割り当てたreviewer（とownerのCHANGES_REQUESTED/DISMISSED）の項目だけを読む。この PR の番号の ID を行頭だけで拾う。会話コメントはIDか、decisionがaccepted以外のときだけ指摘。最初に観測した本文のhashを不変の記録にし、消えた・変わった項目はdeleted:/edited:として挙げる。解消は同じ人の、より後の、現在のheadへのAPPROVEDだけ。不正な時刻・型は EvidenceError"
     },
     {
       "id": "B6",
@@ -194,7 +199,7 @@
       "location": "github.ts collect（git/commits、git/trees、actions/runs）",
       "data": "base と head の .github の tree SHA、workflow run の path",
       "trust": "untrusted",
-      "control": "SHA の形式を検査し、truncated の tree は EvidenceError。.github の tree が違えば policy の trustedWorkflowTrees に完全一致する場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ"
+      "control": "SHA の形式を検査し、truncated の tree は EvidenceError。信頼する路は定数 WORKFLOW_TRUST_PATHS（今は .github だけ）。路ごとの object SHA が base と違えば、policy の trustedWorkflowTrees に head の SHA がある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。package.json の scripts や tools/review_guard など、ほかの CI を決める路は独立した内容レビューに頼る（文書に明記）"
     },
     {
       "id": "B7",
@@ -274,7 +279,7 @@
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "token-scope-fail-open",
-      "pattern": "検査できない状態で既定の経路に戻る（fail open）",
+      "pattern": "検査できない状態で既定の経路に戻る（fail open）。信頼の範囲の外にある CI を決める入力を、信頼したものとして扱う（粗探しRT-P2-3）",
       "places": [
         {
           "location": "Windows での host 検査",
@@ -287,6 +292,18 @@
         {
           "location": "workflow の tree の取得（truncated・欠落）",
           "result": "EvidenceError。.github がない場合は差分ありとして unknown"
+        },
+        {
+          "location": "WORKFLOW_TRUST_PATHS（github.ts）",
+          "result": "今は .github だけ（所有者決定）。広げるときは定数に足す"
+        },
+        {
+          "location": "package.json の scripts、tools/review_guard、scripts/**（checks・review tools のジョブが候補の commit から実行する）",
+          "result": "R008 の対象外。独立した内容レビューに頼ることを導入前チェックと実装文書に明記する"
+        },
+        {
+          "location": "review plan のジョブ",
+          "result": "base の検査器を実行するので、候補の変更では変わらない（既存）"
         }
       ]
     },
@@ -360,6 +377,36 @@
           "result": "W0 の範囲なので変えない。§5 の COMMENT/行指摘、§3 の 413 と矛盾しないことを確かめる"
         }
       ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "指摘の入力元・解消の規則が経路ごとに違う（粗探しRT-P2-1/2、P3 owner・古いcommit）",
+      "places": [
+        {
+          "location": "Review 本文",
+          "result": "行頭ID、IDのないCHANGES_REQUESTED/DISMISSED。本文の編集は REST で見えないので、観測したhashとの比較で edited: を挙げる"
+        },
+        {
+          "location": "行コメント",
+          "result": "すべて指摘。削除は観測記録との比較で deleted: を挙げる"
+        },
+        {
+          "location": "会話コメント（issues/N/comments）",
+          "result": "今まで対象外だった。行頭ID、IDがなく decision が accepted 以外なら issue:<id>、編集は issue:<id> と edited:"
+        },
+        {
+          "location": "owner の Review",
+          "result": "CHANGES_REQUESTED/DISMISSED は挙げる。解消は owner 自身の後の APPROVED だけで、reviewer の指摘は解消しない。判定では各 reviewer の最新の Review に付けて accepted を止める"
+        },
+        {
+          "location": "解消の APPROVED",
+          "result": "現在の head の commit_id のものだけ。古い commit への承認では解消しない"
+        },
+        {
+          "location": "Webhook の edited/deleted",
+          "result": "W4 の受け口で安全側の印にする（このPRでは照合の観測比較だけ）"
+        }
+      ]
     }
   ],
   "owner_decisions": [
@@ -367,6 +414,11 @@
       "date": "2026-10-04",
       "source": "Issue #50（所有者の決定 O1〜O3、Windows）",
       "decision": "受付は Mac だけで動かす。Webhook と15分の照合。別の OS ユーザーでの分離は見送る。host 検査は同じユーザーの誤り・取り違えを防ぐもので、同じユーザーの悪意あるプロセスへの強い分離ではない"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 所有者決定の受領記録 issuecomment-5977365862",
+      "decision": "R009: 時計の後退を許す幅は5秒。R008: workflowの信頼を記録する単位は.github全体（範囲を広げるかは所有者が別途判断中。今は.githubだけ）"
     }
   ],
   "deferred": [
@@ -381,6 +433,18 @@
     {
       "item": "Review 本文の編集による指摘の削除の検出",
       "reason": "REST の Review に編集時刻がなく、GraphQL は今の取得経路の外。残る危険として文書に書く"
+    },
+    {
+      "item": "信頼した tree SHA の base・PR への結び付け（粗探しP3）",
+      "reason": "W4 の active の CLI・policy の運用で決める。今は内容で結び付き（同じ内容の .github だけ信頼）、記録の後は Ready のやり直しが要る"
+    },
+    {
+      "item": "Webhook の pull_request_review.edited・pull_request_review_comment.deleted・issue_comment の印（粗探しRT-P2-2）",
+      "reason": "W4 の受け口。このPRは照合での観測比較で検出する"
+    },
+    {
+      "item": "#53 と broker.ts の順序（粗探しRT-P2-4）",
+      "reason": "publicationFindings はこの base にない。W4 の統合で canonicalBody → 公開検査 → hash → POST に固定する"
     }
   ]
 }
