@@ -140,13 +140,13 @@ PR<N>-R002: <同上>
 | 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`の1か所だけ。MacもWindowsも同じ値を読む。写しを作らない |
 | 書き手 | 所有者だけ。AIのAppの権限は読取りだけ |
 | 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
-| 読み方 | マージの直前に、自分のAIのAppの`merge-check`用途（読取りだけ、[W5](https://github.com/doc-gif/kurashi-ledger/issues/50)のPR）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)） |
+| 読み方 | マージの直前に、自分のAIのAppの`merge-check`用途（読取りだけ、[#55](https://github.com/doc-gif/kurashi-ledger/pull/55)、[App手順](github-apps.md#マージ前の確認merge-check)）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)） |
 | 判定 | PRが一覧にある、または404・認証の失敗・書式の誤りなら、AIはマージしない |
 | activeとの関係 | ownerはactiveにしたPRを必ず加え、rollback後も残す。外すのもownerだけ |
 
 - 受領記録・通知・ラベル・PR本文は、この一覧を変えない。
-- Appは「Variables」のreadが要る（[Variables API](https://docs.github.com/en/rest/actions/variables)）。W5のPRがマージされ、所有者が両方のAppに「Variables: Read-only」を足すまで、AIは変数を読めない扱いにし、どのPRもマージしない。
-- 導入の順序: 所有者が変数（`none`）とAppの権限を置く → W5のPRをマージ → このPR（#51）をマージ。
+- Appは「Variables」のreadが要る（[Variables API](https://docs.github.com/en/rest/actions/variables)）。#55がマージされ、所有者が両方のAppに「Variables: Read-only」を足すまで、AIは変数を読めない扱いにし、どのPRもマージしない。
+- 導入の順序: 所有者が変数（`none`）とAppの権限を置く → #55をマージ → このPR（#51）をマージ。
 
 例: ownerがPR #Nをactiveにし、`OWNER_MERGE_ONLY`に加える。のちにrollbackし、policyからは外す。新しい旧方式のworkerは変数を読み、#Nがあるのでマージせず引継ぎで止まる。受領記録や通知を足しても消しても、結果は同じ。
 
