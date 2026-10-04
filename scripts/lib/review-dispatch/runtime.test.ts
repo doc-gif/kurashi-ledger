@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createRunner,
+  runnerAcceptable,
+  type Runner,
   Dispatcher,
   capabilityReady,
   workerEnvironment,
@@ -14,7 +17,7 @@ import {
   policy,
   snapshot,
 } from "../../../tests/fixtures/review-dispatch.ts";
-const capability: Capability = {
+const capability: Capability & { backend: "fixture" } = {
   backend: "fixture",
   version: "synthetic-1",
   codeHash: "a".repeat(64),
@@ -103,6 +106,7 @@ test("D10 off/shadow and unverified real CLI start no workers or posts", async (
         {
           capability: { ...capability, backend: "claude" },
           run: async () => assert.fail("AI launch"),
+          redact: async () => assert.fail("redact"),
         },
         broker,
         async () => s,
@@ -228,5 +232,33 @@ test("PR48-R003 dispatcher never signs: a runner result without run provenance i
     } finally {
       d.cleanup();
     }
+  }
+});
+
+test("PR53 round 3: a non-fixture runner without redact is refused at construction and by the dispatcher", async () => {
+  const real = {
+    capability: { ...capability, backend: "claude" as const },
+    run: async () => assert.fail("AI launch"),
+  };
+  assert.throws(() => createRunner(real as unknown as Runner), /without redact/);
+  assert.equal(runnerAcceptable(real as unknown as Runner), false);
+  assert.equal(runnerAcceptable({ ...real, redact: async () => {} }), true);
+  assert.equal(runnerAcceptable({ capability, run: real.run }), true); // fixture: no envelope to redact
+  const d = database();
+  try {
+    const p = policy(),
+      s = snapshot(),
+      broker = new ReviewBroker(
+        30,
+        { post: async () => assert.fail("POST"), list: async () => [] },
+        d.store,
+        new RunChannel(Buffer.alloc(32, 7)),
+      );
+    assert.equal(
+      await new Dispatcher(p, d.store).fixtureCycle(s, 30, real as unknown as Runner, broker, async () => s, 100),
+      "capability-disabled",
+    );
+  } finally {
+    d.cleanup();
   }
 });

@@ -405,7 +405,10 @@ class SigningTests(unittest.TestCase):
         self.assertEqual(ok.returncode, 0)
         stored = json.loads(path.read_text(encoding='utf-8'))
         self.assertEqual(stored, {'schema': 1, 'type': 'run-result-redacted', 'run': 'blocked',
-                                  'binding': BINDING, 'resultHash': env['resultHash']})
+                                  'binding': BINDING, 'resultHash': env['resultHash'], 'signature': env['signature']})
+        # Still auditable: the kept signature verifies over (run, binding, resultHash) with the launch key.
+        key = lines(result.stdout)[0]['key']
+        self.assertTrue(verify_one_time(key, supervisor.signed_message('blocked', BINDING, env['resultHash']), stored['signature']))
         for name in os.listdir(self.root):
             if (self.root / name).is_file():
                 self.assertNotIn(secret_like.encode(), (self.root / name).read_bytes(), name)

@@ -734,3 +734,112 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
     d.cleanup();
   }
 });
+
+// PR #53 round 3: parseResult content rejections are blocked and redacted exactly like the Broker-blocked path.
+async function cycleWith(
+  mutate: (j: Job) => string,
+  redactImpl: (j: Job, h: string) => Promise<void> = async () => {},
+): Promise<{ outcome: string; raw: string; calls: [string, string][]; row: { result: string | null; status: string }; d: ReturnType<typeof database>; key: string; run: string }> {
+  const d = database(),
+    p = policy(),
+    s = snapshot(),
+    engine = new Dispatcher(p, d.store),
+    endpoint = new RunChannel(Buffer.alloc(32, 7)),
+    broker = new ReviewBroker(30, { post: async () => assert.fail("POST"), list: async () => [] }, d.store, endpoint),
+    calls: [string, string][] = [];
+  const capability = {
+    backend: "fixture" as const,
+    version: "fixture",
+    codeHash: "a".repeat(64),
+    profileHash: "b".repeat(64),
+    probes: Object.fromEntries(
+      ["deny-network", "deny-gh-auth", "deny-other-ai-auth", "deny-keys", "deny-db", "deny-policy-write", "schema", "descendant-lock"].map((k) => [k, true]),
+    ),
+  };
+  let raw = "",
+    key = "",
+    run = "";
+  const runner = {
+    capability,
+    run: async (j: Job) => {
+      raw = mutate(j);
+      key = j.key;
+      run = j.run;
+      return { result: raw, treeEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
+    },
+    redact: async (j: Job, h: string) => {
+      calls.push([j.run, h]);
+      await redactImpl(j, h);
+    },
+  };
+  const outcome = await engine.fixtureCycle(s, 30, runner, broker, async () => s, 100);
+  const row = d.store.db.prepare("SELECT result, status FROM jobs").get() as { result: string | null; status: string };
+  // Whatever happened, nothing relaunches for this PR.
+  assert.equal(
+    await engine.fixtureCycle(s, 30, { capability, run: async () => assert.fail("relaunch") }, broker, async () => s, 101),
+    "waiting",
+  );
+  return { outcome, raw, calls, row, d, key, run };
+}
+const sha256 = (v: string): string => createHash("sha256").update(v).digest("hex");
+
+test("content rejections in parseResult are blocked: hash-only DB row, one notice, envelope redacted", async () => {
+  const token = join2("gh", "p_", "S".repeat(36));
+  const cases: [string, (j: Job) => string][] = [
+    ["secret shape", (j) => JSON.stringify({ ...fixtureResult(j), summary: `値 ${token}` })],
+    ["format character", (j) => JSON.stringify({ ...fixtureResult(j), summary: "a​b" })],
+    ["full-width look-alike", (j) => JSON.stringify({ ...fixtureResult(j), summary: "ｄｅｃｉｓｉｏｎ： accepted" })],
+    ["external link", (j) => JSON.stringify({ ...fixtureResult(j), unverified: ["see https://evil.example/x"] })],
+    ["evidence shape", (j) => JSON.stringify({ ...fixtureResult(j), evidence: ["https://github.com/synthetic/repository/blob/main/x"] })],
+    ["finding prose", (j) => JSON.stringify({ ...fixtureResult(j), decision: "changes-requested", findings: [{ id: "PR1-R001", location: "＠someone", impact: "x", completion: "x" }] })],
+    // A secret inside an otherwise malformed result is still content.
+    ["secret in malformed", (j) => JSON.stringify({ ...fixtureResult(j), extra: token })],
+  ];
+  for (const [name, mutate] of cases) {
+    const r = await cycleWith(mutate);
+    try {
+      assert.equal(r.outcome, "blocked", name);
+      assert.deepEqual(r.calls, [[r.run, sha256(r.raw)]], name);
+      assert.equal(r.row.status, "uncertain", name);
+      assert.deepEqual(JSON.parse(r.row.result!), { redacted: "publication-check", resultHash: sha256(r.raw) }, name);
+      assert.equal(r.d.store.notice(`${r.key}:publication-blocked:${r.run}`), false, name);
+    } finally {
+      r.d.cleanup();
+    }
+  }
+});
+
+test("malformed results stay uncertain but the persisted envelope is still redacted", async () => {
+  for (const mutate of [
+    () => "not json",
+    (j: Job) => JSON.stringify({ ...fixtureResult(j), extra: "field" }),
+    (j: Job) => JSON.stringify({ ...fixtureResult(j), generation: 99 }),
+  ]) {
+    const r = await cycleWith(mutate);
+    try {
+      assert.equal(r.outcome, "uncertain");
+      assert.deepEqual(r.calls, [[r.run, sha256(r.raw)]]);
+      assert.equal(r.row.result, null); // never stored in plaintext
+      assert.equal(r.d.store.notice(`${r.key}:publication-blocked:${r.run}`), true); // not blocked
+    } finally {
+      r.d.cleanup();
+    }
+  }
+});
+
+test("a failed redact keeps the job blocked and notifies the owner once", async () => {
+  const r = await cycleWith(
+    (j) => JSON.stringify({ ...fixtureResult(j), summary: "a​b" }),
+    async () => {
+      throw new Error("synthetic redact failure");
+    },
+  );
+  try {
+    assert.equal(r.outcome, "blocked");
+    assert.equal(r.calls.length, 1);
+    assert.equal(r.row.status, "uncertain");
+    assert.equal(r.d.store.notice(`${r.key}:redact-failed:${r.run}`), false);
+  } finally {
+    r.d.cleanup();
+  }
+});

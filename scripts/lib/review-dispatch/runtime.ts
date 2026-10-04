@@ -7,7 +7,12 @@ import {
   type Job,
 } from "./model.ts";
 import { Store } from "./store.ts";
-import { parseResult, ReviewBroker, type Provenance } from "./broker.ts";
+import {
+  parseResult,
+  ResultContentError,
+  ReviewBroker,
+  type Provenance,
+} from "./broker.ts";
 import {
   blockedNotice,
   redactedResult,
@@ -53,19 +58,39 @@ export function workerEnvironment(
     NO_COLOR: "1",
   };
 }
-export type Runner = {
-  capability: Capability;
-  // origin comes from the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
-  run(j: Job): Promise<{
-    result: string;
-    treeEnded: boolean;
-    uncertain: boolean;
-    origin: Provenance | null;
-  }>;
-  // Called when a result is blocked by the publication check: the run endpoint replaces its durable signed
-  // envelope with the hash-only form (supervisor.py redact). The real wiring is part of W4.
-  redact?(j: Job, resultHash: string): Promise<void>;
+type RunOutcome = {
+  result: string;
+  treeEnded: boolean;
+  uncertain: boolean;
+  // From the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
+  origin: Provenance | null;
 };
+// Replaces the run endpoint's durable signed envelope with its hash-only form (supervisor.py redact) whenever a
+// result is blocked or rejected. The real wiring is part of W4.
+type Redact = (j: Job, resultHash: string) => Promise<void>;
+// A fake runner keeps no envelope, so redact is optional. Every other runner MUST provide it (PR #53 round 3).
+export type Runner =
+  | {
+      capability: Capability & { backend: "fixture" };
+      run(j: Job): Promise<RunOutcome>;
+      redact?: Redact;
+    }
+  | {
+      capability: Capability & { backend: "codex" | "claude" };
+      run(j: Job): Promise<RunOutcome>;
+      redact: Redact;
+    };
+export function runnerAcceptable(r: Runner): boolean {
+  return (
+    r.capability.backend === "fixture" ||
+    typeof (r as { redact?: unknown }).redact === "function"
+  );
+}
+// Construction point for runners: refuses a non-fixture runner without redact even if the types are bypassed.
+export function createRunner<R extends Runner>(r: R): R {
+  if (!runnerAcceptable(r)) throw new Error("Runner without redact refused");
+  return r;
+}
 export class Dispatcher {
   readonly policy: Policy;
   readonly store: Store;
@@ -102,6 +127,7 @@ export class Dispatcher {
   ): Promise<string> {
     this.observe(s);
     if (this.policy.mode !== "active") return this.policy.mode;
+    if (!runnerAcceptable(runner)) return "capability-disabled";
     // Real CLI launch is deliberately unavailable until owner rollout/negative probes and reviewed installation.
     if (
       runner.capability.backend !== "fixture" ||
@@ -117,15 +143,20 @@ export class Dispatcher {
         this.store.uncertain(j);
         return "uncertain";
       }
-      const parsed = parseResult(value.result, j);
-      if (resultFindings(parsed, j, s, this.policy.repo).length) {
-        // Never keep a possibly secret result in the DB (30-day retention, backups): store its hash only.
-        this.store.result(j, redactedResult(value.result));
-        this.store.notice(blockedNotice(j));
-        this.store.uncertain(j); // blocked: persistent needs-owner, lease held, no relaunch.
-        await runner.redact?.(j, hash(value.result));
-        return "blocked";
+      let parsed: WorkerResult;
+      try {
+        parsed = parseResult(value.result, j);
+      } catch (error) {
+        // Content rejection (secret shape, format characters, look-alikes, links): blocked, like the check below.
+        if (error instanceof ResultContentError)
+          return await this.#block(j, runner, value.result);
+        // Malformed shape: stays uncertain, but any persisted plaintext (the signed envelope) is still redacted.
+        this.store.uncertain(j);
+        await this.#redact(j, runner, value.result);
+        return "uncertain";
       }
+      if (resultFindings(parsed, j, s, this.policy.repo).length)
+        return await this.#block(j, runner, value.result);
       this.store.result(j, value.result);
       // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
       const outcome = await broker.submit(
@@ -138,7 +169,7 @@ export class Dispatcher {
       if (outcome === "uncertain" || outcome === "blocked") {
         // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner).
         this.store.uncertain(j);
-        if (outcome === "blocked") await runner.redact?.(j, hash(value.result));
+        if (outcome === "blocked") await this.#redact(j, runner, value.result);
         return outcome;
       }
       this.store.release(j, {
@@ -151,6 +182,23 @@ export class Dispatcher {
     } catch {
       this.store.uncertain(j);
       return "uncertain";
+    }
+  }
+  // blocked = persistent needs-owner: DB keeps only the hash, one owner notice, lease held, envelope redacted.
+  async #block(j: Job, runner: Runner, raw: string): Promise<"blocked"> {
+    this.store.result(j, redactedResult(raw));
+    this.store.notice(blockedNotice(j));
+    this.store.uncertain(j);
+    await this.#redact(j, runner, raw);
+    return "blocked";
+  }
+  // A failed redact never unblocks or relaunches: the job stays as it is and the owner is notified once.
+  async #redact(j: Job, runner: Runner, raw: string): Promise<void> {
+    if (!runner.redact) return; // Fixture runner only (no envelope); runnerAcceptable refuses others.
+    try {
+      await runner.redact(j, hash(raw));
+    } catch {
+      this.store.notice(`${j.key}:redact-failed:${j.run}`);
     }
   }
 }

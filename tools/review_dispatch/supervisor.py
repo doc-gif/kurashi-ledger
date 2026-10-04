@@ -331,8 +331,8 @@ def inspect(root, run_id):
 def redact(root, run_id, result_hash):
     """Replace a signed envelope with its hash-only form after the publication check blocked the result.
 
-    Keeps the run, binding and result hash (the run stays reconcilable and is never relaunched); drops the
-    plaintext result and the signature. Refuses while the run lock is held or when the hash does not match.
+    Keeps the run, binding, result hash and signature (the signature covers only those values, so the run stays
+    auditable against the launch-recorded key and is never relaunched); drops the plaintext result. Refuses while the run lock is held or when the hash does not match.
     """
     if not valid_run(run_id) or not HEX64.fullmatch(result_hash):
         raise RuntimeError('invalid redact request')
@@ -346,10 +346,11 @@ def redact(root, run_id, result_hash):
             raise RuntimeError('signed result does not match')
         if value.get('type') == 'run-result-redacted':
             return 0
-        if value.get('type') != 'run-result' or not HEX64.fullmatch(str(value.get('binding', ''))):
+        if (value.get('type') != 'run-result' or not HEX64.fullmatch(str(value.get('binding', '')))
+                or not re.fullmatch(r'[a-f0-9]{32768}', str(value.get('signature', '')))):
             raise RuntimeError('unknown signed result')
-        durable(path, {'schema': 1, 'type': 'run-result-redacted', 'run': run_id,
-                       'binding': value['binding'], 'resultHash': result_hash})
+        durable(path, {'schema': 1, 'type': 'run-result-redacted', 'run': run_id, 'binding': value['binding'],
+                       'resultHash': result_hash, 'signature': value['signature']})
         return 0
     finally:
         os.close(fd)

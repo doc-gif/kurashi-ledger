@@ -19,6 +19,10 @@ import {
   publicationFindings,
 } from "./publication.ts";
 
+// Rejected because of WHAT the result says (secret shapes, format characters, look-alikes, injection, links),
+// as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
+export class ResultContentError extends Error {}
+
 export function parseResult(raw: string, j: Job): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
     throw new Error("Worker result too large");
@@ -28,9 +32,18 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   } catch {
     throw new Error("Invalid worker result");
   }
+  // Content first, so a secret is classified as content even when the shape is also wrong.
   // Format characters (zero-width etc.) are rejected anywhere in the decoded result, never stripped.
   if (/\p{Cf}/u.test(JSON.stringify(r) ?? ""))
-    throw new Error("Unsafe result prose");
+    throw new ResultContentError("Unsafe result prose");
+  if (
+    [raw, (JSON.stringify(r) ?? "").normalize("NFKC")].some((t) =>
+      /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
+        t,
+      ),
+    )
+  )
+    throw new ResultContentError("Private material in result");
   const singleLine = (v: string): boolean =>
     !/[\r\n\u0000-\u001f\u007f]/.test(v);
   // Checked after NFKC so full-width look-alikes cannot slip past. Only GitHub links in prose.
@@ -90,44 +103,38 @@ export function parseResult(raw: string, j: Job): WorkerResult {
           typeof v !== "string" ||
           !v.trim() ||
           v.length > 1200 ||
-          !singleLine(v) ||
-          !safeProse(v),
+          !singleLine(v),
       )
     )
       throw new Error("Invalid finding");
+  if (
+    r.findings.some((f) =>
+      [f.location, f.impact, f.completion].some((v) => !safeProse(v)),
+    )
+  )
+    throw new ResultContentError("Unsafe finding prose");
   if (
     new Set(r.findings.map((f) => f.id)).size !== r.findings.length ||
     (r.decision === "accepted" && r.findings.length)
   )
     throw new Error("Contradictory result");
   if (
-    r.evidence.some(
-      // Fixed shapes only: a workflow run, a review on a PR, or a commit (checked against the PR later).
-      (x) => typeof x !== "string" || !EVIDENCE_SHAPE.test(x),
-    ) ||
+    r.evidence.some((x) => typeof x !== "string") ||
     r.unverified.some(
       (x) =>
         typeof x !== "string" ||
         !x.trim() ||
         x.length > 1200 ||
-        !singleLine(x) ||
-        !safeProse(x),
-    )
-  )
-    throw new Error("Invalid evidence");
-  if (
-    [raw, JSON.stringify(r).normalize("NFKC")].some((t) =>
-      /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
-        t,
-      ),
-    )
-  )
-    throw new Error("Private material in result");
-  if (
-    !safeProse(r.summary) ||
+        !singleLine(x),
+    ) ||
     /[\u0000-\u0008\u000b-\u001f\u007f]/.test(r.summary)
   )
-    throw new Error("Unsafe result prose");
+    throw new Error("Invalid evidence");
+  // Fixed evidence shapes only (a workflow run, a review on a PR, a commit checked against the PR later).
+  if (r.evidence.some((x) => !EVIDENCE_SHAPE.test(x)))
+    throw new ResultContentError("Evidence link not allowed");
+  if (!safeProse(r.summary) || r.unverified.some((x) => !safeProse(x)))
+    throw new ResultContentError("Unsafe result prose");
   return r;
 }
 export type PostedReview = {
