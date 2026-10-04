@@ -1,6 +1,6 @@
 # 人・AI共通のレビュー受付（設計案）
 
-状態: **提案・未実装**。[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)は、default-offの基盤実装・検証・Claudeの独立レビューで完了する。本導入は所有者の設定後に分ける。Codexが設計から実装まで担当し、設計acceptedのあとに実装PRへ進む。このPRはIssueを閉じない。
+状態: **設計受入済み。default-offの[実装と導入前チェック](review-dispatch-implementation.md)を追加し、独立レビュー待ち**。[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)は、default-offの基盤実装・検証・Claudeの独立レビューで完了する。本導入は所有者の設定後に分ける。Codexが設計から実装まで担当し、設計acceptedのあとに実装PRへ進む。設計PR #46は完了。最後の実装PRだけでIssueを閉じる。
 
 通常のプログラムがGitHubの状態・認可・重複を判定し、条件が揃った仕事だけを人・AIへ渡す。Webhookを入口、15分ごとの照合を取りこぼし対策にする案。導入までは現在の5分確認と[PR書式](pr-review-loop.md)を使う。以下のactive規則はまだ現行規約を置き換えない。
 
@@ -146,7 +146,7 @@ Claudeの--bareはAPI認証が必要で、既存購読認証を使えるとは�
 
 ## 8. 実装・移行・完了
 
-1. 今回は設計/計画/READMEだけ。Claudeが設計全体を独立レビューする。
+1. 設計PR #46はClaudeの独立レビューを経てマージ済み。仕様の追加・変更は実装の差分と一緒に独立レビューする。
 2. accepted後の実装PRでpure reducer、SQLite Inbox/lease/Job/Outbox、gh取得、署名HTTP、通知/Broker boundary、supervisor/CLI capabilityを実装する。合成イベント・fake runnerを必須にし、実AI/App呼出しはdefault off。コードの配置・言語・CI jobは実装計画へ先に記録する。
 3. default-off実装と検証/独立acceptedでIssue45を完了し、残る担当レビューを既存chat/jobで再開する。本導入待ちで他タスクを止めない。
 4. ownerが正本移行PR、URL/購読/秘密、CLI/認証/費用、隔離と許可範囲を確認してから導入する。shadowでは起動・投稿0。15分照合の遅延を現行5分と比較し、許可なく既存確認頻度を変えない。
