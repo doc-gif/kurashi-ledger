@@ -352,6 +352,7 @@ export async function reconcile(
   store: Store,
 ): Promise<CycleResult[]> {
   if (p.mode === "off") return [];
+  store.checkReadyAfter(p); // red team round 4 RT-2: stop before any read or write
   const pending = store.pendingInbox();
   // PR48-R015: holds created before this fetch began; this reconcile's server time is after their creation.
   const unsettled = store.unsettledHolds();
@@ -411,7 +412,8 @@ export async function reconcile(
       if (row["policy"] !== p.revision) continue;
       const r =
         String(row["event"]) === "pull_request" ? bindReady(payload, c) : null;
-      if (r && !ready.some((x) => x.id === r.id)) ready.push(r);
+      // A Ready at or before readyAfter is from before the switch to this revision: never bound.
+      if (r && r.at > p.readyAfter && !ready.some((x) => x.id === r.id)) ready.push(r);
       const v =
         String(row["event"]) === "pull_request_review"
           ? bindReview(payload, c)
@@ -423,6 +425,7 @@ export async function reconcile(
         e.kind === "ready" &&
         !e.id.startsWith("created:") &&
         !ready.some((x) => x.id === e.id) &&
+        e.at > p.readyAfter &&
         recoverable(c, p, prior, e.at)
       )
         ready.push({

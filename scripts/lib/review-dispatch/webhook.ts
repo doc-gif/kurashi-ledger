@@ -163,13 +163,40 @@ export function serve(
   now: () => number,
   port = 0,
   stored: () => void = () => {},
-  // PR58-R003: the policy revision now (the CLI re-reads the owner's policy for each delivery, so a revision
-  // change applies without a restart). A failure is 503: nothing is stored or acknowledged.
-  revision: () => string = () => p.revision,
+  // PR58-R003 / red team round 4: the owner's policy now, read again for each signed delivery (only after the
+  // signature check), so targets, reviewers, owners, mode and revision apply without a restart. A policy that
+  // cannot be read, names another repository, installation or App than at startup, or raised the revision
+  // without moving readyAfter is 503: nothing is stored. Each cause is logged once.
+  load: () => Policy = () => p,
+  log: (s: string) => void = () => {},
 ): Server {
   if (p.mode !== "shadow" && p.mode !== "active")
     throw new Error("Webhook receiver is off");
   receiverPort(port);
+  const told = new Set<string>();
+  const refuse = (cause: string): number => {
+    if (!told.has(cause)) {
+      told.add(cause);
+      log(`Webhookの受け口: policyを使えないので配送を503にしています（${cause}）。docs/review-dispatch-implementation.mdの戻し方を見てください。`);
+    }
+    return 503;
+  };
+  const current = (): Policy | number => {
+    let now: Policy;
+    try {
+      now = load();
+    } catch {
+      return refuse("policy-unreadable");
+    }
+    if (now.repoId !== p.repoId || now.installationId !== p.installationId || now.receiveAppId !== p.receiveAppId)
+      return refuse("policy-identity-changed");
+    try {
+      store.checkReadyAfter(now);
+    } catch {
+      return refuse("ready-after-not-moved");
+    }
+    return now;
+  };
   const server = createServer((req, res) => {
     const reply = (status: number) => {
       if (!res.writableEnded) {
@@ -211,17 +238,27 @@ export function serve(
         const v = req.headers[key];
         headers[key] = typeof v === "string" ? v : undefined;
       }
-      let current: Policy;
-      try {
-        current = { ...p, revision: revision() };
-      } catch {
-        reply(503);
+      const digest = mac.digest(),
+        sig = headers["x-hub-signature-256"];
+      // The policy is read only for a signed delivery.
+      if (
+        !sig ||
+        !/^sha256=[a-f0-9]{64}$/.test(sig) ||
+        secret.length < 32 ||
+        !timingSafeEqual(digest, Buffer.from(sig.slice(7), "hex"))
+      ) {
+        reply(401);
+        return;
+      }
+      const policy = current();
+      if (typeof policy === "number") {
+        reply(policy);
         return;
       }
       const status =
         size > MAX_BODY
-          ? ingestOversized(current, store, secret, headers, mac.digest(), size, now())
-          : ingest(current, store, secret, headers, Buffer.concat(chunks), now());
+          ? ingestOversized(policy, store, secret, headers, digest, size, now())
+          : ingest(policy, store, secret, headers, Buffer.concat(chunks), now());
       reply(status);
       if (status === 202)
         try {

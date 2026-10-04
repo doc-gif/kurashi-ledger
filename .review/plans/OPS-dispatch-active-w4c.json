@@ -265,7 +265,7 @@
     },
     {
      "location": "webhook.ts serve・ingest → inbox.policy",
-     "result": "受けたときのpolicyのrevisionを記録（配送ごとに読み直す。読めなければ503で保存しない）。PR58-R003"
+     "result": "署名を確かめた配送ごとにpolicyの全体を読み直してingestする（対象・reviewer・owner・mode・revision）。読めない・repo/installation/App IDが起動時と違う・readyAfterを動かしていない、は503で保存せず、理由ごとに1回ログ。受けたときのrevisionを記録（PR58-R003、粗探し4回目RT-1・RT-3）"
     },
     {
      "location": "reconcile: bindReady・bindReview",
@@ -274,6 +274,10 @@
     {
      "location": "reconcile: 配送のない回復（recoverable）",
      "result": "前の観測のrevisionが今と同じときだけ（従来どおり）"
+    },
+    {
+     "location": "reconcile: revisionの切替とreadyAfter",
+     "result": "前のrevisionで保存した最後の観測より後でなければ、読む前に止める（終了コード4）。readyAfter以前のReadyは配送でも回復でも結び付けない（粗探し4回目RT-2）"
     }
    ]
   },

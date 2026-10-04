@@ -276,6 +276,28 @@ test("PR48-R013/R015 a PR held for an hour is reported once; a hold made in the 
   }
 });
 
+test("Red team round 4 RT-2: shadow stops with exit 4 when the revision changed but readyAfter did not move", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
+  const x = await cliSetup((p) => {
+    p.mode = "shadow";
+  });
+  try {
+    x.d.store.saveObservation("1:1", { policy: "p0", observedAt: 5000 } as never);
+    const github = { ready: false, now: 5, calls: 0 };
+    const lines: string[] = [];
+    const args = ["shadow", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh"];
+    assert.equal(await main(args, { ...x.env, GH_TOKEN: "synthetic-dispatch-read" }, (s) => lines.push(s), () => 10000, { transport: () => fakeGitHub(github) }), 4);
+    assert.equal(github.calls, 0);
+    assert.match(lines.join("\n"), /readyAfterが前のrevisionの最後の観測（PR #1、/);
+  } finally {
+    x.cleanup();
+  }
+});
+
 // Shared pieces for the CLI tests of the active path (Codex PR56-R003/R005).
 async function activeCli() {
   const fs = await import("node:fs");

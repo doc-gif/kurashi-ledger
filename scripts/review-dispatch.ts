@@ -16,6 +16,7 @@ import {
   Store,
   canonicalRoot,
   CLOCK_SKEW_MS,
+  ReadyAfterError,
 } from "./lib/review-dispatch/store.ts";
 import { checkLockFile, readOwnerPolicy } from "./lib/review-dispatch/host.ts";
 import { EVENTS, serve, receiverPort } from "./lib/review-dispatch/webhook.ts";
@@ -194,7 +195,16 @@ export async function main(
     if (!token) throw new Error("Reduced dispatch-read token required");
     const transport = (deps.transport ?? ghTransport)(token, values.get("--gh") ?? "");
     const dispatcher = new Dispatcher(policy, store);
-    const results = await reconcile(new GhReader(policy.repo, transport), policy, store);
+    let results: Awaited<ReturnType<typeof reconcile>>;
+    try {
+      results = await reconcile(new GhReader(policy.repo, transport), policy, store);
+    } catch (e) {
+      if (!(e instanceof ReadyAfterError)) throw e;
+      log(
+        `policyのrevisionを変えたのに、readyAfterが前のrevisionの最後の観測（PR #${e.pr}、${new Date(e.observedAt).toISOString()}）より後になっていません。readyAfterを切替の時刻にしてください。照合しません。`,
+      );
+      return 4;
+    }
     for (const result of results) {
       const r = dispatcher.observe(result.snapshot);
       if (r.notice) log(`PR #${result.pr}: ${r.status}`);
@@ -365,15 +375,9 @@ async function receive(
   const secret = readTokenFile(values.get("--secret-file") ?? "");
   if (Buffer.byteLength(secret) < 32) throw new Error("Webhook secret too short");
   const file = values.get("--policy") ?? "";
-  // PR58-R003: each delivery is attributed to the revision of the owner's policy at receipt. Only the
-  // revision changes without a restart; a policy with another repository, installation or App is refused.
-  const revision = (): string => {
-    const now = validatePolicy(JSON.parse(readOwnerPolicy(file, CODE_ROOT)));
-    if (now.repoId !== policy.repoId || now.installationId !== policy.installationId || now.receiveAppId !== policy.receiveAppId)
-      throw new Error("Policy identity changed; restart the receiver");
-    return now.revision;
-  };
-  const server = serve(policy, store, Buffer.from(secret, "utf8"), clock, port, () => touchTrigger(root), revision);
+  // PR58-R003 / red team round 4 RT-1: each signed delivery is taken with the owner's policy as it is now.
+  const load = (): Policy => validatePolicy(JSON.parse(readOwnerPolicy(file, CODE_ROOT)));
+  const server = serve(policy, store, Buffer.from(secret, "utf8"), clock, port, () => touchTrigger(root), load, log);
   log(`Webhookの受け口: 127.0.0.1:${port}（mode ${policy.mode}）`);
   await new Promise<void>((resolve) => {
     const stop = () => server.close(() => resolve());

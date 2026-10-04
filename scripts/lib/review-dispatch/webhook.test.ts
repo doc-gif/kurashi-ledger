@@ -273,28 +273,66 @@ test("W4 receiver listens on loopback only, on a fixed port other than 443, and 
   }
 });
 
-test("PR58-R003 the receiver records the policy revision current at receipt; a failed re-read stores nothing (503)", async () => {
+test("PR58-R003 / red team round 4: each signed delivery is taken with the whole policy read now; refusals are 503, logged once per cause", async () => {
   const d = database(),
     p = policy();
   p.mode = "shadow";
-  let revision: () => string = () => "p1";
-  const server = serve(p, d.store, secret, () => 100, 0, () => {}, () => revision());
+  let now: () => ReturnType<typeof policy> = () => p;
+  let loads = 0;
+  const logs: string[] = [];
+  const server = serve(p, d.store, secret, () => 100, 0, () => {}, () => (loads++, now()), (s) => logs.push(s));
   await once(server, "listening");
   try {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
-    const send = (id: string) => post(address.port, { ...headers(), "x-github-delivery": id }, body);
+    const send = (id: string, raw = body, h: Record<string, string> = headers(raw)) =>
+      post(address.port, { ...h, "x-github-event": h["x-github-event"]!, "x-github-delivery": id }, raw);
     assert.equal(await send("before"), 202);
-    revision = () => "p2"; // the owner raised the revision; no restart
-    assert.equal(await send("after"), 202);
-    revision = () => {
-      throw new Error("policy unreadable");
-    };
-    assert.equal(await send("unreadable"), 503);
+    // p2 without a restart: a new revision and a new target PR 2. Its reviewer's edit is marked.
+    const p2 = policy();
+    p2.mode = "shadow";
+    p2.revision = "p2";
+    p2.targets.push({ pr: 2, implementer: 20, reviewers: [30] });
+    now = () => p2;
+    const edit = Buffer.from(
+      JSON.stringify({
+        repository: { id: 1 },
+        installation: { id: 2 },
+        sender: { id: 30 },
+        action: "edited",
+        issue: { number: 2, pull_request: {} },
+        comment: { user: { id: 30 } },
+      }),
+    );
+    assert.equal(await send("edit-pr2", edit, { ...headers(edit), "x-github-event": "issue_comment" }), 202);
+    assert.equal(d.store.marked("1:2"), true);
     assert.deepEqual(
       d.store.pendingInbox().map((r) => [r["delivery"], r["policy"]]).sort(),
-      [["after", "p2"], ["before", "p1"]],
+      [["before", "p1"], ["edit-pr2", "p2"]],
     );
+    // An unsigned request never reads the policy.
+    const before = loads;
+    assert.equal(await send("unsigned", body, { ...headers(), "x-hub-signature-256": "sha256=" + "0".repeat(64) }), 401);
+    assert.equal(loads, before);
+    // p2 says off: not accepted.
+    now = () => ({ ...p2, mode: "off" });
+    assert.equal(await send("off"), 503);
+    // Unreadable twice, another installation, readyAfter not moved: 503, one log line per cause.
+    now = () => {
+      throw new Error("policy unreadable");
+    };
+    assert.equal(await send("unreadable-1"), 503);
+    assert.equal(await send("unreadable-2"), 503);
+    now = () => ({ ...p2, installationId: 9 });
+    assert.equal(await send("other-installation"), 503);
+    d.store.saveObservation("1:1", { policy: "p2", observedAt: 5000 } as never);
+    now = () => ({ ...p2, revision: "p3", readyAfter: 5000 });
+    assert.equal(await send("ready-after"), 503);
+    assert.deepEqual(
+      logs.map((s) => s.match(/（([a-z-]+)）/)?.[1]),
+      ["policy-unreadable", "policy-identity-changed", "ready-after-not-moved"],
+    );
+    assert.equal(d.store.pendingInbox().length, 2);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
     d.cleanup();

@@ -48,6 +48,17 @@ export class ClockRollbackError extends Error {
     this.behindMs = behindMs;
   }
 }
+// Red team round 4 RT-2: a new policy revision must move readyAfter past the last observation saved under the
+// previous revision, so a Ready made before the switch never binds to the new revision.
+export class ReadyAfterError extends Error {
+  readonly pr: number;
+  readonly observedAt: number;
+  constructor(pr: number, observedAt: number) {
+    super("readyAfter must be later than the last observation under the previous policy revision");
+    this.pr = pr;
+    this.observedAt = observedAt;
+  }
+}
 const posix = process.platform !== "win32";
 type Row = Record<string, string | number | null>;
 export class Store {
@@ -288,6 +299,15 @@ export class Store {
         "DELETE FROM evidence WHERE key=? AND id LIKE 'observation:%' AND rowid NOT IN (SELECT rowid FROM evidence WHERE key=? AND id LIKE 'observation:%' ORDER BY rowid DESC LIMIT ?)",
       )
       .run(key, key, OBSERVATION_HISTORY);
+  }
+  // Red team round 4 RT-2: throws ReadyAfterError when a target's last saved observation is under another
+  // revision and readyAfter is not later than its server time. Read-only (the receiver uses it too).
+  checkReadyAfter(p: Policy): void {
+    for (const t of p.targets) {
+      const o = this.observation<{ policy?: unknown; observedAt?: unknown }>(keyOf(p, t.pr));
+      if (o && o.policy !== p.revision && !(p.readyAfter > Number(o.observedAt)))
+        throw new ReadyAfterError(t.pr, Number(o.observedAt));
+    }
   }
   // PR48-R015: a quota pause or blocked row starts with its time pending (NULL). The first reconcile that
   // began after the row existed and saved this PR's observation settles it to that server time (the latest

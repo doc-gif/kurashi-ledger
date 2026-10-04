@@ -1472,3 +1472,39 @@ test("Red team round 3 RT-2: a short list against a valid count over the cap, an
     }
   }
 });
+test("Red team round 4 RT-2: a revision change must move readyAfter past the last observation; a pre-switch Ready never binds", async () => {
+  const { ReadyAfterError } = await import("./store.ts");
+  const d = database(),
+    f = fixture();
+  const events: Record<string, unknown>[] = [];
+  try {
+    f.state.now = 5;
+    await reconcile(timelineReader(f, () => events), policy(), d.store); // p1, complete, observed at t(5)
+    // Still p1: Ready at t(7). The owner switches to p2 at t(7.2); the delivery arrives after it (p2).
+    events.push({ id: 9, event: "ready_for_review", actor: { id: 20 }, created_at: t(7) });
+    d.store.inbox(3, "late", "pull_request", JSON.stringify(readyAt(7)), 7500, "p2");
+    const p2 = policy();
+    p2.revision = "p2";
+    f.state.now = 8;
+    // readyAfter left as it was: the reconcile stops before reading anything.
+    await assert.rejects(reconcile(timelineReader(f, () => events), p2, d.store), ReadyAfterError);
+    assert.equal(d.store.pendingInbox().length, 1);
+    // readyAfter at the switch: the pre-switch Ready binds 0 times.
+    p2.readyAfter = Date.parse(t(7.2));
+    const [r] = await reconcile(timelineReader(f, () => events), p2, d.store);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    assert.equal(assess(p2, r!.snapshot, null).reason, "new-ready-required");
+    // A new Draft -> Ready after the switch binds exactly once.
+    events.push(
+      { id: 10, event: "convert_to_draft", actor: { id: 20 }, created_at: t(9) },
+      { id: 11, event: "ready_for_review", actor: { id: 20 }, created_at: t(10) },
+    );
+    d.store.inbox(3, "new", "pull_request", JSON.stringify(readyAt(10)), 10500, "p2");
+    f.state.now = 11;
+    const [fresh] = await reconcile(timelineReader(f, () => events), p2, d.store);
+    assert.deepEqual(d.store.evidence<{ id: string }>("1:1", "ready").map((x) => x.id), ["timeline:11"]);
+    assert.equal(assess(p2, fresh!.snapshot, null).status, "eligible");
+  } finally {
+    d.cleanup();
+  }
+});
