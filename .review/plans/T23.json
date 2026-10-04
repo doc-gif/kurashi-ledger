@@ -24,7 +24,7 @@
     {
       "description": "状態判定はネットワークでGitHubを読み、任意でコメントを投稿するが、docs/review-prevention.mdは汎用CLIがネットワーク・GitHub投稿を行わないと書いている。",
       "state": "resolved",
-      "resolution": "既存のguard.py・ci.py・changed_paths.pyの性質は変えない。判定の中核（patrol.py）はネットワーク・投稿・実行をしない純粋な関数にし、GitHubを読む部分（github_source.py）を分ける。読取りは`gh api`のGETだけ、投稿は`--post`を明示したときだけで既定はdry-run。docs/review-prevention.mdとREADMEに、この2つのモジュールの信頼境界を書き分ける。CIからは投稿しない（docs/github-agent-operations.mdの「定期実行」）。"
+      "resolution": "既存のguard.py・ci.py・changed_paths.pyの性質は変えない。判定の中核（patrol.py）はネットワーク・投稿・実行をしない純粋な関数にし、GitHubを読む部分（github_source.py）を分ける。読取りは`gh api`のGETだけ、投稿は`--post`を明示したときだけで既定はdry-run。docs/review-prevention.mdとREADMEに、この2つのモジュールの信頼境界を書き分ける。CIからは投稿しない（docs/github-agent-operations.mdの「定期実行」）。（superseded: 2026-10-04の「T23を絞る」（下の項目）で投稿と--postを外した。github_source.pyはGETだけ）"
     },
     {
       "description": "同じGitHubアカウントを全員で共有するので、役割はloginで識別できない。一方、public repoでは誰でもコメントに印を書ける。",
@@ -39,7 +39,7 @@
     {
       "description": "PR38-R005: GitHubには「同じ印がなければ投稿する」原子的な操作がないので、2つの巡回が両方とも取り直しを終えてから投稿すると、2件になる。",
       "state": "resolved",
-      "resolution": "投稿は、OSのファイルロック（POSIXはfcntl.flock、Windowsはmsvcrt.locking）を取ってから、取り直し→再判定→投稿→解放の順に行い、巡回の間で直列化する。ロックのファイルは既定でホームの下（--lock-fileで変えられる）。ロックを取れなければ投稿しない。前提として、--postは同じ機械（同じロックのファイル）からだけ行い、ほかの機械からはdry-runだけにする（READMEとpr-review-loopに書く）。試験は、取り直しのあとにbarrierを置き、ロックなしなら2件になることと、ロックありなら1件になることを両方確かめる。"
+      "resolution": "投稿は、OSのファイルロック（POSIXはfcntl.flock、Windowsはmsvcrt.locking）を取ってから、取り直し→再判定→投稿→解放の順に行い、巡回の間で直列化する。ロックのファイルは既定でホームの下（--lock-fileで変えられる）。ロックを取れなければ投稿しない。前提として、--postは同じ機械（同じロックのファイル）からだけ行い、ほかの機械からはdry-runだけにする（READMEとpr-review-loopに書く）。試験は、取り直しのあとにbarrierを置き、ロックなしなら2件になることと、ロックありなら1件になることを両方確かめる。（superseded: 2026-10-04の「T23を絞る」で投稿とロックを外した。通知と重複の防止はIssue #45の受付の担当）"
     },
     {
       "description": "PR38-R007: 必須のcheckの成功が、どのbaseとのmerge commitを試験したものかを、check runのAPIだけでは確かめられない（PRとrunのbase.shaは更新が遅れる）。",
@@ -74,12 +74,17 @@
     {
       "description": "2026-10-04の所有者決定「T23を絞る」。#46・#48（Issue #45）のdocs/review-dispatch-design.md 5節の表は、active時の重複判定と通知をIssue #45の受付/Brokerだけに委ね、T23にはCI-policyの保護の責務を残す。T23の--postによる通知の投稿・ロックは、この通知の担当と重なる。",
       "state": "resolved",
-      "resolution": "T23から通知の投稿（github_source.pyの--post、投稿・ロックの経路、通知の本文と投稿済みの印の解析）を外す。残すのは、読取りだけの状態の判定（patrol.pyの純粋な判定と、GETだけで集めて報告を出すCLI）、CI-policyの保護（policy_pathsと、Issue #41・rulesetの決定を待つreview-preventionの保護の節）、G1〜G7の不変条件。開始条件の不足は、投稿の代わりに判定の出力の`gap`（stale-handoff・ci-failed・ci-other-base）として機械で読める形で残す。#45がこの判定を呼ぶか突き合わせるかは、review-dispatch-designの正本移行PRの検討事項として台帳のT23に注記するだけで、コードは書かない。境界の一覧（#44の表の代わり）: 書込み=なし（GETだけ、gh api、shellなし）／入力=開いているPRの一覧・詳細・ファイル・コメント・レビュー・check run・ジョブのログ・commit・Issue・branch／出力=標準出力のJSONと終了コード（0・1・2・3）／信頼=OWNER・MEMBER・COLLABORATORとtrusted_logins（botのloginの設定は#42の台帳の後続のまま）。variant: 同じ読取りの巡回が同時に動いても書込みがないので結果は互いに影響しない（試験で確かめる）。"
+      "resolution": "T23から通知の投稿（github_source.pyの--post、投稿・ロックの経路、通知の本文と投稿済みの印の解析）を外す。残すのは、読取りだけの状態の判定（patrol.pyの純粋な判定と、GETだけで集めて報告を出すCLI）、CI-policyの保護（policy_pathsと、Issue #41・rulesetの決定を待つreview-preventionの保護の節）、G1〜G7の不変条件。開始条件の不足は、投稿の代わりに判定の出力の`gap`（stale-handoff・ci-failed・ci-other-base）として機械で読める形で残す。#45がこの判定を呼ぶか突き合わせるかは、review-dispatch-designの正本移行PRの検討事項として台帳のT23に注記するだけで、コードは書かない。境界の一覧（#44の表の代わり）: 書込み=なし（GETだけ、gh api、shellなし）／入力=開いているPRの一覧・詳細・ファイル・コメント・レビュー・check run・ジョブのログ・commit・Issue・branch／出力=標準出力のJSONと終了コード（0・1・2・3）／信頼=OWNER・MEMBER・COLLABORATORとtrusted_logins。variant: 同じ読取りの巡回が同時に動いても書込みがないので結果は互いに影響しない（試験で確かめる）。（botのloginの設定は、下のbotの記録の項目でこのPRに入れた。#42の台帳の後続は(4)を除いて済み）"
     },
     {
       "description": "AIの書込みをGitHub Appへ移したあと、botが書いた記録のauthor_associationはNONE（実測。PR #38のコメント5975831381）になり、trusted_associationsだけでは読まれない。PR #38自身で、botのworkingを無視して古いreadyで判定した。#42の台帳はこれをT23の後続にしていた。",
       "state": "resolved",
       "resolution": "調整係の指示（所有者が承認した範囲の中の設計の修正）でこのPRに入れる。.review/patrol.jsonのtrusted_loginsを、botのloginから系統（codex・claude）への対応にし、コードに書かない。設定したbotの記録は、author_associationがNONEでも読む。人のアカウントはOWNER・MEMBER・COLLABORATORの規則のまま。知らないbotとNONEの人は読まない。botの記録は、印の系統（引継ぎはagent_idの先頭、レビューはrole由来の系統）とbotの系統を照合し、食い違えば数えず未確認にする（最新の引継ぎが食い違えばPRを未確認、ready後のレビューが食い違えば未確認）。doc-gifが書いた記録は今のまま。#42の後続の(5)としてtoken発行のスクリプトをpolicy_pathsに加える。(4)（作者・最後のpushがbotでないPRや、同じAIのAppの承認の警告）は、PRの作者とpushの主体を読む別の取得が要るので、このPRでは扱わず台帳に残りとして書く。"
+    },
+    {
+      "description": "提出前の粗探し（head cc13577）: P2-A botのpull reviewのGitHubの状態とcommit_idを照合していない。P2-B #45のBrokerの描画は印の2行目に`<!-- kurashi-ledger:dispatch-run:v1:<run> -->`を置き、parse_recordsがそこで読むのをやめる。P2-C CIはpackage.jsonのscripts経由で動くので、package.json・tsconfigの変更も保護対象（PR4-R001の変種）。P2-D 絞り込みの残り（review-prevention.mdの--postの文、PRの説明、計画の古い項目）。P2-E #45がactiveになるまでの通知の担当が書かれていない。P3 #45の実装のパス、trusted_loginsの形、出力の作者、#44・#49との順序、github_sourceの資格情報、試験の不足。",
+      "state": "resolved",
+      "resolution": "1回でまとめて直す。P2-A: 設定したbotの記録で系統が分かるもののうち、source=reviewは、commit_idが記録のhead_shaと同じで、GitHubの状態がdecisionに対応する（accepted→APPROVED、changes-requested→CHANGES_REQUESTED、needs-owner→COMMENTED）ときだけ数える。食い違いは読めない記録（readyのあとなら未確認）。PENDING（submitted_atなし）は読まない。DISMISSEDは数えない（警告）。botのdecisionがissue commentにあれば警告する（数えるかは現状どおり）。doc-gifのCOMMENTの記録は今のまま。P2-B: 最初の印のすぐあとにある同じ名前空間の別の印の行（`<!-- kurashi-ledger:...:v1... -->`で、handoff・review以外）を読み飛ばす。Brokerの描画の形で試験する。P2-C: package.json・tsconfig.json・e2e/tsconfig.jsonをpolicy_pathsに加える。P2-D: review-prevention.mdの--postの文を直し、PRの説明を絞った範囲・botの対応・trusted_loginsに書き直し、計画の古い項目にsupersededを付ける。P2-E: 台帳のT23とpr-review-loopの6節に「#45がactiveになるまで、開始条件の不足の通知は2節の現行手順（各担当の確認。同じheadに1回）で行う。T23は判定だけ」と書く。docs/review-dispatch-design.md:99（Codexの文書）は変えず、正本移行PRで直す。P3: #45のdispatcher・Broker・policy adapterのパス（scripts/lib/review-dispatch/**、scripts/review-dispatch.ts、tools/review_dispatch/**）をpolicy_pathsに加える（I007）。trusted_loginsのキーを`^[a-z0-9-]+\\[bot\\]$`で検査する。出力に作者のloginを入れる。READMEに、github_sourceはghの既定のログインで動くので、レビュー済みのmainの写しからだけ実行し、移行のあとはdispatch-readのトークンを勧めると書く。順序: #44が先に入れば、その表を計画に足す。#49（版1の計画の抜け道を塞ぐ）は、既存のT23.jsonを除外の一覧に入れる必要がある（PRの説明に書く）。後回し（所有者・移行の判断）: doc-gifの記録を信頼しなくする時期、#42の後続の(4)。台帳に記録する。"
     }
   ],
   "assessments": [
@@ -107,7 +112,7 @@
         },
         {
           "id": "trust",
-          "method": "試験: 古いhead/baseのready、workingで取り消したready、実装者と同じagent_idのレビュー、外部の作者（author_association）の印、Copilotの承認、GitHubのAPPROVEDだけ（印なし）を与える。ci.pyで、候補の台帳の差分が追加だけと報告されることを確かめる。 前置きの文のあとの印・後置の例示の印を数えないこと、Draftに戻したPRが着手候補・acceptedにならないこと、同じheadで新しいbaseのreadyと古いbaseのCIの成功の組合せが着手候補・acceptedにならないこと、試験したbaseの証拠を読めなければ未確認になること、関連Issueの取得失敗で終了コード3・投稿なしになることを試験する。 同じ系統の別subagentのaccepted（両方向）、旧roleで系統が分からないレビュー、roleとagent_idの系統の食い違い、同じ秒のreadyとレビュー（両方の順序とIDの大小の逆転）、ファイル一覧の打切り（changed_filesとの不一致）、別repoのsnapshot・repositoryの欠落を試験する。 botの記録: doc-gifのreadyのあとのbotのworkingで作業中になる、Codexのbotがrole: claude-reviewerのレビューを書くと食い違いで未確認、知らないbotとNONEの人の記録は読まない。",
+          "method": "試験: 古いhead/baseのready、workingで取り消したready、実装者と同じagent_idのレビュー、外部の作者（author_association）の印、Copilotの承認、GitHubのAPPROVEDだけ（印なし）を与える。ci.pyで、候補の台帳の差分が追加だけと報告されることを確かめる。 前置きの文のあとの印・後置の例示の印を数えないこと、Draftに戻したPRが着手候補・acceptedにならないこと、同じheadで新しいbaseのreadyと古いbaseのCIの成功の組合せが着手候補・acceptedにならないこと、試験したbaseの証拠を読めなければ未確認になること、関連Issueの取得失敗で終了コード3・投稿なしになることを試験する。 同じ系統の別subagentのaccepted（両方向）、旧roleで系統が分からないレビュー、roleとagent_idの系統の食い違い、同じ秒のreadyとレビュー（両方の順序とIDの大小の逆転）、ファイル一覧の打切り（changed_filesとの不一致）、別repoのsnapshot・repositoryの欠落を試験する。 botの記録: doc-gifのreadyのあとのbotのworkingで作業中になる、Codexのbotがrole: claude-reviewerのレビューを書くと食い違いで未確認、知らないbotとNONEの人の記録は読まない。 粗探し（cc13577）の対応: botのレビューのcommit_idの食い違い・状態の食い違い（3つのdecision）・PENDING・DISMISSED・issue commentのbotのdecision、Brokerの描画の形（2行目の別の印）、policy_pathsの追加、trusted_loginsの形、出力の作者を試験する。",
           "expected": "どれも着手候補・acceptedにならない。台帳の差分の報告は追加だけ。判定の出力は承認・マージの許可ではないと明記される。 どれも着手候補・acceptedにならず、証拠や関連Issueを読めないときは未確認。 同じ系統・系統不明のレビューはacceptedにならず、順序や完全性を証明できないときは未確認、別repoのsnapshotは拒否される。"
         }
       ]
