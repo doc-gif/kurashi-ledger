@@ -985,3 +985,178 @@ test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or
     }
   }
 });
+
+// PR48-R013: a reader whose PR response changes between the first and the last read (updated_at moved
+// during the fetch), so the observation is transiently incomplete.
+function changingReader(f: ReturnType<typeof fixture>) {
+  let reads = 0;
+  return new GhReader("synthetic/repository", async (path, h) => {
+    const r = await f.send(path, h);
+    if (!path.endsWith("/pulls/1")) return r;
+    return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), updated_at: t(10 + ++reads) }) };
+  });
+}
+test("PR48-R013 a transiently incomplete reconcile saves nothing and keeps the delivery; a later reconcile binds the Ready", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    const prior = d.store.observation<{ observedAt: number }>("1:1")!;
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    const [held] = await reconcile(changingReader(f), p, d.store);
+    assert.equal(held!.snapshot.complete, false);
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.deepEqual(d.store.observation("1:1"), prior);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 a missed Ready webhook is still recovered after an incomplete reconcile (the window does not move)", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store); // observedAt t(2)
+    f.state.ready = true; // Ready at t(3), no delivery
+    f.state.now = 5;
+    await reconcile(changingReader(f), p, d.store);
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 an untrusted workflow is not transient: the delivery is processed and its Ready is never bound later", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    const [r] = await reconcile(f.reader(), p, d.store);
+    assert.equal(r!.observation.workflow, "untrusted");
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(5)));
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R016 observation history keeps change points only and at most OBSERVATION_HISTORY rows per PR", async () => {
+  const { OBSERVATION_HISTORY } = await import("./store.ts");
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  const rows = () =>
+    Number(d.store.db.prepare("SELECT count(*) n FROM evidence WHERE id LIKE 'observation:%'").get()!["n"]);
+  try {
+    for (let n = 2; n < 12; n++) {
+      f.state.now = n;
+      await reconcile(f.reader(), p, d.store);
+    }
+    assert.equal(rows(), 1);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(11)));
+    f.state.legacy = true; // the observed state changes (legacy Ready): one more row
+    f.state.now = 12;
+    await reconcile(f.reader(), p, d.store);
+    assert.equal(rows(), 2);
+    for (let n = 0; n < OBSERVATION_HISTORY + 20; n++)
+      d.store.saveObservation("1:1", { observedAt: n, status: `synthetic-${n % 2}` } as never);
+    assert.equal(rows(), OBSERVATION_HISTORY);
+    const latest = OBSERVATION_HISTORY + 19;
+    assert.ok(d.store.evidence<{ observedAt: number }>("1:1", "observation").some((o) => o.observedAt === latest));
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R014 the observation compares accepted() with the current canon's decision: accepted for this head/base", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  p.mode = "shadow";
+  const record = (decision: string, head = HEAD) => ({
+    id: 70,
+    user: { id: 30 },
+    created_at: t(4),
+    body: `<!-- kurashi-ledger:review:v1 -->\nrole: claude-reviewer\nhead_sha: ${head}\nbase_sha: ${BASE}\ndecision: ${decision}\n`,
+  });
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.conversation = [record("accepted")];
+    const [r] = await reconcile(f.reader(), p, d.store);
+    assert.equal(r!.observation.legacyAccepted, true);
+    assert.equal(r!.observation.accepted, false); // no red-team record and no APPROVE
+    assert.equal(r!.observation.acceptedDiffers, true);
+    for (const other of [record("changes-requested"), record("accepted", "f".repeat(40))]) {
+      f.state.conversation = [record("accepted"), { ...other, id: 71, created_at: t(4.5) }];
+      const [x] = await reconcile(f.reader(), p, d.store);
+      assert.equal(x!.observation.legacyAccepted, false);
+      assert.equal(x!.observation.acceptedDiffers, false);
+    }
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R014 a human reviewer's manual red-team record is the fault-finding evidence; RTs stay open until resolved in its table", async () => {
+  const p = policy();
+  p.targets[0]!.reviewers = [40]; // a human reviewer
+  const redTeam = (id: number, actor: number, lines: string, at = 4, head = HEAD) => ({
+    id,
+    user: { id: actor },
+    created_at: t(at),
+    body: `<!-- kurashi-ledger:red-team:v1 -->\nauditor_id: synthetic\nhead_sha: ${head}\nbase_sha: ${BASE}\nplan_path: .review/plans/T00.json\n\n| 原因 | 判定 | 箇所 |\n| --- | --- | --- |\n${lines}`,
+  });
+  const cases: [string, Record<string, unknown>[], string[] | null][] = [
+    ["clear", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n")], []],
+    ["new RT", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n\nRT-1: synthetic\n")], ["RT-1"]],
+    ["cannot check", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 確認できない | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
+    ["earlier RT resolved", [redTeam(80, 30, "RT-2: synthetic\n", 3.5, "f".repeat(40)), redTeam(81, 40, "| RT-2 | 解消 | commit |\n")], []],
+    ["earlier RT not re-checked", [redTeam(80, 30, "RT-2: synthetic\n", 3.5, "f".repeat(40)), redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n")], ["RT-2"]],
+    ["earlier RT still open", [redTeam(80, 30, "RT-2: synthetic\n", 3.5), redTeam(81, 40, "| RT-2 | 未解消 | 解消していない |\n")], ["RT-2"]],
+    ["implementer's record", [redTeam(80, 20, "| INV-REVIEW/x | 該当なし | - |\n")], null],
+    ["other pair", [redTeam(80, 40, "| INV-REVIEW/x | 該当なし | - |\n", 4, "f".repeat(40))], null],
+    ["marker not on the first line", [{ ...redTeam(80, 40, ""), body: `引用\n${redTeam(80, 40, "").body}` }], null],
+  ];
+  for (const [name, conversation, unresolved] of cases) {
+    const d = database(),
+      f = fixture();
+    try {
+      f.state.ready = true;
+      f.state.now = 5;
+      f.state.conversation = conversation;
+      const [r] = await reconcile(f.reader(), p, d.store);
+      if (unresolved === null) assert.equal(r!.snapshot.faultfinding, null, name);
+      else assert.deepEqual(r!.snapshot.faultfinding, { actor: 40, pair: { head: HEAD, base: BASE }, unresolved }, name);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // An AI reviewer's record is not a manual record: its evidence is the dispatcher's own faultfinding job.
+  const ai = policy();
+  const d = database(),
+    f = fixture();
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.conversation = [redTeam(80, 30, "| INV-REVIEW/x | 該当なし | - |\n")];
+    const [r] = await reconcile(f.reader(), ai, d.store);
+    assert.equal(r!.snapshot.faultfinding, null);
+  } finally {
+    d.cleanup();
+  }
+});

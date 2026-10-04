@@ -245,7 +245,7 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
       read.prepare("SELECT delivery FROM inbox").get()!["delivery"],
       "retained",
     );
-    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 4); // schema 4 (W4)
+    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 5); // schema 5 (W4c)
     read.close();
   } finally {
     d.cleanup();
@@ -258,6 +258,7 @@ test("R002 quota pause survives the rolling window, generation changes and reope
     p = policy(),
     s = snapshot();
   try {
+    s.observedAt = 107; // GitHub server time of the observation (PR48-R015: the pause is timed on it)
     for (let n = 1; n <= 7; n++) {
       s.pair.head = n.toString(16).repeat(40);
       s.finalPair = { ...s.pair };
@@ -403,12 +404,12 @@ test("R011 a signed oversized delivery leaves only a marker that binds nothing a
   }
 });
 
-test("W4 schema 4: a schema 2 or 3 database is refused before any write (no implicit migration)", () => {
-  for (const version of [2, 3]) {
+test("W4c schema 5: a schema 2, 3 or 4 database is refused before any write (no implicit migration)", () => {
+  for (const version of [2, 3, 4]) {
     const d = database();
     const file = join(d.root, "dispatch.sqlite");
     try {
-      assert.equal(d.store.db.prepare("PRAGMA user_version").get()!["user_version"], 4);
+      assert.equal(d.store.db.prepare("PRAGMA user_version").get()!["user_version"], 5);
       d.store.db.exec(`PRAGMA user_version=${version}`);
       d.store.close();
       const before = readFileSync(file);
@@ -427,7 +428,7 @@ test("W4 row 1: blocked survives reopen and the owner's lease release; only an o
   try {
     const j = claim(d.store, p, s, 100);
     d.store.running(j);
-    d.store.block(j, "publication", 200);
+    d.store.block(j, "publication", 200, 200);
     assert.equal(d.store.job(j.id)!.status, "uncertain");
     d.store.close();
     const store = new Store(d.root);
@@ -606,5 +607,77 @@ test("Round 6 RT-3: a run materials record of the wrong shape is no record (the 
     assert.ok(redTeamOpen({ ...fixtureResult(j), decision: "accepted", unverified: [] }, d.store.runMaterials("run-1")).includes("ledger-incomplete"));
   } finally {
     d.cleanup();
+  }
+});
+
+test("PR48-R015 quota and blocked holds use the server clock: local clock skew never makes an earlier owner unpause count", () => {
+  const S = 50_000_000; // GitHub server time of the observations
+  for (const [skew, local] of [["behind", 100], ["ahead", S + 10 * 86400000]] as const) {
+    const d = database(),
+      p = policy(),
+      s = snapshot();
+    s.observedAt = S;
+    s.history.push({ id: "old-unpause", kind: "unpause", actor: 10, at: S - 1000, pair: null });
+    try {
+      for (let n = 1; n <= 7; n++) {
+        s.pair.head = n.toString(16).repeat(40);
+        s.finalPair = { ...s.pair };
+        s.testedParents = [s.pair.base, s.pair.head];
+        s.history[1]!.id = `skew-ready${n}`;
+        s.history[1]!.at = S - 500;
+        s.history[1]!.pair = { ...s.pair };
+        d.store.observe(assess(p, s, d.store.target("1:1")));
+        const j = d.store.claim(p, s, 30, "review", local + n);
+        if (n <= 6) {
+          assert.ok(j, `${skew} ${n}`);
+          d.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+        } else assert.equal(j, null, skew);
+      }
+      assert.equal(d.store.quotaPaused("1:1"), true, skew);
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: an unpause before the pause does not count`);
+      s.history.push({ id: "owner-unpause", kind: "unpause", actor: 10, at: S + 1, pair: null });
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), false, `${skew}: a later owner unpause clears`);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // blocked: timed on the latest server time known for the PR (snapshot or saved observation).
+  const d = database(),
+    p = policy(),
+    s = snapshot();
+  try {
+    s.observedAt = S;
+    const j = claim(d.store, p, s, 100);
+    d.store.running(j);
+    d.store.saveObservation("1:1", { observedAt: S + 50 } as never);
+    d.store.block(j, "publication", 100, d.store.serverTime(j.key, s));
+    assert.equal(d.store.blocked(j.key)!.at, S + 50);
+    for (const at of [S - 1000, S + 1]) {
+      const old = snapshot();
+      old.history.push({ id: `owner-${at}`, kind: "unpause", actor: 10, at, pair: null });
+      d.store.clearQuota(p, old);
+      assert.ok(d.store.blocked(j.key), String(at));
+    }
+    const later = snapshot();
+    later.history.push({ id: "owner-later", kind: "unpause", actor: 10, at: S + 51, pair: null });
+    d.store.clearQuota(p, later);
+    assert.equal(d.store.blocked(j.key), null);
+  } finally {
+    d.cleanup();
+  }
+  // No server time at all: the hold never clears by an unpause (fail closed).
+  const e = database();
+  try {
+    const j = claim(e.store);
+    e.store.running(j);
+    e.store.block(j, "publication", 100, e.store.serverTime(j.key, snapshot()));
+    const owner = snapshot();
+    owner.history.push({ id: "owner-any", kind: "unpause", actor: 10, at: 8.64e15, pair: null });
+    e.store.clearQuota(policy(), owner);
+    assert.ok(e.store.blocked(j.key));
+  } finally {
+    e.cleanup();
   }
 });

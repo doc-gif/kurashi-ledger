@@ -199,6 +199,8 @@ export async function main(
       const r = dispatcher.observe(result.snapshot);
       if (r.notice) log(`PR #${result.pr}: ${r.status}`);
     }
+    // PR48-R016: the design's retention after each reconcile (payload 7 days, finished job details 30 days).
+    store.retain(clock());
     // PR48-R011: report lost oversized deliveries once (event names from the allow-list, counts only).
     const lost = new Map<string, number>();
     for (const raw of store.drainOversized()) {

@@ -225,6 +225,29 @@ test("W4 cycle: active needs the start-small shape and an install record before 
   }
 });
 
+test("PR48-R016 shadow applies the retention after the reconcile: an old processed payload is removed, the row stays", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
+  const x = await cliSetup((p) => {
+    p.mode = "shadow";
+  });
+  try {
+    x.d.store.inbox(3, "old", "pull_request", "{}", 1);
+    x.d.store.processed(3, "old");
+    const github = { ready: false, now: 5, calls: 0 };
+    const args = ["shadow", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh"];
+    assert.equal(await main(args, { ...x.env, GH_TOKEN: "synthetic-dispatch-read" }, () => {}, () => 8 * 86400000, { transport: () => fakeGitHub(github) }), 0);
+    assert.ok(github.calls > 0);
+    const row = x.d.store.db.prepare("SELECT payload FROM inbox WHERE delivery='old'").get()!;
+    assert.equal(row["payload"], null);
+  } finally {
+    x.cleanup();
+  }
+});
+
 // Shared pieces for the CLI tests of the active path (Codex PR56-R003/R005).
 async function activeCli() {
   const fs = await import("node:fs");

@@ -12,13 +12,15 @@ import {
   findingRaisers,
   hash,
   keyOf,
+  registered,
   samePair,
   type Policy,
   type Pair,
   type HistoryEvent,
   type Snapshot,
 } from "./model.ts";
-import { assess } from "./reducer.ts";
+import { accepted, assess, reviewerEligible } from "./reducer.ts";
+import { RED_TEAM_MARK, RT_ID } from "./active.ts";
 import {
   changeKey,
   type ChangeRecord,
@@ -39,6 +41,11 @@ export type Observation = {
   // PR48-R008/R007: workflow trust and the assigned reviewers' unresolved finding IDs (no prose).
   workflow: Collection["workflow"];
   findings: string[];
+  // PR48-R014: the dispatcher's accepted() against the current canon (every assigned reviewer's latest v1
+  // record is `decision: accepted` for this head/base). A comparison only; it never grants anything.
+  accepted: boolean;
+  legacyAccepted: boolean;
+  acceptedDiffers: boolean;
 };
 const actorId = (v: unknown): number | null => {
   const id = object(v)["id"];
@@ -193,6 +200,80 @@ function legacyReady(c: Collection, p: Policy): boolean {
     field("base_sha") === c.snapshot.pair.base
   );
 }
+// Conversation comments and Review bodies with their server times (records written by people and Apps).
+function records(c: Collection): { actor: number | null; body: string; at: number; id: string }[] {
+  return [
+    ...c.handoffs.map((r) => ({ r, at: r["created_at"], id: `comment-${String(r["id"])}` })),
+    ...c.reviews.map((r) => ({ r, at: r["submitted_at"], id: `review-${String(r["id"])}` })),
+  ]
+    .filter(({ r }) => typeof r["body"] === "string")
+    .map(({ r, at, id }) => ({
+      actor: actorId(r["user"]),
+      body: String(r["body"]),
+      at: Date.parse(String(at)),
+      id,
+    }))
+    .filter((r) => Number.isFinite(r.at))
+    .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+}
+const recordField = (body: string, name: string): string | null => {
+  const values = [...body.matchAll(new RegExp(`^${name}:[ \\t]*([^\\r\\n]*?)[ \\t]*\\r?$`, "gm"))];
+  return values.length === 1 ? values[0]![1]! : null;
+};
+const REVIEW_MARK = /^\s*<!--\s*kurashi-ledger:review:v1\s*-->[ \t]*(?:\r?\n|$)/;
+// PR48-R014: the current canon's accepted (pr-review-loop.md 3節): each assigned reviewer's latest v1 record
+// says `decision: accepted` for exactly this head/base.
+function legacyAccepted(c: Collection, p: Policy): boolean {
+  const s = c.snapshot,
+    reviewers = p.targets.find((t) => t.pr === s.pr)!.reviewers;
+  const v1 = records(c).filter((r) => REVIEW_MARK.test(r.body));
+  return reviewers.every((id) => {
+    const latest = v1.filter((r) => r.actor === id).at(-1);
+    return (
+      latest !== undefined &&
+      recordField(latest.body, "decision") === "accepted" &&
+      recordField(latest.body, "head_sha") === s.pair.head &&
+      recordField(latest.body, "base_sha") === s.pair.base
+    );
+  });
+}
+// PR48-R014: a person's manual red-team record (pr-review-loop.md 担当: 人なら同じ書式で手動). It counts only
+// from an assigned reviewer who is a human and independent (reviewerEligible), with the marker on the first
+// line and this exact head/base. Unresolved: every RT ID in any registered participant's red-team record of
+// this PR, unless the latest record has a table row whose cells are exactly that ID and `解消` or `対応不要`;
+// every ledger cause the record judges `該当` or `確認できない`. Edits are R007 findings (`issue:<ID>`).
+export function manualFaultfinding(p: Policy, c: Collection): Snapshot["faultfinding"] {
+  const s = c.snapshot;
+  const all = records(c).filter(
+    (r) => RED_TEAM_MARK.test(r.body) && r.actor !== null && registered(p, r.actor),
+  );
+  const latest = all
+    .filter(
+      (r) =>
+        p.actors.find((a) => a.id === r.actor)?.kind === "human" &&
+        reviewerEligible(p, s, r.actor!) &&
+        recordField(r.body, "head_sha") === s.pair.head &&
+        recordField(r.body, "base_sha") === s.pair.base,
+    )
+    .at(-1);
+  if (!latest) return null;
+  const resolved = new Set<string>(),
+    open = new Set<string>();
+  for (const line of latest.body.normalize("NFKC").split(/\r?\n/)) {
+    const row = line.trim();
+    if (!row.startsWith("|")) continue;
+    const cells = row.replace(/^\||\|$/g, "").split("|").map((x) => x.trim());
+    const ids = cells.filter((x) => /^RT-[1-9][0-9]{0,2}$/.test(x));
+    if (ids.length === 1 && cells.some((x) => x === "解消" || x.startsWith("対応不要")) && !row.includes("未解消"))
+      resolved.add(ids[0]!);
+    else if (!ids.length && cells.length >= 2 && ["該当", "確認できない"].includes(cells[1]!))
+      open.add(/^[A-Za-z0-9._/-]{1,120}$/.test(cells[0]!) ? `cause:${cells[0]}` : "cause:unparsed");
+  }
+  for (const r of all)
+    for (const m of r.body.normalize("NFKC").matchAll(RT_ID))
+      if (!resolved.has(`RT-${m[1]}`)) open.add(`RT-${m[1]}`);
+  return { actor: latest.actor!, pair: { ...s.pair }, unresolved: [...open].sort() };
+}
 // W4 row 8: change records from signed edit/delete deliveries, so a change made and undone between two
 // reconciles, or made before the first observation, is still raised. Same authors as findings.ts reads:
 // Review bodies of registered participants (model.ts findingRaisers) and owners, comments of the registered
@@ -271,6 +352,9 @@ export async function reconcile(
     changes: ChangeRecord[];
   }[] = [];
   const results: CycleResult[] = [];
+  // PR48-R013: PRs whose observation was transiently incomplete. Nothing of theirs is saved and their
+  // deliveries stay pending, so a later complete reconcile binds a Ready missed now.
+  const held = new Set<number>();
   for (const target of p.targets) {
     const key = keyOf(p, target.pr),
       ready = store.evidence<ReadyBinding>(key, "ready"),
@@ -352,11 +436,18 @@ export async function reconcile(
       (e) => !e.id.startsWith("activity:"),
     );
     apply(c, ready, reviews, p);
-    // The red-team record this dispatcher posted for this pair and policy revision (start-small: the
-    // assigned reviewer's faultfinding job). Manual records of people are not read yet (R014).
-    c.snapshot.faultfinding = store.faultfinding(key, c.snapshot.pair, p.revision);
+    // The red-team record this dispatcher posted for this pair and policy revision (an AI reviewer's
+    // faultfinding job) and a human reviewer's manual record (PR48-R014). Both: their unresolved IDs together.
+    const own = store.faultfinding(key, c.snapshot.pair, p.revision),
+      manual = manualFaultfinding(p, c);
+    c.snapshot.faultfinding =
+      own && manual
+        ? { ...own, unresolved: [...new Set([...own.unresolved, ...manual.unresolved])].sort() }
+        : (own ?? manual);
     const assessed = assess(p, c.snapshot, store.target(key), store.consumed());
-    const legacy = legacyReady(c, p);
+    const legacy = legacyReady(c, p),
+      dispatcherAccepted = accepted(p, c.snapshot, assessed),
+      currentAccepted = legacyAccepted(c, p);
     const observation: Observation = {
       policy: p.revision,
       pair: c.snapshot.pair,
@@ -370,15 +461,23 @@ export async function reconcile(
       findings: [
         ...new Set(c.snapshot.reviews.flatMap((r) => r.findings)),
       ].sort(),
+      accepted: dispatcherAccepted,
+      legacyAccepted: currentAccepted,
+      acceptedDiffers: dispatcherAccepted !== currentAccepted,
     };
-    updates.push({
-      key,
-      ready,
-      reviews,
-      observation,
-      items: c.findingItems,
-      changes: [...signals, ...c.findingChanges],
-    });
+    // PR48-R013: transient incompleteness (the PR or main changed during the fetch, a missing commit page).
+    // An untrusted workflow is not transient: it is processed as before, so a Ready that arrived before the
+    // owner recorded the trust is never bound later (review-dispatch-implementation.md workflowの信頼 3).
+    if (!c.snapshot.complete && c.workflow !== "untrusted") held.add(target.pr);
+    else
+      updates.push({
+        key,
+        ready,
+        reviews,
+        observation,
+        items: c.findingItems,
+        changes: [...signals, ...c.findingChanges],
+      });
     results.push({ pr: target.pr, snapshot: c.snapshot, observation });
   }
   // Any failed page/batch leaves Inbox pending and prior observation intact. A crash rolls back BOTH bindings and tombstones.
@@ -394,8 +493,11 @@ export async function reconcile(
         store.saveEvidence(update.key, "itemchange", changeKey(r), r);
       store.saveObservation(update.key, update.observation);
     }
-    for (const { row } of deliveries)
-      store.processed(Number(row["app"]), String(row["delivery"]));
+    for (const { row, payload } of deliveries) {
+      const pr = deliveryPr(String(row["event"]), payload);
+      if (pr === null || !held.has(pr))
+        store.processed(Number(row["app"]), String(row["delivery"]));
+    }
   });
   return results;
 }

@@ -32,9 +32,14 @@ export function canonicalRoot(path: string): string {
   return path;
 }
 // Schema 4 (Issue #50 W4): blocked, run_keys, capability, marks, run_materials and jobs.origin. Schema 3 was
-// an unreleased draft of this PR. Older DBs are not migrated implicitly; they are refused like any unknown
-// schema and the owner initializes a new root.
-const SCHEMA = 4;
+// an unreleased draft of this PR. Schema 5 (W4c, PR48-R015): quota_pause.at and blocked.at are GitHub server
+// times; a schema 4 row holds a local time. Older DBs are not migrated implicitly; they are refused like any
+// unknown schema and the owner initializes a new root.
+const SCHEMA = 5;
+// PR48-R016: observation history kept per PR (change points only; the latest is also in `shadow`).
+export const OBSERVATION_HISTORY = 200;
+// PR48-R015: a hold without a known server time never clears by an unpause (fail closed).
+const NO_SERVER_TIME = Number.MAX_SAFE_INTEGER;
 // PR48-R009: a small step back (NTP) keeps using the stored time; the stored clock never moves back.
 export const CLOCK_SKEW_MS = 5000;
 export class ClockRollbackError extends Error {
@@ -108,7 +113,7 @@ export class Store {
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
         CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
-        PRAGMA user_version=4; COMMIT;
+        PRAGMA user_version=5; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
     } catch {
@@ -262,14 +267,32 @@ export class Store {
       .get(key) as Row | undefined;
     return row ? (JSON.parse(String(row["value"])) as T) : null;
   }
-  saveObservation(key: string, value: unknown): void {
-    const raw = JSON.stringify(value);
-    this.saveEvidence(key, "observation", hash(raw), value);
+  // PR48-R016: the history keeps change points only. An observation equal to the latest one apart from its
+  // time adds no row; the latest OBSERVATION_HISTORY rows per PR are kept and older ones are deleted.
+  saveObservation(key: string, value: { observedAt: number }): void {
+    const raw = JSON.stringify(value),
+      content = (v: { observedAt?: unknown }) => JSON.stringify({ ...v, observedAt: null });
+    const latest = this.observation<{ observedAt: number }>(key);
+    if (!latest || content(latest) !== content(value))
+      this.saveEvidence(key, "observation", hash(raw), value);
     this.db
       .prepare(
         "INSERT INTO shadow VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       )
       .run(key, raw);
+    this.db
+      .prepare(
+        "DELETE FROM evidence WHERE key=? AND id LIKE 'observation:%' AND rowid NOT IN (SELECT rowid FROM evidence WHERE key=? AND id LIKE 'observation:%' ORDER BY rowid DESC LIMIT ?)",
+      )
+      .run(key, key, OBSERVATION_HISTORY);
+  }
+  // PR48-R015: the latest GitHub server time known for this PR (the snapshot's and the last saved observation's).
+  serverTime(key: string, s?: Pick<Snapshot, "observedAt">): number {
+    const saved = this.observation<{ observedAt?: unknown }>(key)?.observedAt;
+    const times = [s?.observedAt, saved].filter(
+      (x): x is number => typeof x === "number" && Number.isSafeInteger(x) && x >= 0,
+    );
+    return times.length ? Math.max(...times) : NO_SERVER_TIME;
   }
   processed(app: number, delivery: string): void {
     this.db
@@ -360,7 +383,8 @@ export class Store {
       .prepare("SELECT 1 FROM quota_pause WHERE key=? AND owner_clear IS NULL")
       .get(key);
   }
-  // Owner holds (quota pause, blocked) end only by an owner's removal of review:paused after the hold.
+  // Owner holds (quota pause, blocked) end only by an owner's removal of review:paused after the hold. Both
+  // times are GitHub server times (PR48-R015): the hold's `at` and the timeline event's created_at.
   clearQuota(p: Policy, s: Snapshot): void {
     for (const table of ["quota_pause", "blocked"] as const) {
       const row = this.db
@@ -391,10 +415,12 @@ export class Store {
       ? { run: String(r["run"]), reason: String(r["reason"]), at: Number(r["at"]) }
       : null;
   }
-  block(j: Job, reason: string, now: number): void {
+  // `serverAt`: the server time of the hold (PR48-R015, Store.serverTime); `now` is the local clock tick.
+  block(j: Job, reason: string, now: number, serverAt: number): void {
     if (!/^[a-z-]{1,40}$/.test(reason)) throw new Error("Invalid block reason");
     this.atomic(() => {
-      const at = this.time(now);
+      this.time(now);
+      const at = Number.isSafeInteger(serverAt) && serverAt >= 0 ? serverAt : NO_SERVER_TIME;
       this.db
         .prepare(
           "INSERT INTO blocked VALUES(?,?,?,?,NULL) ON CONFLICT(key) DO UPDATE SET run=excluded.run,reason=excluded.reason,at=excluded.at,owner_clear=NULL",
@@ -471,7 +497,7 @@ export class Store {
           .prepare(
             "INSERT INTO quota_pause VALUES(?,?,NULL) ON CONFLICT(key) DO UPDATE SET at=excluded.at,owner_clear=NULL",
           )
-          .run(t.key, now);
+          .run(t.key, this.serverTime(t.key, s));
         this.db
           .prepare("UPDATE targets SET value=? WHERE key=?")
           .run(

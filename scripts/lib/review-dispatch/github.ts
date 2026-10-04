@@ -483,6 +483,7 @@ export async function collect(
   const assignment = p.targets.find((t) => t.pr === prNumber)!;
   // W4 row 12: the latest server Date of every response so far, not only the first PR response.
   const observedAt = reader.maxDate;
+  snapshot.observedAt = observedAt;
   const found = unresolvedFindings({
     pr: prNumber,
     head: current.head,

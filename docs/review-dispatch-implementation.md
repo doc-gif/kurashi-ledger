@@ -62,7 +62,7 @@ launch/POST不明は`uncertain`に残し、期限切れで再起動・再送し�
 
 `supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しません。lockが取れるだけ、PIDが存在しないだけではleaseを解放しません。合成backendでも途中のmanifest/起動境界は不明として保持します。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明します（setsidで抜けた子孫はrun lockの継承で見つける）。実CLIの子がrun lockを継承するかは、`measure`が子を作るrunで実測します。観測した子のすべてで継承を確かめられたときだけ`descendantLock`をtrueにし、1つでも未検査・失敗・処理中の子があるか、groupの列挙に1回でも失敗したか（見ていない時間がある）、子を観測できなければfalseにします。
 
-DBはWAL/FULL同期、schema 4です（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足した）。schema 1〜3からの暗黙の変換はせず、停止状態のbackupと独立レビューを受けた移行が必要です。未知schemaは書き込まず停止します。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしません。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しません。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用ルートで確認してownerが切り替えます。以前のDBを消さず、古い配送ID・quota・投稿hashを保ちます。
+DBはWAL/FULL同期、schema 5です（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足し、W4cでquota・blockedの時刻をserver時刻にした）。schema 1〜4からの暗黙の変換はせず、停止状態のbackupと独立レビューを受けた移行が必要です。未知schemaは書き込まず停止します。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしません。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しません。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用ルートで確認してownerが切り替えます。以前のDBを消さず、古い配送ID・quota・投稿hashを保ちます。
 
 ## 検証の読み方
 
@@ -95,11 +95,15 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 | 指摘 | 必須の時期・確認 |
 | --- | --- |
 | PR48-R006 / I003 | 実Webhook接続前: payloadのbase.shaとtimeline/updated_atの実際の値を配送で測る。結合不能ならunknownを維持し、binding規則を独立レビューで直す |
-| PR48-R007 | 実装済み（Issue #50 W3、[findings.ts](../scripts/lib/review-dispatch/findings.ts)）。下の「未解消の指摘」の規則で判定へ接続した。残り: 粗探しと人の証跡の取得元はR014。WebhookのReview・コメントの編集/削除の配送を安全側の印にするのはW4 |
+| PR48-R007 | 実装済み（Issue #50 W3、[findings.ts](../scripts/lib/review-dispatch/findings.ts)）。下の「未解消の指摘」の規則で判定へ接続した。粗探しと人の証跡の取得元はR014の行。WebhookのReview・コメントの編集/削除の配送を安全側の印にするのはW4 |
 | PR48-R008 | 実装済み（W3）。CIの判定を決めるファイル（下の「workflowの信頼」の範囲）がbaseと違うPRは、ownerが独立レビュー後にpolicyの`trustedCi`へ「mainの要約→headの要約」の組を記録するまでunknownのまま止まる。範囲の外（試験の中身、製品コード等）は独立した内容レビューに頼る。必須ジョブは`.github/workflows/ci.yml`のrunだけから数える。commit status/check runは補助取得のままで、判定は固定11ジョブ。記録はmainに結び付ける（W4、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978676604)） |
 | PR48-R009 | 実装済み（W3、許容幅は所有者決定の5秒）。5秒以内の後退は保存時刻を使い続け、DBの時刻は戻さない。それを超えると受信は503、claim・retainは拒否、shadowのCLIは待つ秒数を表示して終了コード3。workerを増やさず、時計を確認して保存時刻へ追いつくのを待つ。時計の先への飛びは下の「所有者の確認手順（host）」 |
 | PR48-R010 / I008 | 実装済み（W3、[host.ts](../scripts/lib/review-dispatch/host.ts)）。POSIXで、policyはrepo/worktreeと信頼した写しの外・実行ユーザーの所有・group/otherが書けない・symlink/ハードリンクなしの場合だけ、検査したfdから読む。専用rootは実行ユーザーの所有で0700相当、DB/WAL/SHMと寿命lockは実行ユーザーの所有で0600相当、祖先は本人かrootの所有で他人が書けるならsticky。違えば権限を直さずに起動を拒否する。macOSのACLは見ないので、下の手順で確かめる |
 | PR48-R011 / I003 | 一部実装済み（W3）。256KiBを超える署名付き配送は本文を保持せず、HMACを流しながら確かめてdelivery IDとeventだけを残し、413を返す。照合のあとCLIがevent名と件数を一度だけ知らせる。Brokerは改行・行末空白・NFCを整えた本文だけを投稿し、同じmarkerでhashが違う投稿があればuncertainに保持して再送しない。残り（公開配送前の実測）: 実際の配送の大きさ、トンネル経由で5秒以内に受けきれるか、GitHubが本文を変えるか |
+| PR48-R013 | 実装済み（W4c）。取得の途中でPR・mainが変わった等の一時的な不完全では、その対象の観測・結合・処理済みの印を保存せず、配送を残す。後の完全な照合で配送から結び付けるか、進めていない観測区間から回復する。workflowの未信頼は一時的でないので今までどおり処理する（下の「workflowの信頼」3） |
+| PR48-R014 | 一部実装済み。W4aで受付自身の粗探しJobの記録、W4cで担当reviewerの人の手動の記録（1行目の印、head/base、前のRTを`解消`・`対応不要`とする表）と、観測でのaccepted()と現行の`decision: accepted`の比較（`acceptedDiffers`）。残り（activeの前に所有者が判断）: 設計段階の未解消の指摘（`unresolvedDesign`）の別の取得元。今はR007の未解消の指摘と粗探しのRTがacceptedを止める |
+| PR48-R015 | 実装済み（W4c、schema 5）。quotaの停止とblockedの時刻をGitHubのserver時刻（照合の`observedAt`と保存した観測の新しいほう）にし、ownerの解除（timelineの時刻）と同じ時計で比べる。server時刻がなければ解除しない。schema 4のDBは書かずに止まるので、専用rootをinitし直す |
+| PR48-R016 | 実装済み（W4c）。観測の履歴は時刻のほかが前回と同じなら足さず、PRごとに新しい200行まで残す。照合のあとに`retain`を呼び、設計の保持期限（payload 7日、完了Jobの詳細30日）を効かせる |
 
 ### 未解消の指摘（PR48-R007）
 

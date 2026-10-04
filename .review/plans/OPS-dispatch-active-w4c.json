@@ -6,17 +6,16 @@
   ".review/plans/OPS-dispatch-active-w4c.json",
   "docs/review-dispatch-implementation.md",
   "scripts/lib/review-dispatch/active.test.ts",
+  "scripts/lib/review-dispatch/active.ts",
   "scripts/lib/review-dispatch/evidence.test.ts",
   "scripts/lib/review-dispatch/evidence.ts",
   "scripts/lib/review-dispatch/github.ts",
   "scripts/lib/review-dispatch/model.ts",
-  "scripts/lib/review-dispatch/runtime.test.ts",
   "scripts/lib/review-dispatch/runtime.ts",
   "scripts/lib/review-dispatch/store.test.ts",
   "scripts/lib/review-dispatch/store.ts",
   "scripts/review-dispatch.test.ts",
-  "scripts/review-dispatch.ts",
-  "tests/fixtures/review-dispatch.ts"
+  "scripts/review-dispatch.ts"
  ],
  "conflicts": [
   {
@@ -96,7 +95,7 @@
     },
     {
      "id": "artifact",
-     "method": "差分にlauncher.ts・doctor.ts・active.tsの起動部分の変更がないことを確かめる",
+     "method": "差分のactive.tsの変更が、red-team記録の印とRT IDの正規表現をexportするだけで、起動部分に変更がないことを確かめる",
      "expected": "起動の成果物の扱いは同じ"
     }
    ]
