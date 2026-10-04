@@ -69,6 +69,11 @@
       "description": "main@409bd3f（#40・#42・#46・#47・#48）の取込みで、docs/pr-review-loop.mdとdocs/project-status.mdが競合した。作業中のPR（#44はtools/review_guard/guard.py・README・docs/review-prevention.md、#25はG7のパス、#28・#29・#33・#36・#37はREADME・状態資料・台帳）と同じファイルを変える。",
       "state": "resolved",
       "resolution": "#40・#47の正本の文と構成を優先し、pr-review-loopは#40の5節の文のあとにT23の6節をそのまま置き、project-statusは#40の表を採ってタスクの行にT23=#34だけを足した（CIの行のT23の保護の言い換えは、#40がreview-preventionへのリンクにしたので戻さない）。内容の変更は、所有者の指示（段階1）により行わない。責務の重なり（#45の受信側の重複判定・通知とT23の通知）は段階2で整理する。"
+    },
+    {
+      "description": "2026-10-04の所有者決定「T23を絞る」。#46・#48（Issue #45）のdocs/review-dispatch-design.md 5節の表は、active時の重複判定と通知をIssue #45の受付/Brokerだけに委ね、T23にはCI-policyの保護の責務を残す。T23の--postによる通知の投稿・ロックは、この通知の担当と重なる。",
+      "state": "resolved",
+      "resolution": "T23から通知の投稿（github_source.pyの--post、投稿・ロックの経路、通知の本文と投稿済みの印の解析）を外す。残すのは、読取りだけの状態の判定（patrol.pyの純粋な判定と、GETだけで集めて報告を出すCLI）、CI-policyの保護（policy_pathsと、Issue #41・rulesetの決定を待つreview-preventionの保護の節）、G1〜G7の不変条件。開始条件の不足は、投稿の代わりに判定の出力の`gap`（stale-handoff・ci-failed・ci-other-base）として機械で読める形で残す。#45がこの判定を呼ぶか突き合わせるかは、review-dispatch-designの正本移行PRの検討事項として台帳のT23に注記するだけで、コードは書かない。境界の一覧（#44の表の代わり）: 書込み=なし（GETだけ、gh api、shellなし）／入力=開いているPRの一覧・詳細・ファイル・コメント・レビュー・check run・ジョブのログ・commit・Issue・branch／出力=標準出力のJSONと終了コード（0・1・2・3）／信頼=OWNER・MEMBER・COLLABORATORとtrusted_logins（botのloginの設定は#42の台帳の後続のまま）。variant: 同じ読取りの巡回が同時に動いても書込みがないので結果は互いに影響しない（試験で確かめる）。"
     }
   ],
   "assessments": [
@@ -87,12 +92,12 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "判定は最新head/baseとPRのコメント・レビューの印に結び付け、古いready・別headのレビュー・自己レビュー・Copilotの承認を、着手候補やacceptedに数えない。投稿は（PR・種別・head・base）の印で重複を防ぎ、投稿の直前に取り直す。不変条件の台帳には追加だけを行い、既存の条件・paths・シナリオ・原因台帳を変えない（CIのci.pyが報告するbaseとの差分は追加だけになる）。保護の提案は設定を変えず、構造検査・自己申告・AIの判定を独立承認と取り違えない。 PR38のレビュー（R001〜R007）を受けて、関連Issueの取得失敗を未確認に伝える、投稿の直前に取り直したデータで判定し直す、印は本文の1行目だけを読む、投稿をOSのロックで直列化する、Draftを作業中にする、必須のcheckが試験したbaseを確かめる、G7のpathsにADR-0009を加える。GitHub Appのbotの記録を読めるよう、設定にtrusted_logins（既定は空）を加える（役割は本文の印のまま）。 2回目のレビュー（R008〜R012）を受けて、PRのファイル一覧の件数をPRの詳細のchanged_filesと照合する、別資源の同じ秒の記録を未確認にする、反対側の系統のレビューだけを数える、保存したsnapshotのrepositoryを設定と照合する、保護の節の旧案を外す。",
+      "reason": "判定は最新head/baseとPRのコメント・レビューの印に結び付け、古いready・別headのレビュー・自己レビュー・Copilotの承認を、着手候補やacceptedに数えない。投稿は（PR・種別・head・base）の印で重複を防ぎ、投稿の直前に取り直す。不変条件の台帳には追加だけを行い、既存の条件・paths・シナリオ・原因台帳を変えない（CIのci.pyが報告するbaseとの差分は追加だけになる）。保護の提案は設定を変えず、構造検査・自己申告・AIの判定を独立承認と取り違えない。 PR38のレビュー（R001〜R007）を受けて、関連Issueの取得失敗を未確認に伝える、投稿の直前に取り直したデータで判定し直す、印は本文の1行目だけを読む、投稿をOSのロックで直列化する、Draftを作業中にする、必須のcheckが試験したbaseを確かめる、G7のpathsにADR-0009を加える。GitHub Appのbotの記録を読めるよう、設定にtrusted_logins（既定は空）を加える（役割は本文の印のまま）。 2回目のレビュー（R008〜R012）を受けて、PRのファイル一覧の件数をPRの詳細のchanged_filesと照合する、別資源の同じ秒の記録を未確認にする、反対側の系統のレビューだけを数える、保存したsnapshotのrepositoryを設定と照合する、保護の節の旧案を外す。 2026-10-04の所有者決定で、通知の投稿をT23から外し、Issue #45の受付に委ねた。",
       "checks": [
         {
           "id": "duplicates",
-          "method": "試験: 同じ（PR・種別・head・base）の印が既にあれば投稿しない、2つの巡回が同じ状態を見ても2回目は投稿しない、headやbaseが変わったら新しい印として1回だけ投稿する、投稿の直前にheadが変わったら投稿しない。 取り直しのあとにbarrierを置いた2つの巡回（スレッド）で、ロックなしは2件、ロックありは1件になることを試験する。取り直しで新しいready・working・CIの回復・読めないレビューが見えたら投稿しないことを試験する。",
-          "expected": "同じheadへの同じ通知は1回だけ。新しいheadやbaseでは1回だけ。取得に失敗したときは投稿しない。"
+          "method": "試験: 判定は投稿をせず、GitHubへの要求はGETだけであること（偽のAPIで全要求を記録して確かめる）、--postの引数がないこと。2つの巡回が同時に動いても、書込みがなく同じ判定になること。開始条件の不足は出力のgapに1つだけ出ること。",
+          "expected": "書込みの要求が1件もなく、重複投稿は起こりえない。通知と重複の防止はIssue #45の受付の担当と台帳・文書に書かれる。"
         },
         {
           "id": "trust",
@@ -113,7 +118,7 @@
         },
         {
           "id": "entrypoints",
-          "method": "README・状態資料・台帳・pr-review-loop・review-prevention・tools/review_guard/READMEの記述を読み合わせる。判定の分類と、pr-review-loopの「レビュー開始の条件」「重複防止」が同じ条件を指すか確かめる。 保護の節が旧案を推奨・手順として残さず、Issue #41の確定案を待つ保留であることを、PRの説明・計画・READMEと照合する。",
+          "method": "README・状態資料・台帳・pr-review-loop・review-prevention・tools/review_guard/READMEの記述を読み合わせる。判定の分類と、pr-review-loopの「レビュー開始の条件」「重複防止」が同じ条件を指すか確かめる。 保護の節が旧案を推奨・手順として残さず、Issue #41の確定案を待つ保留であることを、PRの説明・計画・READMEと照合する。 台帳のT23の範囲・成果物・受入・検証を、絞った範囲（読取りの判定・CI-policyの保護・G1〜G7）に合わせ、所有者の決定と、#45との移行の注を記録する。project-statusから作業中の行を除く。",
           "expected": "入口の間で、判定ツールの位置付け（補助で、承認・マージの許可ではない）と、定期実行の登録はT24であることが一致する。"
         }
       ]
