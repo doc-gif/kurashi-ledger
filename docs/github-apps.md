@@ -261,3 +261,9 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 | administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
+
+## レビュー受付の読取り用途
+
+`dispatch-read`はcontents、pull_requests、issues、actions、checks、statusesをreadに限定します。metadata:readはGitHubの追加分です。書込み・Administration・workflowsは付けません。変更は権限制御として独立レビューし、承認済みmainの固定版へownerが更新してから使います。実鍵の試験をPR checkoutから行わないでください。
+
+[受付の導入手順](review-dispatch-implementation.md)は既定offです。用途追加だけでWebhook・実AI・投稿・rulesetを有効にしません。
