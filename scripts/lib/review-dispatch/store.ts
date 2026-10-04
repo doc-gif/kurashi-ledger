@@ -31,9 +31,10 @@ export function canonicalRoot(path: string): string {
   if (realpathSync(path) !== path) throw new Error("Aliased dispatcher root");
   return path;
 }
-// Schema 3 (Issue #50 W4): blocked, run_keys, capability and marks. A schema 2 DB is not migrated
-// implicitly; it is refused like any unknown schema and the owner initializes a new root.
-const SCHEMA = 3;
+// Schema 4 (Issue #50 W4): blocked, run_keys, capability, marks, run_materials and jobs.origin. Schema 3 was
+// an unreleased draft of this PR. Older DBs are not migrated implicitly; they are refused like any unknown
+// schema and the owner initializes a new root.
+const SCHEMA = 4;
 // PR48-R009: a small step back (NTP) keeps using the stored time; the stored clock never moves back.
 export const CLOCK_SKEW_MS = 5000;
 export class ClockRollbackError extends Error {
@@ -107,7 +108,7 @@ export class Store {
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
         CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
-        PRAGMA user_version=3; COMMIT;
+        PRAGMA user_version=4; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
     } catch {

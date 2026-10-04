@@ -259,7 +259,31 @@ def exited(pid):
         p = _ps(['-o', 'stat=', '-p', str(pid)])
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return p.returncode != 0 or p.stdout.strip().startswith('Z')
+    if p.returncode == 0:
+        return p.stdout.strip().startswith('Z')
+    # ps failed: only a process that no longer exists counts as ended (a transient ps failure does not).
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+def stop_worker(pgid, still_alive):
+    """The same stop as a cancel (TERM, then KILL, to the whole group) for a worker the loop no longer
+    supervises; the run stays uncertain whatever happens (PR #56 red team round 2 P3)."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, PermissionError):
+            return
+        deadline = time.monotonic() + 2
+        while still_alive() and time.monotonic() < deadline:
+            time.sleep(0.03)
+        if not still_alive():
+            return
 
 
 def group_members(pgid):
@@ -503,6 +527,8 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
         if probing:
             value.update(descendants=probing.report())
         if not empty:
+            if alive():
+                stop_worker(child.pid, alive)
             value.update(state='uncertain', treeEnded=False, strays=strays)
             durable(manifest, value)
             return 2

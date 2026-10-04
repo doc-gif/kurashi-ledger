@@ -218,7 +218,8 @@ test("W4 row 8: edit/delete/dismiss deliveries mark their PR in the same transac
         100,
       );
     };
-    // Policy target PR 1: reviewer 30, owner 10. Only their items mark; other PRs and third parties do not.
+    // Policy target PR 1: registered participants 30 and 40, owner 10, implementer 20. Only registered
+    // participants' (not the implementer's) and owners' items mark; other PRs and third parties do not.
     const by = (id: number) => ({ user: { id } });
     const cases: [string, Record<string, unknown>, string | null][] = [
       ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(30) }, "1:1"],
@@ -226,7 +227,8 @@ test("W4 row 8: edit/delete/dismiss deliveries mark their PR in the same transac
       ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(999) }, null],
       ["pull_request_review", { action: "submitted", pull_request: { number: 1 }, review: by(30) }, null],
       ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(30) }, "1:1"],
-      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(20) }, null],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(20) }, null], // implementer
+      ["pull_request_review_comment", { action: "edited", pull_request: { number: 1 }, comment: by(40) }, "1:1"], // registered, not assigned
       ["pull_request_review_comment", { action: "created", pull_request: { number: 1 }, comment: by(30) }, null],
       ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: by(30) }, "1:1"],
       ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: {} }, "1:1"], // unreadable author

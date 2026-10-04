@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { object } from "./github.ts";
-import { type Policy } from "./model.ts";
+import { findingRaisers, type Policy } from "./model.ts";
 import { Store } from "./store.ts";
 export const MAX_BODY = 256 * 1024;
 // GitHub caps a delivery at 25 MB. Larger bodies are cut off without any record.
@@ -48,7 +48,11 @@ export function signalKey(
   const target = p.targets.find((t) => t.pr === pr);
   if (!target) return null;
   // An unreadable author is treated as relevant (safe side).
-  if (Number.isSafeInteger(author) && !target.reviewers.includes(Number(author)) && !p.owners.includes(Number(author)))
+  if (
+    Number.isSafeInteger(author) &&
+    !findingRaisers(p, Number(pr)).includes(Number(author)) &&
+    !p.owners.includes(Number(author))
+  )
     return null;
   return `${p.repoId}:${pr}`;
 }

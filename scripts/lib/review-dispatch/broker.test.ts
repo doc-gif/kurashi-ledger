@@ -274,3 +274,41 @@ test("W4 finding IDs: a review uses PR<N>-R only; a red-team record uses RT-<n> 
     d.cleanup();
   }
 });
+
+test("W4 round 2 P2-a: every Markdown link target must be an allowed https URL (inline, reference, autolink, //host)", async () => {
+  const { publicationFindings } = await import("./publication.ts");
+  const ok = [
+    "[資料](https://docs.github.com/en/rest)",
+    "[x]: https://code.claude.com/docs/en/headless",
+    "<https://nodejs.org/api/sqlite.html>",
+    "式 a // b と書く", // a comment marker followed by a space is prose
+  ];
+  for (const text of ok) assert.deepEqual(publicationFindings(text, new Set()), [], text);
+  const bad = [
+    "[資料](//evil.example/p)",
+    "[資料]( //evil.example/p )",
+    "[資料](<//evil.example/p>)",
+    "[x]: //evil.example",
+    "  [x]: <//evil.example>",
+    "<//evil.example/p>",
+    "参照は//evil.example/pにある",
+    "[資料](/relative/path)",
+    "[資料](docs/page.md)",
+    "[資料](#anchor)",
+    "[資料](mailto:someone)",
+    "[x]: ftp://evil.example/f",
+    "<ftp://evil.example/f>",
+    "[資料](https://evil.example/p)",
+    "[資料](ｈｔｔｐｓ://evil.example/p)", // full-width, caught after NFKC
+  ];
+  for (const text of bad) assert.ok(publicationFindings(text, new Set()).includes("link not allowed"), text);
+  // parseResult refuses the same forms in worker prose (blocked, not only at POST).
+  const d = database();
+  try {
+    const j = claim(d.store);
+    for (const text of ["[資料](//evil.example/p)", "[x]: //evil.example", "[資料](docs/page.md)"])
+      assert.throws(() => parseResult(JSON.stringify({ ...fixtureResult(j), summary: text }), j), /Unsafe result prose/, text);
+  } finally {
+    d.cleanup();
+  }
+});

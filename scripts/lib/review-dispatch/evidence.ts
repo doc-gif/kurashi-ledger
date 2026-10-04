@@ -9,6 +9,7 @@ import {
   type ReviewBinding,
 } from "./github.ts";
 import {
+  findingRaisers,
   hash,
   keyOf,
   samePair,
@@ -194,7 +195,8 @@ function legacyReady(c: Collection, p: Policy): boolean {
 }
 // W4 row 8: change records from signed edit/delete deliveries, so a change made and undone between two
 // reconciles, or made before the first observation, is still raised. Same authors as findings.ts reads:
-// Review bodies of assigned reviewers and owners, comments of assigned reviewers. A dismissal is seen as
+// Review bodies of registered participants (model.ts findingRaisers) and owners, comments of the registered
+// participants. A dismissal is seen as
 // the DISMISSED state by the next collection, so it only marks the PR (webhook.ts).
 export function signalRecords(
   p: Policy,
@@ -215,7 +217,7 @@ export function signalRecords(
   if (!Number.isSafeInteger(id) || Number(id) < 1 || author === null) return [];
   const review = event === "pull_request_review";
   if (
-    !target.reviewers.includes(author) &&
+    !findingRaisers(p, pr).includes(author) &&
     !(review && p.owners.includes(author))
   )
     return [];

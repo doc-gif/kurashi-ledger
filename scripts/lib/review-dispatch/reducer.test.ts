@@ -277,13 +277,16 @@ test("D04 delayed old delivery cannot become Ready after owner policy boundary",
   assert.equal(assess(p, s, null).reason, "new-ready-required");
 });
 
-test("W4 #51 rule: any actor's latest CHANGES_REQUESTED blocks accepted, not only assigned reviewers'", () => {
+test("W4 one rule (owner decision 5978984980): every registered participant's latest CHANGES_REQUESTED blocks; unregistered third parties do not", () => {
   const p = policy(),
     s = snapshot(),
     t = assess(p, s, null);
   const approve = { id: "r1", actor: 30, state: "APPROVED" as const, pair: s.pair, findings: [] };
-  // A third party (not in the policy) and the owner (not an assigned reviewer).
-  for (const actor of [999, 10]) {
+  // An unregistered third party is reference only on a public repository.
+  s.reviews = [approve, { id: "r0", actor: 999, state: "CHANGES_REQUESTED", pair: null, findings: [] }];
+  assert.equal(accepted(p, s, t), true);
+  // The owner and a registered participant who is not an assigned reviewer.
+  for (const actor of [10, 40]) {
     s.reviews = [approve, { id: "r2", actor, state: "CHANGES_REQUESTED", pair: null, findings: [] }];
     assert.equal(accepted(p, s, t), false, `actor ${actor}`);
     // A later APPROVED or DISMISSED by the same actor is their latest review and no longer blocks.
@@ -335,8 +338,29 @@ test("W4 a later COMMENTED review does not undo a change request; approval block
     { actor: 30, ids: ["PR1-R001"] },
     { actor: 10, ids: ["review:9"] },
   ];
-  assert.deepEqual(approvalBlockers(s, 30), ["changes-requested:10", "review:9"]);
+  assert.deepEqual(approvalBlockers(p, s, 30), ["changes-requested:10", "review:9"]);
+  // A registered participant who is not assigned (40) blocks too; an unregistered one (999) does not.
+  s.reviews.push({ id: "r7", actor: 40, state: "CHANGES_REQUESTED", pair: null, findings: [] });
+  s.reviews.push({ id: "r8", actor: 999, state: "CHANGES_REQUESTED", pair: null, findings: [] });
+  s.openFindings.push({ actor: 40, ids: ["PR1-R007"] });
+  assert.deepEqual(approvalBlockers(p, s, 30), ["PR1-R007", "changes-requested:10", "changes-requested:40", "review:9"]);
+  // accepted() applies the same rule: an open finding of any registered participant blocks.
+  s.reviews = [{ id: "r9", actor: 30, state: "APPROVED", pair: s.pair, findings: [] }];
+  s.openFindings = [{ actor: 40, ids: ["PR1-R007"] }];
+  assert.equal(accepted(p, s, t), false);
+  s.openFindings = [];
+  assert.equal(accepted(p, s, t), true);
   s.reviews = [{ id: "r5", actor: 30, state: "CHANGES_REQUESTED", pair: null, findings: [] }];
   s.openFindings = [{ actor: 30, ids: ["PR1-R001"] }];
-  assert.deepEqual(approvalBlockers(s, 30), []);
+  assert.deepEqual(approvalBlockers(p, s, 30), []);
+});
+
+test("W4 finding raisers are the registered participants except owners and the PR's implementer (same person included)", async () => {
+  const { findingRaisers } = await import("./model.ts");
+  const p = policy();
+  assert.deepEqual(findingRaisers(p, 1), [30, 40]); // 10 is the owner, 20 the implementer
+  p.actors.push({ id: 21, person: "implementer", kind: "ai", executor: "claude" }); // same person as 20
+  p.actors.push({ id: 50, person: "codex-reviewer", kind: "ai", executor: "codex" });
+  assert.deepEqual(findingRaisers(p, 1), [30, 40, 50]);
+  assert.deepEqual(findingRaisers(p, 99), []);
 });

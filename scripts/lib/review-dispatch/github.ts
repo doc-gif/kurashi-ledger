@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  findingRaisers,
   hash,
   samePair,
   type HistoryEvent,
@@ -485,7 +486,7 @@ export async function collect(
   const found = unresolvedFindings({
     pr: prNumber,
     head: current.head,
-    reviewers: assignment.reviewers,
+    reviewers: findingRaisers(p, prNumber),
     owners: p.owners,
     reviews,
     comments: comments.map(object),
@@ -497,12 +498,13 @@ export async function collect(
   snapshot.openFindings = [...found.open]
     .map(([actor, ids]) => ({ actor, ids: [...ids] }))
     .sort((a, b) => a.actor - b.actor);
-  const ownerFindings = [...found.open]
+  // Findings of every other registered participant (owners included) block each assigned reviewer's acceptance.
+  const othersFindings = [...found.open]
     .filter(([actor]) => !assignment.reviewers.includes(actor))
     .flatMap(([, ids]) => ids);
   for (const actor of assignment.reviewers) {
     const ids = [
-      ...new Set([...(found.open.get(actor) ?? []), ...ownerFindings]),
+      ...new Set([...(found.open.get(actor) ?? []), ...othersFindings]),
     ].sort();
     if (!ids.length) continue;
     const latest = snapshot.reviews.findLast((r) => r.actor === actor);

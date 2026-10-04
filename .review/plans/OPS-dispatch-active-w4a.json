@@ -4,6 +4,8 @@
   "base_sha": "ef11e8517e99d83785735fe6e1eca5c2f88baebd",
   "planned_paths": [
     ".review/tests/test_dispatch_supervisor.py",
+    "docs/github-agent-operations.md",
+    "docs/pr-review-loop.md",
     "docs/review-dispatch-implementation.md",
     "scripts/lib/review-dispatch/active.test.ts",
     "scripts/lib/review-dispatch/active.ts",
@@ -60,6 +62,11 @@
       "description": "PR #56の粗探し（issuecomment-5978679673: P1 1件、P2 4件、P3 7件）と所有者決定（issuecomment-5978676604: リンクの許可一覧、CIの信頼をmainへ結び付ける）への対応。局所の修正を重ねず、全体を1つの方針で直す",
       "state": "resolved",
       "resolution": "全体方針: (1) 『終わった』『起動していない』『投稿してよい』の3つの証明を、それぞれ1か所の判定に寄せる。終わった＝supervisorが正常終了のあとprocess groupが空（killpgとESRCH）であることを確かめ、残っていればgroupごと止めて空を確かめてから証明し、さらにrun lockを取り直す（setsidで抜けた子孫用）。measureは子を作るrun（Grep）でgroupの各子がrun lockを持つことをlsofで実測し、子を観測できなければdescendantLockはfalse。起動していない＝run-keyを受けていないかackを送っていない、またはmanifestがなくrun lockが空いている。どちらもneverStartedとして扱い、leaseを外せる。投稿してよい＝APPROVEの前にaccepted()と同じ止め方（自分以外の最新の決定的なCHANGES_REQUESTED、自分以外が挙げた未解消の指摘）を確かめ、当たればCOMMENT（decision: needs-owner、止めたIDを本文に書く）。accepted()も『最新』を決定的な状態（APPROVED・CHANGES_REQUESTED・DISMISSED）で数える。(2) 資料は欠けたら起動しない（差分も中身もないファイル、上限超え）。未解消の指摘ID、前の粗探しの記録、信頼した写しのguard checkの出力を資料に入れる。(3) 粗探しは正本の書式で出す: 結果schemaに原因ごとの判定（causes）と前のRTの扱い（previous）を足し、台帳の全原因（invariant_id/cause_key）の判定が揃わなければ未解消とする。plan_pathと台帳の件数は受付が資料を作るときにDBへ記録した値を使う。RTのIDは正本どおりRT-<番号>。(4) 編集・削除の印は、割り当てたreviewerとownerが書いた項目の配送だけに付ける。印があれば結果を保持して照合をやり直し、最大3回で消えなければdeferred（leaseと結果を保持し、次のcycleで同じJobの投稿をやり直す。通知は1回）。Outboxは印が消えてから作るので、本文が変わってもOutboxの衝突は起きない。(5) リンクはgithub.comと固定の公式文書ドメインだけ（過去に止まった本文が使ったもの＋nodejs.org）。(6) CIの信頼はpolicyのtrustedCi（mainの要約→headの要約の組）にし、旧trustedCiDigestsは拒否する。(7) P3: checkpointのbusyを見て再試行し、だめなら通知。supervisorのread_planはsandbox-exec・cli.sb・実行ファイルの位置を固定し、起動の直前にcli.sbと実行ファイルのsha256を照合する。review JobのIDはRだけ。試験の空のassertと、許す集合が広すぎる試験を直す"
+    },
+    {
+      "description": "PR #56の粗探し2回目（issuecomment-5978944706）: スキームのないリンクで許可一覧を迂回できる（P2-a）、APPROVEを止める範囲（P2-b）、schemaの版（P3）、psの一時的な失敗（P3）",
+      "state": "resolved",
+      "resolution": "P2-a: Markdownのリンク先（inline・参照式・autolink）と`//host`を取り出し、許可したhttpsのURL以外はすべて止める（公開前の検査とparseResultの両方）。P2-b: 所有者決定5978984980の1つの規則にそろえる。挙げる人はpolicyに登録した参加者（ownerと、そのPRの実装担当と同じ人を除く。ownerは従来の狭い規則）をmodel.ts findingRaisersの1か所で決め、findings.ts・Webhookの印・evidenceの変更の記録が使う。accepted()とapprovalBlockersは、登録した参加者の最新の決定的なCHANGES_REQUESTEDと未解消の指摘で止める。登録していない第三者は参考。運用規約の文言を『登録した参加者』と明確にする。P3: user_versionを4にし、v2・v3を拒否する試験。psが失敗しても生きているworkerは終わったとみなさず、監督の外へ出るときは取消と同じ手順でgroupを止める"
     }
   ],
   "owner_decisions": [
@@ -82,6 +89,11 @@
       "date": "2026-10-04",
       "source": "Issue #50 受領記録 issuecomment-5978676604",
       "decision": "リンクはgithub.comと少数の公式文書ドメインだけ許す。CIの信頼の記録はmainのCI設定の要約からheadの要約への組にし、mainの要約が変われば記録し直す"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 受領記録 issuecomment-5978984980",
+      "decision": "APPROVEの前に数える未解消の指摘と最新のCHANGES_REQUESTEDは、policyに登録した参加者全員（所有者・Codex・Claude等）のもの。登録していない第三者は参考"
     }
   ],
   "assessments": [

@@ -95,6 +95,20 @@ export function evidenceFindings(
   return [...findings];
 }
 
+// Every link target, not only `scheme://` text (PR #56 red team round 2 P2-a): Markdown inline targets
+// `](…)`, reference definitions `[x]: …`, autolinks `<…>`, and scheme-less `//host`. Only https URLs that pass
+// allowedLink are allowed; `//…`, other schemes and relative targets (which resolve on the page) stop.
+const INLINE_TARGET = /\]\(\s*<?([^)\s>]*)/g;
+const REFERENCE_TARGET = /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]*)/gm;
+const AUTOLINK = /<((?:[a-z][a-z0-9+.-]*:|\/\/)[^<>\s]*)>/gi;
+const SCHEME_LESS = /(?:^|[^:/A-Za-z0-9_.-])\/\/[^\s/]/;
+export function linkTargetsAllowed(text: string): boolean {
+  const n = text.normalize("NFKC");
+  if (SCHEME_LESS.test(n)) return false;
+  for (const re of [INLINE_TARGET, REFERENCE_TARGET, AUTOLINK])
+    for (const m of n.matchAll(re)) if (!allowedLink(m[1] ?? "")) return false;
+  return true;
+}
 export function publicationFindings(text: string, allowed: Allowed): string[] {
   const findings = new Set<string>();
   // Zero-width and other format characters can split a secret past every rule below. Reject, never strip.
@@ -109,6 +123,7 @@ export function publicationFindings(text: string, allowed: Allowed): string[] {
   if (LOCAL_PATHS.some((re) => re.test(n))) findings.add("local absolute path");
   for (const url of n.match(ANY_URL) ?? [])
     if (!allowedLink(url)) findings.add("link not allowed");
+  if (!linkTargetsAllowed(n)) findings.add("link not allowed");
   // A bare host name (www.example.org) outside an allowed link is a link too.
   if (/\bwww\./i.test(n.replace(ANY_URL, (url) => (allowedLink(url) ? " " : url))))
     findings.add("link not allowed");

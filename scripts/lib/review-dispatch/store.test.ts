@@ -245,7 +245,7 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
       read.prepare("SELECT delivery FROM inbox").get()!["delivery"],
       "retained",
     );
-    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 3); // schema 3 (W4)
+    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 4); // schema 4 (W4)
     read.close();
   } finally {
     d.cleanup();
@@ -403,17 +403,20 @@ test("R011 a signed oversized delivery leaves only a marker that binds nothing a
   }
 });
 
-test("W4 schema 3: a schema 2 database is refused before any write (no implicit migration)", () => {
-  const d = database();
-  const file = join(d.root, "dispatch.sqlite");
-  try {
-    d.store.db.exec("PRAGMA user_version=2");
-    d.store.close();
-    const before = readFileSync(file);
-    assert.throws(() => new Store(d.root), /Dispatcher storage|Unknown database schema/);
-    assert.deepEqual(readFileSync(file), before);
-  } finally {
-    d.cleanup();
+test("W4 schema 4: a schema 2 or 3 database is refused before any write (no implicit migration)", () => {
+  for (const version of [2, 3]) {
+    const d = database();
+    const file = join(d.root, "dispatch.sqlite");
+    try {
+      assert.equal(d.store.db.prepare("PRAGMA user_version").get()!["user_version"], 4);
+      d.store.db.exec(`PRAGMA user_version=${version}`);
+      d.store.close();
+      const before = readFileSync(file);
+      assert.throws(() => new Store(d.root), /Dispatcher storage|Unknown database schema/, String(version));
+      assert.deepEqual(readFileSync(file), before);
+    } finally {
+      d.cleanup();
+    }
   }
 });
 

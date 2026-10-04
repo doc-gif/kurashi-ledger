@@ -627,7 +627,11 @@ test("R007 an assigned reviewer's later line finding blocks acceptance; third-pa
     // The fault-finding source is R014 (out of W3); supply it to isolate the finding effect.
     s.faultfinding = { actor: 30, pair: { ...s.pair }, unresolved: [] };
     assert.equal(accepted(p, s, target), false);
+    // Both places that carry the finding (the reviewer's latest review and the raiser list) must be clear.
+    assert.deepEqual(s.openFindings, [{ actor: 30, ids: ["PR1-R001"] }]);
     s.reviews.at(-1)!.findings = [];
+    assert.equal(accepted(p, s, target), false);
+    s.openFindings = [];
     assert.equal(accepted(p, s, target), true);
   } finally {
     d.cleanup();
@@ -900,6 +904,24 @@ test("W4 faultfinding evidence in the snapshot is the dispatcher's own posted re
     f.state.now = 7;
     const r = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.deepEqual(r.snapshot.faultfinding, { actor: 30, pair: { head: HEAD, base: BASE }, unresolved: [] });
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 a registered participant who is not an assigned reviewer raises findings; unregistered people and the implementer do not", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    const line = (id: number, user: number) => ({
+      id, user: { id: user }, created_at: t(5), updated_at: t(5), body: `PR1-R00${id % 10} — synthetic`, pull_request_review_id: 70 + id,
+    });
+    f.state.lineComments = [line(31, 40), line(32, 50), line(33, 20)];
+    const r = await boundApproval(f, d, p);
+    assert.deepEqual(r.snapshot.openFindings, [{ actor: 40, ids: ["PR1-R001"] }]);
+    // Attached to the assigned reviewer's latest review as well, so acceptance stops.
+    assert.deepEqual(r.snapshot.reviews.at(-1)!.findings, ["PR1-R001"]);
   } finally {
     d.cleanup();
   }

@@ -17,6 +17,7 @@ import {
   resultFindings,
   allowedFor,
   allowedLink,
+  linkTargetsAllowed,
   publicationFindings,
 } from "./publication.ts";
 
@@ -56,6 +57,7 @@ export function parseResult(raw: string, j: Job): WorkerResult {
         v,
       ) &&
       (v.match(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi) ?? []).every(allowedLink) &&
+      linkTargetsAllowed(v) &&
       !/\bwww\./i.test(v.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi, " "))
     );
   };
@@ -274,7 +276,7 @@ export class ReviewBroker {
     // PR #56 red team P2: an APPROVE only when nothing else blocks (the accepted() rule: anyone else's latest
     // change request, anyone else's unresolved finding). Otherwise a COMMENT that names the blockers.
     const blockers =
-      j.kind === "review" && result.decision === "accepted" ? approvalBlockers(s, this.actor) : [];
+      j.kind === "review" && result.decision === "accepted" ? approvalBlockers(p, s, this.actor) : [];
     const meta = this.store.runMaterials(j.run);
     const unresolved = j.kind === "faultfinding" ? redTeamOpen(result, meta) : [];
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,

@@ -699,3 +699,24 @@ class TreeEndTests(unittest.TestCase):
             self.assertEqual((state['neverStarted'], state['uncertain']), (False, True))
         finally:
             os.close(held)
+
+    def test_a_failing_ps_never_ends_supervision_of_a_live_worker(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], start_new_session=True)
+        real = supervisor._ps
+        try:
+            supervisor._ps = lambda args: subprocess.CompletedProcess(args, 1, '', '')  # ps fails
+            # A live worker is not "exited" just because ps failed.
+            self.assertFalse(supervisor.exited(child.pid))
+            self.assertIsNone(supervisor.group_members(child.pid))
+            # The stop used after an unproven exit ends the whole group.
+            supervisor.stop_worker(child.pid, lambda: child.poll() is None)
+            self.assertIsNotNone(child.poll())
+            self.assertTrue(supervisor.exited(child.pid))
+        finally:
+            supervisor._ps = real
+            if child.poll() is None:
+                child.kill()
+            child.wait()
