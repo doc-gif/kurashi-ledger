@@ -231,7 +231,7 @@ class SigningTests(unittest.TestCase):
 
     def test_vector_is_reproduced_by_the_supervisor_signer(self):
         # Runs on every OS: signing is pure standard-library code. TypeScript verifies the same file.
-        v = json.loads(VECTOR.read_text())
+        v = json.loads(VECTOR.read_text(encoding='utf-8'))
         seed = bytearray(bytes.fromhex(v['seed']))
         self.assertEqual(supervisor.public_key(seed), v['key'])
         message = supervisor.signed_message(v['job']['run'], v['binding'], v['resultHash'])
