@@ -1,6 +1,6 @@
 // GitHub Appのinstallation access tokenを発行し、そのトークンでコマンドを子プロセスとして実行する
 // （docs/github-apps.md）。トークンは子の環境のGH_TOKENにだけ置き、表示しない。
-//   node <信頼した写し>/github-app-token.ts --agent <codex|claude> --purpose <review|implement|implement-workflows> -- gh pr view <番号>
+//   node <信頼した写し>/github-app-token.ts --agent <codex|claude> --purpose <dispatch-read|review|implement|implement-workflows|merge-check> -- gh pr view <番号>
 // PRのcheckoutから実行しない。レビュー済みのmainのSHAから、repoの外へ取り出した写しで実行する（docs/github-apps.md）。
 // 中核と試験は scripts/lib/github-app-token.ts と scripts/github-app-token.test.ts。
 import { execFile } from 'node:child_process';
