@@ -96,7 +96,8 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 | --- | --- | --- | --- |
 | Ready/accepted | 現行正本のhandoff・exact-pair decision。COMMENT可 | 現行判定が効力を持つ。標準Ready/native Reviewとの差を記録 | §1/2のReady、独立APPROVEとpair証跡。旧COMMENTを正式承認へ変換しない |
 | Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報。担当reviewerの粗探しJobと人の証跡を判定へ集約 |
-| マージ | 実装担当（現行条件） | 実装担当（現行条件） | 所有者がGitHubの画面で行う。AIはマージしない |
+| マージの権限 | 実装担当（現行条件）。ただしownerのrepo外の設定の「所有者だけがマージ」にあるPR、または設定がない・読めないときはAIがマージしない | offと同じ | 所有者がGitHubの画面で行う。activeに入れたPRは「所有者だけがマージ」にも入れ、rollback後も残す |
+| 証跡の形 | AIはv1本文、人は標準操作 | 同じ | AIはv1本文（commit_id＋base_sha）。人は標準のReady/Approveと、受付が保存した結合（actor・commit_id・成立時のbase・policy revision）。証明できなければ保留 |
 | 判定/通知 | 現行手順/T23の担当 | 現行側だけ投稿。新受付は判定記録のみ | Issue45受付/Brokerだけ。T23の重複判定/通知を委譲 |
 | T24/既存巡回 | 現行方式 | 現行方式、AIの二重起動なし | 移行したPRだけ新Job管理へ。旧workerの停止を確認してから切替 |
 
@@ -104,7 +105,7 @@ activeの前提だった**正本移行**は、Issue #50のW0で行った。pr-re
 
 activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTED/行指摘は認可済みの参考/指摘、DISMISSED/編集は集合を再計算する。複数reviewerは必要集合/人数を満たし、重大未解消指摘やRequest changesを多数決で無視しない。人のApproveもReview commitと成立時pairを証明できなければ保留する。状態変化後の投稿はstaleとして履歴に残す。
 
-受付もAIもactiveのPRをマージしない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。所有者がGitHubの画面で、最新pair/CI/独立accepted/粗探し/競合を確かめてマージし、first-parentを確かめる。受付が行うのは粗探しとレビューの起動と投稿まで。repo保護設定の変更は別のowner作業。
+起動の方式（policyとactiveの一覧）とマージの権限（「所有者だけがマージ」の一覧）を分ける。後者はrollbackで消えない（PR51-R001）。受付もAIもactiveのPRをマージしない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。所有者がGitHubの画面で、最新pair/CI/独立accepted/粗探し/競合を確かめてマージし、first-parentを確かめる。受付が行うのは粗探しとレビューの起動と投稿まで。repo保護設定の変更は別のowner作業。
 
 ## 6. 身元を結ぶBrokerと通知
 
@@ -128,7 +129,7 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは
 
 | 実行先 | 固定する接口・制約 |
 | --- | --- |
-| Codex CLI | 固定absolute path/版、codex exec --json、結果schema、--sandbox read-only。agent toolのnetworkは禁止。外側のSeatbeltは掛けない（macOSが二重の閉じ込めを拒否するため。所有者決定）。cwdはClaudeと同じ中立の使い捨て領域（§7の表のcwdの行）。次の否定試験に通るまで自動起動は無効: keychainとAppの鍵に届かない、資料の外の合成の秘密ファイルを読めない、PRの`AGENTS.md`や設定を読み込まない |
+| Codex CLI | **今回は自動起動しない**（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。Codexのレビューは今の方法（Codex側の巡回か所有者の依頼）で、人への引継ぎを残す。測定の仕組みは残し、capabilityはdisabledで出す。`--sandbox read-only`は書込みの制限で、読取りを絞らない。Codex 0.160.0の[SandboxPolicy](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/protocol.rs#L1222)は全diskの読取りを許し、[変換処理](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/permissions.rs#L2046)もrootの読取りを設定する。そのため今の条件では「資料の外を読めない」否定試験に通らない。外側のSeatbeltは掛けない（所有者決定）。入れ子の拒否は版とprofileに依存し、実際のCodexのprofileでは未測定（W1は実際の入れ子のprofileで終了コード71を測った。別に、allow-defaultの2段は成功した）。cwdの規則と否定試験（keychain・Appの鍵、資料の外の合成の秘密、PRの`AGENTS.md`や設定）は、有効にする前に必須 |
 | Claude CLI | 固定absolute path/版、claude -p --output-format json、結果schema、購読の長期token（O2-token）。Read/Grep/Globだけ許可し、Bash/Write/Web・MCP/hooks/pluginsを禁止。層は下の表 |
 | 人 | GitHub操作/通知のみ。AI起動なし |
 | デスクトップチャット | 初期の自動起動対象外。既存巡回はownerの切替手順で扱う |
@@ -157,11 +158,12 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 | 読取りの範囲 | allowは資料dirに限った`Read(//<資料>/**)`だけ。denyに`Read(//<config dir>/**)`。Grep・Globも`Read()`の規則で絞る。素の`Read`・`Grep`・`Glob`を許可しない | cwd外・config dirの読取り |
 | 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
 | cwd | 取得資料だけの使い捨て領域。repo・worktreeの外。資料はrepoのpathを保たず、中立の名前で置く。cwdとその祖先に`.claude/`・`.mcp.json`・`CLAUDE.md`・`AGENTS.md`を作らない。あれば起動しない | PRのhooks・MCP・指示の自動ロード |
-| OS | `sandbox-exec`のSeatbelt profile。CLI用は資料・runtime・config dirだけを読め、keychainに触れない。tool子process用は資格情報もnetworkも使えない | 上の層の迂回、policy/DBの書込み、keychain |
+| OS | `sandbox-exec`のSeatbelt profile。CLI用は資料・runtime・config dirだけを読め、keychainに触れない。外向きは443番だけで、localhostは塞ぐ（[net-443](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。tool子process用は資格情報もnetworkも使えない | 上の層の迂回、policy/DBの書込み、keychain、localhostのサービス |
 
 - `--bare`なしの`-p`は、cwdの`.claude/settings.json`のhooksと`.mcp.json`を信頼の確認なしで使う（headlessの記載）。そのため設定の読込み・MCP・cwdの3つの層を重ねる。
 - dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`を使う。
 - `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
+- CLIが443番へ出られることは、所有者が受け入れた残余リスク（net-443）。toolはRead・Grep・Globに保つ。
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
 
@@ -170,7 +172,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 - `.claude/settings.json`のhooks・`.mcp.json`・`CLAUDE.md`・`.claude/agents`を含む合成PRを資料にして起動する。hookが動かず、MCP serverがなく、合成の目印の指示が効かない。
 - 注入した指示でconfig dirと合成の秘密を読ませる。Read・Grep・Globのどれでも拒否される。
 - 閉じ込めたClaudeとCodexから、実際のAppの鍵、または同じACLの形の合成のkeychain項目を読ませる。読めない。
-- Codexに、資料の外の合成の秘密ファイルと、`AGENTS.md`・設定を含む合成PRを与える。秘密を読めず、PRの指示・設定を読み込まない。
+- Codexに、資料の外の合成の秘密ファイルと、`AGENTS.md`・設定を含む合成PRを与える。秘密を読めず、PRの指示・設定を読み込まない。今の`--sandbox read-only`ではこの試験に通らないため、Codexはdisabledのまま（上の表）。
 
 **keychain（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)）:** 上の最後の試験で読めたら、ownerがAppの鍵を別の専用keychain fileへ移す。移し終えて試験に通るまで、自動起動はdisabledのまま。鍵の移動は[App手順](github-apps.md)の変更なので、別のPRで独立レビューを受ける。
 
@@ -184,7 +186,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 3. ownerがW1〜W4のマージ、doctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
 4. ownerがPRごとにactiveへ切り替える。手順とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)が正本。capability不足では人へ案内し、旧巡回を勝手に起動しない。停止中PRの一括再開はしない。
 
-2026-10-04の所有者決定。調整係が受けた所有者の指示の受領記録（Issue #50の[1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)・[2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)・[3](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）が正本:
+2026-10-04の所有者決定。調整係が受けた所有者の指示の受領記録（Issue #50の[1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)・[2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)・[3](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)・[4](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）が正本:
 
 | ID | 所有者の決定 | 設計の提案（決定ではない） | 反映先 |
 | --- | --- | --- | --- |
@@ -192,13 +194,15 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | O2 | Claudeは購読の認証で起動する。APIキーと`--bare`は使わない | 隔離の層と具体的なflag（§7の表） | §7 |
 | O2-token | 購読の資格情報は`claude setup-token`の長期tokenで渡す。閉じ込めたClaudeはkeychainに一切触れない | supervisorが`CLAUDE_CODE_OAUTH_TOKEN`で渡す | §7 |
 | Codex | 外側のSeatbeltを掛けず、Codex自身の`--sandbox read-only`だけで起動する。keychainとAppの鍵に届かないことを実機で確かめる | `codex exec --json` | §7 |
+| Codex-auto | 今回はCodexを自動起動しない。受付が自動起動するのはClaudeだけ。Codexのレビューは今の方法のまま。測定の仕組みは残し、disabledで出す（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | — | §7 |
+| net-443 | 閉じ込めたClaudeが443番へ出られることを残る危険として受け入れる。localhostは塞ぐ。toolはRead・Grep・Glob（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | — | §7 |
 | O3 | 別のOSユーザーでの分離は見送る | 残余リスクとして記録する | §7 |
 | Windows | 受付はMacだけで動かす。Windowsでは現行の手動レビュー手順を使う | Windowsのbackendは作らない | §3、[PR書式](pr-review-loop.md#受付がactiveのpr) |
 | active-merge | 受付がactiveのPRは、AIがマージしない。所有者がGitHubの画面でマージする。受付はレビュー・粗探しの起動と投稿まで。受領記録と通知は表示・案内だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)） | — | §5、[PR書式](pr-review-loop.md#受付がactiveのpr) |
 | 粗探しの時点 | activeのPRでは、Readyを「レビューの依頼」とみなし、粗探しをReadyのあと・レビューJobの前に同じhead/baseで行う | — | §5、[運用規約](github-agent-operations.md#merge-conditions) |
 | keychain | 閉じ込めたAIからAppの鍵（または同じACLの合成項目）が読めたら、Appの鍵を専用keychain fileへ移す。それまで自動起動は無効 | 移動はApp手順の変更として別PR | §7 |
 | R009 | 時計の後退を許す幅は5秒 | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
-| R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
+| R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
 
 ## 9. 受入試験と導入チェックリスト
 
