@@ -205,6 +205,7 @@
 - 受入: 無更新の時間だけで完了とせず、最新SHAのready-for-reviewを確認する。API不調は未確認とし、同じheadへの同じコメントを重複投稿しない。PR由来コードを高権限環境で実行しない。
 - 検証: ページネーション、rate limit、古いready、レビュー中のpush/base更新、CI失敗、同時巡回、同一アカウントのCOMMENTレビュー、Copilot利用不可。
 - T05から残した内容: workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護（rulesetのレビュー必須等。repoの設定は所有者が判断する）と、その迂回試験（[修正前の整合確認](review-prevention.md)）。必須のstatus check（`Quality gate`）と最新のbaseを求める設定は、T05のマージのあとに実装側が設定する（T23の範囲ではない）。
+- 後続（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)、[AIのGitHub App](github-apps.md)の「移行の計画」の2）: CodexとClaudeのGitHub Appの記録を巡回で読む。担当: T23の巡回（PR #38）のマージのあと、調整係が割り当てる（実装していない別の担当がレビューする）。Appが作者のPRに進む前に済ませる。受入: (1) 2つのbotのloginとAIの対応を`.review/patrol.json`で設定し、コードに書かない。(2) 役割は本文の印の`role:`から決めたまま、印のAIと投稿したbotのAIが違えば警告し、その記録を数えない。(3) botの記録を、`author_association`ではなく設定したloginで信頼する（`author_association`の実測の値を記録する）。(4) 作者や最後のpushがAppのbotでないPRと、作者や最後のpushと同じAIのAppの承認を、警告する。(5) `scripts/github-app-token.ts`と`scripts/lib/github-app-token.ts`を`policy_paths`に加える。(6) 合成のfixtureの試験で、上をすべて確かめる。
 - 非対象: 実装AIの起動、実装修正、自動マージ、デプロイ。
 
 ## T24 — 外部AIの定期確認とレビュー指摘対応

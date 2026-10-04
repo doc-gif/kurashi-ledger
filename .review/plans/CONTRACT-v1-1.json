@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "CONTRACT-v1-1",
   "planned_paths": [
     "README.md",
@@ -59,9 +59,9 @@
       "resolution": "保存の検証を、判断全体の前提（資料と範囲の条件）と項目ごとの前提（値と結んだ明細の集合）に分けて書く。EX-06(c)と計算結果の1の「写しの細かさ」に合う明確化で、意味を広げない。"
     },
     {
-      "description": "open PRのT06（#28）とT14（#29）が、同じdocs/test-oracles/README.mdとtests/fixtures/ledger/のファイルの別の行を変える。",
+      "description": "open PRと同じファイルの別の行を変える（base 409bd3f時点）: #28（T06）はREADME・台帳・状態資料・docs/test-oracles/README.md、#29（T14）はそれらに加えtests/fixtures/ledger/のcontract-shape.ts・ledger.test.ts・regime-cases.json、#25・#33・#37・#38はREADME・台帳・状態資料。#44は重ならない。",
       "state": "resolved",
-      "resolution": "このPRは必要な行だけを変え（未決事項の一覧は書き換えず、決まったことを別の表に書く等）、行の重なりを避ける。重なった場合は後からマージする側が解消する。T06・T14のbranchへはpushしない。"
+      "resolution": "このPRは必要な行だけを変える。状態資料は#40の表の形に合わせ、契約の行を1行足すだけにした（main 409bd3fの取り込みで解消）。重なった場合は後からマージする側が解消する。ほかの担当のbranchへはpushしない。"
     },
     {
       "description": "Copilot r4173201072: 区分ordinaryの定義が、利益連動でない役員賞与と支給日が定められた遡及差額を含み、所有者の決定（役員賞与と昇給の遡及差額はいまは対象外）より広い。",
