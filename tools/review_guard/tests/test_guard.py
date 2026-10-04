@@ -32,6 +32,25 @@ class ReviewGuardTests(unittest.TestCase):
             a["reason"] = "Same file identity before and after restore"
             for c in a["checks"]:
                 c.update(method="two processes using synthetic roots", expected="second process refuses the lock")
+        p["boundaries"] = [
+            {"id": "B1", "direction": "entry", "location": "storage/root.py open_root()",
+             "data": "root path chosen by the user", "trust": "partially-trusted",
+             "control": "resolve the real path and reject links before use"},
+            {"id": "B2", "direction": "exit", "location": "locks/root.lock",
+             "data": "lock file next to the root", "trust": "trusted",
+             "control": "created exclusively by the app that holds the lock"}]
+        p["variant_analysis"] = [
+            {"invariant_id": "root", "pattern": "root identity decided by a spelling of the path",
+             "places": [{"location": "storage/root.py", "result": "uses the resolved path"}]},
+            {"invariant_id": "lock", "cause_key": "identity", "pattern": "a second lock for the same root",
+             "places": [{"location": "locks/acquire.py", "result": "same lock across restore swaps"},
+                        {"location": "storage/restore.py", "result": "keeps the lock during the swap"}]}]
+        return p
+
+    def legacy_plan(self):
+        p = self.plan()
+        p["schema_version"] = 1
+        del p["boundaries"], p["variant_analysis"]
         return p
 
     def test_related_invariants_cycle_is_finite_and_history_retrieved(self):
@@ -345,6 +364,232 @@ class ReviewGuardTests(unittest.TestCase):
                 self.assertEqual(guard.main(["check", "--catalog", "catalog.json",
                     "--ledger", "ledger.json", "--plan", "OPS-1-old.json",
                     "--paths-file", "paths.json", "--base-sha", self.base]), 0)
+
+    def test_prepare_writes_schema_2_tables_that_must_be_filled(self):
+        p = guard.prepare(self.catalog, self.ledger, self.paths, self.base)
+        self.assertEqual(p["schema_version"], 2)
+        self.assertEqual([v["invariant_id"] for v in p["variant_analysis"]], ["lock", "root"])
+        self.assertEqual(len(p["boundaries"]), 1)
+        p["task_id"] = "OPS-1"
+        p["assessments"] = self.plan()["assessments"]
+        with self.assertRaisesRegex(guard.Invalid, "direction"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        empty = guard.prepare(self.catalog, self.ledger, [], self.base)
+        self.assertEqual((empty["boundaries"], empty["variant_analysis"]), ([], []))
+
+    def test_schema_2_plan_with_tables_passes_and_lists_unanalyzed_causes(self):
+        result = guard.check(self.catalog, self.ledger, self.plan(), self.paths, self.base)
+        self.assertEqual(result["plan_tables"], "checked")
+        self.assertEqual(result["causes_not_analyzed"], [])
+        self.assertIn("does not verify", result["notice"])
+        p = self.plan()
+        p["variant_analysis"][1].pop("cause_key")
+        result = guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        self.assertEqual(result["causes_not_analyzed"], ["PR2-R007"])
+
+    def test_schema_2_missing_sections_rejected(self):
+        for missing in (("boundaries",), ("variant_analysis",), ("boundaries", "variant_analysis")):
+            p = self.plan()
+            for key in missing:
+                del p[key]
+            with self.subTest(missing=missing), self.assertRaisesRegex(
+                    guard.Invalid, "requires both boundaries and variant_analysis"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        for key, value in (("boundaries", {}), ("variant_analysis", "none")):
+            p = self.plan()
+            p[key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(guard.Invalid, key + " must be a list"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_empty_inventory_rejected_for_a_boundary_touching_change(self):
+        p = self.plan()
+        p["boundaries"] = []
+        with self.assertRaisesRegex(guard.Invalid, 'empty inventory.*"lock", "root"'):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        # A plan-only change selects no invariant, so it has no boundary to list.
+        p = guard.prepare(self.catalog, self.ledger, [], self.base)
+        p["task_id"] = "OPS-1"
+        result = guard.check(self.catalog, self.ledger, p, [".review/plans/OPS-1.json"], self.base)
+        self.assertEqual((result["invariants"], result["plan_tables"]), ([], "checked"))
+
+    def test_boundary_rows_need_direction_trust_and_control(self):
+        for field, value, message in [
+                ("direction", "both", "direction must be one of entry, exit"),
+                ("direction", None, "direction"),
+                ("trust", "TODO", "trust must be one of untrusted, partially-trusted, trusted"),
+                ("trust", "high", "trust"),
+                ("location", "", "missing location"),
+                ("data", "TBD", "missing data"),
+                ("control", None, "missing control"),
+                ("id", "", "boundaries: missing id")]:
+            p = self.plan()
+            if value is None:
+                del p["boundaries"][0][field]
+            else:
+                p["boundaries"][0][field] = value
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(guard.Invalid, message):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        p = self.plan()
+        p["boundaries"][1]["id"] = "B1"
+        with self.assertRaisesRegex(guard.Invalid, "duplicate id"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_cause_key_listed_without_checked_places_rejected(self):
+        for places in ([], None, "storage/root.py", [{"location": "storage/root.py"}],
+                       [{"location": "TODO", "result": "fine"}]):
+            p = self.plan()
+            if places is None:
+                del p["variant_analysis"][1]["places"]
+            else:
+                p["variant_analysis"][1]["places"] = places
+            with self.subTest(places=places), self.assertRaisesRegex(
+                    guard.Invalid, r'variant_analysis\["lock"/"identity"\]: (no places checked|each place needs)'):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_variant_analysis_must_cover_selected_invariants(self):
+        p = self.plan()
+        p["variant_analysis"] = [v for v in p["variant_analysis"] if v["invariant_id"] != "root"]
+        with self.assertRaisesRegex(guard.Invalid, 'missing selected invariants "root"'):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        p = self.plan()
+        p["variant_analysis"][0]["pattern"] = "TODO"
+        with self.assertRaisesRegex(guard.Invalid, "missing pattern"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_variant_cause_keys_must_match_the_ledger_exactly_once(self):
+        for row, message in [
+                ({"invariant_id": "lock", "cause_key": "other"}, 'not in the ledger for "lock"'),
+                ({"invariant_id": "root", "cause_key": "identity"}, 'not in the ledger for "root"'),
+                ({"invariant_id": "lock", "cause_key": " identity"}, "trimmed"),
+                ({"invariant_id": "lock", "cause_key": "identity\n"}, "trimmed"),
+                ({"invariant_id": "lock", "cause_key": ""}, "trimmed"),
+                ({"invariant_id": "lock", "cause_key": "identity"}, "duplicate entry"),
+                ({"invariant_id": "missing"}, "unknown invariant_id"),
+                ({"invariant_id": ["lock"]}, "unknown invariant_id")]:
+            p = self.plan()
+            p["variant_analysis"].append(dict(row, pattern="synthetic sibling", places=[
+                {"location": "storage/other.py", "result": "not affected"}]))
+            with self.subTest(row=row), self.assertRaisesRegex(guard.Invalid, message):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_untrusted_plan_values_cannot_forge_log_lines(self):
+        p = self.plan()
+        p["boundaries"][1]["id"] = "B1\n::error::forged"
+        p["boundaries"].append(dict(p["boundaries"][1]))
+        with self.assertRaises(guard.Invalid) as raised:
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        self.assertNotIn("\n", str(raised.exception))
+        p = self.plan()
+        p["assessments"].append(copy.deepcopy(p["assessments"][0]))
+        p["assessments"][0]["id"] = p["assessments"][1]["id"] = "lock\n::warning::forged"
+        with self.assertRaises(guard.Invalid) as raised:
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        self.assertNotIn("\n", str(raised.exception))
+
+    def test_boundary_ids_must_be_trimmed(self):
+        for value in (" B1", "B1 ", "B1\n"):
+            p = self.plan()
+            p["boundaries"][0]["id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(guard.Invalid, "id must be trimmed"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_catalog_ledger_and_json_key_values_cannot_forge_log_lines(self):
+        forged = "x\n::error::forged"
+        cases = []
+        for field, value in [("condition", ""), ("paths", []), ("related", [forged + "-missing"]),
+                             ("scenarios", [{"id": forged, "question": ""}])]:
+            catalog = copy.deepcopy(self.catalog)
+            catalog["invariants"][0]["id"] = forged
+            catalog["invariants"][1]["related"] = []
+            catalog["invariants"][0][field] = value
+            cases.append((catalog, self.ledger))
+        for field, value in [("id", "PR2-R007\n::error::forged"), ("invariant_id", forged),
+                             ("cause_key", " identity\n::error::forged"), ("lesson", ""), ("sources", [])]:
+            ledger = copy.deepcopy(self.ledger)
+            ledger["findings"][0]["id"] = "PR2-R007\n::error::forged"
+            if field != "id":
+                ledger["findings"][0]["id"] = "PR2-R007"
+                ledger["findings"][0][field] = value
+            cases.append((self.catalog, ledger))
+        ledger = copy.deepcopy(self.ledger)
+        ledger["findings"].append(dict(ledger["findings"][0], id="PR2-R008"))
+        for finding in ledger["findings"]:
+            finding["cause_key"] = "a ::error::forged"
+        cases.append((self.catalog, ledger))
+        for catalog, ledger in cases:
+            with self.subTest(catalog=catalog["invariants"][0], ledger=ledger["findings"]):
+                with self.assertRaises(guard.Invalid) as raised:
+                    guard.validate(catalog, ledger)
+                message = str(raised.exception)
+                self.assertNotIn("\n", message)
+                self.assertTrue(message.isascii(), message)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "dup.json"
+            path.write_text('{"a\\n::error::forged": 1, "a\\n::error::forged": 2}', encoding="utf-8")
+            with self.assertRaisesRegex(guard.Invalid, "duplicate JSON key") as raised:
+                guard.read_json(path)
+            self.assertNotIn("\n", str(raised.exception))
+
+    def test_ledger_and_catalog_versions_must_be_integers(self):
+        for value in (True, 1.0, "1", None):
+            ledger = copy.deepcopy(self.ledger)
+            ledger["schema_version"] = value
+            with self.subTest(ledger=value), self.assertRaisesRegex(guard.Invalid, "schema version"):
+                guard.validate(self.catalog, ledger)
+        guard.validate(self.catalog, self.ledger)
+
+    def test_legacy_schema_1_plan_still_passes_and_is_reported(self):
+        result = guard.check(self.catalog, self.ledger, self.legacy_plan(), self.paths, self.base)
+        self.assertEqual(result["plan_tables"], "legacy-v1")
+        self.assertIn("New plans must use schema 2", result["legacy_notice"])
+        self.assertNotIn("causes_not_analyzed", result)
+        # Every existing check still applies to schema 1.
+        p = self.legacy_plan()
+        p["assessments"][0]["reason"] = "TODO"
+        with self.assertRaisesRegex(guard.Invalid, "rationale"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_legacy_schema_1_plan_with_tables_is_checked_the_same_way(self):
+        p = self.plan()
+        p["schema_version"] = 1
+        self.assertEqual(guard.check(self.catalog, self.ledger, p, self.paths, self.base)["plan_tables"], "checked")
+        del p["variant_analysis"]
+        with self.assertRaisesRegex(guard.Invalid, "plan schema 1 requires both"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        p = self.plan()
+        p["schema_version"] = 1
+        p["boundaries"] = []
+        with self.assertRaisesRegex(guard.Invalid, "empty inventory"):
+            guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_unknown_or_non_integer_schema_versions_rejected(self):
+        for value in (0, 3, "2", 2.0, True, None):
+            p = self.plan()
+            p["schema_version"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(guard.Invalid, "schema_version"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+        for value in (True, 1.0, "1"):
+            catalog = copy.deepcopy(self.catalog)
+            catalog["schema_version"] = value
+            with self.subTest(catalog=value), self.assertRaisesRegex(guard.Invalid, "schema version"):
+                guard.validate(catalog, self.ledger)
+
+    def test_cli_check_reports_missing_tables_with_exit_1(self):
+        p = self.plan()
+        del p["boundaries"]
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for name, value in [("catalog", self.catalog), ("ledger", self.ledger),
+                                ("OPS-1", p), ("paths", self.paths)]:
+                (root / (name + ".json")).write_text(json.dumps(value), encoding="utf-8")
+            args = ["check", "--catalog", str(root / "catalog.json"), "--ledger", str(root / "ledger.json"),
+                    "--plan", str(root / "OPS-1.json"), "--paths-file", str(root / "paths.json"),
+                    "--base-sha", self.base]
+            output, errors = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                self.assertEqual(guard.main(args), 1)
+            self.assertEqual(output.getvalue(), "")
+            self.assertIn("requires both boundaries and variant_analysis", errors.getvalue())
 
     def test_old_name_in_rename_still_selects_storage(self):
         p = guard.prepare(self.catalog, self.ledger, ["storage/old.py", "other/new.py"], self.base)

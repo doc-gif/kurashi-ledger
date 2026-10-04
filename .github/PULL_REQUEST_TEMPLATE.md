@@ -21,6 +21,6 @@
 
 ## レビューへの引継ぎ
 
-作業中はDraftにしてください。レビューを依頼するときはOpenへ切り替え、docs/pr-review-loop.mdの形式で対象head/baseとworker_status=ready-for-reviewをPRコメントへ記載してください。このテンプレートを埋めるだけでは完了報告になりません。
+作業中はDraftにしてください。ready-for-reviewの前は`worker_status: working`のまま「粗探し待ち（awaiting pre-review red team）」と書き、そのhead/baseに[提出前の粗探し](https://github.com/doc-gif/kurashi-ledger/blob/main/docs/pr-review-loop.md#提出前の粗探し)の記録（未解消のRTなし）ができるまでready-for-reviewを出さないでください。レビューを依頼するときはOpenへ切り替え、docs/pr-review-loop.mdの形式で対象head/baseとworker_status=ready-for-reviewをPRコメントへ記載してください。このテンプレートを埋めるだけでは完了報告になりません。
 
 レビュー中は差分を変更せず、修正再開時はworkingを明記してください。マージは、[正本の条件](https://github.com/doc-gif/kurashi-ledger/blob/main/docs/github-agent-operations.md#merge-conditions)を満たしたあとで、自分のPRに限り実装担当が`--match-head-commit`付きのマージコミットで行います。

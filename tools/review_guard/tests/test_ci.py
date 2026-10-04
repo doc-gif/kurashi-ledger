@@ -51,6 +51,16 @@ class TrustedBaseTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing invariant", result.stderr)
 
+    def test_candidate_ledger_cannot_forge_log_lines(self):
+        self.write(self.candidate / ".review/findings.json", {"schema_version": 1, "findings": [
+            {"id": "PR2-R007\n::error::forged", "invariant_id": "safety", "cause_key": "c",
+             "lesson": "l", "sources": ["https://example.com/r/7"]}]})
+        result = self.run_ci()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid shared finding id", result.stderr)
+        for stream in (result.stdout, result.stderr):
+            self.assertFalse(any(line.startswith("::") for line in stream.splitlines()), stream)
+
     def test_trusted_base_accepts_complete_metadata(self):
         result = self.run_ci()
         self.assertEqual(result.returncode, 0, result.stderr)

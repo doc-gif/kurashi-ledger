@@ -23,6 +23,12 @@ class RepositoryRoutingTests(unittest.TestCase):
             assessment["reason"] = "Synthetic routing fixture preserves the selected condition"
             for check in assessment["checks"]:
                 check.update(method="inspect synthetic routing fixture", expected="condition remains covered")
+        # Schema 2 plan tables (docs/review-prevention.md); routing is what this test checks.
+        plan["boundaries"] = [{"id": "B1", "direction": "exit", "location": "synthetic routing fixture",
+                               "data": "synthetic path", "trust": "trusted", "control": "test only"}]
+        for row in plan["variant_analysis"]:
+            row.update(pattern="synthetic routing sibling",
+                       places=[{"location": "synthetic routing fixture", "result": "covered"}])
         self.assertEqual(guard.check(catalog, ledger, plan, [path], base)["result"], "metadata-complete")
         plan["assessments"] = [a for a in plan["assessments"] if a["id"] != invariant]
         with self.assertRaisesRegex(ValueError, "missing invariant assessments:.*" + invariant):
