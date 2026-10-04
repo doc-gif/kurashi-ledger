@@ -789,6 +789,17 @@ export class Store {
     }
     return null;
   }
+  hasJob(key: string, generation: number, kind: JobKind): boolean {
+    return !!this.db
+      .prepare("SELECT 1 FROM jobs WHERE key=? AND generation=? AND kind=?")
+      .get(key, generation, kind);
+  }
+  jobByRun(run: string): Job | null {
+    const r = this.db.prepare("SELECT value FROM jobs WHERE run=?").get(run) as
+      | Row
+      | undefined;
+    return r ? (JSON.parse(String(r["value"])) as Job) : null;
+  }
   // Read-only owner summary (status CLI): IDs and states only.
   status(key: string): {
     target: Target | null;

@@ -77,6 +77,8 @@ type RunOutcome = {
   result: string;
   treeEnded: boolean;
   uncertain: boolean;
+  // The worker was proven never started (materials or plan refused before the supervisor ran it).
+  neverStarted?: boolean;
   // From the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
   origin: Provenance | null;
 };
@@ -187,6 +189,12 @@ export class Dispatcher {
     try {
       this.store.running(j);
       const value = await runner.run(j);
+      if (value.neverStarted === true) {
+        // Nothing ran: release the lease, keep the job (no relaunch for this generation) and tell the owner once.
+        this.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+        this.store.notice(`${j.key}:not-started:${j.run}`);
+        return "not-started";
+      }
       if (value.uncertain || !value.treeEnded) {
         this.store.uncertain(j);
         return "uncertain";
