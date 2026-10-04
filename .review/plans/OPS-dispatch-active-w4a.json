@@ -67,6 +67,11 @@
       "description": "PR #56の粗探し2回目（issuecomment-5978944706）: スキームのないリンクで許可一覧を迂回できる（P2-a）、APPROVEを止める範囲（P2-b）、schemaの版（P3）、psの一時的な失敗（P3）",
       "state": "resolved",
       "resolution": "P2-a: Markdownのリンク先（inline・参照式・autolink）と`//host`を取り出し、許可したhttpsのURL以外はすべて止める（公開前の検査とparseResultの両方）。P2-b: 所有者決定5978984980の1つの規則にそろえる。挙げる人はpolicyに登録した参加者（ownerと、そのPRの実装担当と同じ人を除く。ownerは従来の狭い規則）をmodel.ts findingRaisersの1か所で決め、findings.ts・Webhookの印・evidenceの変更の記録が使う。accepted()とapprovalBlockersは、登録した参加者の最新の決定的なCHANGES_REQUESTEDと未解消の指摘で止める。登録していない第三者は参考。運用規約の文言を『登録した参加者』と明確にする。P3: user_versionを4にし、v2・v3を拒否する試験。psが失敗しても生きているworkerは終わったとみなさず、監督の外へ出るときは取消と同じ手順でgroupを止める"
+    },
+    {
+      "description": "CodexのレビューPR56-R001〜R006（pullrequestreview-5405572343）。部分的な証明を合格にする経路、指摘を数える範囲、延期した投稿の復旧を、修正前にまとめて整合確認する",
+      "state": "resolved",
+      "resolution": "共通の原則: 『証明は全件そろったときだけ真』『範囲は1か所で決めて全部が使う』『CLIの入口から通す試験』。R001: 観測した子ごとに状態（継承を確認・継承なし・失敗・処理中）を持ち、reportは検査の完了を待つ。全部の子が継承を確認できたときだけ真（seen=holding、pending=failed=0）。R002: 所有者の決定5978984980の範囲を所有者にも同じ規則で適用する（findingRaisersに所有者を含め、実装担当と同じ人だけを除く）。取得・編集削除の記録・APPROVE前の確認・accepted()が同じ関数を使う。所有者は他人の指摘を解消できない（解消は同じ人の後の承認だけ、の規則を保つ）。R003: cycleはdeferredの復旧を新規起動の判定より先に行い、mainの入口から試験する。R004: 粗探しのclearは、台帳の必須原因に『確認できない』がなく、登録した参加者が投稿した前の粗探しの記録にあるRTすべての再確認があるときだけ。未登録の第三者の記録は資料にも根拠にも入れない。R005: cli.sbは1回だけ読み、そのbytesでcapabilityと照合し、起動の期待hashもそのbytesから作る。起動の直前に受付とsupervisorの両方で照合し、違えば未起動。R006: DB保存前の公開検査（resultFindings）に結果の全文章欄（causes・previousを含む）を欄をまたいで掛ける。前回までの修正（印・延期・リンク・APPROVE前の確認・終了の証明）を同じ範囲で確かめ直す"
     }
   ],
   "owner_decisions": [
