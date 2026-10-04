@@ -190,17 +190,30 @@ async function content(reader: GhReader, path: string, ref: string): Promise<Con
   const bytes = Buffer.from(v["content"], "base64");
   return bytes.length > MAX_FILE ? { bytes: null, note: "too-large" } : { bytes, note: null };
 }
-export type MaterialsMeta = { planPath: string | null; ledger: string[]; previousRts: string[] };
+// `guard`: the trusted guard check ran on the PR's plan ("ok"), could not run or gave nothing ("unavailable"),
+// or there is no single plan to check ("none"). An unavailable check keeps the red team unresolved (RT-4).
+export type MaterialsMeta = {
+  planPath: string | null;
+  ledger: string[];
+  previousRts: string[];
+  guard: "ok" | "unavailable" | "none";
+};
 // The trusted guard check (tools/review_guard/guard.py from the trusted copy) over copies of the PR's plan,
-// its changed paths and the base's catalog and ledger. Returns its stdout (JSON or an error line).
+// its changed paths and the base's catalog and ledger. `available` is false when it could not run (missing,
+// timed out, killed) or printed nothing; a guard verdict that fails the plan is still available output.
 export type GuardCheck = (input: {
   plan: string;
   paths: string;
   base: string;
   catalog: string;
   ledger: string;
-}) => string;
-const RED_TEAM_MARK = "<!-- kurashi-ledger:red-team:v1 -->";
+}) => { available: boolean; output: string };
+// The marker in any spacing, so a record is not skipped for its formatting.
+const RED_TEAM_MARK = /<!--\s*kurashi-ledger:red-team:v1\s*-->/;
+// Every RT ID anywhere in a record (bullets, tables, "[RT-1][P2]", prose), not only "RT-1:" at a line start.
+const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
+// A record that lists findings without RT IDs (for example "[P1]" items) cannot be re-checked by ID.
+const UNNUMBERED_FINDING = /\[P[0-3]\]/;
 // Every cause of the base ledger, as `invariant_id/cause_key` (the red-team table's rows).
 export function ledgerCauses(raw: Buffer | null): string[] {
   if (!raw) return refuse("materials-incomplete");
@@ -293,13 +306,17 @@ export async function buildMaterials(
       const user = o["user"] && typeof o["user"] === "object" ? (o["user"] as Record<string, unknown>)["id"] : null;
       if (
         typeof o["body"] !== "string" ||
-        !o["body"].includes(RED_TEAM_MARK) ||
+        !RED_TEAM_MARK.test(o["body"]) ||
         !Number.isSafeInteger(user) ||
         !registered.includes(Number(user))
       )
         continue;
       earlier.push(`## ${kind} ${String(o["id"])}\n\n${o["body"]}\n`);
-      for (const m of o["body"].matchAll(/^[ \t]*(?:[-*][ \t]+)?(RT-[1-9][0-9]{0,2})[ \t]*[:：]/gm)) previousRts.add(m[1]!);
+      const body = o["body"].normalize("NFKC");
+      const ids = [...body.matchAll(RT_ID)].map((m) => `RT-${m[1]}`);
+      for (const id of ids) previousRts.add(id);
+      // Findings without any RT ID: the record as a whole stays to be re-checked, so it never reads as clear.
+      if (!ids.length && UNNUMBERED_FINDING.test(body)) previousRts.add(`record-${kind}-${String(o["id"])}`);
     }
   write("pr/previous-redteam.md", earlier.length ? earlier.join("\n") : "なし\n");
   const base: Record<string, Buffer | null> = {};
@@ -311,6 +328,7 @@ export async function buildMaterials(
   const ledger = ledgerCauses(base[".review/findings.json"] ?? null);
   const plan = plans.length === 1 ? plans[0]! : null;
   let guardOut = JSON.stringify({ result: plans.length ? "multiple-plans" : "no-plan" });
+  let guardState: MaterialsMeta["guard"] = plans.length ? "unavailable" : "none";
   if (plan && guard && base[".review/invariants.json"]) {
     const work = join(dir, "context", "guard-input");
     mkdirSync(work, { mode: 0o700 });
@@ -318,16 +336,25 @@ export async function buildMaterials(
       writeFileSync(join(work, name), data, { mode: 0o600, flag: "wx" });
       return join(work, name);
     };
-    guardOut = guard({
+    const g = guard({
       plan: input("plan.json", plan.bytes),
       paths: input("paths.json", JSON.stringify([...changed].sort())),
       base: s.pair.base,
       catalog: input("invariants.json", base[".review/invariants.json"]!),
       ledger: input("findings.json", base[".review/findings.json"]!),
     });
+    guardOut = g.output;
+    guardState = g.available ? "ok" : "unavailable";
   }
   write("context/guard-check.json", `${guardOut.trim()}\n`);
-  return { files: index.length, bytes: total, planPath: plan?.path ?? null, ledger, previousRts: [...previousRts].sort() };
+  return {
+    files: index.length,
+    bytes: total,
+    planPath: plan?.path ?? null,
+    ledger,
+    previousRts: [...previousRts].sort(),
+    guard: guardState,
+  };
 }
 // guard.py check from the trusted copy: fixed interpreter and argv, no shell, minimal env, bounded time.
 export function trustedGuard(python: string, guardPy: string): GuardCheck {
@@ -337,7 +364,15 @@ export function trustedGuard(python: string, guardPy: string): GuardCheck {
       [guardPy, "check", "--plan", i.plan, "--paths-file", i.paths, "--base-sha", i.base, "--catalog", i.catalog, "--ledger", i.ledger],
       { encoding: "utf8", timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } },
     );
-    return r.error ? JSON.stringify({ result: "guard-unavailable" }) : r.stdout || JSON.stringify({ result: "guard-no-output", exit: r.status });
+    // A verdict goes to stdout (JSON) or stderr (a refusal such as unplanned paths); both are kept as data.
+    const ran = !r.error && r.signal === null && typeof r.status === "number";
+    const available = ran && (r.stdout.trim() !== "" || r.stderr.trim() !== "");
+    return {
+      available,
+      output: JSON.stringify(
+        available ? { exit: r.status, stdout: r.stdout, stderr: r.stderr } : { result: "guard-unavailable" },
+      ),
+    };
   };
 }
 
@@ -610,6 +645,20 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
     },
   };
 }
+// For posting a deferred result only (red team round 4 RT-1): it never starts anything, and it can redact the
+// stored envelope if the post is blocked. Its capability is a placeholder; activeCycle would refuse it.
+export function postOnlyRunner(c: SupervisorCommand): Runner {
+  return {
+    capability: { backend: "claude", version: "", codeHash: "", profileHash: "", probes: {} },
+    async run() {
+      return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "post-only", origin: null };
+    },
+    async redact(j, resultHash) {
+      const code = await lines(supervisor(c, "redact", ["--run", j.run, "--result-hash", resultHash]), 64 * 1024, () => {});
+      if (code !== 0) throw new ActiveError("redact-failed");
+    },
+  };
+}
 // Verifier with every persisted commitment (a restarted dispatcher verifies runs it did not start).
 export function loadVerifier(store: Store): RunVerifier {
   const v = new RunVerifier();
@@ -724,6 +773,9 @@ export async function doctorCommand(d: {
   managedSettings: boolean;
   profileText: string;
   executableDigest: string;
+  // Round 4 RT-3: cli.sb and the executable are hashed from one read; after the probes both are hashed
+  // again, and any change makes the result unverified with nothing recorded.
+  unchanged: () => boolean;
   now: number;
   launch?: LaunchOptions;
 }): Promise<DoctorResult> {
@@ -749,6 +801,23 @@ export async function doctorCommand(d: {
       },
       profileText: d.profileText,
     });
+    let changed = false;
+    try {
+      changed = !d.unchanged();
+    } catch {
+      changed = true;
+    }
+    if (changed) {
+      const probes = Object.fromEntries(Object.keys(result.capability.probes).map((k) => [k, false]));
+      const unverified: DoctorResult = {
+        ...result,
+        state: result.state === "disabled" ? "disabled" : "unverified",
+        reasons: [...result.reasons, "bound-file-changed"],
+        capability: { ...result.capability, probes },
+      };
+      d.store.saveCapability("claude", null, d.now);
+      return unverified;
+    }
     d.store.saveCapability("claude", result.state === "verified" ? result.capability : null, d.now);
     return result;
   } finally {
@@ -816,6 +885,8 @@ export async function measureCommand(d: {
   spawn: SpawnSupervisor;
   layout: (root: string) => Promise<TrapLayout & { close(): Promise<void> }>;
   bound: BoundFiles;
+  // Round 4 RT-3: re-hash after the measurement; a change means no record is written.
+  unchanged: () => boolean;
   launch?: LaunchOptions;
 }): Promise<MeasurementFile> {
   const job = measurementJob(d.policy);
@@ -861,6 +932,13 @@ export async function measureCommand(d: {
         schema = false;
       }
     }
+    let same = false;
+    try {
+      same = d.unchanged();
+    } catch {
+      same = false;
+    }
+    if (!same) refuse("bound-file-changed");
     return {
       schema: 1,
       measurement: measurementRecord(d.install.claude, d.executableDigest, profileHash(d.profileText), outcomes),

@@ -316,6 +316,8 @@ test("Codex PR56-R003: a deferred post is recovered from the cycle entry point o
   const { hash } = await import("./lib/review-dispatch/model.ts");
   const { fixtureResult } = await import("./lib/review-dispatch/runtime.ts");
   const { TestSigner } = await import("../tests/fixtures/review-dispatch-run-signer.ts");
+  // Round 4 RT-1: the recovery needs no launch proof, so it also works with no capability or a changed CLI.
+  for (const launchProof of ["bound", "missing", "executable-changed"] as const) {
   const c = await activeCli();
   try {
     const store = c.x.d.store,
@@ -338,6 +340,7 @@ test("Codex PR56-R003: a deferred post is recovered from the cycle entry point o
       issue: { number: 1, pull_request: {} }, comment: { id: 5, user: { id: 30 }, body: "x", updated_at: "2026-01-01T00:00:04.000Z" },
     }), 502, "1:1");
     assert.ok(store.deferred("1:1"));
+    if (launchProof === "missing") store.saveCapability("claude", null, 503);
     const jobsBefore = store.status("1:1").jobs.length;
     // Fake Claude App relay (list/post JSON lines), standing in for the token wrapper session.
     const posted: { event: string; body: string; head: string }[] = [];
@@ -368,11 +371,12 @@ test("Codex PR56-R003: a deferred post is recovered from the cycle entry point o
       spawn: () => assert.fail("no worker relaunch"),
       relaySpawn,
       readBytes: () => c.A,
-      digest: (path: string) => (path === c.install.claude.cliProfile ? c.sha(c.A) : c.EXE),
+      digest: (path: string) =>
+        path === c.install.claude.cliProfile ? c.sha(c.A) : launchProof === "executable-changed" ? "f".repeat(64) : c.EXE,
       platform: "darwin" as const,
     };
     assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1000, deps), 0);
-    assert.match(lines.join("\n"), /PR #1: resume:posted/);
+    assert.match(lines.join("\n"), /PR #1: resume:posted/, launchProof);
     assert.equal(posted.length, 1);
     assert.equal(posted[0]!.event, "COMMENT");
     assert.match(posted[0]!.body, /^<!-- kurashi-ledger:red-team:v1 -->/);
@@ -387,4 +391,29 @@ test("Codex PR56-R003: a deferred post is recovered from the cycle entry point o
   } finally {
     c.x.cleanup();
   }
+  }
+});
+
+test("Round 4 RT-3: doctor and measure hash cli.sb from the one read they use, and see a later swap", async () => {
+  const { boundFiles } = await import("./review-dispatch.ts");
+  const { createHash } = await import("node:crypto");
+  const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+  const A = Buffer.from("(version 1)\n(deny default)\n"),
+    B = Buffer.from("(version 1)\n(allow default)\n");
+  let current = A,
+    reads = 0;
+  const install = { claude: { cliProfile: "/opt/synthetic/copy/cli.sb", executable: "/opt/synthetic/claude/bin/claude" } } as never;
+  const files = boundFiles(install, {
+    readBytes: () => {
+      reads++;
+      return A;
+    },
+    digest: (path: string) => (path.endsWith("cli.sb") ? sha(current) : "e".repeat(64)),
+  });
+  assert.equal(reads, 1);
+  assert.equal(files.text, A.toString("utf8"));
+  assert.equal(files.bound.profileSha256, sha(A)); // from the bytes that were read, not a second read
+  assert.equal(files.unchanged(), true);
+  current = B;
+  assert.equal(files.unchanged(), false);
 });

@@ -154,6 +154,10 @@ function materialsTransport(files: Record<string, unknown>[], contents: Record<s
       value = [
         { id: 71, user: { id: 30 }, body: "<!-- kurashi-ledger:red-team:v1 -->\nRT-1: 合成の指摘\n- RT-2: 未解消 — 残る" },
         { id: 72, user: { id: 30 }, body: "ほかのコメント" },
+        // Round 4 RT-2: RT IDs in any format count; a record with findings but no RT ID stays to be re-checked.
+        { id: 74, user: { id: 40 }, body: "<!--kurashi-ledger:red-team:v1-->\n| RT-4 | 該当 | 表の中 |\n[RT-5][P2] 角括弧の形\n本文の中のRT-3も数える" },
+        { id: 75, user: { id: 10 }, body: "<!-- kurashi-ledger:red-team:v1 -->\n## 指摘\n- [P1] 番号のない指摘" },
+        { id: 76, user: { id: 30 }, body: "<!-- kurashi-ledger:red-team:v1 -->\n## 指摘\nなし" },
         // A forged record by an unregistered account: neither material nor evidence.
         { id: 73, user: { id: 999 }, body: "<!-- kurashi-ledger:red-team:v1 -->\nRT-9: 偽の記録" },
       ];
@@ -203,11 +207,12 @@ test("W4 materials: neutral names, others' blockers, earlier red-team records, t
     const guarded: Record<string, string>[] = [];
     const guard = (i: Record<string, string>) => {
       guarded.push(i);
-      return '{"result":"metadata-complete"}';
+      return { available: true, output: '{"result":"metadata-complete"}' };
     };
     const r = await buildMaterials(new GhReader("synthetic/repository", materialsTransport(PR_FILES, PR_CONTENTS)), prView, dir, guard, [10, 20, 30, 40]);
     assert.equal(r.files, 5);
-    assert.deepEqual(r.previousRts, ["RT-1", "RT-2"]);
+    assert.deepEqual(r.previousRts, ["RT-1", "RT-2", "RT-3", "RT-4", "RT-5", "record-comment-75"]);
+    assert.equal(r.guard, "ok");
     assert.equal(r.planPath, ".review/plans/T99.json");
     assert.deepEqual(r.ledger, ["INV-LOCK/restore-lock-identity", "INV-STORAGE/database-journal-pair"]);
     // No CLI configuration name anywhere (the launcher scan would refuse it).
@@ -368,7 +373,7 @@ function runnerSetup(o: FakeOptions = {}) {
     verifier,
     materials: async (_j, dir) => {
       writeFileSync(join(dir, "readme.txt"), "synthetic\n");
-      return { planPath: null, ledger: [], previousRts: [] };
+      return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
     },
     bound: BOUND,
     digest: BOUND_DIGEST,
@@ -403,7 +408,7 @@ test("W4 Claude runner: the key is stored before ack, the plan goes only through
       policy: x.p, store: x.d.store, root: x.d.root, install: x.i, capability: capability(x.i.claude), verifier: x.verifier,
       materials: async (_j, dir) => {
       writeFileSync(join(dir, "readme.txt"), "synthetic\n");
-      return { planPath: null, ledger: [], previousRts: [] };
+      return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
     },
     bound: BOUND,
     digest: BOUND_DIGEST,
@@ -457,7 +462,7 @@ test("W4 Claude runner: a key line for another job is never acknowledged; refuse
       // A PR that ships a CLI configuration name inside the materials is refused by the launcher.
       materials: async (_j, dir) => {
         mkdirSync(join(dir, ".claude"));
-        return { planPath: null, ledger: [], previousRts: [] };
+        return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
       },
       bound: BOUND,
       digest: BOUND_DIGEST,
@@ -504,7 +509,7 @@ function sealedRunner(
     redact: async () => {},
     run: async (j: Job) => {
       launches.push(j.kind);
-      store?.saveRunMaterials(j.run, { planPath: ".review/plans/T99.json", ledger: RUN_LEDGER, previousRts });
+      store?.saveRunMaterials(j.run, { planPath: ".review/plans/T99.json", ledger: RUN_LEDGER, previousRts, guard: "ok" });
       const decision = decisions[j.kind] ?? "accepted";
       const red = j.kind === "faultfinding";
       const result: WorkerResult = {
@@ -629,6 +634,7 @@ test("W4 doctor command stores a capability only when verified, bound to this in
       managedSettings: false,
       profileText: PROFILE,
       executableDigest: EXE,
+      unchanged: () => true,
       now: 100,
       launch: { platform: "darwin" as const, exists: () => false, readToken: () => TOKEN },
     };
@@ -649,6 +655,13 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const stale = await doctorCommand({ ...base, measurement: file(), executableDigest: "f".repeat(64) });
     assert.notEqual(stale.state, "verified");
     assert.equal(d.store.capability("claude"), null);
+    // Round 4 RT-3: cli.sb or the executable swapped A -> B while the probes ran: unverified, nothing recorded.
+    const swapped = await doctorCommand({ ...base, measurement: file(), unchanged: () => false });
+    assert.equal(swapped.state, "unverified");
+    assert.ok(swapped.reasons.includes("bound-file-changed"));
+    assert.equal(d.store.capability("claude"), null);
+    const control = await doctorCommand({ ...base, measurement: file() });
+    assert.equal(control.state, "verified");
   } finally {
     d.cleanup();
     rmSync(runs, { recursive: true, force: true });
@@ -689,6 +702,7 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       spawn: fakeSupervisor({}, calls),
       layout,
       bound: BOUND,
+      unchanged: () => true,
       launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
     });
     assert.equal(record.measurement.codeHash, EXE);
@@ -709,10 +723,28 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
           spawn: fakeSupervisor({ descendants }, []),
           layout,
           bound: BOUND,
+          unchanged: () => true,
           launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
         })
       ).external.descendantLock;
     assert.equal(await again({ seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, proven: true }), true);
+    // Round 4 RT-3: a swap during the measurement writes no record.
+    let reads = 0;
+    await assert.rejects(
+      measureCommand({
+        policy: p,
+        install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
+        executableDigest: EXE,
+        profileText: PROFILE,
+        executor: async () => ({ exitCode: 0, stdout: "" }),
+        spawn: fakeSupervisor({}, []),
+        layout,
+        bound: BOUND,
+        unchanged: () => ++reads < 0, // B after the first read
+        launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
+      }),
+      /bound-file-changed/,
+    );
     // Codex PR56-R001, independent expectations: partial, failed, pending or inconsistent reports are never proof.
     for (const d of [
       { seen: 2, checked: 2, holding: 1, pending: 0, failed: 0, proven: false },
@@ -833,6 +865,8 @@ test("Codex PR56-R004: an unconfirmed required cause or an earlier RT left unche
     ],
     ["earlier RT omitted", {}, ["RT-2"], ["unchecked:RT-2"]],
     ["earlier RT re-checked", { previous: [{ id: "RT-2", status: "解消" as const, reason: "直った" }] }, ["RT-2"], []],
+    // An earlier record whose findings carry no RT ID can never be ticked off by ID: it stays unresolved.
+    ["unnumbered record", { previous: [{ id: "RT-2", status: "解消" as const, reason: "直った" }] }, ["RT-2", "record-comment-75"], ["unchecked:record-comment-75"]],
   ] as const) {
     const x = stepSetup(extra as Partial<WorkerResult>, {}, [...previousRts]);
     try {
@@ -896,7 +930,7 @@ test("Codex PR56-R005: a bound file that changes before the launch (at the start
         policy: x.p, store: x.d.store, root: x.d.root, install: x.i, capability: capability(x.i.claude), verifier: x.verifier,
         materials: async (_j, dir) => {
           writeFileSync(join(dir, "readme.txt"), "synthetic\n");
-          return { planPath: null, ledger: [], previousRts: [] };
+          return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
         },
         bound: BOUND,
         // The profile reads as A, then as B (the file was replaced after the capability check).
@@ -913,3 +947,28 @@ test("Codex PR56-R005: a bound file that changes before the launch (at the start
     }
   }
 });
+
+test("Round 4 RT-4: a plan whose trusted guard check is missing or failed keeps the red team unresolved", async () => {
+  const { redTeamOpen } = await import("./broker.ts");
+  const j = { ...measurementJobFor(), kind: "faultfinding" as const };
+  const clear = { ...fixtureResult(j), decision: "accepted" as const, unverified: [] };
+  const meta = (guard: "ok" | "unavailable" | "none", planPath: string | null) => ({ planPath, ledger: [], previousRts: [], guard });
+  assert.deepEqual(redTeamOpen(clear, meta("ok", ".review/plans/T99.json")), []);
+  assert.deepEqual(redTeamOpen(clear, meta("none", null)), []);
+  assert.deepEqual(redTeamOpen(clear, meta("unavailable", ".review/plans/T99.json")), ["guard-unavailable"]);
+  assert.deepEqual(redTeamOpen(clear, meta("unavailable", null)), ["guard-unavailable"]); // several plans
+  // Materials: a guard that cannot run is recorded as unavailable.
+  const fs = await import("node:fs");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "materials-")));
+  try {
+    const r = await buildMaterials(new GhReader("synthetic/repository", materialsTransport(PR_FILES, PR_CONTENTS)), prView, dir,
+      () => ({ available: false, output: '{"result":"guard-unavailable"}' }), [10, 30]);
+    assert.equal(r.guard, "unavailable");
+    assert.equal(fs.readFileSync(join(dir, "context", "guard-check.json"), "utf8"), '{"result":"guard-unavailable"}\n');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+function measurementJobFor(): Job {
+  return { id: "j-rt4", key: "1:1", generation: 1, actor: 30, kind: "review", run: "00000000-0000-4000-8000-0000000000b4", pair: { head: HEAD, base: BASE }, policy: "p1" };
+}

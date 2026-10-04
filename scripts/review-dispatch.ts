@@ -35,6 +35,7 @@ import {
   measureCommand,
   nextKind,
   parseInstall,
+  postOnlyRunner,
   startSmall,
   trapLayout,
   trustedGuard,
@@ -230,9 +231,37 @@ async function active(
   const target = startSmall(policy);
   const current = results.find((r) => r.pr === target.pr);
   if (!current) return 0;
-  // A post deferred by an edit mark is recovered first (Codex PR56-R003); otherwise stop when nothing is due
-  // (not eligible, waiting for RTs, already reviewed): the status command shows why.
-  if (!store.deferred(target.key) && !nextKind(store, policy, current.snapshot).kind) return 0;
+  const fresh = async () => {
+    const again = (await reconcile(new GhReader(policy.repo, transport), policy, store)).find(
+      (r) => r.pr === target.pr,
+    );
+    if (!again) throw new Error("Target vanished");
+    return again.snapshot;
+  };
+  const broker = () =>
+    createClaudeReviewBroker(policy, install.broker, store, loadVerifier(store), {
+      platform: deps.platform ?? process.platform,
+      home: install.home,
+      ...(deps.relaySpawn ? { spawn: deps.relaySpawn } : {}),
+    });
+  // A post deferred by an edit mark is recovered first (Codex PR56-R003, red team round 4 RT-1). Posting a
+  // result that was produced and signed earlier needs no launch proof: no capability match, no read of the
+  // executable or cli.sb. The Broker verifies the stored signature again.
+  if (store.deferred(target.key)) {
+    const outcome = await activeStep({
+      policy,
+      store,
+      snapshot: current.snapshot,
+      runner: postOnlyRunner({ python: install.python, supervisor: install.supervisor, root, spawn: deps.spawn ?? realSpawn }),
+      broker: broker(),
+      fresh,
+      now: clock(),
+    });
+    log(`PR #${target.pr}: ${outcome}`);
+    return 0;
+  }
+  // Nothing due (not eligible, waiting for RTs, already reviewed): the status command shows why.
+  if (!nextKind(store, policy, current.snapshot).kind) return 0;
   const digest = deps.digest ?? fileDigest;
   const executableSha256 = digest(install.claude.executable);
   // Codex PR56-R005: cli.sb is read once. The same bytes are matched with the capability and give the hash the
@@ -276,24 +305,16 @@ async function active(
     digest,
     ...(deps.launch ? { launch: deps.launch } : {}),
   });
-  const broker = createClaudeReviewBroker(policy, install.broker, store, verifier, {
-    platform: deps.platform ?? process.platform,
-    home: install.home,
-    ...(deps.relaySpawn ? { spawn: deps.relaySpawn } : {}),
-  });
-  const fresh = async () => {
-    const again = (await reconcile(new GhReader(policy.repo, transport), policy, store)).find(
-      (r) => r.pr === target.pr,
-    );
-    if (!again) throw new Error("Target vanished");
-    return again.snapshot;
-  };
   const outcome = await activeStep({
     policy,
     store,
     snapshot: current.snapshot,
     runner,
-    broker,
+    broker: createClaudeReviewBroker(policy, install.broker, store, verifier, {
+      platform: deps.platform ?? process.platform,
+      home: install.home,
+      ...(deps.relaySpawn ? { spawn: deps.relaySpawn } : {}),
+    }),
     fresh,
     now: clock(),
   });
@@ -363,6 +384,23 @@ async function release(
   return 0;
 }
 
+// cli.sb is read once and the executable hashed once; the probes run on that file, and the same hashes are
+// checked again afterwards (round 4 RT-3). Returns the text and the bound hashes.
+export function boundFiles(install: ActiveInstall, deps: Deps) {
+  const digest = deps.digest ?? fileDigest;
+  const profile = install.claude.cliProfile ?? "";
+  const bytes = (deps.readBytes ?? ((p: string) => readFileSync(p)))(profile);
+  const bound = {
+    profile,
+    profileSha256: createHash("sha256").update(bytes).digest("hex"),
+    executable: install.claude.executable,
+    executableSha256: digest(install.claude.executable),
+  };
+  const unchanged = () =>
+    digest(bound.profile) === bound.profileSha256 && digest(bound.executable) === bound.executableSha256;
+  return { text: bytes.toString("utf8"), bound, unchanged };
+}
+
 async function doctor(
   policy: Policy,
   store: Store,
@@ -372,7 +410,7 @@ async function doctor(
   clock: () => number,
   deps: Deps,
 ): Promise<number> {
-  const read = (p: string) => (deps.readBytes ?? ((q: string) => readFileSync(q)))(p).toString("utf8");
+  const files = boundFiles(install, deps);
   const host = seatbeltHost({ cliProfile: install.claude.cliProfile ?? "" });
   try {
     const result = await doctorCommand({
@@ -391,8 +429,9 @@ async function doctor(
       },
       configProblems: inspectConfigDir(install.claude.configDir),
       managedSettings: managedSettingsPresent(),
-      profileText: read(install.claude.cliProfile ?? ""),
-      executableDigest: (deps.digest ?? fileDigest)(install.claude.executable),
+      profileText: files.text,
+      executableDigest: files.bound.executableSha256,
+      unchanged: files.unchanged,
       now: clock(),
     });
     log(`doctor: ${result.state}${result.reasons.length ? `（${result.reasons.join("、")}）` : ""}`);
@@ -409,18 +448,14 @@ async function measure(
   log: (s: string) => void,
   deps: Deps,
 ): Promise<number> {
-  const digest = deps.digest ?? fileDigest;
+  const files = boundFiles(install, deps);
   const record = await measureCommand({
     policy,
     install,
-    bound: {
-      profile: install.claude.cliProfile ?? "",
-      profileSha256: digest(install.claude.cliProfile ?? ""),
-      executable: install.claude.executable,
-      executableSha256: digest(install.claude.executable),
-    },
-    executableDigest: digest(install.claude.executable),
-    profileText: (deps.readBytes ?? ((p: string) => readFileSync(p)))(install.claude.cliProfile ?? "").toString("utf8"),
+    bound: files.bound,
+    executableDigest: files.bound.executableSha256,
+    profileText: files.text,
+    unchanged: files.unchanged,
     executor: spawnExecutor(),
     spawn: deps.spawn ?? realSpawn,
     layout: trapLayout,
