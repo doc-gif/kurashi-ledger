@@ -29,6 +29,9 @@ export type Observation = {
   generation: number;
   legacyReady: boolean;
   differs: boolean;
+  // PR48-R008/R007: workflow trust and the assigned reviewers' unresolved finding IDs (no prose).
+  workflow: Collection["workflow"];
+  findings: string[];
 };
 const actorId = (v: unknown): number | null => {
   const id = object(v)["id"];
@@ -290,6 +293,10 @@ export async function reconcile(
       generation: assessed.generation,
       legacyReady: legacy,
       differs: legacy !== (assessed.status === "eligible"),
+      workflow: c.workflow,
+      findings: [
+        ...new Set(c.snapshot.reviews.flatMap((r) => r.findings)),
+      ].sort(),
     };
     updates.push({ key, ready, reviews, observation });
     results.push({ pr: target.pr, snapshot: c.snapshot, observation });

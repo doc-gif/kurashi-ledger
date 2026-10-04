@@ -4,7 +4,9 @@ import { object } from "./github.ts";
 import { type Policy } from "./model.ts";
 import { Store } from "./store.ts";
 export const MAX_BODY = 256 * 1024;
-const EVENTS = new Set([
+// GitHub caps a delivery at 25 MB. Larger bodies are cut off without any record.
+export const MAX_DELIVERY = 25 * 1024 * 1024;
+export const EVENTS: ReadonlySet<string> = new Set([
   "pull_request",
   "pull_request_review",
   "pull_request_review_comment",
@@ -54,6 +56,46 @@ export function ingest(
     return 503;
   } // Never acknowledge without durable Inbox.
 }
+// PR48-R011: a signed delivery above MAX_BODY is not kept. The server streams its HMAC (no buffering),
+// and only the delivery ID and event are recorded so the owner learns that a delivery was lost and the
+// reconcile backstop must cover it. Still 413 to the sender (design §3); the marker binds nothing.
+export function ingestOversized(
+  p: Policy,
+  store: Store,
+  secret: Buffer,
+  headers: Record<string, string | undefined>,
+  digest: Buffer,
+  size: number,
+  now: number,
+): number {
+  if (p.mode === "off") return 503;
+  if (!Number.isSafeInteger(size) || size <= MAX_BODY || size > MAX_DELIVERY)
+    return 413;
+  const sig = headers["x-hub-signature-256"];
+  if (
+    !sig ||
+    !/^sha256=[a-f0-9]{64}$/.test(sig) ||
+    secret.length < 32 ||
+    digest.length !== 32 ||
+    !timingSafeEqual(digest, Buffer.from(sig.slice(7), "hex"))
+  )
+    return 401;
+  const event = headers["x-github-event"],
+    delivery = headers["x-github-delivery"];
+  if (
+    !event ||
+    !EVENTS.has(event) ||
+    !delivery ||
+    !/^[a-zA-Z0-9-]{1,100}$/.test(delivery)
+  )
+    return 400;
+  try {
+    store.oversized(p.receiveAppId, delivery, event, now);
+  } catch {
+    return 503;
+  }
+  return 413;
+}
 export function serve(
   p: Policy,
   store: Store,
@@ -76,16 +118,21 @@ export function serve(
     }
     let size = 0;
     const chunks: Buffer[] = [];
+    const mac = createHmac("sha256", secret);
     const timer = setTimeout(() => {
       reply(408);
       req.destroy();
     }, 5000);
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > MAX_DELIVERY) {
         reply(413);
         req.destroy();
-      } else chunks.push(chunk);
+        return;
+      }
+      mac.update(chunk);
+      if (size <= MAX_BODY) chunks.push(chunk);
+      else chunks.length = 0; // Never keep an oversized body.
     });
     req.on("end", () => {
       clearTimeout(timer);
@@ -99,7 +146,11 @@ export function serve(
         const v = req.headers[key];
         headers[key] = typeof v === "string" ? v : undefined;
       }
-      reply(ingest(p, store, secret, headers, Buffer.concat(chunks), now()));
+      reply(
+        size > MAX_BODY
+          ? ingestOversized(p, store, secret, headers, mac.digest(), size, now())
+          : ingest(p, store, secret, headers, Buffer.concat(chunks), now()),
+      );
     });
     req.on("error", () => {
       clearTimeout(timer);

@@ -32,6 +32,8 @@ export type Policy = {
   }[];
   maxConcurrent: number;
   executorLimits: Record<string, number>;
+  // PR48-R008: `.github` tree SHAs the owner trusted after an independent review of the workflow diff.
+  trustedWorkflowTrees?: string[];
 };
 export type HistoryEvent = {
   id: string;
@@ -186,6 +188,15 @@ export function validatePolicy(value: unknown): Policy {
     )
   )
     throw new Error("Invalid role assignment");
+  if (
+    p.trustedWorkflowTrees !== undefined &&
+    (!Array.isArray(p.trustedWorkflowTrees) ||
+      p.trustedWorkflowTrees.some(
+        (t) => typeof t !== "string" || !/^[a-f0-9]{40}$/.test(t),
+      ) ||
+      new Set(p.trustedWorkflowTrees).size !== p.trustedWorkflowTrees.length)
+  )
+    throw new Error("Invalid workflow trust");
   for (const a of p.actors)
     if (
       a.kind === "ai" &&

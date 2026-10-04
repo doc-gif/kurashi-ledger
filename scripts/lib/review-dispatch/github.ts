@@ -9,6 +9,7 @@ import {
   type Policy,
   type Snapshot,
 } from "./model.ts";
+import { unresolvedFindings } from "./findings.ts";
 
 export const REQUIRED_JOBS = [
   "Quality gate",
@@ -189,7 +190,23 @@ export type Collection = {
   headRef: string;
   headRepoId: number | null;
   creation: { id: string; actor: number; at: number } | null;
+  // PR48-R008: unchanged `.github`, owner-trusted change, or untrusted change (stays unknown).
+  workflow: "unchanged" | "trusted" | "untrusted";
 };
+// Tree SHA of `.github` in a commit, or null when the commit has none.
+async function githubTree(reader: GhReader, commit: string): Promise<string | null> {
+  const c = await reader.object(`git/commits/${commit}`);
+  const root = await reader.object(`git/trees/${sha(object(c["tree"])["sha"])}`);
+  if (root["truncated"] !== false || !Array.isArray(root["tree"]))
+    throw new EvidenceError();
+  const entries = root["tree"]
+    .map(object)
+    .filter((e) => e["path"] === ".github");
+  if (entries.length > 1) throw new EvidenceError();
+  if (!entries.length) return null;
+  if (entries[0]!["type"] !== "tree") return null;
+  return sha(entries[0]!["sha"]);
+}
 // Inputs below are trusted persisted observations, never PR prose. Missing identity/history stays unknown.
 export async function collect(
   reader: GhReader,
@@ -244,21 +261,30 @@ export async function collect(
       "workflow_runs",
     )
   ).map(object);
+  // Only the reviewed workflow file may produce the required jobs; another file named "CI" cannot.
   const candidate = runs
-    .filter((r) => r["name"] === "CI" && r["head_sha"] === current.head)
+    .filter(
+      (r) =>
+        r["name"] === "CI" &&
+        r["path"] === ".github/workflows/ci.yml" &&
+        r["head_sha"] === current.head,
+    )
     .sort((a, b) => Number(b["id"]) - Number(a["id"]))[0];
   let jobs: Record<string, unknown>[] = [],
     testedParents: string[] = [],
     testedTree = "";
-  const baseWorkflow = await reader.object(
-      `contents/.github/workflows/ci.yml?ref=${current.base}`,
-    ),
-    headWorkflow = await reader.object(
-      `contents/.github/workflows/ci.yml?ref=${current.head}`,
-    );
-  const workflowTrusted =
-    baseWorkflow["sha"] === headWorkflow["sha"] &&
-    typeof baseWorkflow["sha"] === "string";
+  // PR48-R008: any change under .github (workflows, actions, ...) keeps CI unknown until the owner
+  // records the reviewed tree SHA in the policy. A policy revision change then needs a new Ready.
+  const baseGithub = await githubTree(reader, current.base),
+    headGithub = await githubTree(reader, current.head);
+  const workflow: Collection["workflow"] =
+    baseGithub !== null && headGithub === baseGithub
+      ? "unchanged"
+      : headGithub !== null &&
+          (p.trustedWorkflowTrees ?? []).includes(headGithub)
+        ? "trusted"
+        : "untrusted";
+  const workflowTrusted = workflow !== "untrusted";
   const head = await reader.object(`git/commits/${current.head}`);
   const headTree = sha(object(head["tree"])["sha"]);
   if (candidate) {
@@ -367,7 +393,7 @@ export async function collect(
     })),
     history,
     // Native human approvals need a persisted establishment pair; unknown base is never filled from today.
-    reviews: reviews.map((r) => {
+    reviews: reviews.map((r): Snapshot["reviews"][number] => {
       const actor = id(object(r["user"])),
         reviewId = String(id(r));
       const binding = options.acceptances?.find(
@@ -389,6 +415,25 @@ export async function collect(
     unresolvedDesign: options.unresolvedDesign,
     faultfinding: options.faultfinding,
   };
+  // PR48-R007: the assigned reviewers' unresolved findings block acceptance through their latest review.
+  const assignment = p.targets.find((t) => t.pr === prNumber)!;
+  for (const [actor, ids] of unresolvedFindings(
+    prNumber,
+    assignment.reviewers,
+    reviews,
+    comments.map(object),
+  )) {
+    const latest = snapshot.reviews.findLast((r) => r.actor === actor);
+    if (latest) latest.findings = ids;
+    else
+      snapshot.reviews.push({
+        id: `findings:${actor}`,
+        actor,
+        state: "COMMENTED",
+        pair: null,
+        findings: ids,
+      });
+  }
   const meta = (v: Record<string, unknown>) =>
     JSON.stringify([
       v["state"],
@@ -419,6 +464,7 @@ export async function collect(
     headRef: "refs/heads/" + ref,
     headRepoId:
       (objectOrNull(object(pr["head"])["repo"])?.["id"] as number) ?? null,
+    workflow,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>
@@ -536,6 +582,18 @@ export function ghTransport(token: string, ghPath: string): Transport {
   };
 }
 
+// PR48-R011: the only body form the Broker posts. LF line ends, no trailing blanks, NFC, no other
+// control characters. Recovery compares hashes exactly; a body GitHub changed stays uncertain.
+export function canonicalBody(body: string): string {
+  return body
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n")
+    .trimEnd();
+}
 // Instantiate only inside the fixed-identity reviewed App wrapper. No key/App selector is exposed to worker output.
 export function ghReviewTransport(
   token: string,
@@ -561,7 +619,8 @@ export function ghReviewTransport(
         pr < 1 ||
         !["APPROVE", "REQUEST_CHANGES", "COMMENT"].includes(event) ||
         !/^[a-f0-9]{40}$/.test(head) ||
-        body.length > 32768
+        body.length > 32768 ||
+        body !== canonicalBody(body)
       )
         throw new EvidenceError();
       const home = mkdtempSync(join(tmpdir(), "dispatch-broker-"));
