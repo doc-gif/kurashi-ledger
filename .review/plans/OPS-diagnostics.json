@@ -1,0 +1,1033 @@
+{
+  "schema_version": 1,
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
+  "task_id": "OPS-diagnostics",
+  "planned_paths": [
+    ".github/dependabot.yml",
+    ".review/findings.json",
+    "README.md",
+    "docs/adr/0007-shared-safety-checks.md",
+    "docs/adr/0010-diagnostics-and-maintainability.md",
+    "docs/adr/README.md",
+    "docs/development.md",
+    "docs/implementation-plan.md",
+    "docs/implementation-tasks.md",
+    "docs/project-status.md"
+  ],
+  "conflicts": [
+    {
+      "description": "docs/development.mdの「所有者の決定（2026-10-02）」の3は、Dependabot（依存の自動更新）を「いまは入れない。依存の更新の運用はT25で決める」とした。このPRは.github/dependabot.ymlを加えるので、その決定と食い違う（Copilot r4173211581）。",
+      "state": "resolved",
+      "resolution": "設計の上の解消: 変える場合の記録の仕方と手順を決めた。元の決定の記録は消さずに、docs/development.mdの所有者の決定の3と試作の棚卸しの行に、変更の日付・範囲（Dependabotだけ。Gitのhookは入れないまま。採用の頻度はT25）を追記した。懸念だった「自動のPRがlockfileを変え、割当の外で作業が生まれる」には、提案のPRを計画の検査で失敗のまま残し、提案ごとのIssueと計画を先に作ってから取り込む手順で答える（ADR-0010の4.5）。権限の根拠: 所有者本人の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804。2026-10-03、Codexの受領記録）で、PR #37にDependabotの設定を含めることに同意した。CodexのPR37-R002はこれで解消する。経緯: それまでは調整係の中継（Issue #35、PR #37のコメント5970070704）だけで、AIの中継は本人の確認の代わりにならないため、直接確認の記録を待っていた。"
+    },
+    {
+      "description": "同じ原因（記録した値が実データを運べる）の指摘が、項目ごとに続いた: 整数（r4173211606）、例外のcode（r4173255445）、外部から読む版の数と区分の0・1（r4173282431）、書き換えられるError.stack（r4173282445）。項目ごとの局所修正では、まだ監査していない項目で同じ原因が再発しうる（docs/pr-review-loop.mdの5の止めどころ）。",
+      "state": "resolved",
+      "resolution": "局所修正をやめ、ADR-0010のすべての事象・項目を、出所・影響できるか・値の数・復元できるか・変換の5列で監査した（このcontextのOPS-diagnostics-audit）。結果を1つの規則にした: ログと診断の束に入る値は、アプリが持つ閉じた集合（ソースの定数・列挙の一覧）の要素だけ。外部の入力・OS・実行環境から来る値とそこから計算した値は、閉じた列挙（区分を含む）へ写像するか捨てる。例外は、ロガー自身が作り呼び出し元が値を渡せない値（時刻、連番、起動・操作のID、同じ起動の中の別名）だけで、ADRに固定の一覧として書く。監査で見つかったもの（スタック、外部から読む版、区分の0と1、負数・非有限・非整数、Node.jsの正確な版、commitのSHA・タグ名、OSの版の文字列、記録・計算runのID、種別マーカー・状態ファイルの中身）は同じ回ですべて直す。T29の受入の試験は、この表のすべての項目を列挙して確かめる。原因を原因台帳にPR37-R001（INV-PRIVACY、logged-value-carries-data）として記録する。"
+    },
+    {
+      "description": "エラーコードの正本をapplicationに置くと、domainはapplicationをimportできない（4.1の層の規則）ので、domainがエラーコードを返せない（Copilotの見落としの指摘、ADR-0010の91行目）。",
+      "state": "resolved",
+      "resolution": "domainは、domainの中の閉じた列挙の型付きの失敗を返し、エラーコードを知らない。applicationの境界の1つの写像の表で、正本のエラーコードへ写像する。表がdomainの失敗の種類を網羅していることを、網羅を求める型検査と試験で確かめる（T29）。"
+    },
+    {
+      "description": "Codexのneeds-owner（レビュー5401017076、PR37-R001）: 保存したログは書き換えられるので、読み戻した`launch`・`op`・`seq`・`t`・別名がロガーの作った値であることは、書くときの表では証明できない。形式で受け入れれば形式に合う秘密がそのまま束に入り、閉じた集合だけで拒否すれば正常なログの共通の項目まで拒否される。",
+      "state": "resolved",
+      "resolution": "所有者の判断（2026-10-03、PR #37のコメント5969863822で調整係が中継）:「入れる時に振り直す」。保存したログを未信頼の入力として扱い、書くときの出所（ロガーが作る値）と読むときの出所（外部の入力）を分ける。束を作るときに、相関のIDと別名は出現順の束の中だけの別名へ写像し直し、seqは採用した行に1から振り直し、tは束を作った時点からの経過（分）の2の累乗の区分にする（元の時刻は捨てる。順序は振り直したseqで保つ）。ほかの項目は事象の一覧の閉じた集合として解析し直し、外れた項目だけを捨てる。行を残す条件（JSONの1行、上限以内、知っている形式の版・事象・レベル、範囲内の時刻）をADR-0010の3に書き、正常なログが使えることを保つ。元のログとの照合の精度が下がることは所有者が受け入れた。 根拠: 所有者の直接確認をCodexが受領した記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）。5969863822は調整係の中継（経緯）。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-HTTP",
+      "disposition": "preserve",
+      "reason": "ADR-0003の境界（G7）は変えない。HTTPの要求ログは、ADR-0003の11とT26（PR #25のADR-0009の「ログ」）の制限より厳しくする方向（生のパスの代わりに登録した経路のIDだけを記録）だけを設計し、T26の進行中のファイルは変えない。T26のlogの口を型付きの事象へ移すのはT29。",
+      "checks": [
+        {
+          "id": "browser-flow",
+          "method": "ADR-0010の要求ログの事象の項目を、ADR-0003の4・11・14と照合する。トークン交換・API・HMRの流れで記録する項目を列挙し、トークン・cookie・クエリ・本文・Host・起動の識別子の値が項目の種類にないことを読む。",
+          "expected": "どの要求の事象にも、トークン・cookie・クエリ・本文・生のパスを入れられる項目の種類がない。開発時も同じ事象の型を使い、ログのために認証やCSPを緩めない。"
+        },
+        {
+          "id": "static",
+          "method": "静的配信の要求の事象の項目（経路のIDの「static」・状態・理由の符号）を、ADR-0003の13の拒否の規則と照合する。",
+          "expected": "範囲外の要求も、要求されたパスの文字列を記録せず、理由の符号だけを記録する。配信の境界はADR-0003のまま変わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "診断の束のコマンドは読み取りだけで、DBを開かず、データルートに書かない。アプリの起動中に使えるように、単一起動のlock（G3）を取らない。lockの規則（ADR-0006の1）は変えない。ログのファイルへの書込みは、lockを持つアプリの1プロセスだけが行う。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "ADR-0007に足す診断の行と、ADR-0006の1の「単一起動のlock」を読み合わせる。ログを書くプロセスが、lockを持つアプリ・保守コマンドに限られることを確かめる。",
+          "expected": "ログのファイルの書き手は、lockを取った1プロセスだけ。診断の束はlockを取らず、lockの同一性（別名・入れ替え）の規則に新しい経路を作らない。"
+        },
+        {
+          "id": "recovery",
+          "method": "強制終了・保守作業の途中でも診断の束が動くこと（G4で止まらない）と、lockを奪わないことを、ADR-0010の診断の節で読む。",
+          "expected": "診断の束は、生きているlockを奪わず、状態ファイルがあっても止まらずに、その有無と種類だけを報告する。lockの取得・解放の規則は変わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "同じ原因（記録した値が実データを運べる）の指摘が続いたので、局所修正をやめ、ADR-0010のすべての事象・項目を監査して1つの規則にした（context: OPS-diagnostics-audit）。ログと診断の束に入る値は、アプリが持つ閉じた集合（ソースの定数・列挙の一覧）の要素だけ。外部の入力・OS・実行環境の値とそこから計算した値は、閉じた列挙（2の累乗の区分を含む）へ写像するか捨てる。例外はロガー自身が作り呼び出し元が値を渡せない値（時刻、連番、起動・操作のID、同じ起動の中の別名）だけ。スタックは記録せず、捕まえた場所の登録したIDだけにする。外部から読む版は既知の版の列挙（ほかは`newer`・`invalid`）へ写像する。区分は`0-1`から始め、負数・非有限・非整数は固定の値にする。この文書のPRは合成の例だけを使う。Dependabotは公開の依存の宣言だけを読み、秘密を使わない。 Node.jsの既定の警告の出力（警告の文とスタックを標準エラーへ出す）はロガーを通らないので、どの入口でも止め（`--no-warnings`等）、`warning`の事象だけを写像して記録する（Copilot 5401013926の見落とし、PR37-R001と同じ原因）。止め方の具体と、生の警告文が標準エラーに出ないプロセスの試験はT29の受入へ回す。 ロガーが作る値の例外は、そのプロセスが書くときだけに限る。ログのファイルから読み直して束へ入れるときは、`t`・`seq`・`launch`・`op`・別名も外部の入力として扱い、束の中だけの別名へ振り直すか、捨てるか、区分へ写像する（Copilot r4173406961、PR37-R001と同じ原因）。監査の表に1行足した（39項目）。 所有者の判断「入れる時に振り直す」（5969863822）に従い、読み戻した相関のID・別名・seq・tは元の値を使わずに振り直す・区分にする。書くときと読むときの出所をADR-0010の3の表で分ける。 `diagnose --op <問い合わせ番号>`の指定は利用者の入力で、束には一致した行の真偽の印と一致の数の区分だけを入れ、元の番号は出さない（所有者の判断5970070704、Codex PR37-R004）。 doctorの出力も、共有用の要約は閉じた集合の値だけにし、手元だけの詳細を分けて貼らない案内を出す。originのURLの利用者情報は出さない（レッドチームB-1）。HTTPのエラーの応答は一覧の定数の文だけを返す（C）。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "差分を読み、`node scripts/check-public.ts --staged`をcommitごとに実行する。ADR-0010の監査の表の各行が、規則（閉じた集合の要素か、閉じた列挙への写像か、捨てるか、ロガーが作る値か）のどれかに当たり、当たらない行がないことを読む。合成の値（金額312345、大文字だけのトークン、改ざんしたstack、負数・NaN・小数、DBに書いた312345の版）を表の各行に当てはめ、出力が閉じた集合の値か捨てられることを確かめる。T29の受入の試験が表のすべての項目を列挙することを読む。 Node.jsの既定の警告の出力がロガーを迂回しないことを、ADR-0010の2とT29の受入で読む。 ログの行の許可した項目の値だけ（seqを312345、launchを合成のトークン、tを数を表す時刻）に書き換えたとき、束に元の値が現れないことを、ADR-0010の3とT30の受入で読む。 形式に合う秘密（seq=312345、正しいIDの形の合成のトークンのop・launch、数を表す時刻のt）を埋めたログの行を、ADR-0010の3の取り込みの規則に当て、束に元の値が出ないことと、正常な行が残ることをT30の受入で読む。 `--op`を指定したとき、指定の値もログの元の`op`も束に現れず、一致した行の`queried`の真偽と数の区分だけが入ることを、ADR-0010の3とT30の受入で読む。",
+          "expected": "差分に実データ・秘密・個人のパスがない。監査の表のどの項目も、閉じた集合の外の値を出力できない（例外はロガーが作る4種類の値だけで、呼び出し元が値を渡せない）。スタック・例外のメッセージ・外部の正確な版・名前・パスは出力されない。T29の受入が表の全項目を列挙する試験を求める。 生の警告文・スタックが標準エラーに出る経路がない（T29で試験する）。 束の相関のIDは出現順の束の中の別名、seqは1からの振り直し、tは経過の区分だけで、元の値は現れない。正常な行は行を残す条件を満たして束に入る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "このPRは`package.json`・lockfile・`.nvmrc`・CI設定を変えない。Dependabotの提案のPRはlockfile・workflowを変えるが、PRの計画の検査（Quality gate）を通らないので、そのままではマージできない。採用は、担当が自分のbranchで計画を付けて取り込み、`npm run setup`の記録とCIで固定した版・3つのOSを確かめてから行う。Node.jsのメジャーは`@types/node`のメジャーと合わせてT28で扱い、Dependabotの提案から外す。診断のコマンドは、依存を読み込まないことを試験で確かめたうえで、G6（実行物の一致）を対象外にする。 Node.jsの版が範囲外のときは、npmが`devEngines`の検査で`npm run doctor`を止めるので、npmを経由しない入口（`node scripts/doctor.mjs`。範囲外の版でも構文を読めるJavaScriptで、`node:`の組込みだけを使い、版を確かめてから本体を読み込む）を設ける（Copilotの見落としの指摘、ADR-0010の147行目）。`devEngines`は緩めない。 doctorの入口が読むpackage.jsonや依存の導入の記録も、通常のファイルだけを上限つきで読む。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "`.github/dependabot.yml`の設定（npmのメジャーの扱い、`@types/node`、cooldown、まとめ方）を、ADR-0002の更新の手順・ADR-0008・T28と読み合わせる。採用の手順で`npm run setup`とCIを必須にしていることを確かめる。 Node.jsの版が範囲外のときに、`npm run doctor`が止まっても`node scripts/doctor.mjs`が版の不一致と次の手順を表示できることを、ADR-0010の3とT30の受入・検証で読む。",
+          "expected": "Dependabotの提案が、Node.jsのメジャー・lockfile・実行環境の対応（ADR-0002・0008）を検査なしで変える経路がない。採用のPRはQuality gate（3つのOSの`npm run setup`・`check:install`）を通る。 範囲外の版でも入口は版の不一致（エラーコード・必要な範囲・次の手順）を表示して非0で終わり、本体（.ts）を読み込まない。`devEngines`とnpmの検査は変わらない。"
+        },
+        {
+          "id": "artifact",
+          "method": "診断のコマンド（doctor・diagnose）が配信物のmanifestと依存の導入の記録を読むだけで書かないことと、実データのDBを開かないことを、ADR-0010とADR-0007の適用表で読む。",
+          "expected": "診断は記録・manifestを報告するだけで変えない。G6を対象外にするのは、依存を読み込まないことを試験で確かめる診断のコマンドだけで、`start:real`・`:real`の保守コマンドの条件は変わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "Dependabotの提案のPRのために、PRの計画の検査やQuality gateに例外を作らない（`github.actor`等による除外は、workflowの変更と、なりすましの余地があるので採らない）。提案のPRは失敗のまま残り、採用は担当のbranchのPR（計画つき）で行う。マージ・auto-merge・`@dependabot merge`は使わない。このPRはworkflow・検査器・条件（.review/invariants.json）を変えない。原因台帳（.review/findings.json）には、繰り返した原因をPR37-R001として加え、出典を追記する。原因台帳の変更は、別の担当の内容レビューで確かめる対象である（Copilot r4173480754、PR11-R112）。 Dependabotの提案の採用の計画名とbranchは、提案のPR番号を入れたDEPS-pr<番号>（計画は.review/plans/DEPS-pr<番号>.json、branchはtask/deps-pr<番号>-<担当名>）にし、同じ日の複数の提案でも1提案1計画1採用PRが対応するようにする（r4173322850、PR4-R018の計画とタスクの対応）。 原因台帳のPR37-R001に、再発の証拠（r4173406961）の出典を追記する（r4173427073、docs/review-prevention.md）。Dependabotの提案の採用も、AGENTS.mdの着手の条件どおり、提案ごとに採用のIssueを作って割り当て、計画・branch・PRと対応させる（Copilotの見落とし）。 Dependabotの採用のtask_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`に統一する（Codex PR37-R003。計画のファイル名`DEPS-pr<番号>.json`とtask_idが一致する）。Dependabotを含める所有者の直接の承認（Codex PR37-R002）は、所有者本人の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）で確定した。実装側の中継では代えず、この記録を根拠にする。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "採用の手順で、1つの提案のPRに対して採用のPRを1つにし、閉じた提案のPRに採用のPRのリンクを残すことを、ADR-0010と`docs/development.md`で読む。既存の原因（PR4-R001、PR4-R014、PR4-R018）と照合する。 ADR-0010の4.5と docs/development.md の計画名・branch名が同じ DEPS-pr<番号> であることを読む。",
+          "expected": "同じ依存の更新を複数のPRで並行に扱わない。提案のPRへの指摘は、採用のPRの計画とレビューで扱う。このPRで見つかった同じ原因はPR37-R001の1つに集め、ほかの新しい原因のIDを足さない。PR37-R001の追加と出典の追記は、別の担当の内容レビューで確かめる。 同じ日の複数の提案でも、計画とbranchの名前が衝突しない。"
+        },
+        {
+          "id": "trust",
+          "method": "CIの`review plan`と`Quality gate`の条件（ci.yml）を変えていないことを差分で確かめる。Dependabotの提案のPRが計画なしで失敗すること（ci.pyの「include exactly one changed preflight plan」）を読む。 ci.pyの報告で原因台帳の変更（ledger_changed）がtrueになることを、内容レビューの対象として確かめる。",
+          "expected": "Dependabotの提案のPRは、計画がないのでQuality gateが失敗し、構造検査やCIの合格だけで採用されない。採用のPRも、別の担当の内容レビューとAGENTS.mdのマージの条件を通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "ログのファイルは、データルートの固定の子`logs/`（ADR-0006の1にすでにある）に、G1・G2の検査に通ったあとだけ書く。検査の前はターミナル（標準エラー）だけに出す。古いログの削除は`logs/`の中の、決めた名前の通常のファイルだけに限り、リンクをたどらない（PR12-R104）。診断の束は、欠けた子を作らず、リンクの`logs/`を読まない。データルートの識別や新規作成の規則は変えない。 診断のコマンドがデータルートから読むもの（logs/の中のファイル、種別マーカー、状態ファイル）は、名前の規則に合う通常のファイルだけを、リンクをたどらず（開いたあとにも通常のファイルで、確かめたものと同じであることを確かめる）、FIFO等で止まらないように、上限つきで読む（Copilot r4173322787と自己点検）。 ログの古いファイルの削除は、起動時だけでなく回転のときにも行い、再起動しない長い稼働でも保持の上限を守る（Copilot 5401013926の見落とし）。削除の規則（直下の名前の規則に合う通常のファイルだけ、リンクをたどらない）は同じ。再起動なしで上限をまたぐ試験はT29の受入へ回す。 ログの異常終了の契約を「直前までの完全な行は残り、末尾の欠けた行は読む側が捨てる」に統一し、時計の巻戻りで同じ日付のファイル名に戻っても、名前の連番を排他的な作成で選び直してログを止めない。どちらも実装の細部としてT29の受入へ回す（Copilotの見落とし2件）。 ログの書込みの保証は異常終了（プロセスの終了）までに限り、電源断の耐久性（fsync）は保証しない（Copilot r4173452305）。--outの束は、一時名に書き終えてから最終の名前にする（ADR-0006の保存先と出力先と同じ。Copilotの見落とし）。 ログのファイル名は、起動時刻（UTC、ミリ秒）・起動のID・0埋めした回転番号にし、束の中の順はファイル名の順→書いた順で決める（所有者の判断5969966737）。保持の30日は最後の書込みの時刻で判断する。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "新規作成の前（データルートがない）と、復元・rollbackの途中（状態ファイルがある）で、ログの書込みと診断の束がどう振る舞うかを、ADR-0010とADR-0006の1・3で読む。",
+          "expected": "データルートの検査に通る前は`logs/`へ書かない。診断の束は、欠けた子・データルートを作り直さず、状態ファイルの有無を報告するだけ。"
+        },
+        {
+          "id": "aliases",
+          "method": "`logs/`がsymlink・junctionのとき、ログの書込み・削除・診断の束の読込みがどうなるかを、ADR-0006の「固定の子の検査」と照合する。 logs/の直下にsymlink・junction・FIFO・デバイス・ディレクトリ・上限を超えるファイルを置いた場合の診断の束の読み方を、ADR-0010の3とT30の受入・検証で読む。",
+          "expected": "リンクの`logs/`には書かず、読まず、消さない。実体パスがデータルートの配下にあることを確かめてから使う（G2）。 logs/の中のリンク・特殊なファイルは読まず（件数だけを区分で数える）、FIFOで止まらず、上限を超えて読まない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "このPRはDB・journal・証憑・バックアップのmanifestの扱いを変えない。ログ（`logs/`）はバックアップに含めない既存の規則（ADR-0006の3）のまま。診断の束はDBを開かず、スキーマの版はアプリが起動時に記録したログの事象から読む。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "rollbackの手順（ADR-0006の3）にログ・診断が関わる箇所があるかを読む。",
+          "expected": "rollbackの手順は変わらない。rollbackのコマンドの事象をログに記録するのはT29以降の実装で、DBとjournalの対には触れない。"
+        },
+        {
+          "id": "restore",
+          "method": "復元の手順と、復元したデータルートの`logs/`（共通の初期化で空で作る）の扱いを読む。",
+          "expected": "復元はログを含めず、`logs/`を空で作る既存の規則のまま。診断の束は復元の途中でも読み取りだけ。"
+        },
+        {
+          "id": "manifest",
+          "method": "バックアップのmanifestの対象（ADR-0006の3）に`logs/`や診断の束が入らないことを読む。",
+          "expected": "manifestの対象は変わらない（`logs/`を含めない）。診断の束はバックアップと別のもので、manifestを持たない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "実装はT29以降の台帳のタスクに分け、依存（T05・T07・T09・T26・T08・T25）を明記する。lockfileを変えるタスク（Biome）は、T02→T05→T26→T08の順のあとに置き、同時に変えない。予定のタスクは着手許可ではなく、担当の割当まで着手しない。`docs/development.md`の「所有者の決定」の3（Dependabotを入れない）は、2026-10-03の所有者の承認で変わったことを、元の記録を消さずに追記する。ログのファイルをデータルートの`logs/`へつなぐ担当は、T09とT29のどちらが先にmainに入っても必ず一方になるようにする（後から入るほうがつなぐ。Copilot r4173211690）。Dependabotの提案の取り込みは、計画を先にcommitしてから提案のcommitをcherry-pickする順にし、修正前の整合確認（docs/review-prevention.md）の順序と合わせる（Copilot r4173211628・r4173211658）。 T29はT07の型（スキーマ版・構造の版を作る関数）とG2の検査を使うので、依存にT07を加え、実装計画の図にも辺を足す（Copilot r4173255506）。 ADR-0010の冒頭の関連の行も「T09とT29のうち後からmainに入るほう」にそろえる（r4173322875）。全体の自己点検（context: OPS-diagnostics-self-review）で見つけた食い違いも同じ回で直す。 既定の警告の出力を止める責任を分ける: T29は共通の抑止の部品と、T29の時点にある入口（アプリの起動等）への適用、T30は`doctor`・`diagnose`の各入口への適用とプロセスの試験（Copilot r4173385784）。状態資料の設計の範囲の記載をT00–T32にそろえる（見落とし）。ログの保持を低頻度の長い稼働でも守る方法（時刻の境界でのファイルの切替え、書込みのときの評価、上限の超過幅）は実装の細部としてT29の受入へ回す（r4173385750）。 層の境界の検査の対象を`.ts`と`.tsx`にする（UIは`.tsx`。ADR-0002・docs/development.md。Copilotの見落とし）。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "台帳に足すタスクの依存と共有資源を、実装計画の図・lockfileの順と照合する。進行中のPR（#25 T26、#28 T06、#29 T14、#31 mise、#33 Issue #19）と変更するファイルが重ならないか確かめる。 T09とT29の台帳の記載を、T09が先・T29が先の2つの順序で読み、どちらの場合も`logs/`へつなぐ担当が1つに決まることを確かめる。 T29の依存と実装計画の図に、T29が使う提供物（T07の型とG2の検査、T26のログの口）の提供タスクがすべてあることを確かめる。",
+          "expected": "提供するタスク（T26のログの口、T07の`logs/`の検査、T09のデータルートの組込み）が使うタスクより先にある。lockfileを変えるのはT32だけで、T08のあとに置く。CI設定を変えるT31は、ほかのCIの変更と同時に行わない。 後からmainに入るほうがつなぎ、両方が担当しない・両方が担当する順序がない。 T29の依存にT05・T07・T26があり、図にT07→T29の辺がある。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "README・状態資料・実装計画・台帳・ADRの一覧・`docs/development.md`の記載が、同じ状態（設計だけ、Dependabotの設定は入った、実装は未割当）を指すかを読み合わせる。 Dependabotの採用の手順を、ADR-0010の4.5と`docs/development.md`で読み、計画のcommitがcherry-pickより先にあることと、docs/review-prevention.mdの「変更前の手順」の5と順序が合うことを確かめる。",
+          "expected": "どの入口も、T29以降を未割当の予定として書き、Dependabotの提案のPRを採用の手順なしでマージしてよいと読める記載がない。 採用の手順はどの入口でも「計画を先にcommit→提案のcommitを取り込む」の順。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-HTTP": {
+      "condition": "開発時も本番と両立する認証・Origin・CSP・静的配信境界を保つ。",
+      "scenarios": [
+        {
+          "id": "browser-flow",
+          "question": "起動トークン交換→API→CSS/React HMR→再読込が同じ入口とCSPで成立するか。漏洩と迂回も試験するか。"
+        },
+        {
+          "id": "static",
+          "question": "配信ルート外への要求や未検証の生成物を拒否するか。認証を開発時だけ解除していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R004",
+          "invariant_id": "INV-HTTP",
+          "cause_key": "development-origin",
+          "lesson": "開発サーバーの別Originを禁止するなら、開発UIの認証とAPI利用が成立する入口も設計する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388188283"
+          ]
+        },
+        {
+          "id": "PR2-R005",
+          "invariant_id": "INV-HTTP",
+          "cause_key": "development-csp",
+          "lesson": "開発HMRとReact更新がCSPで停止しないか。許可の変更後に本番の境界も確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388308985"
+          ]
+        }
+      ]
+    },
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        },
+        {
+          "id": "PR12-R001",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "PR12-R101",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "cleanup-failure-path-contract",
+          "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+          ]
+        },
+        {
+          "id": "PR12-R102",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        },
+        {
+          "id": "PR12-R103",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "verification-on-target-runtime",
+          "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR12-R104",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "destructive-op-follows-link",
+          "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    },
+    "OPS-diagnostics-audit": {
+      "columns": [
+        "区分",
+        "項目",
+        "出所",
+        "利用者・攻撃者が影響できるか",
+        "値の数",
+        "元の値を復元できるか",
+        "変換"
+      ],
+      "rows": [
+        [
+          "共通",
+          "`v`（形式の版）",
+          "アプリの定数",
+          "不可",
+          "1",
+          "定数（実データを含まない）",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "`lvl`（レベル）",
+          "アプリの定数",
+          "不可（環境変数の指定は4つの値へ写像し、ほかは既定の`info`）",
+          "4",
+          "列挙",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "`ev`（事象の名前）",
+          "アプリの定数",
+          "不可",
+          "事象の一覧の数",
+          "列挙",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "`t`（時刻）",
+          "OS",
+          "OSの利用者は時計を変えられる。呼び出し元は値を渡せない",
+          "無限",
+          "時刻そのもの（記録の値は入らない）",
+          "ロガーが作る値（例外の一覧）"
+        ],
+        [
+          "共通",
+          "`seq`（連番）",
+          "アプリの計算",
+          "不可（ロガーが数える）",
+          "無限",
+          "連番だけ",
+          "ロガーが作る値（例外の一覧）"
+        ],
+        [
+          "共通",
+          "`launch`・`op`（起動・操作のID）",
+          "アプリの計算",
+          "不可（ロガーが暗号論的乱数で作る）",
+          "無限",
+          "乱数だけで入力を含まない",
+          "ロガーが作る値（例外の一覧）"
+        ],
+        [
+          "HTTP",
+          "`route`（経路）",
+          "外部の入力",
+          "可（任意のパスを要求できる）",
+          "無限→登録した経路の数＋2",
+          "不可",
+          "列挙へ写像（登録した経路のID、`static`、`unmatched`）"
+        ],
+        [
+          "HTTP",
+          "`status`（状態コード）",
+          "アプリの計算",
+          "要求の内容で選ばせうる",
+          "有限",
+          "列挙",
+          "列挙へ写像（サーバーが返す値の一覧。ほかは`other`）"
+        ],
+        [
+          "HTTP",
+          "URLのクエリ・ヘッダ・Host・本文・cookie・トークン",
+          "外部の入力",
+          "可",
+          "無限",
+          "—",
+          "捨てる"
+        ],
+        [
+          "共通",
+          "`reason`・`stage`等（理由・段階）",
+          "アプリの定数",
+          "不可（コードが一覧から選ぶ）",
+          "一覧の数",
+          "列挙",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "`code`（エラーコード）",
+          "アプリの定数",
+          "不可",
+          "一覧の数",
+          "列挙",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "`at`（捕まえた場所）",
+          "アプリの定数",
+          "不可",
+          "場所の一覧の数",
+          "列挙",
+          "そのまま（閉じた集合。登録した場所のID）"
+        ],
+        [
+          "共通",
+          "真偽の項目（`stateFilePresent`等）",
+          "アプリの計算",
+          "間接（調べた結果）",
+          "2",
+          "真偽だけ",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "共通",
+          "件数・大きさ（`records`、`retries`、`bytes`、捨てた行の数等）",
+          "アプリの計算",
+          "可（利用者のデータや外部のファイルから数えうる）",
+          "無限",
+          "区分の中までしか分からない",
+          "区分へ写像（`0-1`、`2-3`、…、`1048576以上`、`negative`、`invalid`）"
+        ],
+        [
+          "共通",
+          "`durationMs`（時間）",
+          "アプリの計算",
+          "間接（処理の量）",
+          "無限",
+          "区分の中まで",
+          "ロガーが自分の時計で計り、区分へ写像（呼び出し元は時間を渡せない）"
+        ],
+        [
+          "例外",
+          "OSのエラーの種類（例外の`code`、`node:sqlite`の`errcode`）",
+          "実行環境",
+          "可（`code`は任意のプロパティ）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（既知のコードの許可の一覧。ほかは`other`）"
+        ],
+        [
+          "例外",
+          "例外の名前（`name`）",
+          "実行環境",
+          "可（任意に書き換えられる）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（許可した名前の一覧。ほかは`other`）"
+        ],
+        [
+          "例外",
+          "`warning`のコード",
+          "実行環境",
+          "可",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（許可の一覧。ほかは`other`）"
+        ],
+        [
+          "例外",
+          "例外のメッセージ、`errstr`、警告の文",
+          "実行環境",
+          "可",
+          "無限",
+          "—",
+          "捨てる"
+        ],
+        [
+          "例外",
+          "スタック（`Error.stack`）",
+          "実行環境",
+          "可（任意に書き換えられる文字列）",
+          "無限",
+          "—",
+          "捨てる（場所は`at`で示す）"
+        ],
+        [
+          "終了",
+          "シグナルの名前",
+          "OS",
+          "可",
+          "有限",
+          "列挙",
+          "列挙へ写像（`SIGINT`等の一覧。ほかは`other`）"
+        ],
+        [
+          "保存",
+          "DBのスキーマ版（`user_version`）",
+          "外部の入力",
+          "可（DBを書き換えられる）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（このビルドが知る版、`newer`、`invalid`）"
+        ],
+        [
+          "保存",
+          "データルートの構造の版",
+          "外部の入力",
+          "可（マーカーを書き換えられる）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（このビルドが知る版、`newer`、`invalid`）"
+        ],
+        [
+          "保存",
+          "記録・計算runのID",
+          "外部の入力",
+          "可（DBから読む値）",
+          "無限",
+          "—",
+          "捨てる。同じ起動の中で事象を結ぶときは、ロガーが作る別名（`run-1`等。例外の一覧）"
+        ],
+        [
+          "診断",
+          "アプリの版",
+          "アプリの定数",
+          "不可（リリースで更新するソースの定数）",
+          "1",
+          "定数",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "診断",
+          "リリースの状態",
+          "アプリの計算",
+          "間接（Gitの状態）",
+          "有限",
+          "列挙",
+          "列挙（`approved-release`、`not-release`、`dirty`、`version-mismatch`、`unknown`）"
+        ],
+        [
+          "診断",
+          "commitのSHA、タグ・branchの名前、originのURL",
+          "外部の入力",
+          "可（名前は自由に付けられる）",
+          "無限",
+          "—",
+          "捨てる（ターミナルだけの詳細）"
+        ],
+        [
+          "診断",
+          "Node.jsのメジャー",
+          "実行環境",
+          "可（入れる版を選べる）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（18〜40。ほかは`other`）"
+        ],
+        [
+          "診断",
+          "Node.jsの版が範囲内か",
+          "アプリの計算",
+          "間接",
+          "3",
+          "列挙",
+          "列挙（`in-range`、`out-of-range`、`unknown`）"
+        ],
+        [
+          "診断",
+          "Node.jsの正確な版、npmの版",
+          "実行環境",
+          "可",
+          "無限",
+          "—",
+          "捨てる（ターミナルだけの詳細）"
+        ],
+        [
+          "診断",
+          "OS（`process.platform`）・CPU（`process.arch`）",
+          "実行環境",
+          "ほぼ不可",
+          "有限",
+          "列挙",
+          "列挙へ写像（一覧。ほかは`other`）"
+        ],
+        [
+          "診断",
+          "OSの世代（`os.release()`）",
+          "実行環境",
+          "可（文字列）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（macOSのメジャー、`windows-10`、`windows-11`、`linux`、`other`）"
+        ],
+        [
+          "診断",
+          "自己診断の各項目の結果",
+          "アプリの計算",
+          "間接",
+          "有限",
+          "列挙",
+          "列挙（`pass`、`fail`、`unknown`）とエラーコード"
+        ],
+        [
+          "診断",
+          "パスの性質（ASCII以外の文字を含むか、長いパスか。S6）",
+          "アプリの計算",
+          "間接（パスを調べた結果）",
+          "有限",
+          "真偽だけ（パスそのものは分からない）",
+          "そのまま（閉じた集合。真偽）"
+        ],
+        [
+          "診断",
+          "データルートの状態（あるか、固定の子、リンク、権限）",
+          "アプリの計算",
+          "間接（調べた結果）",
+          "有限",
+          "真偽・列挙",
+          "そのまま（閉じた集合）"
+        ],
+        [
+          "診断",
+          "種別マーカーの種別、状態ファイルの種類",
+          "外部の入力",
+          "可（ファイルを書き換えられる）",
+          "無限",
+          "一覧の値だけ",
+          "列挙へ写像（`real`・`synthetic`・`invalid`、`restore`・`rollback`・`invalid`）"
+        ],
+        [
+          "診断",
+          "最近のログの行（上の4種類以外の項目）",
+          "外部の入力",
+          "可（ファイルを書き換えられる）",
+          "—",
+          "—",
+          "項目ごとに、書くときと同じ事象の一覧の閉じた集合として解析し直し、集合の外の値・一覧にない項目は捨てて数える。行を残す条件はADR-0010の3"
+        ],
+        [
+          "診断",
+          "束へ入れるログの行の`t`・`seq`・`launch`・`op`・別名（ファイルから読み直した値。書くときはロガーが作る値でも、読むときは外部の入力）",
+          "外部の入力",
+          "可（ファイルを書き換えられる）",
+          "無限",
+          "—",
+          "元の値を使わない。`launch`・`op`・別名は束の中だけの別名（出現順の`L1`・`O1`・`R1`等）へ写像し直し、`seq`は採用した行に1から振り直し、`t`は束を作った時点からの経過（分）を2の累乗の区分へ写像する（範囲外は`future`・`invalid`）"
+        ],
+        [
+          "診断",
+          "`diagnose --op`で利用者が指定した問い合わせ番号と、一致の印",
+          "外部の入力",
+          "可（利用者の入力）",
+          "無限",
+          "—",
+          "指定の値は束に出さず、手元で読み戻した行の元の`op`と比べるだけ。束には一致した行の`queried: true`（真偽）と、一致した行の数（区分）・一致がなかったか（真偽）だけを入れる"
+        ],
+        [
+          "診断",
+          "ホスト名、OSの利用者名、パス、環境変数、DB・証憑・出力・バックアップ・`config/`の中身",
+          "OS・外部の入力",
+          "可",
+          "無限",
+          "—",
+          "捨てる（読まない）"
+        ]
+      ],
+      "rule": "ログと診断の束に入る値は、アプリが持つ閉じた集合の要素だけ。それ以外は閉じた列挙（区分を含む）へ写像するか捨てる。例外はロガーが作る値（時刻、連番、起動・操作のID、別名）だけ。"
+    },
+    "OPS-diagnostics-self-review": {
+      "scope": "Copilotのレビュー5400968244の4件と同じ種類を、ADR-0010の全体・台帳のT09/T13/T25/T29〜T32・docs/development.mdで点検した結果（修正の前に記録）",
+      "classes": {
+        "リンクをたどる・上限のない読込み": [
+          "diagnoseのlogs/の読込み（r4173322787）: 直下の名前の規則に合う通常のファイルだけ、リンクをたどらず、FIFO等で止まらず、上限つきで読む",
+          "diagnose・doctorが読むほかのファイル（package.json、依存の導入の記録、配信物のmanifest、種別マーカー、状態ファイル）にも同じ読み方を適用する（自己点検で発見）",
+          "層の境界の検査（scripts/check-boundaries.ts）がsrc/の中のリンクをたどって外のファイルを読む（自己点検で発見）: リンクは読まずに失敗にする"
+        ],
+        "節の間の食い違い": [
+          "ADR-0010の冒頭の関連の行がlogs/のつなぎ込みをT09に固定（r4173322875）",
+          "S6がパスの種類を調査材料に挙げるのに、監査の表に行がない（自己点検で発見）: 監査の表にパスの性質（真偽）の行を足す",
+          "ADR-0007の診断の束の行が、logs/の中の通常のファイルでないものの扱いを書いていない（自己点検で発見）"
+        ],
+        "名前の衝突": [
+          "DEPS-<日付>の計画名とbranchが同じ日の複数の提案で衝突（r4173322850）: DEPS-pr<番号>にする",
+          "診断の束の--outのファイル名が決まっていない（自己点検で発見）: 時刻つきの名前と排他的な作成で、衝突したら上書きせず止める"
+        ],
+        "試験・生成物を誤って検出する検査": [
+          "層の境界の検査が*.test.tsのnode:test・node:assert・node:fs・tests/の補助を違反にする（r4173322831）: 試験の基盤だけの明示的な例外",
+          "Biomeのlintの対象に、Gitの対象外の生成物（dist/、test-results/）が入り、noConsoleがscripts/と試験の出力を違反にする（自己点検で発見）: Gitの対象外を除き、noConsoleはsrc/の製品のファイルだけに適用",
+          "T29のconsole.*の検査が試験のファイルを違反にする（自己点検で発見）: 試験のファイルを除く",
+          "生成するdocs/error-codes.mdに日時等が入ると、一致の試験が常に失敗する（自己点検で発見）: 生成を決定的にする"
+        ]
+      }
+    },
+    "OPS-diagnostics-holistic-2026-10-03": {
+      "read": "このPRのすべての指摘（Copilotのレビュー5400824673〜5401161236、Codexのレビュー5401017076・5401117904、所有者の判断5969863822・5969966737）を並べて読み直した。未解決はCopilotのr4173480726・r4173480743・r4173480754と、CodexのPR37-R002（所有者がCodexへ直接確かめる。触らない）だけ。",
+      "strategy": [
+        "r4173480726（所有者の判断B）: ログのファイル名を、起動時刻（UTC、ミリ秒、固定幅）・起動のID・0埋めした回転番号（6桁）にする。束の中の順は「ファイル名の順→ファイルの中の書いた順」で、tは区分にするだけで順に使わない。書き換えた名前や値で並びを操作できることは規則の対象外とADRに書く。T30に複数の起動と10回以上の回転の試験。",
+        "r4173480726に伴う整合: 回転番号は1つの起動の中で単調に増やすので、日付の切替え（r4173385750）も回転として番号を増やし、時計の巻戻り（408f40eでT29へ回した点）でも名前が重ならない。保持の30日は、名前の起動時刻ではなく、ファイルの最後の書込み（lstatの更新時刻）で判断する（長く動く起動の新しいファイルを消さないため）。削除の規則（直下の名前の規則に合う通常のファイルだけ、リンクをたどらない）は変えない。",
+        "r4173480743: カバレッジは`--test-coverage-include`で`src/`の製品のファイル（`.ts`・`.tsx`、試験のファイルを除く）を明示する。どの試験からも読み込まれない製品のファイルが表に出ないNode.jsの版では、`src/`の製品のファイルの一覧と表を突き合わせ、表にないファイルを0%として足す。T31に、どこからもimportされない合成のファイルが0%で出る試験。",
+        "r4173480754: 計画のINV-REVIEWの評価を実際の差分に合わせる（このPRは原因台帳にPR37-R001を加え、出典を追記する。その変更は別の担当の内容レビューの対象。PR11-R112）。"
+      ],
+      "regression_check": "Bは、PR37-R001（読み戻した値を信頼しない）と両立する（tもファイル名も束に出さず、名前は並べる順にだけ使う）。日付の切替え・保持（r4173385750）、時計の巻戻り、部分行（408f40e）、ファイルの読み方（r4173322787）とも矛盾しない。保持の判断の基準を名前の日付から最後の書込みの時刻に変えるのは、名前の形を変えたことに伴う整合で、以前の指摘の要求（上限を守る）を緩めない。カバレッジとINV-REVIEWの直しは、ほかの指摘と交差しない。逆方向に引っ張る指摘はない。"
+    },
+    "OPS-diagnostics-holistic-2026-10-03b": {
+      "read": "このPRのすべての指摘を読み直した（Copilot 5400824673〜5401194198、Codex 5401017076・5401117904・5401216128、所有者の判断5969863822・5969966737・5970070704）。未解決はCodexのPR37-R002（所有者の直接の確認待ち。触らない）、PR37-R004（問い合わせ番号の照合）、Copilot 5401194198の見落とし2件（R002・R004と同じ原因）だけ。",
+      "strategy": [
+        "PR37-R004（所有者の判断: 番号を指定して印だけ付ける）: `diagnose --op <問い合わせ番号>`を設ける。指定は利用者の手元の入力で、64文字以下のIDの形でなければ束を作らずにターミナルだけで知らせる。束を作るとき、読み戻した行の元の`op`を振り直す前に指定と比べ、一致した行に真偽の印`queried: true`だけを付ける。元の番号（指定の値もログの値も）は束に出さない。束の要約に、一致した行の数（区分）と、一致がなかったかの真偽を入れる。一致した操作の別名（`O#`）で同じ操作のほかの行もたどれる。最低限できる調査を明記する。T30に、複数の操作・一致なし・改ざんしたID（指定と同じ値に書き換えた別の行、形式に合うトークン）でも元の値が束に出ない試験。",
+        "PR37-R002に対応づく計画の記録: conflictsの1つ目のresolutionを、設計の上の解消と権限の確認待ちに分けて書き直す。stateは検査器が求めるresolvedのまま（ほかの値ではCIの計画の検査が失敗する）。INV-REVIEWの評価と同じく、直接の確認の記録が得られるまでPR37-R002は未解消と書く。"
+      ],
+      "regression_check": "`--op`は、所有者の判断「入れる時に振り直す」（元の値を束に出さない）と両立する（照合は手元で行い、束には真偽と区分だけが入る）。並べ方（判断B）、監査の表の規則（閉じた集合の要素だけ）、ファイルの読み方とも交差しない。計画の記録の直しは、r4173211581（衝突を計画に記録する）を消さず、文だけを本当の状態に合わせるので、逆方向の要求にはならない。"
+    },
+    "OPS-diagnostics-merge-409bd3f": {
+      "scope": "2026-10-04の所有者の指示（再開の第1段階: 競合の解消だけ）。main 409bd3f（#40・#42・#46/#48・#47）を取り込んだ。指摘への対応と全体の読み直しは次の段階。",
+      "resolved": [
+        ".review/findings.json: mainのPR42-R001・R004・R006のあとにPR37-R001を置いた（両方を残す）。",
+        "docs/project-status.md: #40の表の形を採り、この PRの2つの追記（設計の範囲T00–T32の行、診断と保守の箇条）を、表の1行「診断と保守（設計中）」としてリンクだけで置いた（範囲の数は表の『設計』の行が台帳へリンクするので書かない）。",
+        "自動で合流したADR-0010・docs/development.mdのうち、AGENTS.mdのマージの条件・着手の条件を参照していた2か所ずつを、#40の正本（github-agent-operations.mdのmerge-conditions、タスクと着手条件）へのリンクに直した（規則を書き写さない）。"
+      ],
+      "open_prs_overlap": "2026-10-04時点のopen PR（#25・#28・#29・#33・#36・#38・#44）は、このPRの変更ファイルと重ならない。",
+      "adr_number": "mainのdocs/adr/は0002〜0008。0009はPR #25（未マージ）が使う。0010は重ならないので、番号は変えない。"
+    },
+    "OPS-diagnostics-phase2-2026-10-04": {
+      "read": "最後のready-for-review（d8dcc98）以降の投稿を読んだ: Codexのレビュー5401245835（d8dcc98、changes-requested。PR37-R002の記録の整合だけ。PR37-R004は解消）、所有者の直接確認の記録5970111804（Codexの受領記録）、Copilot 5401235659・5403918580（利用枠で未実行）、第1段階の注記5975782484。あわせて#40の正本（github-agent-operations.mdのmerge-conditions）と、2026-10-04の所有者の全PR向けの決定（project-statusに作業中のタスクを載せない、製品の試験の始まりを主張しない、Copilotは任意）を読み直した。",
+      "strategy": [
+        "PR37-R002: 所有者の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）を、計画の衝突の根拠とINV-REVIEWの評価に足し、確認待ちを解消として揃える。確認待ちだった経緯は履歴として残す。ADR-0010の4.5とdocs/development.mdの承認の記述にも同じリンクを足す。所有者へは再質問しない。",
+        "所有者の全PR向けの決定: docs/project-status.mdの行から作業中の状態（設計中、PR番号）を外し、マージで真になる事実（設計はADR-0010、実装はT29〜T32、Dependabotの取り込み手順）だけにする。製品の試験の始まりの主張はこのPRにない。",
+        "Copilotは任意（#47）: このPRの計画・文書にCopilotの利用枠を条件にする記述はない（確認済み）。READMEとproject-statusのCopilotの行はmainの文で、触らない。"
+      ],
+      "regression_check": "R002の記録の直しは、r4173211581（衝突を計画に記録する）とCodexの完了条件（直接確認のリンクで揃える）の両方を満たし、逆方向の要求はない。project-statusの直しは#40の表の形と所有者の決定に従い、内容の規則を変えない。設計の内容（ADR-0010の1〜4）は変えない。"
+    },
+    "OPS-diagnostics-redteam-2026-10-04": {
+      "read": "調整係が中継した事前のレッドチーム（head 625a55f。P2が2件、P3が7件、延期が3群）を、これまでのCodex・Copilotの指摘、所有者の判断とあわせて読み直した。",
+      "fix_now": [
+        "A-1: 3つの設計の判断（ファイル名の順、振り直し、問い合わせ番号の印）の引用が調整係の中継（5969966737・5969863822・5970070704）だけ。各引用の隣に、所有者の直接確認をCodexが受領した記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）を足し、中継は経緯として残す（ADR-0010の1の9、3、T30）。計画のconflictsの判断の根拠も同じにする。",
+        "B-1: doctorの出力を「共有用の要約」（閉じた集合の値だけ。版が範囲外ならE1001、Node.jsのメジャー、範囲内か）と「手元だけの詳細」に分け、詳細を貼らない案内を常に出す。originのURLの利用者情報（userinfo・トークン）は詳細にも出さない。T30の受入に1行。",
+        "A-2: 「所有者本人の直接確認の記録」を、mainの言い方に合わせて「所有者の直接確認をCodexが受領した記録」にする（ADR-0010の4.5、docs/development.mdの2か所）。",
+        "B-2: 並びの操作の対象外を広げ、ファイルを書き換えたあとの閉じた集合の値の選び方や並びで情報を運ぶことも対象外とする。",
+        "B-3: 時刻の区分の数は15ではなく14。",
+        "C: 利用者向けのエラーの文の正本を1つにする。HTTPのエラーの応答は、一覧の利用者向けの文と次の手順（定数）を返し、スタックや値は返さない。UIは受け取った文をそのまま表示し、文を書き写さない。",
+        "D-1: Dependabotの採用の手順の5を、Draft PR→実装していない担当の事前のレッドチーム→内容レビュー→マージの条件の順にし、「（Codex側）」を消す（ADR-0010の4.5とdocs/development.md）。",
+        "D-2: `tools/review_guard/adapters/github-actions.yml`は`.github/workflows/`の外にあるので、Dependabotは更新しない。手で更新すると書く。",
+        "E: 原因台帳のPR37-R001のlessonに、読み戻した値は未信頼の入力になる教訓を足し、sourcesにCodexのレビュー5401017076と5401117904を足す。"
+      ],
+      "deferred": [
+        "DEPSのcherry-pickでのlockfileの競合の扱い → 最初のDEPSの採用か、T25（台帳のT25に記録）。",
+        "dependabot[bot]のPRのT23・レビューの振り分け（dispatch）での扱い → T23と振り分けの移行のPR（台帳のT23に記録）。",
+        "T29〜T32の実装の細部（applicationの`node:`の許可の一覧、cryptoの注入、`tests/support`による迂回、`.tsx`のカバレッジの対象、`.mjs`だけの警告の抑止、末尾から読むときの部分行、乱数の注入） → 各タスクの受入（台帳に記録）。理由: 設計の判断を変えず、実装のときに試験で決められるため。"
+      ],
+      "owner_fyi_not_acted": "Copilotのrulesetを使うかどうか（Dependabotの提案のPR）、マージ直後の最初のDependabotの実行、Appの鍵のある環境で依存のコードを動かすこと、alerts・security updatesの設定は、調整係が所有者に上げる。このPRでは扱わない。",
+      "regression_check": "どの修正も、所有者の判断（振り直し、ファイル名の順、印だけ）と以前の指摘の解消（R001〜R004、Copilotの各件）を変えない。Cは1の6・2の記述をそろえる直しで、値やスタックを返さない保証を強める。B-1はADR-0010の1の2の規則（閉じた集合の値だけを共有する）をdoctorにも当てるもので、以前の決定と同じ向き。逆方向の要求はない。"
+    },
+    "OPS-diagnostics-redteam-recheck-2026-10-04": {
+      "read": "事前のレッドチームの再確認（head 3f9fbf1）: 以前の項目はすべて解消。N1（設計）とN2（文言）が残る。",
+      "fix": [
+        "N1: T29の成果物の「HTTPの想定外の例外の500（コードと`op`だけ）」を、ADR-0010の2に合わせて「コード、`op`、一覧の文と次の手順だけ。スタック・値は返さない」にする。ADRを変えたあとに台帳・ほかの文書の同じ文を確かめる（PR11-R108と同じ種類）。",
+        "N2: T31の`.tsx`のカバレッジを「UIの試験の実行器（T08）に合わせて計測方法を決める」にし、同じ文のADR-0010の4.2とT31の成果物もそろえる。T30の警告の抑止に、版が範囲外のときはTSの本体を読み込めないので`.mjs`の入口の中だけで抑止すると足す。延期の「ログの上限を超えたときは新しい行を優先する」をT30に記録する。"
+      ],
+      "regression_check": "どれも既に決めた設計（ADR-0010の2のエラーの文の正本、4.2のカバレッジの対象の明示、3の入口）と同じ向きの直しで、逆方向の要求はない。"
+    }
+  }
+}
