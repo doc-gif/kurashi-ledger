@@ -8,6 +8,11 @@ import {
 } from "./model.ts";
 import { Store } from "./store.ts";
 import { parseResult, ReviewBroker, type Provenance } from "./broker.ts";
+import {
+  blockedNotice,
+  redactedResult,
+  resultFindings,
+} from "./publication.ts";
 
 export type Capability = {
   backend: "fixture" | "codex" | "claude";
@@ -88,7 +93,7 @@ export class Dispatcher {
     s: Snapshot,
     actor: number,
     runner: Runner,
-    broker: ReviewBroker,
+    broker: Pick<ReviewBroker, "submit">,
     fetchFresh: () => Promise<Snapshot>,
     now: number,
   ): Promise<string> {
@@ -109,7 +114,14 @@ export class Dispatcher {
         this.store.uncertain(j);
         return "uncertain";
       }
-      parseResult(value.result, j);
+      const parsed = parseResult(value.result, j);
+      if (resultFindings(parsed, j).length) {
+        // Never keep a possibly secret result in the DB (30-day retention, backups): store its hash only.
+        this.store.result(j, redactedResult(value.result));
+        this.store.notice(blockedNotice(j));
+        this.store.uncertain(j); // blocked: persistent needs-owner, lease held, no relaunch.
+        return "blocked";
+      }
       this.store.result(j, value.result);
       // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
       const outcome = await broker.submit(

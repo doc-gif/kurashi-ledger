@@ -4,9 +4,10 @@ import {
   ReviewBroker,
   type BrokerTransport,
   type PostedReview,
+  type Provenance,
 } from "./broker.ts";
-import type { Policy } from "./model.ts";
-import type { ResultVerifier } from "./provenance.ts";
+import type { Job, Policy, Snapshot } from "./model.ts";
+import { RunVerifier } from "./provenance.ts";
 import type { Store } from "./store.ts";
 
 // The real review Broker for the Claude App (design §3/§6). Its identity is fixed here as constants: no
@@ -412,18 +413,32 @@ export async function relayMain(
 }
 
 // Fixed-identity Claude review Broker. The policy must name this App's bot as an AI actor run by Claude.
+// Only the verify-only RunVerifier is accepted (supervisor-signed results); a sealing fixture cannot be passed.
+// Each submit opens its own wrapper session and always closes it, so the token is minted and revoked per review.
+export type ClaudeReviewBroker = {
+  readonly actor: number;
+  submit(
+    p: Policy,
+    j: Job,
+    raw: string,
+    origin: Provenance | null,
+    fetchFresh: () => Promise<Snapshot>,
+  ): Promise<"posted" | "uncertain" | "stale" | "blocked">;
+};
 export function createClaudeReviewBroker(
   policy: Policy,
   install: ClaudeBrokerInstall,
   store: Store,
-  verifier: ResultVerifier,
+  verifier: RunVerifier,
   deps: {
     platform: NodeJS.Platform;
     home: string;
     spawn?: SpawnRelay;
     timeoutMs?: number;
   },
-): { broker: ReviewBroker; transport: ClaudeAppTransport } {
+): ClaudeReviewBroker {
+  if (!(verifier instanceof RunVerifier))
+    throw new Error("Claude Broker requires the run verifier");
   const fixed = validateInstall(install, deps.platform),
     actor = policy.actors.find((a) => a.id === fixed.actor);
   if (
@@ -432,9 +447,21 @@ export function createClaudeReviewBroker(
     actor.executor !== CLAUDE_AGENT
   )
     throw new Error("Claude Broker identity mismatch");
-  const transport = new ClaudeAppTransport(fixed, deps);
+  claudeBrokerEnvironment(deps.home);
   return {
-    broker: new ReviewBroker(fixed.actor, transport, store, verifier),
-    transport,
+    actor: fixed.actor,
+    async submit(p, j, raw, origin, fetchFresh) {
+      const transport = new ClaudeAppTransport(fixed, deps);
+      try {
+        return await new ReviewBroker(
+          fixed.actor,
+          transport,
+          store,
+          verifier,
+        ).submit(p, j, raw, origin, fetchFresh);
+      } finally {
+        await transport.close();
+      }
+    },
   };
 }

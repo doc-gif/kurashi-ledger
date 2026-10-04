@@ -8,7 +8,11 @@ Issue #45の基盤です。**既定はoff、実AI・本番通知・修正pushは
 - `scripts/review-dispatch.ts`: offと、owner管理policyを使った一度のshadow照合。shadowは取得・記録だけで、AI・投稿は0件です。
 - `tools/review_dispatch/supervisor.py`: POSIXの受付排他、合成workerの独立監督・取消・同一runの状態確認。Windowsで起動すると副作用前に拒否します。
 
-実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。Claude App用は`claude-broker.ts`と固定の中継`scripts/review-dispatch-claude-broker.ts`で、token wrapperを`--agent claude --purpose review`に固定して1回の投稿sessionごとに1度だけ起動し、POSTはsessionで1回までです（Issue #50 W2。activeのCLIへの接続はW4）。どのBrokerも投稿直前の本文に`check-public`と同じ規則と、鍵・tokenの形・ローカルの絶対パスの検査を行い、当たればPOSTせず`blocked`としてownerの確認待ち（leaseを保持）にします（PR #51の粗探しP1）。このPRから実鍵を使って起動・投稿しないでください。
+実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。Claude App用は`claude-broker.ts`と固定の中継`scripts/review-dispatch-claude-broker.ts`で、検証専用の`RunVerifier`だけを受け付けます。token wrapperを`--agent claude --purpose review`に固定してsubmitごとに1度だけ起動し、必ず閉じます。POSTはsessionで1回までです（Issue #50 W2。activeのCLIへの接続はW4）。
+
+公開前の検査（`publication.ts`）は**緩和**であり、保証ではありません。NFKCで正規化し、ゼロ幅等の書式文字（`\p{Cf}`）は拒否します。`check-public`と同じ規則に加え、鍵・tokenの形、長い不透明な文字列、ローカルの絶対パス、github.com以外のリンク、%符号化を拒否します。SHA/UUIDは、そのjobのpair・run・evidenceにある値だけを許します。この検査は`parseResult`、DBへの保存の前、投稿直前の本文の3か所で行います。保存の前に当たった結果は平文を残さず、hashだけを記録します。PR #51の粗探しP1を閉じる条件は、workerが秘密を読めないことを示すW1の否定試験です（`deny-supervisor`を含む、W1の担当）。
+
+`blocked`は**持続するneeds-owner**です。投稿もOutboxの行も作らず、ownerへの通知を1回だけ記録します。leaseは保持（job状態`uncertain`）し、ownerが解除するまで同じPRで起動しません。このPRから実鍵を使って起動・投稿しないでください。
 
 ## offとshadow
 
@@ -57,7 +61,8 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 - I009: 実AIの全子孫へのFD継承、取消・OS再起動・process tree終了の実測。未確認backendを有効にしません。
 - I010: App作成PRのCopilot依頼・応答の実測は任意の補助情報です。応答や利用枠を起動/マージの条件に戻しません。
 - I011: 共有された従来アカウントの身元移行。ownerがactivity anchorと過去push参加者を検証し、policyの同一人物対応・server境界を設定する。結合と照合のコードは今回追加済み。実repoのmigration設定は未検証。
-- PR48-R003: supervisorがrunごとの一度きりの鍵（SHA-256だけのLamport署名。鍵はsupervisorのメモリだけに置く）で結果に署名し、受付・Brokerは`provenance.ts`の`RunVerifier`で検証だけを行います（Issue #50 W2）。鍵の約束値はworkerの起動前にsupervisor自身の標準出力で受付へ渡し、manifestやroot内のファイルの値は信頼しません。`RunChannel`はfake runner専用の整合tagです。残り: 約束値のDBへの永続化と受付の再起動後の検証（W4。それまではuncertainのまま）、workerからsupervisorのメモリ・制御パイプへ届かないことの実Macでの否定試験（W1のSeatbelt/doctor）。これらとowner導入まで実backendは無効です。
+- PR48-R003: supervisorがrunごとの一度きりの鍵（SHA-256だけのLamport署名。鍵はsupervisorのメモリだけに置く）で結果に署名し、受付・Brokerは`provenance.ts`の`RunVerifier`で検証だけを行います（Issue #50 W2）。鍵の約束値はworkerの起動前にsupervisor自身の標準出力で受付へ渡し、manifestやroot内のファイルの値は信頼しません。封のできる`RunChannel`は試験のfixture（`tests/fixtures/`）だけに置き、製品コードにはありません。残り: 約束値のDBへの永続化と受付の再起動後の検証（W4。それまではuncertainのまま）、workerからsupervisorのメモリ・制御パイプへ届かないことの実Macでの否定試験（W1の`deny-supervisor` probe）。これらとowner導入まで実backendは無効です。
+- **W4の必須項目（Issue #50 W2から）**: (1) `blocked`をPRごとの持続する状態としてDBに持ち、ownerの解除だけで消す（leaseのuncertainをownerが放しても再起動しない。store.tsはW3が変更中なのでW2では触れない）。(2) 起動時の鍵の約束値をjobに永続化し、再起動後の検証に使う。(3) PR #52と統合するときは、公開検査と本文hashを正規化後の最終本文に掛ける。(4) 通知Broker（Codex AppのPRコメント）にも同じ`publicationFindings`を使う。(5) 実runのworkerのHOME/TMPDIRをsupervisorのrootから分けたrunごとの領域にし、実backendの署名はmacOSに限る（W1と調整）。(6) 過去の公開v1本文を良性の資料として、公開検査の誤検知を試験する。
 - active、auto-fix、GitHub通知、実Broker接続、旧workerとの交代・rollbackはownerの設定と別の正本移行PR後。dispatcherはマージしません。
 
 導入待ちはIssue #45の基盤受入と分けます。基盤のCIとClaudeの独立accepted後に完了を判定し、残る担当レビューを既存の設定で再開します。

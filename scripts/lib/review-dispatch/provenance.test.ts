@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { hash, type Job } from "./model.ts";
@@ -261,4 +262,29 @@ test("PR48-R003 Broker with the verify-only RunVerifier refuses unsigned or fore
   } finally {
     d.cleanup();
   }
+});
+
+test("PR48-R003 vector digests match values computed with a separate tool (shasum), not only this code", () => {
+  const v = JSON.parse(
+    readFileSync(
+      new URL("../../../tests/fixtures/review-dispatch-run-signature.json", import.meta.url),
+      "utf8",
+    ),
+  ) as typeof vector & {
+    independent: { bindingPreimage: string; binding: string; resultHash: string; message: string; messageDigest: string };
+  };
+  const j = job();
+  assert.equal(
+    v.independent.bindingPreimage,
+    JSON.stringify(["kurashi-ledger:dispatch-job:v1", j.id, j.key, j.kind, j.actor, j.generation, j.policy, j.pair.head, j.pair.base, j.run]),
+  );
+  assert.equal(runBinding(j), v.independent.binding);
+  assert.equal(hash(v.result), v.independent.resultHash);
+  assert.equal(signedMessage(j.run, v.binding, v.resultHash).toString("ascii"), v.independent.message);
+  assert.equal(
+    createHash("sha256")
+      .update(`kurashi-ledger:lamport-digest:v1\n${v.key}\n${v.independent.message}`, "ascii")
+      .digest("hex"),
+    v.independent.messageDigest,
+  );
 });

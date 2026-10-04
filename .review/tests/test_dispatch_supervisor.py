@@ -1,4 +1,5 @@
 """Real POSIX fixtures. Windows asserts disabled backend instead of skipping."""
+import hashlib
 import importlib.util
 import json
 import os
@@ -237,6 +238,14 @@ class SigningTests(unittest.TestCase):
         message = supervisor.signed_message(v['job']['run'], v['binding'], v['resultHash'])
         self.assertEqual(supervisor.sign(seed, v['key'], message), v['signature'])
         self.assertTrue(verify_one_time(v['key'], message, v['signature']))
+        # Digests recorded with a separate tool (shasum), not with this implementation.
+        ind = v['independent']
+        self.assertEqual(message.decode('ascii'), ind['message'])
+        self.assertEqual(hashlib.sha256(v['result'].encode('utf-8')).hexdigest(), ind['resultHash'])
+        self.assertEqual(hashlib.sha256(ind['bindingPreimage'].encode('utf-8')).hexdigest(), v['binding'])
+        self.assertEqual(ind['binding'], v['binding'])
+        self.assertEqual(hashlib.sha256(b'kurashi-ledger:lamport-digest:v1\n' + v['key'].encode('ascii') + b'\n' + message).hexdigest(),
+                         ind['messageDigest'])
         self.assertFalse(verify_one_time(v['key'], message.replace(b'\n', b' ', 1), v['signature']))
         self.assertNotEqual(supervisor.public_key(bytearray(32)), v['key'])
         for bad in [('bad run', v['binding'], v['resultHash']), (v['job']['run'], 'B' * 64, v['resultHash']),

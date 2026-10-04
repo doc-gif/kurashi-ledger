@@ -7,7 +7,8 @@ import {
   fixtureResult,
   type Capability,
 } from "./runtime.ts";
-import { ReviewBroker, RunChannel } from "./broker.ts";
+import { ReviewBroker } from "./broker.ts";
+import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import {
   database,
   policy,

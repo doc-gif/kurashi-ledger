@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   hash,
   samePair,
@@ -10,7 +9,11 @@ import {
 import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
 import type { ResultVerifier } from "./provenance.ts";
-import { textFindings } from "../public-policy.ts";
+import {
+  allowedFor,
+  blockedNotice,
+  publicationFindings,
+} from "./publication.ts";
 
 export function parseResult(raw: string, j: Job): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
@@ -21,13 +24,25 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   } catch {
     throw new Error("Invalid worker result");
   }
+  // Format characters (zero-width etc.) are rejected anywhere in the decoded result, never stripped.
+  if (/\p{Cf}/u.test(JSON.stringify(r) ?? ""))
+    throw new Error("Unsafe result prose");
   const singleLine = (v: string): boolean =>
     !/[\r\n\u0000-\u001f\u007f]/.test(v);
-  const safeProse = (v: string): boolean =>
-    !/[<@]/.test(v) &&
-    !/(?:^|\n)\s*(?:role|agent_id|head_sha|base_sha|decision|worker_status|plan_path|plan_commit)\s*:/i.test(
-      v,
+  // Checked after NFKC so full-width look-alikes cannot slip past. Only GitHub links in prose.
+  const safeProse = (raw: string): boolean => {
+    const v = raw.normalize("NFKC");
+    return (
+      !/[<@]/.test(v) &&
+      !/(?:^|\n)\s*(?:role|agent_id|head_sha|base_sha|decision|worker_status|plan_path|plan_commit)\s*:/i.test(
+        v,
+      ) &&
+      (v.match(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi) ?? []).every((u) =>
+        /^https:\/\/github\.com\//.test(u),
+      ) &&
+      !/\bwww\./i.test(v)
     );
+  };
   const fields = [
     "schema",
     "run",
@@ -98,8 +113,10 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   )
     throw new Error("Invalid evidence");
   if (
-    /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
-      raw,
+    [raw, JSON.stringify(r).normalize("NFKC")].some((t) =>
+      /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
+        t,
+      ),
     )
   )
     throw new Error("Private material in result");
@@ -109,41 +126,6 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   )
     throw new Error("Unsafe result prose");
   return r;
-}
-// Publication check on the exact body the Broker would post to the public repo (PR51 red team, P1): a prompt
-// injection could make a reviewer read a secret and echo it. Same rules as scripts/check-public.ts
-// (public-policy textFindings), plus anything shaped like a key/token and any local absolute path.
-const TOKEN_SHAPES: readonly RegExp[] = [
-  /\bgh[pousr]_[A-Za-z0-9._-]{16,}/,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
-  /-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|CERTIFICATE)/,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, // JWT
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/i,
-  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*\S{6,}/i,
-  /\b(?:sk|pk|rk)[-_](?:live|test|ant|proj)[-_][A-Za-z0-9_-]{8,}/,
-];
-const LOCAL_PATHS: readonly RegExp[] = [
-  /(?:^|[^A-Za-z0-9_.~:/-])~\/[^\s]/,
-  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|opt|Volumes|root|usr|Library|System|Applications|mnt|srv|proc|dev|run|nix)(?:\/|\b)/,
-  /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/,
-  /\\\\[A-Za-z0-9._-]+\\/, // UNC
-  /\bfile:\/\//i,
-];
-export function publicationFindings(body: string): string[] {
-  const findings = new Set(textFindings(body));
-  if (TOKEN_SHAPES.some((re) => re.test(body))) findings.add("key/token");
-  // Long opaque runs (keys, tokens, encoded secrets). Commit SHAs and run UUIDs are the only allowed long IDs.
-  for (const run of body.match(/[A-Za-z0-9+=_-]{32,}/g) ?? [])
-    if (
-      /[0-9]/.test(run) &&
-      /[A-Za-z]/.test(run) &&
-      !/^[a-f0-9]{40}$/.test(run) &&
-      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(run)
-    )
-      findings.add("opaque key-like string");
-  if (LOCAL_PATHS.some((re) => re.test(body)))
-    findings.add("local absolute path");
-  return [...findings];
 }
 export type PostedReview = {
   id: string;
@@ -166,46 +148,6 @@ export type Provenance = {
   resultHash: string;
   signature: string;
 };
-// Fixture integrity helper for fake runners only. It can seal, so it is never the verifier of a real run.
-// Real runs are signed by the supervisor and checked with provenance.ts RunVerifier (verify-only, PR48-R003).
-export class RunChannel implements ResultVerifier {
-  private readonly secret: Buffer;
-  constructor(secret: Buffer) {
-    if (secret.length < 32) throw new Error("Run channel secret missing");
-    this.secret = Buffer.from(secret);
-  }
-  seal(j: Job, raw: string): Provenance {
-    const value = { run: j.run, actor: j.actor, resultHash: hash(raw) };
-    return { ...value, signature: this.mac(j, value.resultHash) };
-  }
-  verify(j: Job, raw: string, origin: Provenance): boolean {
-    if (
-      origin.run !== j.run ||
-      origin.actor !== j.actor ||
-      origin.resultHash !== hash(raw) ||
-      !/^[a-f0-9]{64}$/.test(origin.signature)
-    )
-      return false;
-    return timingSafeEqual(
-      Buffer.from(origin.signature, "hex"),
-      Buffer.from(this.mac(j, origin.resultHash), "hex"),
-    );
-  }
-  private mac(j: Job, digest: string): string {
-    return createHmac("sha256", this.secret)
-      .update(
-        JSON.stringify([
-          j.run,
-          j.actor,
-          j.generation,
-          j.policy,
-          j.pair,
-          digest,
-        ]),
-      )
-      .digest("hex");
-  }
-}
 export class ReviewBroker {
   // Verify-only: the Broker checks the run's provenance and never seals or signs a result itself.
   readonly verifier: ResultVerifier;
@@ -266,10 +208,12 @@ export class ReviewBroker {
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
       body = render(result, marker, identityOf(p, this.actor), j.run),
       digest = hash(body);
-    if (publicationFindings(body).length) {
-      // Never posted and no Outbox row: the owner must look at the run. Recorded once as an owner notice;
-      // the caller keeps the lease (uncertain) so nothing relaunches or retries automatically.
-      this.store.notice(`${j.key}:publication-blocked:${j.run}`);
+    // Must run on the exact final body that is posted and hashed. If a later change canonicalises the body
+    // (PR #52), check and hash the canonical form (W4 merge order).
+    if (publicationFindings(body, allowedFor(j, result.evidence)).length) {
+      // blocked = persistent needs-owner: never posted, no Outbox row, one owner notice; the caller keeps the
+      // lease so nothing relaunches until the owner clears it (publication.ts blockedNotice).
+      this.store.notice(blockedNotice(j));
       return "blocked";
     }
     if (

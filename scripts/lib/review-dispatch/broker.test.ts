@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ReviewBroker, RunChannel, parseResult } from "./broker.ts";
+import { ReviewBroker, parseResult } from "./broker.ts";
+import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import { hash } from "./model.ts";
 import { fixtureResult } from "./runtime.ts";
 import {
