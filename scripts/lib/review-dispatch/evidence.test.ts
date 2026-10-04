@@ -1508,3 +1508,39 @@ test("Red team round 4 RT-2: a revision change must move readyAfter past the las
     d.cleanup();
   }
 });
+test("Red team round 5 RT-1: a Review submitted before the switch never binds to the new revision; one after it binds once", async () => {
+  const d = database(),
+    f = fixture();
+  const reviews: Record<string, unknown>[] = [];
+  const review = (id: number, at: number) => ({ id, user: { id: 30 }, state: "APPROVED", commit_id: HEAD, submitted_at: t(at), body: null });
+  const submitted = (id: number, at: number) => ({ ...delivery(false), review: review(id, at) });
+  const reader = () =>
+    new GhReader("synthetic/repository", async (path, h) =>
+      path.includes("/pulls/1/reviews")
+        ? { status: 200, headers: { date: t(f.state.now) }, body: JSON.stringify(reviews) }
+        : f.send(path, h),
+    );
+  try {
+    f.state.now = 5;
+    await reconcile(reader(), policy(), d.store); // p1, observed at t(5)
+    // APPROVE at t(7) under p1; the switch to p2 at t(7.2); the delivery arrives after it.
+    reviews.push(review(12, 7));
+    d.store.inbox(3, "old-approve", "pull_request_review", JSON.stringify(submitted(12, 7)), 7500, "p2");
+    const p2 = policy();
+    p2.revision = "p2";
+    p2.readyAfter = Date.parse(t(7.2));
+    f.state.now = 8;
+    await reconcile(reader(), p2, d.store);
+    assert.equal(d.store.evidence("1:1", "review").length, 0);
+    assert.equal(d.store.pendingInbox().length, 0);
+    // A Review after the switch binds exactly once.
+    reviews.push(review(13, 9));
+    d.store.inbox(3, "new-approve", "pull_request_review", JSON.stringify(submitted(13, 9)), 9500, "p2");
+    f.state.now = 10;
+    await reconcile(reader(), p2, d.store);
+    await reconcile(reader(), p2, d.store);
+    assert.deepEqual(d.store.evidence<{ id: string }>("1:1", "review").map((x) => x.id), ["13"]);
+  } finally {
+    d.cleanup();
+  }
+});

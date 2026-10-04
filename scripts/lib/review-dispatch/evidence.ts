@@ -332,6 +332,12 @@ export function signalRecords(
         },
   ];
 }
+// The server time the Review was submitted (from the collection), compared with readyAfter. Unknown: false.
+function submittedAfter(c: Collection, id: string, readyAfter: number): boolean {
+  const r = c.reviews.find((x) => String(x["id"]) === id);
+  const at = Date.parse(String(r?.["submitted_at"]));
+  return Number.isFinite(at) && at > readyAfter;
+}
 const deliveryPr = (event: string, payload: Record<string, unknown>): number | null => {
   const holder =
     event === "issue_comment" ? payload["issue"] : payload["pull_request"];
@@ -418,7 +424,8 @@ export async function reconcile(
         String(row["event"]) === "pull_request_review"
           ? bindReview(payload, c)
           : null;
-      if (v && !reviews.some((x) => x.id === v.id)) reviews.push(v);
+      // Red team round 5 RT-1: like a Ready, a Review submitted at or before readyAfter is never bound.
+      if (v && submittedAfter(c, v.id, p.readyAfter) && !reviews.some((x) => x.id === v.id)) reviews.push(v);
     }
     for (const e of c.snapshot.history) {
       if (
@@ -443,6 +450,7 @@ export async function reconcile(
       if (
         actor &&
         r["commit_id"] === c.snapshot.pair.head &&
+        at > p.readyAfter &&
         recoverable(c, p, prior, at) &&
         !reviews.some((x) => x.id === id)
       )

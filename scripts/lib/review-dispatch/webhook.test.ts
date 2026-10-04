@@ -333,6 +333,14 @@ test("PR58-R003 / red team round 4: each signed delivery is taken with the whole
       ["policy-unreadable", "policy-identity-changed", "ready-after-not-moved"],
     );
     assert.equal(d.store.pendingInbox().length, 2);
+    // Red team round 5 RT-2: a saved delivery resets the log, so a cause that comes back is logged again.
+    now = () => p2;
+    assert.equal(await send("saved-again"), 202);
+    now = () => {
+      throw new Error("policy unreadable");
+    };
+    assert.equal(await send("unreadable-3"), 503);
+    assert.equal(logs.filter((s) => s.includes("policy-unreadable")).length, 2);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
     d.cleanup();

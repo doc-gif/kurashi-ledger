@@ -277,7 +277,7 @@
     },
     {
      "location": "reconcile: revisionの切替とreadyAfter",
-     "result": "前のrevisionで保存した最後の観測より後でなければ、読む前に止める（終了コード4）。readyAfter以前のReadyは配送でも回復でも結び付けない（粗探し4回目RT-2）"
+     "result": "前のrevisionで保存した最後の観測より後でなければ、読む前に止める（終了コード4）。readyAfter以前のReady・Reviewは配送でも回復でも結び付けない（粗探し4回目RT-2）"
     }
    ]
   },

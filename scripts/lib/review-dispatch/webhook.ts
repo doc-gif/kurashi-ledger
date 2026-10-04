@@ -260,6 +260,8 @@ export function serve(
           ? ingestOversized(policy, store, secret, headers, digest, size, now())
           : ingest(policy, store, secret, headers, Buffer.concat(chunks), now());
       reply(status);
+      // Red team round 5 RT-2: once a delivery is saved, a cause that comes back is logged again.
+      if (status === 202) told.clear();
       if (status === 202)
         try {
           stored();
