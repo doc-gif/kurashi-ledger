@@ -1,0 +1,463 @@
+{
+  "schema_version": 2,
+  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "docs/github-agent-operations.md",
+    "docs/implementation-tasks.md",
+    "docs/pr-review-loop.md",
+    "docs/review-dispatch-design.md"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #50 W1-W3 run in parallel and implement the launcher, signing/Broker and host checks. If W0 adds launch requirements that W1 does not implement, the design and code disagree.",
+      "state": "resolved",
+      "resolution": "W0 records the owner's O2 layer list as the required set. Extra documented flags (--tools, --strict-mcp-config, --safe-mode, --permission-prompts none, --no-session-persistence) are listed as 'adopt if the pinned version supports them; otherwise doctor reports unverified'. W0 changes no code. W4 integrates and reconciles the design with the merged launcher."
+    },
+    {
+      "description": "pr-review-loop deferred the identity that posts the red-team record in active mode to this migration PR. Current manual practice lets a same-vendor subagent red-team, but merged reducer.ts/broker.ts require the faultfinding actor to be reviewerEligible (assigned reviewer, independent person from implementer/author/pushers).",
+      "state": "resolved",
+      "resolution": "Follow the merged code: in active mode the faultfinding Job runs as an assigned reviewer and its record is posted by that reviewer's Broker. The implementer's App never posts an active red-team record. Manual mode keeps the current rule unchanged."
+    },
+    {
+      "description": "T23 (PR #38, paused) owns state judgement and notification today; T24 owns external AI polling. Active mode needs exactly one judge/notifier per PR.",
+      "state": "resolved",
+      "resolution": "Per migrated PR, the Issue45 dispatcher is the only judge and notifier. T23/T24 and the existing patrols skip migrated PRs; T23 keeps CI-policy protection for all PRs. No paused PR38/44 code is imported or resumed."
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "Docs only. The new text names flags, paths classes and procedures, never keys, tokens, tunnel hostnames, account names or personal paths.",
+      "checks": [
+        {
+          "id": "public",
+          "method": "Read the full staged diff. Run node scripts/check-public.ts --staged. Grep the diff for hostnames, keychain service values, home paths and token-like strings.",
+          "expected": "No secrets, real URLs of the tunnel, personal paths or real data. Subscription login stays in an owner-only config dir that the docs only name as a class."
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "The merge conditions stay. Active mode changes only how 'accepted' and the red-team record are evaluated for migrated PRs: native APPROVE and dispatcher Job records bound to the exact head/base, never a converted COMMENT.",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Trace one migrated PR through switch, Ready, faultfinding, review, push, main update and rollback. Check that exactly one notifier posts per state and that old patrols skip the PR.",
+          "expected": "No double notice, no double review Job, no re-post after uncertain POST. Finding IDs keep the PR<N>-R format across the switch."
+        },
+        {
+          "id": "trust",
+          "method": "Compare the new active rules with design §1/§5/§6, reducer.ts accepted()/reviewerEligible() and broker.ts. Check rollback does not turn shadow records or old COMMENT accepted into approvals.",
+          "expected": "Only an assigned independent reviewer's APPROVE at the exact pair counts. Red-team evidence must come from an independent reviewer Job at the exact pair. Labels, notices and prose grant nothing. The dispatcher never merges."
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "The migration defines responsibilities but grants no activation. Activation still needs W1-W4 merged, doctor/host checks passing and the owner's per-PR policy change.",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "Compare the T23/T24 rows, design §8 and review-dispatch-implementation.md pre-activation checklist (PR48-R003, R007-R011).",
+          "expected": "Active cannot start before the checklist items and W1-W4 are merged. T23 CI-policy protection stays. Windows needs no new backend."
+        },
+        {
+          "id": "entrypoints",
+          "method": "Read pr-review-loop, github-agent-operations, implementation-tasks T23/T24, external-worker and project-status together after the change.",
+          "expected": "All entry points say: non-migrated PRs use the current manual protocol; migrated PRs use the dispatcher. Files outside W0 ownership that still say 'separate migration PR' are listed for W4."
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "docs/review-dispatch-design.md, docs/pr-review-loop.md, docs/github-agent-operations.md, docs/implementation-tasks.md (public repo)",
+      "data": "Operating rules, owner decisions O1-O3/Windows, CLI flag names",
+      "trust": "untrusted",
+      "control": "Public diff review and check-public --staged. No secrets, hostnames or personal paths."
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "Claude CLI docs (code.claude.com headless and cli-reference), fetched 2026-10-04",
+      "data": "Flag names and documented behaviour",
+      "trust": "partially-trusted",
+      "control": "Cite only documented flags. State that docs are not a run; the doctor's negative tests on the pinned version decide the capability."
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": "AI workers and old patrols reading these docs as instructions",
+      "data": "Who judges, notifies, posts reviews and red-team records; switch and rollback steps",
+      "trust": "partially-trusted",
+      "control": "Rules say a label/notice/prose never grants authority; only the owner's policy revision migrates a PR; skip-on-notice only stops work."
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "Docs that let a launcher fall back to another credential (API key, doc-gif login, other App) when subscription login or App token fails",
+      "places": [
+        {
+          "location": "design §7 Claude row and O2 paragraph",
+          "result": "Fail closed; no API key, no --bare, no switch to another service without owner approval"
+        },
+        {
+          "location": "design §3 receive/notify identities",
+          "result": "Unchanged Codex App; no doc-gif fallback"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "Text that widens what a worker can read (keychain, config dir) when a probe is unknown",
+      "places": [
+        {
+          "location": "design §7 Seatbelt/doctor paragraph",
+          "result": "CLI profile may read only its dedicated config dir login; tool-child profile reads no credential; unknown probe = disabled"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "A PR changes the rules that judge it",
+      "places": [
+        {
+          "location": "pr-review-loop active section",
+          "result": "This PR is judged by current rules; active applies only after merge and owner policy change"
+        },
+        {
+          "location": "T23 row",
+          "result": "Dispatcher paths added to policy_paths requirement (I007)"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "Two judges or two notifiers for the same PR; old approval converted",
+      "places": [
+        {
+          "location": "github-agent-operations 分担/定期実行",
+          "result": "Migrated PRs: dispatcher only; patrols skip"
+        },
+        {
+          "location": "design §5 table and rollback",
+          "result": "No COMMENT->APPROVE conversion; shadow records never count"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "pattern": "Entry points disagree on when active starts",
+      "places": [
+        {
+          "location": "design header, §5, §8",
+          "result": "Same preconditions"
+        },
+        {
+          "location": "review-dispatch-implementation.md line 61, project-status.md",
+          "result": "Outside W0 ownership; reported to W4"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "Docs claim active is running",
+      "places": [
+        {
+          "location": "all four files",
+          "result": "State says activation is pending owner switch"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "draft-open-entrypoint-coherence",
+      "pattern": "Draft/Open/ready-for-review meaning differs between manual and active mode",
+      "places": [
+        {
+          "location": "pr-review-loop §1 and active section",
+          "result": "Manual: handoff ready-for-review. Active: standard Draft->Ready by implementer/owner; handoff is optional information"
+        },
+        {
+          "location": "external-worker.md prompt",
+          "result": "Unchanged (manual rule); W4 adds the active pointer if needed"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "pattern": "Active rules usable before their providers (W1 launcher, W2 signing/Broker, W3 host checks, W4 CLI/webhook) are merged",
+      "places": [
+        {
+          "location": "design §8 and pr-review-loop active preconditions",
+          "result": "Listed as preconditions; doctor/host check failure keeps capability disabled"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "review-role-spelling",
+      "pattern": "New role names in active records that old parsers do not normalise",
+      "places": [
+        {
+          "location": "pr-review-loop active section",
+          "result": "Broker bodies keep v1 markers and roles codex-reviewer/claude-reviewer; no new role spelling"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        },
+        {
+          "id": "PR42-R001",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "token-scope-fail-open",
+          "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+          ]
+        },
+        {
+          "id": "PR42-R006",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "credential-tool-from-untrusted-checkout",
+          "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+          ]
+        },
+        {
+          "id": "PR37-R001",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "logged-value-carries-data",
+          "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847",
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        },
+        {
+          "id": "PR42-R004",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "credential-fallback-on-mint-failure",
+          "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。 子プロセスに渡す場合も、ghとgitが読む保存済みの資格情報（.netrc、利用者・repoの設定のhelperやheader）を打ち消す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029",
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
+          ]
+        }
+      ]
+    }
+  }
+}
