@@ -385,3 +385,30 @@ class SigningTests(unittest.TestCase):
         self.assertEqual([x['type'] for x in lines(result.stdout)], ['run-key'])
         self.assertEqual((self.root / 'run-racing-result.json').read_text(), 'forged')
         self.assertEqual(json.loads((self.root / 'run-racing.json').read_text())['state'], 'uncertain')
+
+    def test_blocked_result_envelope_is_redacted_to_its_hash(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        secret_like = 'synthetic-blocked-plaintext'
+        result = self.fixture('blocked', 'print(%r)' % secret_like)
+        self.assertEqual(result.returncode, 0)
+        env = lines(result.stdout)[-1]
+        path = self.root / 'run-blocked-result.json'
+        redact = [sys.executable, str(SCRIPT), 'redact', '--root', str(self.root), '--run', 'blocked']
+        # A wrong hash or an unknown run changes nothing.
+        self.assertEqual(subprocess.run(redact + ['--result-hash', '0' * 64], capture_output=True).returncode, 2)
+        self.assertIn(secret_like, path.read_text(encoding='utf-8'))
+        self.assertEqual(subprocess.run([sys.executable, str(SCRIPT), 'redact', '--root', str(self.root), '--run', 'missing',
+                                         '--result-hash', env['resultHash']], capture_output=True).returncode, 2)
+        ok = subprocess.run(redact + ['--result-hash', env['resultHash']], capture_output=True)
+        self.assertEqual(ok.returncode, 0)
+        stored = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(stored, {'schema': 1, 'type': 'run-result-redacted', 'run': 'blocked',
+                                  'binding': BINDING, 'resultHash': env['resultHash']})
+        for name in os.listdir(self.root):
+            if (self.root / name).is_file():
+                self.assertNotIn(secret_like.encode(), (self.root / name).read_bytes(), name)
+        # Idempotent, and the run is still never relaunched.
+        self.assertEqual(subprocess.run(redact + ['--result-hash', env['resultHash']], capture_output=True).returncode, 0)
+        self.assertEqual(self.fixture('blocked', "print('{}')").returncode, 2)

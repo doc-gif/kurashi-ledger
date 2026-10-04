@@ -10,8 +10,12 @@ import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
 import type { ResultVerifier } from "./provenance.ts";
 import {
-  allowedFor,
+  EVIDENCE_SHAPE,
   blockedNotice,
+  redactStoredResult,
+  redactedResult,
+  resultFindings,
+  allowedFor,
   publicationFindings,
 } from "./publication.ts";
 
@@ -98,9 +102,8 @@ export function parseResult(raw: string, j: Job): WorkerResult {
     throw new Error("Contradictory result");
   if (
     r.evidence.some(
-      (x) =>
-        typeof x !== "string" ||
-        !/^https:\/\/github\.com\/[a-zA-Z0-9/_?.=#&%-]+$/.test(x),
+      // Fixed shapes only: a workflow run, a review on a PR, or a commit (checked against the PR later).
+      (x) => typeof x !== "string" || !EVIDENCE_SHAPE.test(x),
     ) ||
     r.unverified.some(
       (x) =>
@@ -187,6 +190,8 @@ export class ReviewBroker {
       prior = this.store.target(j.key);
     const t = assess(p, s, prior, this.store.consumed());
     const owned = this.store.job(j.id);
+    // Already blocked and redacted (hash-only): stays blocked; never posted, never re-checked into a POST.
+    if (owned && owned.resultHash === hash(redactedResult(raw))) return "blocked";
     if (owned && owned.resultHash !== hash(raw))
       throw new Error("Stored result hash changed");
     if (
@@ -210,7 +215,12 @@ export class ReviewBroker {
       digest = hash(body);
     // Must run on the exact final body that is posted and hashed. If a later change canonicalises the body
     // (PR #52), check and hash the canonical form (W4 merge order).
-    if (publicationFindings(body, allowedFor(j, result.evidence)).length) {
+    if (
+      resultFindings(result, j, s, p.repo).length ||
+      publicationFindings(body, allowedFor(j, s)).length
+    ) {
+      // The plaintext result must not stay in the DB either (30-day retention, backups).
+      redactStoredResult(this.store.db, j, raw);
       // blocked = persistent needs-owner: never posted, no Outbox row, one owner notice; the caller keeps the
       // lease so nothing relaunches until the owner clears it (publication.ts blockedNotice).
       this.store.notice(blockedNotice(j));

@@ -28,7 +28,7 @@ import {
   type PostedReview,
 } from "./broker.ts";
 import { Dispatcher, fixtureResult } from "./runtime.ts";
-import { publicationFindings, allowedFor } from "./publication.ts";
+import { publicationFindings, allowedFor, resultFindings } from "./publication.ts";
 import { RunVerifier, parseRunKeyLine, parseSignedResult, provenanceOf } from "./provenance.ts";
 import type { Job } from "./model.ts";
 import {
@@ -531,7 +531,7 @@ const VJOB: Job = {
   pair: { head: "a".repeat(40), base: "b".repeat(40) },
   policy: "p1",
 };
-const NONE = allowedFor(VJOB, []);
+const NONE = allowedFor(VJOB, snapshot());
 // Evasions from the PR #53 red team (P2-2), assembled at runtime.
 const hexSecret = "0123456789abcdef".repeat(5); // 80 hex chars = two SHA-shaped chunks
 const EVASIONS: readonly string[] = [
@@ -550,34 +550,68 @@ test("publication check flags every synthetic leak and red-team evasion (mitigat
   for (const leak of [...SYNTHETIC_LEAKS, ...EVASIONS])
     assert.notDeepEqual(publicationFindings(`前置き ${leak} 後置き`, NONE), [], leak);
   assert.ok(publicationFindings("a\u200bb", NONE).includes("format character"));
-  // A normal v1 review body: the job's own SHAs/run, its GitHub evidence links and a commit link in evidence.
+  // A normal v1 review body. A commit SHA is allowed only when the dispatcher's own snapshot knows it
+  // (here: an earlier push recorded in the GitHub timeline), never because the worker put it in evidence.
+  const pushed = "1c".repeat(20),
+    s = snapshot();
+  s.history.unshift({ id: "push0", kind: "push", actor: 20, at: 0, pair: { head: pushed, base: VJOB.pair.base } });
   const evidence = [
-    "https://github.com/doc-gif/kurashi-ledger/actions/runs/37169377459",
-    "https://github.com/doc-gif/kurashi-ledger/pull/48#pullrequestreview-5403767115",
-    `https://github.com/doc-gif/kurashi-ledger/commit/${"1c".repeat(20)}`,
+    "https://github.com/synthetic/repository/actions/runs/37169377459",
+    "https://github.com/synthetic/repository/pull/1#pullrequestreview-5403767115",
+    `https://github.com/synthetic/repository/commit/${pushed}`,
   ];
-  const body = render(
-    {
-      schema: 1,
-      run: VJOB.run,
-      actor: 30,
-      generation: 1,
-      pair: VJOB.pair,
-      decision: "changes-requested",
-      summary: `境界の検査が不足しています。${"1c".repeat(20)} を確認。`,
-      findings: [{ id: "PR51-R001", location: "scripts/lib/review-dispatch/broker.ts render()", impact: "誤投稿", completion: "試験を足す" }],
-      evidence,
-      unverified: ["実Macの測定"],
-    },
-    `kurashi-ledger:dispatch-run:v1:${VJOB.run}`,
-    { role: "claude-reviewer", agent: "claude" },
-    VJOB.run,
-  );
-  assert.deepEqual(publicationFindings(body, allowedFor(VJOB, evidence)), []);
-  // A SHA is allowed only through this job's evidence/pair, and a run ID only for this job's run.
-  assert.notDeepEqual(publicationFindings(body, allowedFor(VJOB, evidence.slice(0, 2))), []);
+  const result = {
+    schema: 1 as const,
+    run: VJOB.run,
+    actor: 30,
+    generation: 1,
+    pair: VJOB.pair,
+    decision: "changes-requested" as const,
+    summary: `境界の検査が不足しています。${pushed} を確認。`,
+    findings: [{ id: "PR1-R001", location: "scripts/lib/review-dispatch/broker.ts render()", impact: "誤投稿", completion: "試験を足す" }],
+    evidence,
+    unverified: ["実Macの測定"],
+  };
+  assert.deepEqual(parseResult(JSON.stringify(result), VJOB), result);
+  const body = render(result, `kurashi-ledger:dispatch-run:v1:${VJOB.run}`, { role: "claude-reviewer", agent: "claude" }, VJOB.run);
+  assert.deepEqual(publicationFindings(body, allowedFor(VJOB, s)), []);
+  assert.deepEqual(resultFindings(result, VJOB, s, "synthetic/repository"), []);
+  // Without the snapshot knowing the commit, the same body and evidence are blocked.
+  assert.notDeepEqual(publicationFindings(body, allowedFor(VJOB, snapshot())), []);
+  assert.ok(resultFindings(result, VJOB, snapshot(), "synthetic/repository").includes("evidence commit not in this PR"));
+  // Evidence for another repository is refused even in the fixed shape.
+  assert.ok(resultFindings(result, VJOB, s, "synthetic/other").includes("evidence link not allowed"));
+  // A run ID is allowed only for this job's run.
   const otherRun = "abcdef01-2345-4678-9abc-def012345678";
-  assert.notDeepEqual(publicationFindings(`${body}\nagent: ${otherRun}`, allowedFor(VJOB, evidence)), []);
+  assert.notDeepEqual(publicationFindings(`${body}\nagent: ${otherRun}`, allowedFor(VJOB, s)), []);
+});
+
+test("N1: a hex-encoded secret split into 40-character commit links cannot allow itself", () => {
+  const secretHex = Buffer.from("synthetic-secret-value-for-red-team-n1-test-0123456789", "utf8").toString("hex");
+  const chunks = secretHex.match(/.{40}/g)!;
+  assert.ok(chunks.length >= 2);
+  const r = {
+    ...fixtureResult(VJOB),
+    decision: "changes-requested" as const,
+    findings: [],
+    evidence: chunks.map((c) => `https://github.com/synthetic/repository/commit/${c}`),
+    summary: `参照: ${chunks.join(" ")}`,
+  };
+  // The fixed shape parses, but none of the chunks is a commit the snapshot knows.
+  const parsed = parseResult(JSON.stringify(r), VJOB);
+  const findings = resultFindings(parsed, VJOB, snapshot(), "synthetic/repository");
+  assert.ok(findings.includes("evidence commit not in this PR"));
+  assert.ok(findings.includes("opaque key-like string"));
+  const body = render(parsed, `kurashi-ledger:dispatch-run:v1:${VJOB.run}`, { role: "claude-reviewer", agent: "claude" }, VJOB.run);
+  assert.notDeepEqual(publicationFindings(body, allowedFor(VJOB, snapshot())), []);
+  // Free-form GitHub links are not evidence at all.
+  for (const url of [
+    "https://github.com/synthetic/repository/blob/main/x.ts",
+    "https://github.com/synthetic/repository/pull/1?q=abc",
+    "https://github.com/synthetic/repository/actions/runs/1/job/2",
+    `https://github.com/synthetic/repository/commit/${"a".repeat(40)}/x`,
+  ])
+    assert.throws(() => parseResult(JSON.stringify({ ...fixtureResult(VJOB), evidence: [url] }), VJOB), url);
 });
 
 test("parseResult rejects format characters, full-width look-alikes and non-GitHub links in prose", () => {
@@ -631,6 +665,10 @@ test("Broker blocks a body that leaks a secret or local path: no POST, one owner
       assert.equal(await broker.submit(p, j, raw, channel.seal(j, raw), async () => s), "blocked", leak);
       assert.equal(counter.posts + counter.lists, 0);
       assert.equal(d.store.notice(`${j.key}:publication-blocked:${j.run}`), false);
+      // N2(b): the Broker replaced the stored plaintext with the hash-only form.
+      const row = d.store.db.prepare("SELECT result FROM jobs WHERE id=?").get(j.id) as { result: string };
+      assert.ok(!row.result.includes(leak));
+      assert.deepEqual(JSON.parse(row.result), { redacted: "publication-check", resultHash: createHash("sha256").update(raw).digest("hex") });
     } finally {
       d.cleanup();
     }
@@ -657,6 +695,7 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
       ),
     };
     const leak = SYNTHETIC_LEAKS[0]!;
+    const redacted: [string, string][] = [];
     let raw = "";
     assert.equal(
       await engine.fixtureCycle(
@@ -667,6 +706,10 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
           run: async (j) => {
             raw = JSON.stringify({ ...fixtureResult(j), summary: `値 ${leak}` });
             return { result: raw, treeEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
+          },
+          // N2(a): the run endpoint is asked to reduce its signed envelope to the hash (supervisor.py redact).
+          redact: async (j, resultHash) => {
+            redacted.push([j.run, resultHash]);
           },
         },
         broker,
@@ -679,6 +722,8 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
     assert.equal(stored.length, 1);
     assert.equal(stored[0]!.status, "uncertain");
     assert.ok(!stored[0]!.result.includes(leak));
+    assert.equal(redacted.length, 1);
+    assert.equal(redacted[0]![1], createHash("sha256").update(raw).digest("hex"));
     assert.deepEqual(JSON.parse(stored[0]!.result), { redacted: "publication-check", resultHash: createHash("sha256").update(raw).digest("hex") });
     assert.equal(
       await engine.fixtureCycle(s, 30, { capability, run: async () => assert.fail("relaunch") }, broker, async () => s, 101),

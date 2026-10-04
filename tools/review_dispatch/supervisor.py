@@ -328,12 +328,40 @@ def inspect(root, run_id):
             'signed': ended and value.get('signed') is True}
 
 
+def redact(root, run_id, result_hash):
+    """Replace a signed envelope with its hash-only form after the publication check blocked the result.
+
+    Keeps the run, binding and result hash (the run stays reconcilable and is never relaunched); drops the
+    plaintext result and the signature. Refuses while the run lock is held or when the hash does not match.
+    """
+    if not valid_run(run_id) or not HEX64.fullmatch(result_hash):
+        raise RuntimeError('invalid redact request')
+    fd = lock(root / ('run-' + run_id + '.lock'))
+    try:
+        path = root / ('run-' + run_id + '-result.json')
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
+            raise RuntimeError('invalid signed result')
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if value.get('run') != run_id or value.get('resultHash') != result_hash:
+            raise RuntimeError('signed result does not match')
+        if value.get('type') == 'run-result-redacted':
+            return 0
+        if value.get('type') != 'run-result' or not HEX64.fullmatch(str(value.get('binding', ''))):
+            raise RuntimeError('unknown signed result')
+        durable(path, {'schema': 1, 'type': 'run-result-redacted', 'run': run_id,
+                       'binding': value['binding'], 'resultHash': result_hash})
+        return 0
+    finally:
+        os.close(fd)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=['daemon', 'run-fixture', 'inspect'])
+    parser.add_argument('mode', choices=['daemon', 'run-fixture', 'inspect', 'redact'])
     parser.add_argument('--root', required=True)
     parser.add_argument('--run', default='')
     parser.add_argument('--binding', default='')
+    parser.add_argument('--result-hash', default='')
     args, command = parser.parse_known_args()
     if command and command[0] == '--':
         command = command[1:]
@@ -342,6 +370,8 @@ def main():
         if args.mode == 'inspect':
             print(json.dumps(inspect(root, args.run)))
             return 0
+        if args.mode == 'redact':
+            return redact(root, args.run, args.result_hash)
         return run(root, args.mode, args.run, command, args.binding)
     except (RuntimeError, OSError, ValueError):
         # Never echo arbitrary command/output or keys.

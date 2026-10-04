@@ -62,6 +62,9 @@ export type Runner = {
     uncertain: boolean;
     origin: Provenance | null;
   }>;
+  // Called when a result is blocked by the publication check: the run endpoint replaces its durable signed
+  // envelope with the hash-only form (supervisor.py redact). The real wiring is part of W4.
+  redact?(j: Job, resultHash: string): Promise<void>;
 };
 export class Dispatcher {
   readonly policy: Policy;
@@ -115,11 +118,12 @@ export class Dispatcher {
         return "uncertain";
       }
       const parsed = parseResult(value.result, j);
-      if (resultFindings(parsed, j).length) {
+      if (resultFindings(parsed, j, s, this.policy.repo).length) {
         // Never keep a possibly secret result in the DB (30-day retention, backups): store its hash only.
         this.store.result(j, redactedResult(value.result));
         this.store.notice(blockedNotice(j));
         this.store.uncertain(j); // blocked: persistent needs-owner, lease held, no relaunch.
+        await runner.redact?.(j, hash(value.result));
         return "blocked";
       }
       this.store.result(j, value.result);
@@ -134,6 +138,7 @@ export class Dispatcher {
       if (outcome === "uncertain" || outcome === "blocked") {
         // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner).
         this.store.uncertain(j);
+        if (outcome === "blocked") await runner.redact?.(j, hash(value.result));
         return outcome;
       }
       this.store.release(j, {
