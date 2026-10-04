@@ -282,7 +282,7 @@ type FakeOptions = {
   badKey?: boolean;
   onAck?: () => void;
   exit?: number;
-  descendants?: { seen: number; checked: number; holding: number; pending: number; failed: number; proven: boolean };
+  descendants?: { seen: number; checked: number; holding: number; pending: number; failed: number; blind: number; proven: boolean };
 };
 function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<string, unknown> }[]): SpawnSupervisor {
   return (file, args, env) => {
@@ -715,7 +715,7 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(worker.args.includes("--probe-descendants"));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
-    const again = async (descendants: { seen: number; checked: number; holding: number; pending: number; failed: number; proven: boolean }) =>
+    const again = async (descendants: { seen: number; checked: number; holding: number; pending: number; failed: number; blind?: number; proven: boolean }) =>
       (
         await measureCommand({
           policy: p,
@@ -723,7 +723,7 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
           executableDigest: EXE,
           profileText: PROFILE,
           executor: async () => ({ exitCode: 0, stdout: "" }),
-          spawn: fakeSupervisor({ descendants }, []),
+          spawn: fakeSupervisor({ descendants: { blind: 0, ...descendants } }, []),
           layout,
           bound: BOUND,
           unchanged: () => true,
@@ -755,6 +755,8 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       { seen: 2, checked: 1, holding: 1, pending: 1, failed: 0, proven: false },
       { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: true }, // a report that claims too much
       { seen: 0, checked: 0, holding: 0, pending: 0, failed: 0, proven: true },
+      // A failed group enumeration (an unobserved interval) is never proof, even when every known child held.
+      { seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, blind: 1, proven: true },
     ])
       assert.equal(await again(d), false, JSON.stringify(d));
     // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default).
@@ -997,4 +999,39 @@ test("Round 5: a record ID in previous is accepted only when it is one of this j
     ["record-comment-x", ["record-comment-x"]],
   ] as const)
     assert.throws(() => parseResult(result(id), j, [...known]), /Invalid earlier RT/, id);
+});
+
+test("Codex PR56-R004 (re-review): a record mixing RT-1 with an unnumbered [P1] finding needs the whole-record re-check; RT-1 alone launches no review", async () => {
+  const mixed = "<!-- kurashi-ledger:red-team:v1 -->\nRT-1: 番号のある指摘\n- [P1] 番号のない指摘\n- [RT-2][P2] 番号と重さの両方";
+  const transport: Transport = async (endpoint, h) => {
+    const path = endpoint.replace("/repos/synthetic/repository/", "");
+    if (path.startsWith("issues/1/comments"))
+      return { status: 200, headers: { date: new Date(0).toUTCString() }, body: JSON.stringify([{ id: 81, user: { id: 30 }, body: mixed }]) };
+    return materialsTransport(PR_FILES, PR_CONTENTS)(endpoint, h);
+  };
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "materials-")));
+  let previousRts: string[];
+  try {
+    const meta = await buildMaterials(new GhReader("synthetic/repository", transport), prView, dir, () => ({ available: true, output: "{}" }), [30]);
+    previousRts = meta.previousRts;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.deepEqual(previousRts, ["RT-1", "RT-2", "record-comment-81"]);
+  const answered = (ids: string[]) => ({ previous: ids.map((id) => ({ id, status: "解消" as const, reason: "確かめた" })) });
+  for (const [ids, launches] of [
+    [["RT-1", "RT-2"], ["faultfinding"]], // the unnumbered finding was skipped: no review
+    [["RT-1", "RT-2", "record-comment-81"], ["faultfinding", "review"]],
+  ] as const) {
+    const x = stepSetup(answered([...ids]), {}, previousRts);
+    try {
+      assert.equal(await x.step(), "faultfinding:posted");
+      const next = { ...x.s, faultfinding: x.d.store.faultfinding("1:1", x.s.pair, "p1") };
+      await x.step(next, 101);
+      assert.deepEqual(x.launches, [...launches], ids.join());
+      if (launches.length === 1) assert.deepEqual(next.faultfinding!.unresolved, ["unchecked:record-comment-81"]);
+    } finally {
+      x.d.cleanup();
+    }
+  }
 });

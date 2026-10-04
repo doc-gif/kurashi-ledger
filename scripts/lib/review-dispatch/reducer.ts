@@ -153,7 +153,9 @@ export function accepted(p: Policy, s: Snapshot, t: Target): boolean {
   const latest = latestDecisive(s);
   if (
     [...latest.values()].some((r) => r.state === "CHANGES_REQUESTED" && registered(p, r.actor)) ||
-    (s.openFindings ?? []).some((f) => f.ids.length) ||
+    // Unknown is not "none": a snapshot without the collected findings never accepts.
+    s.openFindings === undefined ||
+    s.openFindings.some((f) => f.ids.length) ||
     s.reviews.some((r) => reviewerEligible(p, s, r.actor) && r.findings.length)
   )
     return false;
@@ -181,6 +183,8 @@ export function approvalBlockers(p: Policy, s: Snapshot, self: number): string[]
   for (const [actor, r] of latestDecisive(s))
     if (actor !== self && registered(p, actor) && r.state === "CHANGES_REQUESTED")
       out.push(`changes-requested:${actor}`);
+  // Unknown is not "none": without the collected findings an APPROVE is never posted.
+  if (s.openFindings === undefined) out.push("findings-unknown");
   for (const f of s.openFindings ?? [])
     if (f.actor !== self && registered(p, f.actor)) out.push(...f.ids);
   return [...new Set(out)].sort();

@@ -566,3 +566,19 @@ test("W4 a checkpoint kept busy by another reader is retried and then reported o
     d.cleanup();
   }
 });
+
+test("Sweep: a posted red-team record without its finding list is unknown, never clear", () => {
+  const d = database(),
+    p = policy(),
+    s = snapshot();
+  try {
+    d.store.observe(assess(p, s, null));
+    const j = d.store.claim(p, s, 30, "faultfinding", 100)!;
+    const id = d.store.outbox(j, "faultfinding", JSON.stringify({ actor: 30, decision: "accepted" }));
+    d.store.sending(id);
+    d.store.posted(id, "7001");
+    assert.deepEqual(d.store.faultfinding(j.key, s.pair, "p1")!.unresolved, ["faultfinding-record-unknown"]);
+  } finally {
+    d.cleanup();
+  }
+});

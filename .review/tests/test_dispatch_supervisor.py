@@ -724,8 +724,19 @@ class TreeEndTests(unittest.TestCase):
 class DescendantProbeTests(unittest.TestCase):
     """Codex PR56-R001: inheritance is proven only when every observed child was seen holding the run lock."""
 
-    def probe(self, results, wait=2):
+    def probe(self, results, wait=2, enumerations=None):
         members = list(results)
+        steps = list(enumerations or ['ok'])
+
+        def enumerate_group(_g):
+            step = steps.pop(0) if steps else 'ok'
+            if step == 'none':
+                return None
+            if step == 'timeout':
+                raise subprocess.TimeoutExpired('ps', 5)
+            if step == 'oserror':
+                raise OSError('ps failed')
+            return members
 
         def check(pid, _path):
             r = results[pid]
@@ -736,9 +747,19 @@ class DescendantProbeTests(unittest.TestCase):
                 raise OSError('lsof failed')
             return r
 
-        p = supervisor.DescendantProbe(1, '/nonexistent.lock', members=lambda _g: members, check=check, wait=wait)
-        p.sample()
+        p = supervisor.DescendantProbe(1, '/nonexistent.lock', members=enumerate_group, check=check, wait=wait)
+        for _ in range(max(1, len(enumerations or []))):
+            p.sample()
         return p.report()
+
+    def test_a_failed_enumeration_is_never_proof(self):
+        # Codex PR56-R001 (re-review): an interval that could not be observed is unknown, not "no children".
+        self.assertTrue(self.probe({11: True}, enumerations=['ok', 'ok'])['proven'])  # control
+        for failure in ('none', 'timeout', 'oserror'):
+            r = self.probe({11: True, 12: True}, enumerations=['ok', failure, 'ok'])
+            self.assertFalse(r['proven'], (failure, r))
+            self.assertEqual(r['blind'], 1, failure)
+            self.assertEqual(r['holding'], r['seen'], failure)  # every known child held the lock
 
     def test_every_observed_child_must_hold_the_lock(self):
         self.assertTrue(self.probe({11: True, 12: True})['proven'])

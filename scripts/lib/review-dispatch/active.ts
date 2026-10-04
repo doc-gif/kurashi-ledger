@@ -213,8 +213,11 @@ export type GuardCheck = (input: {
 const RED_TEAM_MARK = /^\s*<!--\s*kurashi-ledger:red-team:v1\s*-->[ \t]*(?:\r?\n|$)/;
 // Every RT ID anywhere in a record (bullets, tables, "[RT-1][P2]", prose), not only "RT-1:" at a line start.
 const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
-// A record that lists findings without RT IDs (for example "[P1]" items) cannot be re-checked by ID.
-const UNNUMBERED_FINDING = /\[P[0-3]\]/;
+// A finding line without an RT ID (for example a "[P1]" item) cannot be re-checked by ID. One such line
+// anywhere in a record, even next to numbered RTs, requires the whole-record re-check (Codex PR56-R004).
+const FINDING_TAG = /\[P[0-3]\]/;
+const unnumberedFinding = (body: string): boolean =>
+  body.split(/\r?\n/).some((line) => FINDING_TAG.test(line) && !/\bRT-[1-9][0-9]{0,2}\b/.test(line));
 // Every cause of the base ledger, as `invariant_id/cause_key` (the red-team table's rows).
 export function ledgerCauses(raw: Buffer | null): string[] {
   if (!raw) return refuse("materials-incomplete");
@@ -316,8 +319,8 @@ export async function buildMaterials(
       const body = o["body"].normalize("NFKC");
       const ids = [...body.matchAll(RT_ID)].map((m) => `RT-${m[1]}`);
       for (const id of ids) previousRts.add(id);
-      // Findings without any RT ID: the record as a whole stays to be re-checked, so it never reads as clear.
-      if (!ids.length && UNNUMBERED_FINDING.test(body)) previousRts.add(`record-${kind}-${String(o["id"])}`);
+      // Any finding without an RT ID: the record as a whole stays to be re-checked, so it never reads as clear.
+      if (unnumberedFinding(body)) previousRts.add(`record-${kind}-${String(o["id"])}`);
     }
   write("pr/previous-redteam.md", earlier.length ? earlier.join("\n") : "なし\n");
   const base: Record<string, Buffer | null> = {};
@@ -460,6 +463,7 @@ export type Descendants = {
   holding: number;
   pending: number;
   failed: number;
+  blind: number; // failed group enumerations (unobserved intervals)
   proven: boolean;
 };
 export async function inspectRun(
@@ -477,7 +481,7 @@ export async function inspectRun(
         neverStarted: v["neverStarted"] === true,
         uncertain: v["uncertain"] !== false,
         ...(d &&
-        ["seen", "checked", "holding", "pending", "failed"].every((k) => Number.isSafeInteger(d[k])) &&
+        ["seen", "checked", "holding", "pending", "failed", "blind"].every((k) => Number.isSafeInteger(d[k])) &&
         typeof d["proven"] === "boolean"
           ? {
               descendants: {
@@ -486,6 +490,7 @@ export async function inspectRun(
                 holding: Number(d["holding"]),
                 pending: Number(d["pending"]),
                 failed: Number(d["failed"]),
+                blind: Number(d["blind"]),
                 proven: d["proven"] === true,
               },
             }
@@ -505,7 +510,8 @@ export function descendantsProven(d: Descendants | undefined): boolean {
     d.holding === d.seen &&
     d.checked === d.seen &&
     d.pending === 0 &&
-    d.failed === 0
+    d.failed === 0 &&
+    d.blind === 0
   );
 }
 // The files the doctor measured, re-checked by the supervisor immediately before the worker starts.

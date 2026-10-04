@@ -74,6 +74,7 @@ export function snapshot(): Snapshot {
       },
     ],
     reviews: [],
+    openFindings: [],
     unresolvedDesign: [],
     faultfinding: {
       actor: 30,

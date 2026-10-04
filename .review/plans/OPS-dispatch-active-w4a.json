@@ -39,6 +39,7 @@
     "tests/fixtures/review-dispatch-run-signature.json",
     "tests/fixtures/review-dispatch-run-signer.ts",
     "tests/fixtures/review-dispatch-v1-bodies.json",
+    "tests/fixtures/review-dispatch.ts",
     "tools/review_dispatch/ci-trust-digest.sh",
     "tools/review_dispatch/supervisor.py"
   ],
@@ -82,6 +83,11 @@
       "description": "粗探し5回目（RT-1）: 番号のない記録や印を引用しただけのコメントが`unchecked:record-…`を作り、workerが解消できず永久に止まる",
       "state": "resolved",
       "resolution": "`previous[].id`に`record-(comment|review)-<ID>`を受け付ける。受け付けるのはその回の資料（store.runMaterialsのpreviousRts）にある記録IDだけで、ほかは拒否する（runtimeとBrokerの両方のparseResult）。jobTextで記録全体の再確認を指示する。印が最初の空でない行にある本文だけを粗探しの記録として読む"
+    },
+    {
+      "description": "Codexの再レビュー（pullrequestreview-5405980420）: R001（groupの列挙の失敗を『子なし』として数える）、R004（番号のRTと番号のない指摘が混ざる記録）。あわせて『不明を空・なしとして扱う』箇所の掃き出し",
+      "state": "resolved",
+      "resolution": "R001: 列挙の失敗（None・ps失敗・時間切れ・例外）を`blind`として数え、1回でもあれば証明しない（受付側もblind=0を要求）。R004: 番号のない指摘の行が1つでもある記録は、番号のRTがあっても記録ごとの再確認を要求する。掃き出しで直した: openFindingsが無いsnapshotを『指摘なし』とせず、acceptedはfalse、APPROVEの前の確認は`findings-unknown`で止める。指摘一覧の無い粗探しの投稿記録を『clear』とせず`faultfinding-record-unknown`にする。確かめて直さなかったもの: allowedForのcommitsなし（許す範囲が狭くなるだけ）、trustedCiなし（信頼しない側）、recordIds(null)（拒否する側）、Webhookの印で作者が読めない配送（印は付く。記録は作らないが、照合の観測比較が既知の項目の変更を拾う）"
     }
   ],
   "owner_decisions": [

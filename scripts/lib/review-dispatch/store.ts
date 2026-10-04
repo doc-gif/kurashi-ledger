@@ -808,7 +808,10 @@ export class Store {
         };
       if (j.kind !== "faultfinding" || j.policy !== policy || !samePair(j.pair, pair))
         continue;
-      const findings = Array.isArray(v.findings) ? v.findings.map(String) : [];
+      // A record without its finding list is unknown, never clear.
+      if (!Array.isArray(v.findings))
+        return { actor: j.actor, pair: { ...j.pair }, unresolved: ["faultfinding-record-unknown"] };
+      const findings = v.findings.map(String);
       return {
         actor: j.actor,
         pair: { ...j.pair },

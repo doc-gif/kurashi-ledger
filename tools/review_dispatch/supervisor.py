@@ -366,10 +366,19 @@ class DescendantProbe:
         self.wait = wait
         self.state = {}
         self.threads = []
+        self.blind = 0  # enumerations that failed: an unobserved interval (Codex PR56-R001, re-review)
         self.lock = threading.Lock()
 
     def sample(self):
-        for pid in self.members(self.pgid) or []:
+        try:
+            members = self.members(self.pgid)
+        except Exception:  # noqa: BLE001 - a failed enumeration is unknown, never "no children"
+            members = None
+        if members is None:
+            with self.lock:
+                self.blind += 1
+            return
+        for pid in members:
             with self.lock:
                 if pid in self.state:
                     continue
@@ -392,13 +401,14 @@ class DescendantProbe:
             t.join(max(0, deadline - time.monotonic()))
         with self.lock:
             states = list(self.state.values())
+            blind = self.blind
         seen = len(states)
         holding = states.count('holding')
         pending = states.count('pending')
         failed = states.count('failed')
         return {'seen': seen, 'checked': seen - pending - failed, 'holding': holding,
-                'pending': pending, 'failed': failed,
-                'proven': seen >= 1 and holding == seen and pending == 0 and failed == 0}
+                'pending': pending, 'failed': failed, 'blind': blind,
+                'proven': seen >= 1 and holding == seen and pending == 0 and failed == 0 and blind == 0}
 
 
 def claude_structured(raw):
@@ -661,7 +671,7 @@ def inspect(root, run_id):
     # 'signed' only reports the manifest; the signature itself is checked against the launch-recorded key.
     report = {}
     d = value.get('descendants')
-    keys = ('seen', 'checked', 'holding', 'pending', 'failed')
+    keys = ('seen', 'checked', 'holding', 'pending', 'failed', 'blind')
     if isinstance(d, dict) and all(isinstance(d.get(k), int) for k in keys) and isinstance(d.get('proven'), bool):
         report = {'descendants': {**{k: d[k] for k in keys}, 'proven': d['proven']}}
     return {**report, 'run': run_id, 'treeEnded': ended and not never, 'neverStarted': never,

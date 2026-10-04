@@ -364,3 +364,16 @@ test("W4 finding raisers are every registered participant, owners included, exce
   assert.deepEqual(findingRaisers(p, 1), [10, 30, 40, 50]);
   assert.deepEqual(findingRaisers(p, 99), []);
 });
+
+test("Sweep: findings that were not collected are unknown, not none (no accepted, no APPROVE)", async () => {
+  const { approvalBlockers } = await import("./reducer.ts");
+  const p = policy(),
+    s = snapshot(),
+    t = assess(p, s, null);
+  s.reviews = [{ id: "r1", actor: 30, state: "APPROVED", pair: s.pair, findings: [] }];
+  assert.equal(accepted(p, s, t), true);
+  assert.deepEqual(approvalBlockers(p, s, 30), []);
+  delete s.openFindings;
+  assert.equal(accepted(p, s, t), false);
+  assert.deepEqual(approvalBlockers(p, s, 30), ["findings-unknown"]);
+});
