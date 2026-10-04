@@ -3,6 +3,7 @@
   "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
   "task_id": "OPS-dispatch-active",
   "planned_paths": [
+    "docs/external-worker.md",
     "docs/github-agent-operations.md",
     "docs/implementation-tasks.md",
     "docs/pr-review-loop.md",
@@ -192,7 +193,7 @@
         },
         {
           "location": "external-worker.md prompt",
-          "result": "Unchanged (manual rule); W4 adds the active pointer if needed"
+          "result": "One sentence added: migrated PRs follow the active section (standard Draft->Ready; dispatcher runs red team after Ready), avoiding a wait for a pre-Ready red team that never comes"
         }
       ]
     },
