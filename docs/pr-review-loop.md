@@ -124,43 +124,38 @@ PR<N>-R002: <同上>
 
 ## 受付がactiveのPR
 
-[受付](review-dispatch-design.md)がactiveのPRにだけ効く。ほかのPRは上の1〜5節を使う。正本は2026-10-04の所有者決定（[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）とPR #51のCodexレビュー（PR51-R001/R002）。
+[受付](review-dispatch-design.md)がactiveのPRの規則。ほかのPRは上の1〜5節を使う。決定の正本は[設計§8](review-dispatch-design.md#8-実装移行完了)の受領記録。
 
-- **AIはactiveのPRをマージしない。** 所有者がGitHubの画面でマージする。
-- 受付が行うのは、粗探しとレビューの起動と投稿まで。
-- 受領記録と受付の通知は、表示と案内だけ。マージの権限を変えない。
+- **AIはactiveのPRをマージしない。** 所有者がGitHubの画面でマージする（[active-merge](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。
+- 受付は、粗探しとレビューの起動と投稿だけを行う。
+- 受領記録と受付の通知は、表示と案内だけ。権限を変えない。理由: AIと所有者はMac・アカウント・Appを共用し、所有者だけの合図がない。
+- 粗探しの時点は所有者承認で読み替える: Readyはレビューの依頼で、粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。
 
-理由: AIと所有者は、同じMac・同じアカウント・同じAppを共用している。AIに偽造できない、所有者だけの合図がない。
+### 所有者だけがマージするPR（OWNER_MERGE_ONLY）
 
-[マージ条件](github-agent-operations.md#merge-conditions)の文言は変えない。ただし所有者承認で、「提出前の粗探し」の時点を読み替える（下の「実装担当の手順」）。
+所有者の決定で、[マージ条件](github-agent-operations.md#merge-conditions)に全PR向けの条件を1つ足した（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)）。
 
-### 起動の方式とマージの権限を分ける
+| 項目 | 内容 |
+| --- | --- |
+| 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`の1か所だけ。MacもWindowsも同じ値を読む。写しを作らない |
+| 書き手 | 所有者だけ。AIのAppには変数の権限がない |
+| 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
+| 読み方 | マージの直前に`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。AIのAppは読めないので、doc-gifのghのログインで読むだけにする。書込みはしない |
+| 判定 | PRが一覧にある、または404・認証の失敗・書式の誤りなら、AIはマージしない |
+| activeとの関係 | ownerはactiveにしたPRを必ず加え、rollback後も残す。外すのもownerだけ |
 
-ownerは、repo外の設定（workerの実行環境ごと。場所と書式はW4の導入手順）に、2つの一覧を持つ。
+- 受領記録・通知・ラベル・PR本文は、この一覧を変えない。
+- APIはcollaboratorの権限を要し、Appなら「Variables」のreadが要る（[Variables API](https://docs.github.com/en/rest/actions/variables)）。AIのAppで読むには、この権限の用途を足す別のPR（[App手順](github-apps.md)の変更）が要る。
+- 導入の順序: 所有者が変数を作る（`none`でよい）。そのあとでこのPR（#51）をマージする。
 
-| 一覧 | 意味 | 誰が変えるか | rollbackで |
-| --- | --- | --- | --- |
-| active | 受付が起動するPR。旧巡回はこのPRを判定・通知しない | ownerだけ | 外す |
-| 所有者だけがマージ（owner-merge-only） | AIがマージしないPR。activeに入れたPRを必ず加える | ownerだけ。外すのもownerだけ | **残す** |
+例: ownerがPR #Nをactiveにし、`OWNER_MERGE_ONLY`に加える。のちにrollbackし、policyからは外す。新しい旧方式のworkerは変数を読み、#Nがあるのでマージせず引継ぎで止まる。受領記録や通知を足しても消しても、結果は同じ。
 
-- AIのworkerは、旧方式でもactiveでも、マージの前にこの設定を読む。PRが「所有者だけがマージ」にある、または設定がない・読めないときは、マージしない。一覧が空でも、設定があれば読める状態とする。
-- workerの手順（下の「実装担当の手順」）も、この設定のactiveの一覧で選ぶ。
-- 受領記録・通知・ラベル・PR本文は、どちらの一覧も変えない。
-- 受付は、policyの`targets`とmodeで起動する。policyはrepo外にあり、ownerだけが変える。
+### 対象・旧巡回・環境
 
-### 例: active → rollback → 新しい旧方式のworker
-
-1. ownerがPR #Nをactiveと「所有者だけがマージ」の両方に加える。受付が粗探しとレビューを起動する。
-2. ownerがrollbackする。policyとactiveの一覧からPR #Nを外す。「所有者だけがマージ」には残す。
-3. 新しい旧方式のworkerが起動する。過去の受領記録・通知は見えない。
-4. workerは設定を読み、PR #Nが「所有者だけがマージ」にあるので、マージしない。引継ぎで止まる。
-5. 誰かがrollbackの受領記録や通知を足しても消しても、4の結果は変わらない。
-
-### 対象と旧巡回
-
-- 旧巡回（T23の巡回、Codex・Claudeのレビュー巡回）が飛ばすのは、設定のactiveの一覧にあるPRだけ。
-- 受付はMacだけで動く。Windowsでは受付を動かさず、移行していないPRを上の1〜5節の手動手順でレビューする。Windowsのworkerも、マージの前に同じ設定を読む。
-- Macの受付が止まっている間、対象PRは待つ。長く止まるなら、ownerが下のrollbackを行う。
+- 受付は、ownerのrepo外のpolicyの`targets`とmodeで起動する。
+- 旧巡回（T23の巡回、Codex・Claudeのレビュー巡回）は、ownerが管理する巡回の設定で、対象PRを飛ばす。
+- 受付はMacだけで動く。Windowsでは、移行していないPRを上の1〜5節で手動レビューする。
+- Macの受付が止まっている間、対象PRは待つ。長く止まるなら、ownerがrollbackする。
 
 受付の通知（表示だけ）:
 
@@ -174,65 +169,55 @@ required_reviewers: <login/App IDの一覧>
 
 ### 担当
 
-| 仕事 | 担当 | 現行との違い |
-| --- | --- | --- |
-| 起動条件の判定（Ready・CI・独立性・枠） | 受付だけ | 旧巡回は、activeの一覧のPRを判定しない |
-| 人への通知 | 受付の通知Broker（Codex App、印`kurashi-ledger:dispatch-notice:v1`） | 状態ごとに1回。表示だけ |
-| 粗探し | 担当reviewerのうち独立性を満たす1者。AIならその粗探しJobとBroker、人なら同じ書式で手動 | Readyのあと・レビューJobの前（所有者承認の読み替え）。実装担当のAppは投稿しない。書式と範囲は[提出前の粗探し](#提出前の粗探し)と同じ |
-| 内容レビュー | 担当reviewer。AIならレビューJobとBroker（[3節](#3-別担当による内容レビュー)のv1本文）、人ならGitHubの標準のApprove | acceptedは`APPROVE`だけ。COMMENTの`decision: accepted`は数えない |
-| 修正 | 実装担当 | 手動の修正は変わらない。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効 |
-| マージ | 所有者（GitHubの画面） | AIはマージしない。受付もマージしない |
+| 仕事 | 担当 |
+| --- | --- |
+| 起動条件の判定（Ready・CI・独立性・枠）と通知 | 受付だけ（通知はCodex Appの通知Broker、状態ごとに1回） |
+| 粗探し | 担当reviewerのうち独立性を満たす1者。AIなら粗探しJobとBroker、人なら同じ書式で手動。実装担当のAppは投稿しない。書式は[提出前の粗探し](#提出前の粗探し) |
+| 内容レビュー | 担当reviewer。AIならレビューJobとBroker（[3節](#3-別担当による内容レビュー)のv1本文）、人なら標準のApprove。COMMENTのacceptedは数えない |
+| 修正 | 実装担当が手動で行う。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効 |
+| マージ | 所有者（GitHubの画面） |
 
 ### 実装担当の手順
 
-| 設定のactiveの一覧 | 順序 |
-| --- | --- |
-| ない（旧方式） | 上の1〜5節。粗探しの記録が出てからready-for-review |
-| ある | 所有者承認の読み替え。Draft→Readyでレビューを依頼し、粗探しはReadyのあと・レビューJobの前に同じhead/baseで行う。Ready前の粗探しを待たない |
-
+- 順序は案内（受領記録・通知・ownerの指示）で選ぶ。activeなら、Draft→Readyでレビューを依頼し、Ready前の粗探しを待たない。そうでなければ、上の1〜5節（粗探しのあとにready-for-review）。取り違えても、マージの条件は変わらない。
 - 修正を始めるときはDraftへ戻す。pushやmainの取り込みのあとは、新しいReadyが要る。
-- AIの実装担当は、[完了報告](#1-実装側の完了報告)の引継ぎを書いて止まる。人の実装担当は、標準のDraft→Readyだけでよい。SHAの転記は要らない。
-- マージの前に設定を読む（上の節）。
+- AIの実装担当は[完了報告](#1-実装側の完了報告)を書いて止まる。人は標準のDraft→Readyだけでよく、SHAを書き写さない。
 
 ### 所有者がマージ前に確かめる記録
 
-AIの記録と人の標準操作で、証跡を分ける。
-
-| 条件（[正本](github-agent-operations.md#merge-conditions)） | AIの記録 | 人の標準操作 |
+| 条件 | AI | 人 |
 | --- | --- | --- |
-| Ready（レビューの依頼） | Claude/Codex Appによる標準のDraft→Ready | 標準のDraft→Ready |
-| 実装していない側のaccepted | policyの必要なreviewerの最新Reviewが`APPROVE`。commit_idがhead、v1本文のbase_shaが確認したbase | 標準の`APPROVE`。受付が保存した結合（actor・commit_id・成立時のbase・policy revision）が今のhead/baseに一致する |
-| 粗探しの完了、未解消なし（読み替え後の時点） | 同じhead/baseの`kurashi-ledger:red-team:v1`の記録を、必要なreviewerのうち独立性を満たす1者のbotが投稿。未解消のRTがない | 同じ書式の手動の記録 |
-| `Quality gate`、最新main・競合なし | 変わらない。mainが進めば、取り込み・新しいReady・新しい粗探しとレビューが要る | 同じ |
-| マージの方法 | 画面のマージコミットで1件ずつ。マージ後に第1親が確認したbaseと一致することを確かめる | 同じ |
+| accepted | 必要なreviewerの最新Reviewが`APPROVE`。commit_idがhead、v1本文のbase_shaが確認したbase | 標準の`APPROVE`。受付が保存した結合（actor・commit_id・成立時のbase・policy revision）が今のhead/baseと一致 |
+| 粗探し | 同じhead/baseの`kurashi-ledger:red-team:v1`を、必要なreviewerのうち独立性を満たす1者のbotが投稿。未解消のRTなし | 同じ書式の手動の記録 |
 
+- `Quality gate`・最新main・競合なしは変わらない。mainが進めば、新しいReady・粗探し・レビューが要る。
 - `CHANGES_REQUESTED`や未解消の指摘があれば、マージしない。
-- 人の操作の結合を受付の記録で証明できなければ、保留する。本文やコメントのSHAの自己申告で補わない（GitHubのReviewは`commit_id`を持つが、baseは持たない）。
+- 画面のマージコミットで1件ずつマージし、第1親が確認したbaseと一致することを確かめる。
+- 人の操作の結合を受付の記録で証明できなければ保留する。SHAの自己申告で補わない（GitHubのReviewにbaseはない）。
 
-例（人だけの標準操作）: 人の実装担当がDraft→Readyにする。受付はそのReadyを今のhead/baseと認可済みの身元に結び付けて保存し、粗探しJobを起動する。未解消のRTがなければ、人のreviewerへ標準のレビュー依頼を送る。reviewerが画面でApproveする。受付はそのReviewのactor・commit_id・成立時のbase・policy revisionを保存する。所有者はその結合と粗探し・CIを確かめ、画面でマージする。誰もSHAを書き写さない。
+例（人だけ）: 人がDraft→Readyにする。受付がそのReadyを今のpairと認可済みの身元に結び付け、粗探しJobを起動する。未解消のRTがなければ、人のreviewerへ標準のレビュー依頼を送る。reviewerが画面でApproveし、受付がその結合を保存する。所有者が結合・粗探し・CIを確かめてマージする。
 
 ### 切替（PRごと）
 
-前提（全体で1回）: Issue #50のW1〜W4がマージ済み。doctorの否定試験とhost検査が合格。Webhookの経路・購読・秘密をownerが設定済み。shadowで現行の判定との差を確かめた。
+前提: Issue #50のW1〜W4がマージ済み。doctorの否定試験とhost検査が合格。Webhookの経路・購読・秘密を設定済み。shadowで現行の判定との差を確かめた。
 
-初期の範囲（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測る。効果が出たとownerが判断してから、対象を広げる。
+初期の範囲（[start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したClaudeだけ、修正は手動。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出たとownerが判断してから広げる。
 
-1. ownerが、そのPRの旧担当（レビュー担当、粗探し、T23の巡回）を止め、終了を確かめる。進行中のレビューは完了させるか取り消す。
-2. ownerが、設定のactiveの一覧と「所有者だけがマージ」の一覧にそのPRを加える。
-3. ownerがpolicyへそのPRを加える。新しいrevisionと、切替時刻の`readyAfter`を付ける。
-4. 調整係が所有者の指示の受領記録を投稿し、受付が通知を出す。どちらも表示だけ。
-5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は、activeの証跡にしない。
-6. 実装担当のReadyの前に、ownerが、受領記録か通知がそのPRに出ていることを確かめる（周知のため。権限には関係しない）。
-7. 実装担当が新しくDraft→Readyにする。
+1. ownerが、そのPRの旧担当（レビュー担当・粗探し・T23の巡回）を止め、終了を確かめる。
+2. ownerが、巡回の設定でそのPRを飛ばし、`OWNER_MERGE_ONLY`に加える。
+3. ownerがpolicyへそのPRを加える（新しいrevision、切替時刻の`readyAfter`）。
+4. 調整係が受領記録を、受付が通知を出す。ownerは、実装担当のReadyの前にどちらかが出ていることを確かめる（周知のため）。
+5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は使わない。
+6. 実装担当が新しくDraft→Readyにする。
 
 ### rollback（PRごと、または全体）
 
-1. ownerがpolicyからそのPRを外す。全体ならmodeを`shadow`か`off`にする。新しいrevisionを付ける。
-2. そのPRの受付のJobが終わった（process treeが終了した）ことを確かめる。uncertainのOutboxがあれば、GitHub上の投稿を確かめて解消するまで旧方式へ戻さない。
-3. ownerが設定のactiveの一覧からそのPRを外す。「所有者だけがマージ」には残す。受領記録と通知は表示だけ。
-4. 実装担当が[完了報告](#1-実装側の完了報告)の引継ぎを出し直す。レビューは上の1〜5節で続ける。マージは、ownerが「所有者だけがマージ」から外すまで所有者が行う。shadowの記録は使わない。
-5. 受付が止まったときや、doctorが不合格になったときも同じ手順にする。受付は旧巡回を自動で起動しない。
+1. ownerがpolicyからそのPRを外す（全体ならmodeを`shadow`か`off`）。
+2. 受付のJobの終了（process tree）を確かめる。uncertainのOutboxは、GitHub上の投稿を確かめて解消してから戻す。
+3. ownerが巡回の設定を戻す。`OWNER_MERGE_ONLY`には残す。
+4. 実装担当が完了報告を出し直し、上の1〜5節でレビューを続ける。マージはownerが一覧から外すまで所有者が行う。
+5. 受付の停止やdoctorの不合格でも同じ手順。受付は旧巡回を自動で起動しない。
 
 ### 残余リスク
 
-この仕組みは、取り違え・誤り・不信入力（PRの内容による注入）を防ぐ。同じアカウントで規則を破るAIは防がない（例: Appやdoc-gifでの記録・承認の偽装、repo外の設定の書換え）。それを防ぐには、AIが使えない所有者だけの身元が要る。
+この仕組みは、取り違え・誤り・PRの内容による注入を防ぐ。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）は防がない。防ぐには、AIが使えない所有者だけの身元が要る。

@@ -208,7 +208,7 @@
 - T05から残した内容: workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護（rulesetのレビュー必須等。repoの設定は所有者が判断する）と、その迂回試験（[修正前の整合確認](review-prevention.md)）。必須のstatus check（`Quality gate`）と最新のbaseを求める設定は、T05のマージのあとに実装側が設定する（T23の範囲ではない）。
 - 後続（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)、[AIのGitHub App](github-apps.md)の「移行の計画」の2）: CodexとClaudeのGitHub Appの記録を巡回で読む。担当: T23の巡回（PR #38）のマージのあと、調整係が割り当てる（実装していない別の担当がレビューする）。Appが作者のPRに進む前に済ませる。受入: (1) 2つのbotのloginとAIの対応を`.review/patrol.json`で設定し、コードに書かない。(2) 役割は本文の印の`role:`から決めたまま、印のAIと投稿したbotのAIが違えば警告し、その記録を数えない。(3) botの記録を、`author_association`ではなく設定したloginで信頼する（`author_association`の実測の値を記録する）。(4) 作者や最後のpushがAppのbotでないPRと、作者や最後のpushと同じAIのAppの承認を、警告する。(5) `scripts/github-app-token.ts`と`scripts/lib/github-app-token.ts`を`policy_paths`に加える。(6) 合成のfixtureの試験で、上をすべて確かめる。
 - 受入（PR #37の事前のレッドチームから引き継ぐ。2026-10-04）: Dependabot（`dependabot[bot]`）が作る提案のPRを、状態の判定とレビューの振り分け（dispatch）でどう扱うか（計画がないので失敗のまま残る提案を、着手候補や修正待ちと取り違えない）を決めて試験する。振り分けの移行のPRで先に扱う場合は、そちらを正とする。
-- 受付のactive（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)、2026-10-04）: 受付がactiveのPRでは、判定と通知を受付が行う。T23の巡回は、ownerのrepo外の設定のactiveの一覧にあるPRを判定・通知しない。T23は、workflow・検査器・条件・台帳の変更に独立レビューを必須にする保護を全PRで続ける。受付のファイル（`scripts/review-dispatch.ts`、`scripts/lib/review-dispatch/**`、`tools/review_dispatch/**`）を`policy_paths`へ加える（PR46-I007）。Dependabotの提案PRは受付のpolicyの対象外なので、受付は着手候補・修正待ちにしない。T23の巡回での扱いは上の受入で決める。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
+- 受付のactive（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)、2026-10-04）: 受付がactiveのPRでは、判定と通知を受付が行う。T23の巡回は、ownerが管理する巡回の設定で飛ばすPRを判定・通知しない。T23は、workflow・検査器・条件・台帳の変更に独立レビューを必須にする保護を全PRで続ける。受付のファイル（`scripts/review-dispatch.ts`、`scripts/lib/review-dispatch/**`、`tools/review_dispatch/**`）を`policy_paths`へ加える（PR46-I007）。Dependabotの提案PRは受付のpolicyの対象外なので、受付は着手候補・修正待ちにしない。T23の巡回での扱いは上の受入で決める。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
 - 非対象: 実装AIの起動、実装修正、自動マージ、デプロイ。
 
 ## T24 — 外部AIの定期確認とレビュー指摘対応
@@ -218,7 +218,7 @@
 - 受入: 既存PRの修正を新規作業より優先。同じbranch/worktreeの多重起動を防ぎ、生存不明のworkerを勝手に置き換えない。仕様拡大は候補Issueへ分離。指摘は根拠を評価し、不要な変更は理由を残す。
 - 検証: 起動重複・中断復帰・古い担当・停止中の製品実装・同じ指摘の繰返し・レビュー間の矛盾・2回の修正でも未解決・予算到達。CLAUDE.mdとAGENTS.mdの整合も確認。
 - 子タスク: T24a 実行環境と担当割当、T24b PR引継ぎと修正ループ、T24c 停止・異常系の運用試験。
-- 受付のactive（Issue #50）: 受付がactiveのPRでは、粗探し・レビューのAIの起動を受付のJob管理へ移す。実装側は指摘への修正を続け、Draft→Readyで依頼し、引継ぎで止まる。マージは所有者が行う。AIのworkerは、旧方式でもマージの前にownerのrepo外の設定を読み、「所有者だけがマージ」の一覧にあるか、設定がない・読めないならマージしない（rollback後も一覧は残る）。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効。旧workerの停止を確かめてから切り替える。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
+- 受付のactive（Issue #50）: 受付がactiveのPRでは、粗探し・レビューのAIの起動を受付のJob管理へ移す。実装側は指摘への修正を続け、Draft→Readyで依頼し、引継ぎで止まる。マージは所有者が行う。AIのworkerは、旧方式でもマージの直前に`OWNER_MERGE_ONLY`を読み、一覧にあるか読めないならマージしない。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効。旧workerの停止を確かめてから切り替える。切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)。
 - 非対象: 自動マージ。CopilotのFix with Copilot等で第二の実装担当を無断起動しない。環境未設定なら指示書と手動引継ぎまで。
 
 ## T25 — 長期運用・更新・復元のリハーサル

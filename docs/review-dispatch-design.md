@@ -96,7 +96,7 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 | --- | --- | --- | --- |
 | Ready/accepted | 現行正本のhandoff・exact-pair decision。COMMENT可 | 現行判定が効力を持つ。標準Ready/native Reviewとの差を記録 | §1/2のReady、独立APPROVEとpair証跡。旧COMMENTを正式承認へ変換しない |
 | Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報。担当reviewerの粗探しJobと人の証跡を判定へ集約 |
-| マージの権限 | 実装担当（現行条件）。ただしownerのrepo外の設定の「所有者だけがマージ」にあるPR、または設定がない・読めないときはAIがマージしない | offと同じ | 所有者がGitHubの画面で行う。activeに入れたPRは「所有者だけがマージ」にも入れ、rollback後も残す |
+| マージの権限 | 実装担当（現行条件）。`OWNER_MERGE_ONLY`にあるか読めないPRはAIがマージしない | offと同じ | 所有者がGitHubの画面で行う。activeにしたPRは`OWNER_MERGE_ONLY`に入れ、rollback後も残す |
 | 証跡の形 | AIはv1本文、人は標準操作 | 同じ | AIはv1本文（commit_id＋base_sha）。人は標準のReady/Approveと、受付が保存した結合（actor・commit_id・成立時のbase・policy revision）。証明できなければ保留 |
 | 判定/通知 | 現行手順/T23の担当 | 現行側だけ投稿。新受付は判定記録のみ | Issue45受付/Brokerだけ。T23の重複判定/通知を委譲 |
 | T24/既存巡回 | 現行方式 | 現行方式、AIの二重起動なし | 移行したPRだけ新Job管理へ。旧workerの停止を確認してから切替 |
@@ -105,7 +105,7 @@ activeの前提だった**正本移行**は、Issue #50のW0で行った。pr-re
 
 activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTED/行指摘は認可済みの参考/指摘、DISMISSED/編集は集合を再計算する。複数reviewerは必要集合/人数を満たし、重大未解消指摘やRequest changesを多数決で無視しない。人のApproveもReview commitと成立時pairを証明できなければ保留する。状態変化後の投稿はstaleとして履歴に残す。
 
-起動の方式（policyとactiveの一覧）とマージの権限（「所有者だけがマージ」の一覧）を分ける。後者はrollbackで消えない（PR51-R001）。受付もAIもactiveのPRをマージしない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。所有者がGitHubの画面で、最新pair/CI/独立accepted/粗探し/競合を確かめてマージし、first-parentを確かめる。受付が行うのは粗探しとレビューの起動と投稿まで。repo保護設定の変更は別のowner作業。
+起動の方式（policy）とマージの権限（リポジトリ変数`OWNER_MERGE_ONLY`）を分ける。後者はrollbackで消えない（PR51-R001）。受付もAIもactiveのPRをマージしない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。所有者がGitHubの画面で、最新pair/CI/独立accepted/粗探し/競合を確かめてマージし、first-parentを確かめる。受付が行うのは粗探しとレビューの起動と投稿まで。repo保護設定の変更は別のowner作業。
 
 ## 6. 身元を結ぶBrokerと通知
 
@@ -129,7 +129,7 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは
 
 | 実行先 | 固定する接口・制約 |
 | --- | --- |
-| Codex CLI | **今回は自動起動しない**（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。Codexのレビューは今の方法（Codex側の巡回か所有者の依頼）で、人への引継ぎを残す。測定の仕組みは残し、capabilityはdisabledで出す。`--sandbox read-only`は書込みの制限で、読取りを絞らない。Codex 0.160.0の[SandboxPolicy](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/protocol.rs#L1222)は全diskの読取りを許し、[変換処理](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/permissions.rs#L2046)もrootの読取りを設定する。そのため今の条件では「資料の外を読めない」否定試験に通らない。外側のSeatbeltは掛けない（所有者決定）。入れ子の拒否は版とprofileに依存し、実際のCodexのprofileでは未測定（W1は実際の入れ子のprofileで終了コード71を測った。別に、allow-defaultの2段は成功した）。cwdの規則と否定試験（keychain・Appの鍵、資料の外の合成の秘密、PRの`AGENTS.md`や設定）は、有効にする前に必須 |
+| Codex CLI | **今回は自動起動しない**（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。Codexのレビューは今の方法（Codex側の巡回か所有者の依頼）で、人への引継ぎを残す。測定の仕組みは残し、capabilityはdisabledで出す。`--sandbox read-only`は書込みの制限で、読取りを絞らない。Codex 0.160.0の[SandboxPolicy](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/protocol.rs#L1222)は全diskの読取りを許し、[変換処理](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/protocol/src/permissions.rs#L2046)もrootの読取りを設定する。そのため今の条件では「資料の外を読めない」否定試験に通らない。外側のSeatbeltは掛けない（所有者決定）。入れ子が拒否されるかは、版・外側のprofile・拒否される操作に依存する。W1の測定では、実際のprofileの入れ子が終了コード71で失敗した。Codexの測定では、allow-defaultの2段は成功した。実際のCodexのprofileでは未測定。cwdの規則と否定試験（keychain・Appの鍵、資料の外の合成の秘密、PRの`AGENTS.md`や設定）は、有効にする前に必須 |
 | Claude CLI | 固定absolute path/版、claude -p --output-format json、結果schema、購読の長期token（O2-token）。Read/Grep/Globだけ許可し、Bash/Write/Web・MCP/hooks/pluginsを禁止。層は下の表 |
 | 人 | GitHub操作/通知のみ。AI起動なし |
 | デスクトップチャット | 初期の自動起動対象外。既存巡回はownerの切替手順で扱う |
@@ -186,7 +186,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 3. ownerがW1〜W4のマージ、doctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
 4. ownerがPRごとにactiveへ切り替える。手順とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)が正本。capability不足では人へ案内し、旧巡回を勝手に起動しない。停止中PRの一括再開はしない。
 
-2026-10-04の所有者決定。調整係が受けた所有者の指示の受領記録（Issue #50の[1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)・[2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)・[3](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)・[4](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)・[5](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）が正本:
+2026-10-04の所有者決定。調整係が受けた所有者の指示の受領記録（Issue #50の[1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)・[2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)・[3](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)・[4](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)・[5](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)・[6](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)）が正本:
 
 | ID | 所有者の決定 | 設計の提案（決定ではない） | 反映先 |
 | --- | --- | --- | --- |
@@ -201,6 +201,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | active-merge | 受付がactiveのPRは、AIがマージしない。所有者がGitHubの画面でマージする。受付はレビュー・粗探しの起動と投稿まで。受領記録と通知は表示・案内だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)） | — | §5、[PR書式](pr-review-loop.md#受付がactiveのpr) |
 | 粗探しの時点 | activeのPRでは、Readyを「レビューの依頼」とみなし、粗探しをReadyのあと・レビューJobの前に同じhead/baseで行う | — | §5、[運用規約](github-agent-operations.md#merge-conditions) |
 | keychain | 閉じ込めたAIからAppの鍵（または同じACLの合成項目）が読めたら、Appの鍵を専用keychain fileへ移す。それまで自動起動は無効 | 移動はApp手順の変更として別PR | §7 |
+| owner-merge-only | 全PRで、AIはマージの直前に`OWNER_MERGE_ONLY`を読み、PRがあるか読めないならマージしない。値はリポジトリ変数の1か所だけで、所有者が#51のマージ前に置く（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)） | 読むのはdoc-gifのghのログイン（読取りだけ）。AIのAppにVariablesのreadを足すのは別のPR | [運用規約](github-agent-operations.md#merge-conditions)、[PR書式](pr-review-loop.md#所有者だけがマージするprowner_merge_only) |
 | start-small | 初期運用は、対象PR 1件、必要なreviewer 1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出てから広げる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)） | — | [PR書式](pr-review-loop.md#切替prごと) |
 | R009 | 時計の後退を許す幅は5秒 | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
 | R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
