@@ -45,7 +45,7 @@ T14は制度ごとにPRを分ける（Issue #27の「分割」）。
 | `sources` | 一次資料のid（manifestの`sources`）。制度データの各値の`source`もこのidを指す |
 | `approval` | 承認の証跡の正本（下の「状態と承認」）。`draft`は「未確認」 |
 | `requiredInputs`（計算の規則） | 手続ごとの必須の入力のパスと型（`type`: `yen`・`boolean`・`enum`（`values`）・`date`・`object`・`array`）。`procedures`で手続を限る。`when`で、ほかの入力の値による条件を付ける（`greaterThan`・`in`。条件の値が分からなければ必須）。`nullable`は`null`を許す、`emptyAllowed`は空の並びを許す。欠けた・許さない`null`・`unknown`の必須の入力があるrunは`computed`・`provisional`にしない |
-| `optionalInputs`（計算の規則） | なくてもよい入力のパスと型（所得税では、年間資料の写し`annualValues`と、家族の判定で必要なときだけ求める`taxpayer`）。あれば型を確かめる。`requiredInputs`・`optionalInputs`・`unsupportedInputs`のどれにもない入力は、検査が拒否する |
+| `optionalInputs`（計算の規則） | なくてもよい入力のパスと型（所得税では、年間資料の写し`annualValues`、年間資料のない支払者の明細から示す値`payslipDerivedValues`と、家族の判定で必要なときだけ求める`taxpayer`）。あれば型を確かめる。`requiredInputs`・`optionalInputs`・`unsupportedInputs`のどれにもない入力は、検査が拒否する |
 | `unsupportedInputs`（計算の規則） | 範囲外の入力の条件（`path`の値が`allowed`にない入力、または数の上限`max`を超える入力。上限ちょうどは範囲内）。`procedures`で手続を限る。当たる入力のrunは、`applies`に当たっても`unsupported`。値が`unknown`なら未対応ではなく不足（`incomplete`）。制度データに対象者の条件の一覧がある制度（所得税の年末調整の`yearEndAdjustmentLimits.targetConditions`）では、条件ごとに1つの要素が同じid（`yearEndAdjustmentCondition`）で対応し、検査が一致を確かめる |
 | `autoApply`（帰属の規則） | 規則の根拠で自動に年を決めるか。`false`なら、規則は帰属の根拠を作らない |
 
