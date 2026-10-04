@@ -324,6 +324,10 @@
         {
           "location": "DB/WAL/SHM",
           "result": "lstat で symlink・ハードリンクを拒否（既存）し、所有者・権限を足す"
+        },
+        {
+          "location": "existsSync を使う存在確認（store.ts canonicalRoot の .git、Store の DB/WAL/SHM、Store.backup の出力先、host.ts の .git）",
+          "result": "existsSync は symlink をたどるので、行き先のない symlink を「ない」と判定し、SQLite や backup がリンクの先へ書きうる。lstat に基づく present() に替え、行き先のない symlink の WAL を拒否する試験を足した"
         }
       ]
     },
