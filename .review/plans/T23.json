@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "T23",
   "planned_paths": [
     ".review/invariants.json",
@@ -64,6 +64,11 @@
       "description": "PR38-R012: 所有者はGitHub Appを選んだ（Issue #41）が、保護の節に旧案（別アカウント＋CODEOWNERS）の推奨と、それを前提にした迂回試験の期待結果が残っている。",
       "state": "resolved",
       "resolution": "旧案の推奨・選択肢・手順を外し、節を「保留（Issue #41の確定案を待つ）」にする。問題の記述、迂回試験で確かめる観点（具体の設定に依存しない）、設定するまでの扱いだけを残す。設定の実施や所有者への再承認は求めない。"
+    },
+    {
+      "description": "main@409bd3f（#40・#42・#46・#47・#48）の取込みで、docs/pr-review-loop.mdとdocs/project-status.mdが競合した。作業中のPR（#44はtools/review_guard/guard.py・README・docs/review-prevention.md、#25はG7のパス、#28・#29・#33・#36・#37はREADME・状態資料・台帳）と同じファイルを変える。",
+      "state": "resolved",
+      "resolution": "#40・#47の正本の文と構成を優先し、pr-review-loopは#40の5節の文のあとにT23の6節をそのまま置き、project-statusは#40の表を採ってタスクの行にT23=#34だけを足した（CIの行のT23の保護の言い換えは、#40がreview-preventionへのリンクにしたので戻さない）。内容の変更は、所有者の指示（段階1）により行わない。責務の重なり（#45の受信側の重複判定・通知とT23の通知）は段階2で整理する。"
     }
   ],
   "assessments": [

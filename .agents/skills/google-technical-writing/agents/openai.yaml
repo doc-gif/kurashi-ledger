@@ -1,0 +1,4 @@
+interface:
+  display_name: "Google-based Technical Writing"
+  short_description: "Clarify technical prose and reduce duplicate context"
+  default_prompt: "Use $google-technical-writing to simplify this document while preserving required evidence, decisions, and protocol fields."
