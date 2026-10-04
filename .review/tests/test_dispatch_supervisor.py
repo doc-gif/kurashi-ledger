@@ -415,3 +415,166 @@ class SigningTests(unittest.TestCase):
         # Idempotent, and the run is still never relaunched.
         self.assertEqual(subprocess.run(redact + ['--result-hash', env['resultHash']], capture_output=True).returncode, 0)
         self.assertEqual(self.fixture('blocked', "print('{}')").returncode, 2)
+
+
+class WorkerTests(unittest.TestCase):
+    """Issue #50 W4: the receiver lock and the real-worker mode (macOS only; other OSes assert refusal)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        base = Path(self.temp.name).resolve()
+        self.root = base / 'root'
+        self.root.mkdir(mode=0o700)
+        self.area = base / 'runs' / 'r1'
+        for d in ('materials', 'home', 'tmp'):
+            (self.area / d).mkdir(parents=True, mode=0o700)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def plan(self, code, **over):
+        value = {'file': sys.executable, 'args': ['-c', code], 'cwd': str(self.area / 'materials'),
+                 'env': {'HOME': str(self.area / 'home'), 'TMPDIR': str(self.area / 'tmp'), 'PATH': '/usr/bin:/bin',
+                         'LANG': 'C.UTF-8', 'CLAUDE_CODE_OAUTH_TOKEN': 'synthetic-token-value-0123456789'},
+                 'stdin': 'Job kind: review\n'}
+        value.update(over)
+        return (json.dumps(value) + '\n').encode('utf-8')
+
+    def worker(self, run, plan, ack=True):
+        cmd = [sys.executable, str(SCRIPT), 'run-worker', '--root', str(self.root), '--run', run,
+               '--binding', BINDING, '--extract', 'claude-json', '--timeout', '60']
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p.stdin.write(plan)
+        p.stdin.flush()
+        first = p.stdout.readline()
+        if ack:
+            p.stdin.write(b'ack\n')
+        p.stdin.close()
+        rest = p.stdout.read()
+        p.stdout.close()
+        return p.wait(timeout=30), first, rest
+
+    def test_receiver_lock_is_separate_from_the_daemon_lock_and_single(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        self.assertNotEqual(supervisor.receiver_lock_path(self.root), supervisor.daemon_lock_path(self.root))
+        held = supervisor.lock(supervisor.daemon_lock_path(self.root))
+        try:
+            # The daemon lock being held does not stop the receiver; a second receiver is refused.
+            code = "import os; print(os.environ.get('KL_RECEIVER_LOCK_FD') is not None, 'GH_TOKEN' in os.environ)"
+            env = {**os.environ, 'GH_TOKEN': 'synthetic'}
+            ok = subprocess.run([sys.executable, str(SCRIPT), 'receiver', '--root', str(self.root), '--', sys.executable, '-c', code],
+                                capture_output=True, text=True, env=env)
+            self.assertEqual(ok.returncode, 0)
+            self.assertEqual(ok.stdout.strip(), 'True False')
+            receiver = supervisor.lock(supervisor.receiver_lock_path(self.root))
+            try:
+                busy = subprocess.run([sys.executable, str(SCRIPT), 'receiver', '--root', str(self.root), '--', sys.executable, '-c', 'pass'],
+                                      capture_output=True)
+                self.assertEqual(busy.returncode, 2)
+            finally:
+                os.close(receiver)
+        finally:
+            os.close(held)
+            for p in (supervisor.daemon_lock_path(self.root), supervisor.receiver_lock_path(self.root)):
+                if p.exists():
+                    p.unlink()
+
+    def test_plan_areas_must_stay_outside_the_root_and_env_is_the_claude_allowlist(self):
+        # Pure checks: every OS.
+        import io
+        good = self.plan('pass')
+        self.assertEqual(supervisor.read_plan(io.BytesIO(good), self.root)['file'], sys.executable)
+        link = self.area / 'link'
+        os.symlink(self.root, link)
+        bad_env = json.loads(good)
+        bad_env['env']['GH_TOKEN'] = 'x'
+        missing = json.loads(good)
+        del missing['env']['TMPDIR']
+        for name, raw in [
+            ('cwd in root', self.plan('pass', cwd=str(self.root / 'm'))),
+            ('home is root', self.plan('pass', env={**json.loads(good)['env'], 'HOME': str(self.root)})),
+            ('tmp above root', self.plan('pass', env={**json.loads(good)['env'], 'TMPDIR': str(self.root.parent)})),
+            ('config via link', self.plan('pass', env={**json.loads(good)['env'], 'CLAUDE_CONFIG_DIR': str(link / 'cfg')})),
+            ('relative cwd', self.plan('pass', cwd='runs/r1')),
+            ('extra env', (json.dumps(bad_env) + '\n').encode()),
+            ('missing env', (json.dumps(missing) + '\n').encode()),
+            ('large stdin', self.plan('pass', stdin='x' * 20000)),
+            ('extra key', self.plan('pass', shell=False)),
+            ('no newline', good.rstrip(b'\n')),
+        ]:
+            with self.assertRaises((RuntimeError, ValueError), msg=name):
+                supervisor.read_plan(io.BytesIO(raw), self.root)
+
+    def test_only_a_successful_structured_claude_result_is_extracted(self):
+        ok = {'type': 'result', 'subtype': 'success', 'is_error': False, 'result': 'text',
+              'structured_output': {'schema': 1, 'summary': '結果'}}
+        self.assertEqual(supervisor.claude_structured(json.dumps(ok)), '{"schema":1,"summary":"結果"}')
+        for bad in [{**ok, 'is_error': True}, {**ok, 'subtype': 'error_max_turns'}, {**ok, 'structured_output': None},
+                    {**ok, 'structured_output': ['x']}, {k: v for k, v in ok.items() if k != 'is_error'},
+                    {**ok, 'structured_output': {'big': 'x' * 40000}}]:
+            self.assertIsNone(supervisor.claude_structured(json.dumps(bad)))
+        self.assertIsNone(supervisor.claude_structured('not json'))
+
+    def test_real_worker_mode_is_macos_only(self):
+        if sys.platform == 'darwin':
+            return self._darwin_extract_check()
+        code, first, rest = self.worker('linux-run', self.plan('pass'))
+        self.assertEqual(code, 2)
+        self.assertEqual(first + rest, b'')
+        self.assertFalse((self.root / 'run-linux-run.json').exists())
+
+    def _darwin_extract_check(self):
+        # On macOS the mode is available (the tests below run it); a wrong --extract is still refused.
+        r = subprocess.run([sys.executable, str(SCRIPT), 'run-worker', '--root', str(self.root), '--run', 'x',
+                            '--binding', BINDING, '--extract', 'none', '--timeout', '60'], input=self.plan('pass'),
+                           capture_output=True)
+        self.assertEqual(r.returncode, 2)
+
+    def test_worker_starts_only_after_ack_and_its_structured_result_is_signed(self):
+        if sys.platform != 'darwin':
+            self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
+            return
+        report = self.area / 'tmp' / 'report.json'
+        code = ("import json,os,sys\n"
+                "job=sys.stdin.read()\n"
+                "json.dump({'env':sorted(os.environ),'home':os.environ['HOME'],'cwd':os.getcwd(),'job':job},open(%r,'w'))\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':'x',"
+                "'structured_output':{'schema':1,'note':'合成'}}))") % str(report)
+        # Without ack the worker never starts.
+        status, first, rest = self.worker('no-ack', self.plan(code), ack=False)
+        self.assertEqual(status, 2)
+        self.assertEqual(json.loads(first)['type'], 'run-key')
+        self.assertEqual(rest, b'')
+        self.assertFalse(report.exists())
+        self.assertEqual(supervisor.inspect(self.root, 'no-ack')['neverStarted'], True)
+        status, first, rest = self.worker('acked', self.plan(code))
+        self.assertEqual(status, 0)
+        key = json.loads(first)
+        envelope = json.loads(rest)
+        self.assertEqual(envelope['result'], '{"schema":1,"note":"合成"}')
+        message = supervisor.signed_message('acked', BINDING, envelope['resultHash'])
+        self.assertTrue(verify_one_time(key['key'], message, envelope['signature']))
+        seen = json.loads(report.read_text())
+        self.assertEqual(seen['home'], str(self.area / 'home'))
+        self.assertEqual(os.path.realpath(seen['cwd']), os.path.realpath(self.area / 'materials'))
+        self.assertEqual(seen['job'], 'Job kind: review\n')
+        self.assertFalse(any(k.startswith('KL_') or k.startswith('GH_') for k in seen['env']))
+        # The token never reaches the supervisor root (manifest, envelope).
+        for name in os.listdir(self.root):
+            if (self.root / name).is_file():
+                self.assertNotIn(b'synthetic-token-value', (self.root / name).read_bytes(), name)
+        state = supervisor.inspect(self.root, 'acked')
+        self.assertTrue(state['treeEnded'] and state['signed'])
+
+    def test_a_failed_or_unstructured_claude_run_is_never_signed(self):
+        if sys.platform != 'darwin':
+            self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
+            return
+        for run, code in [('error', "print('{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true}')"),
+                          ('text', "print('plain text')"), ('fail', "import sys; print('{}'); sys.exit(3)")]:
+            status, first, rest = self.worker(run, self.plan(code))
+            self.assertNotEqual(status, 0, run)
+            self.assertEqual(rest, b'', run)
+            self.assertFalse((self.root / ('run-' + run + '-result.json')).exists(), run)
