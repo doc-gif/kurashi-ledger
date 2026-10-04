@@ -24,6 +24,7 @@
     "scripts/lib/review-dispatch/webhook.ts",
     "scripts/review-dispatch.test.ts",
     "scripts/review-dispatch.ts",
+    "tests/fixtures/review-dispatch.ts",
     "tools/review_dispatch/supervisor.py"
   ],
   "conflicts": [
@@ -92,7 +93,7 @@
         },
         {
           "id": "trust",
-          "method": "Trace Ready evidence against current main ancestry and server history, page/CI/merge parents failures, Copilot absence/late arrival, reviewer independence including pushers, result origin/assigned identity/hash, all approval/dismissal paths. Read/Read-Grep probes use actual worker tool paths (I008); legacy shared identity actions blocked (I011).",
+          "method": "Synthetic tests cover Ready/main ancestry, all pages/CI/tested parents/tree, optional Copilot, pusher independence, authenticated result hash and dismissal. Actual AI tool/OS negative probes remain disabled rollout checks I001/I008/I009; legacy shared identity is unknown.",
           "expected": "Only fresh stable main/head, authenticated Ready, CI and independent actor admit work. Copilot response/quota is optional per owner decision; evaluate material findings, never fabricate acceptance. Actual CLI capabilities remain disabled until owner-approved isolation probes. Claude reviews implementation independently."
         }
       ]
@@ -150,6 +151,23 @@
           "id": "entrypoints",
           "method": "README links proposed design/runbook and off/shadow CLI; runbook maps D01-D10/I001-I011 actual evidence, active migration prerequisites, notice dedup and original 5-minute poll ownership. Compare help, defaults, token-purpose docs and final handoff.",
           "expected": "Clear Japanese user instructions/English AI job schema. No policy overriden via prompt, automatic old-job restart, App/ruleset change or deployment. Only final implementation PR closes Issue45; remaining assigned reviews resume after verified infrastructure completion."
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "preserve",
+      "reason": "Shared dispatcher fixtures contain only synthetic actor/event/revision identities, not payroll records or changed ledger semantics.",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "Inspect synthetic fixture scope and run unchanged contract fixture ledger plus all npm tests. No product records/calculations are imported.",
+          "expected": "Unknown dispatcher evidence remains unknown; existing product expectations do not change."
+        },
+        {
+          "id": "history",
+          "method": "Test historical Ready/Review pair invalidation, immutable consumed IDs, generation/clock/quota across restart, and dismissal.",
+          "expected": "Never attach current base to old events or reset attempts by renumbering."
         }
       ]
     }
