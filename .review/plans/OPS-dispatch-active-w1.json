@@ -42,6 +42,11 @@
       "description": "所有者の決定（Issue #50 受領記録5977365862: O2-token、keychain、Codex）と、PR51第3回・PR53の粗探しの追加（2026-10-04、調整係経由）。前回のPR54は、Claudeのキーチェーン利用（disabled）とtool.sbの入れ子（不可）を未決として残した",
       "state": "resolved",
       "resolution": "Claudeは`claude setup-token`の長期トークンを、所有者だけが読める専用ファイル（repo・作業領域の外、mode 600/400、所有者一致、親dirは他者書込み不可、symlink・hard link拒否）から起動器が読み、文書にあるCLAUDE_CODE_OAUTH_TOKENだけで渡す。値はargv・stdin・hash・記録・エラー文に出さない。cli.sbはキーチェーンを一切拒否（securitydのmach-lookup、/usr/bin/security、keychainファイルを末尾の明示denyで上書き）。doctorは使い捨てのkeychain fileにAppの鍵と同じACL（-T /usr/bin/security）の合成項目を作り、cli.sbから読めないことを実機で確かめる（exec denyだけを外した派生profileで、mach/fileのdenyが効くことを示す）。auth statusはauthMethod oauth_token（文書の値）とconfigDirectoryを要求。envはallowlistだけで、ANTHROPIC_*（BASE_URL含む）・CLAUDE_CODE_USE_*（Bedrock/Vertex/Foundry）等を明示拒否、--settingsは決まったkeyだけ（env・apiKeyHelper・gateway系なし）。専用config dirのenv・apiKeyHelper・enabledPlugins・mcpServers等と、managed settingsの有無をdoctorが検査。入れ子は不可なのでtool.sbを削除し、tool-child-confinedはcli.sbの継承の検査（cli.sbの中の子が起動した孫で同じprobeが拒否される）に置き換える。Codexは外側のSeatbeltなしで--sandbox read-onlyだけ。合成probeは適用しない。実機の測定（秘密の代役・DB/policyの読取りと書込み・トークンの代役・合成keychain項目・network・supervisorのsocket・PRのAGENTS.md/.codex設定）がすべてdeniedになるまでunverified/disabled。中立なcwdの規則はCodexにも同じく適用。deny-supervisorを必須probeに追加: supervisorの代役（doctor自身）へのsignalとunixの制御socketを、cli.sbとその孫から拒否し、cli.sbの静的lintがprocess-info・mach-task・signal・keychainのallowを拒む"
+    },
+    {
+      "description": "PR54の粗探し（記録5977515767、head a1e8857）: P1 1件・P2 4件・P3。所有者決定（Issue #50 受領記録5977523656）: Codexの自動起動は今回見送り、443は残余として受け入れ（loopbackは塞ぐ、道具はRead/Grep/Globのまま）",
+      "state": "resolved",
+      "resolution": "全体の方針: 指摘はすべて『証拠の欠落を拒否の証拠として扱う』か『禁止リストで残りを許す』という同じ原因の変種なので、両方を全体で反転する。(1) 証拠必須: 実CLIの測定は、試行の依頼を測定側の信頼できるstdinで出し（資料には置かない）、項目ごとにCLI自身のイベントの試行の証跡（Claudeはstream-jsonのtool_useかpermission_denials、Codexは--jsonのコマンドの項目）がなければinconclusive。Claudeだけ、Read/Grep/Glob以外の道具が要る項目は、そのセッションのinitイベントが道具をRead/Grep/Globだけ・MCPなしと示すときの構造上の証拠で拒否とする。従順なだけのfakeはinconclusive。合成のprobeも、明示のdenyで止まったこと（その規則だけを外した変種では成功する）を示す（app-key-item、process-env）。(2) 許可リスト: cli.sbのsysctlを名前の許可リストにする。手元の実測で、他プロセスのargv/env（KERN_PROCARGS2）はdeny-defaultでもsysctlの制限でも止まらず、process-infoの制御だったので、自分以外のprocess-infoを拒否する（CLIのenvにトークンがあるため子にも読ませない）。loopbackへの出力を443の許可の後で拒否する。資料の名前はNFC・小文字で比べ、通常のファイル（nlink 1）とdir以外を拒否。checkPlanは正規のargv/env/cwdとの完全一致（run固有の場所を代入、トークンは形式検査の後に計画の値を使う）。doctorのhashと計画の結び付けはW4。(3) P3: 版の下限2.1.268、合成keychainはRUN_HOMEの中、/dev/ttyを外す、トークンファイルのエラーを固定文にしfstat後に再検査、CODEX_HOMEの検査。lintの漏れは後回し。(4) 所有者決定: Codexは今回の版では測定の結果にかかわらずcapabilityをreadyにしない（doctorが常にcodex-deferredでdisabled）。測定ハーネスは残す。443は残余として受け入れ、loopbackを塞ぐ。設計文書はW4が更新する"
     }
   ],
   "assessments": [
@@ -219,13 +224,21 @@
       "data": "合成の項目（SYNTHETIC値）、doctor自身のpid、一時のunix socket",
       "trust": "trusted",
       "control": "fixtureの一時dirに作り、利用者の検索リストに加えない（実機で確認）。終了時にdelete-keychainとrmで消す。実キーチェーン・実項目に触れない"
+    },
+    {
+      "id": "B12",
+      "direction": "entry",
+      "location": "doctor.ts parseEvents()（実CLIのstream-json・--jsonの出力）",
+      "data": "CLIのイベント（init、tool_use、permission_denials、command_execution等）",
+      "trust": "untrusted",
+      "control": "1行ずつJSONとして読み、知らない形は無視する。試行の証跡は、測定側が出した対象の文字列を含むtool呼出し・拒否・コマンドの項目だけ。証跡がなければinconclusive。出力の値は判定にだけ使い、記録に写さない"
     }
   ],
   "variant_analysis": [
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "token-scope-fail-open",
-      "pattern": "縮小・隔離を確かめられないのに起動・使用へ進む（fail open）",
+      "pattern": "縮小・隔離を確かめられないのに起動・使用へ進む（fail open）。PR54粗探しの共通原因（証拠の欠落を拒否の証拠として扱う、禁止リストで残りを許す）も含む",
       "places": [
         {
           "location": "doctor.ts evaluate()",
@@ -250,6 +263,22 @@
         {
           "location": "doctor.ts runDoctor()（Codex）",
           "result": "外側のSeatbeltがないので合成probeは使わず、実機の測定がすべてdeniedになるまでunverified、allowedならdisabled"
+        },
+        {
+          "location": "doctor.ts injectionRun()・trapPrRun()",
+          "result": "試行の証跡（イベント）がなければinconclusive。従順なだけの出力はinconclusive"
+        },
+        {
+          "location": "doctor.ts seatbeltHost() app-key-item・process-env",
+          "result": "対照と、その規則だけを外した変種での成功が揃って初めてdenied"
+        },
+        {
+          "location": "cli.sb sysctl・process-info・network",
+          "result": "sysctlは名前の許可リスト、process-infoは自分だけ、loopbackは443でも拒否"
+        },
+        {
+          "location": "launcher.ts validate()・checkPlan()",
+          "result": "資料はNFC・小文字で比較し通常のファイルとdirだけ。計画は正規の形との完全一致"
         }
       ]
     },
