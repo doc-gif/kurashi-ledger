@@ -1,0 +1,510 @@
+{
+  "schema_version": 2,
+  "task_id": "OPS-dispatch-active",
+  "base_sha": "ef11e8517e99d83785735fe6e1eca5c2f88baebd",
+  "planned_paths": [
+    ".review/tests/test_dispatch_supervisor.py",
+    "docs/review-dispatch-implementation.md",
+    "scripts/lib/review-dispatch/active.test.ts",
+    "scripts/lib/review-dispatch/active.ts",
+    "scripts/lib/review-dispatch/broker.test.ts",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/claude-broker.test.ts",
+    "scripts/lib/review-dispatch/claude-broker.ts",
+    "scripts/lib/review-dispatch/doctor.test.ts",
+    "scripts/lib/review-dispatch/doctor.ts",
+    "scripts/lib/review-dispatch/evidence.test.ts",
+    "scripts/lib/review-dispatch/evidence.ts",
+    "scripts/lib/review-dispatch/findings.test.ts",
+    "scripts/lib/review-dispatch/findings.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
+    "scripts/lib/review-dispatch/github.ts",
+    "scripts/lib/review-dispatch/launcher.test.ts",
+    "scripts/lib/review-dispatch/launcher.ts",
+    "scripts/lib/review-dispatch/model.ts",
+    "scripts/lib/review-dispatch/provenance.test.ts",
+    "scripts/lib/review-dispatch/provenance.ts",
+    "scripts/lib/review-dispatch/publication.ts",
+    "scripts/lib/review-dispatch/reducer.test.ts",
+    "scripts/lib/review-dispatch/reducer.ts",
+    "scripts/lib/review-dispatch/runtime.test.ts",
+    "scripts/lib/review-dispatch/runtime.ts",
+    "scripts/lib/review-dispatch/store.test.ts",
+    "scripts/lib/review-dispatch/store.ts",
+    "scripts/lib/review-dispatch/webhook.test.ts",
+    "scripts/lib/review-dispatch/webhook.ts",
+    "scripts/review-dispatch.test.ts",
+    "scripts/review-dispatch.ts",
+    "tests/fixtures/review-dispatch-v1-bodies.json",
+    "tests/fixtures/review-dispatch.ts",
+    "tools/review_dispatch/ci-trust-digest.sh",
+    "tools/review_dispatch/supervisor.py"
+  ],
+  "conflicts": [
+    {
+      "description": "W1〜W3・W5はマージ済み。W4はmodel.ts・runtime.ts・review-dispatch.ts・store.ts・broker.ts・launcher.ts・doctor.tsの統合担当で、ほかに作業中のWはない",
+      "state": "resolved",
+      "resolution": "W4aで統合する。各ファイルの変更はW4の表の行と、start-smallのactiveの配線に必要なものに限る。W4b（文書）はW4aのCIが通ってから、別のPRにする"
+    },
+    {
+      "description": "受付の寿命lock（.kurashi-dispatch-<hash>.lock）は1プロセスだけがDBを持つ前提。Webhookの受け口は常駐し、照合（cycle）は15分ごとと配送のたびに短く動くので、同じlockを共有できない",
+      "state": "resolved",
+      "resolution": "受け口は別のlock（.kurashi-dispatch-<hash>.receiver.lock、supervisor.pyのreceiverモード）で単一にする。受け口がDBへ書くのはinboxと印（marks）の行だけで、1つのBEGIN IMMEDIATEの中で行う。lease・job・outboxには触れない。照合は今までどおり寿命lockを持つ。SQLiteのWALとbusy timeoutで2つのプロセスの書込みを順に並べる"
+    },
+    {
+      "description": "DBの表を足す（blocked・run_keys・capability・marks）にはschemaを上げる。設計は暗黙のmigrationを禁じ、未知のschemaには書き込まない",
+      "state": "resolved",
+      "resolution": "schemaを3にする。schema 2のDBは今までどおり書かずに止まる（未知のschema）。実hostのshadowはまだ始まっていないので、所有者は新しい専用rootをinitする。2→3の移行コマンドは作らない（必要になったら停止状態のbackupと独立レビューで別に作る）"
+    }
+  ],
+  "owner_decisions": [
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 受領記録 5977365862・5977523656・5977629581",
+      "decision": "Webhookと15分の照合。Claudeは購読のsetup-token。Codexの自動起動は見送り（disabled）。start-small: 対象PRは1件、必要なreviewerは1者、自動起動はClaudeだけ、修正は手動、マージは所有者"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 受領記録 5977430810・5977666899",
+      "decision": "activeのPRはAIがマージしない。受付は粗探しとレビューの起動・投稿まで。粗探しはReadyのあと、レビューの前に同じhead/baseで行う"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 受領記録 5977523656",
+      "decision": ".npmrcをCIの信頼の範囲に加える。閉じ込めたClaudeの443番への通信は残余リスクとして受け入れ、localhostは塞ぐ"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "寿命lockとrun lockの仕組みは変えない。足すのは受け口専用のlock（別名のファイル、同じ作り方と検査）と、run-workerのrun lock（run-fixtureと同じ作り方。workerへ継承し、終了後に取り直せたときだけ木の終了とする）。leaseの解放は今までどおりsupervisorの証明（inspect）だけで行い、時間切れやPIDだけでは奪わない",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "test_dispatch_supervisor.py: receiverモードのlockがdaemonのlockと別のファイルで、同じreceiverの二重起動を拒否すること。review-dispatch.test.ts: serveとcycleが自分の種類のlockのfdとパスのdev/inoを照合し、取り違えたlock（daemonのlockでserve等）を拒否すること",
+          "expected": "受け口は受け口のlockだけで、照合は寿命lockだけで動く。同じ種類の二重起動はDBを開く前に止まる"
+        },
+        {
+          "id": "recovery",
+          "method": "run-workerをmacOSで偽のworker（Pythonの子）で動かし、ack前の終了・取消・子孫の残存・正常終了を試す。Linux・Windowsでは拒否されることを試す（skipにしない）",
+          "expected": "ackが来なければworkerを起動しない。子孫がlockを持てばuncertainのまま署名しない。正常終了だけ署名し、inspectがtreeEndedを返す"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "購読のtokenはowner専用ファイルから受付が読み、supervisorのstdin（パイプ）でだけ渡し、argv・DB・ログ・manifestへ書かない。worker結果は今までどおり公開前の検査を通ってから投稿する。過去の公開v1本文で誤検知を測り、system pathや設定値（persist-credentials: false等）、repoのpathの形を誤って止めないように検査を狭める。鍵・token・ローカルの私的path（/Users・/home・/private・/var・/tmp等）・github.com以外のリンクは引き続き止める。ログは理由ID・PR番号・件数だけ",
+      "checks": [
+        {
+          "id": "public",
+          "method": "publication.test（新規の試験はbroker.test.tsへ）: 過去の公開v1本文の抜粋（fixture）で誤検知が出ないこと、鍵の形・私的path・不透明な文字列は引き続き止まること。active.test.ts: 起動計画・ログ・DB・manifestにtokenの値が出ないこと。check-public --staged",
+          "expected": "正当な本文は通る。秘密の形は全部止まる。tokenはsupervisorへのstdin以外に現れない"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "not-applicable",
+      "reason": "家計の記録・制度・計算には触れない。レビュー受付のDBと開発用のスクリプトだけを変える",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "差分のpathがscripts/lib/review-dispatch・scripts/review-dispatch*.ts・tools/review_dispatch・.review/tests・tests/fixtures/review-dispatch*・docsだけであることをguard checkで確かめる",
+          "expected": "src/や台帳のデータ・計算のコードに変更がない"
+        },
+        {
+          "id": "history",
+          "method": "同上",
+          "expected": "計算履歴・制度の期待値に変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "受付は信頼した写し（レビュー済みmainの固定版）から起動する前提を変えない。doctorの結果は版・実行ファイルのsha256・cli.sbのhash・argvの型のhashに結び付け、起動の直前に今の値と照合する。どれかが違えば起動しない（測り直しが要る）",
+      "checks": [
+        {
+          "id": "update",
+          "method": "active.test.ts: capabilityの版・codeHash・profileHash・argvHashを1つずつ変え、起動の前に止まることを試す。CLIを更新した（実行ファイルのhashが変わった）場合も止まる",
+          "expected": "どれか1つでも違えば起動0。理由IDだけを記録する"
+        },
+        {
+          "id": "artifact",
+          "method": "doctorがverified以外を返したら、前のcapabilityを消すこと（store.test.ts・active.test.ts）",
+          "expected": "古い合格の記録が残って起動に使われることはない"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "accepted()を#51の規則（必要なreviewer以外も含め、最新のCHANGES_REQUESTEDがあれば止める）にそろえる。粗探しは同じhead/baseで受付が投稿したred-team記録（Outboxでpostedを確かめたもの）だけを証跡にし、未解消のRTがあればレビューを起動しない。Review本文を前の内容へ戻す編集も指摘として挙げる。Webhookの編集・削除・dismissの配送は、照合を待たずに印を付け、照合が済むまで起動と投稿を止める",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "findings.test.ts: A→B→Aの編集、A→B→A→Bの編集、同じ観測の繰り返しで、変更の記録が1件ずつ増え、重複しないこと。evidence.test.ts: Webhookの編集・削除の配送から作る記録と照合の記録が同じIDを挙げること",
+          "expected": "戻す編集も見落とさない。同じ変更を二重に記録しない"
+        },
+        {
+          "id": "trust",
+          "method": "reducer.test.ts: 第三者（policyにない人）の最新のCHANGES_REQUESTEDでacceptedがfalse。active.test.ts: 粗探しのRTが未解消ならレビューJobを起動しない。broker.test.ts: 印がある間は投稿しない",
+          "expected": "PRの作者や第三者の操作・AIの自己申告で承認扱いにならない"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "専用rootの検査（canonicalRoot・checkDispatchRoot）は変えない。runごとの資料・HOME・TMPはrootの外の専用ディレクトリ（install記録のruns）に作り、rootと重なれば拒否する。install記録・Webhookの秘密のファイルはpolicyと同じ検査（repo/worktreeと信頼した写しの外、所有者だけが書ける、symlink・ハードリンクなし）で読む",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "active.test.ts: runsディレクトリがない・他人のもの・0700でない場合に起動しないこと。runのディレクトリは新しく作り、既にあれば使わないこと",
+          "expected": "既存のディレクトリを上書き・再利用しない"
+        },
+        {
+          "id": "aliases",
+          "method": "active.test.ts・test_dispatch_supervisor.py: runsがrootの中・rootがrunsの中・symlink経由で同じ場所を指す場合に拒否すること（Node側とsupervisor側の両方）",
+          "expected": "workerのHOME・TMP・cwdがsupervisorのrootに届かない"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "preserve",
+      "reason": "schemaを3に上げ、表を足すだけ。schema 2は書かずに止まる。DBを開くたびにsecure_deleteを有効にし、結果の平文を消したあとにWALをcheckpoint（TRUNCATE）して旧値を残さない。backup・WAL/FULLの方針は変えない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "store.test.ts: schema 2のDBを開くと書かずに止まること",
+          "expected": "暗黙のmigrationはない"
+        },
+        {
+          "id": "restore",
+          "method": "store.test.ts: 平文の結果を消したあと、DBファイルとWALのバイト列に平文が残らないこと",
+          "expected": "置き換え前の平文がファイルに残らない"
+        },
+        {
+          "id": "manifest",
+          "method": "store.test.ts: run_keysのrunとkeyが一意で、既存の約束値の上書き・別のjobへの付け替えを拒否すること",
+          "expected": "約束値は一度だけ記録され、変わらない"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "W4はW0〜W3・W5のマージ後に行う統合で、依存は満たされている。W4bの導入手順はW4aのマージ後に書く。W4の表の15行は、終わった行と残す行（理由つき）をdocs/review-dispatch-implementation.mdに書き、黙って消さない",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "base（ef11e85）に#51〜#55がそろっていることをgit logで確かめる",
+          "expected": "依存のPRがすべてmainにある"
+        },
+        {
+          "id": "entrypoints",
+          "method": "docs/review-dispatch-implementation.mdの「W4で必ず行う項目」の15行それぞれに、状態（済み・残す）と理由があることを確かめる",
+          "expected": "行が黙って消えていない。残す行には理由と時期がある"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "webhook.ts serve（127.0.0.1の指定port。0は試験だけ、443と1024未満は拒否）",
+      "data": "トンネル経由のHTTP要求",
+      "trust": "untrusted",
+      "control": "POSTの/webhookだけ。本文の上限、HMAC-SHA256の定時間比較、event・repo・installationの許可リスト、inboxへの保存後だけ202。編集・削除・dismissの配送は同じtransactionで印（marks）を残す"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "review-dispatch.ts --install（install記録）と--secret-file（Webhookの秘密）",
+      "data": "所有者が置いたJSONと秘密",
+      "trust": "partially-trusted",
+      "control": "readOwnerPolicyと同じ検査（repo/worktreeと信頼した写しの外、所有者だけが書ける、リンクなし、fdから読む）。秘密は0600/0400で32バイト以上。値はログに出さない"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "active.ts → supervisor.py run-worker の標準入力",
+      "data": "起動計画（setup-tokenを含むenv）",
+      "trust": "trusted",
+      "control": "argvではなくパイプで1行だけ渡す。supervisorは計画のcwd・HOME・TMPDIR・config dirがrootと重ならないこと、envのkeyが許可リストの中にあることを確かめる。macOS以外は拒否"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "supervisor.pyの標準出力（run-key行、run-result行）",
+      "data": "約束値と署名済みの結果",
+      "trust": "trusted",
+      "control": "workerはこのパイプを持たない。run-key行はDBのrun_keysへ保存してからackを返し、supervisorはackを受けてからworkerを起動する。再起動後はDBの約束値で検証する"
+    },
+    {
+      "id": "B5",
+      "direction": "entry",
+      "location": "supervisor.pyのworker標準出力（Claudeの--output-format json）",
+      "data": "AIの出力",
+      "trust": "untrusted",
+      "control": "32KiB・UTF-8・正常終了。is_errorがfalse、subtypeがsuccess、structured_outputがobjectのときだけ、そのobjectを署名する。その後にparseResultと公開前の検査"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "active.ts buildMaterials（GitHubのcompare・contents・pulls）",
+      "data": "PRの差分・ファイル・本文・計画・原因台帳",
+      "trust": "untrusted",
+      "control": "dispatch-readの縮小token。中立の名前（pr/diff-NNN.patch等）で書き、repoのpathはindex.jsonの値にだけ置く。件数と大きさの上限を超えたら起動しない。launcherの検査（CLIの設定名・リンク・特殊ファイルの拒否）を通す"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "broker.ts（review・faultfinding）→ Claude Broker",
+      "data": "Reviewの本文",
+      "trust": "trusted",
+      "control": "faultfindingはred-team:v1の本文のCOMMENTだけ（APPROVE・REQUEST_CHANGESにしない、role・decisionの行を書かない）。正規化→公開前の検査→hash→POSTの順。投稿の直前に印があれば投稿しない"
+    },
+    {
+      "id": "B8",
+      "direction": "entry",
+      "location": "store.capability ↔ 起動計画",
+      "data": "doctorの結果",
+      "trust": "partially-trusted",
+      "control": "backendがclaude、全probeがtrue、版・実行ファイルのsha256・cli.sbのhash・argvの型のhashが今の値と一致するときだけ起動する。codexは常に拒否"
+    },
+    {
+      "id": "B9",
+      "direction": "entry",
+      "location": "GitHubのtimeline（ownerのreview:pausedの解除）",
+      "data": "blockedとquotaの解除",
+      "trust": "partially-trusted",
+      "control": "policyのownerが、block・pauseの記録より後に解除したときだけ。解除のあとは新しいReadyが要る"
+    },
+    {
+      "id": "B10",
+      "direction": "exit",
+      "location": "review-dispatch.ts のログ・trigger file",
+      "data": "状態の表示",
+      "trust": "trusted",
+      "control": "PR番号・理由ID・件数だけ。tokenや本文やpathを出さない。triggerは中身のない0600のファイルの時刻を変えるだけ"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-LOCK",
+      "cause_key": "restore-lock-identity",
+      "pattern": "別の種類のlockや別のrunのlockを同じ排他として受け付ける",
+      "places": [
+        {
+          "location": "review-dispatch.ts serve/cycle/doctor/status/release",
+          "result": "種類ごとに期待するlockのパスとfdのdev/inoを照合する"
+        },
+        {
+          "location": "supervisor.py receiver・run-worker",
+          "result": "daemon・run-fixtureと同じlock関数。パスだけが違う"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "外部の値（token・本文・path）をログや記録へそのまま出す",
+      "places": [
+        {
+          "location": "cycleのログ",
+          "result": "PR番号・状態ID・件数だけ"
+        },
+        {
+          "location": "supervisor.pyのmanifest",
+          "result": "計画・envを書かない。backend・run・状態だけ"
+        },
+        {
+          "location": "doctorの記録",
+          "result": "hashと理由IDだけ"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "資格情報の検査に失敗しても先へ進む",
+      "places": [
+        {
+          "location": "setup-tokenのファイル",
+          "result": "launcher.readTokenFileの検査（W1）をそのまま使う。失敗なら起動しない"
+        },
+        {
+          "location": "Webhookの秘密のファイル",
+          "result": "同じ形の検査。32バイト未満・形の違いは起動しない"
+        },
+        {
+          "location": "Broker",
+          "result": "W2のreview用途の固定を変えない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "PRのcheckoutから資格情報のある道具を動かす",
+      "places": [
+        {
+          "location": "資料の取得",
+          "result": "PRのコードを実行しない。GitHub APIで取った文字列をファイルに書くだけ"
+        },
+        {
+          "location": "ci-trust-digest.sh",
+          "result": "所有者が信頼した写しから実行し、対象のrepoはgit ls-treeで読むだけ"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "pattern": "測ったときと違う版・profile・argvで起動する",
+      "places": [
+        {
+          "location": "active.ts boundCapability",
+          "result": "4つのhashと版を起動の直前に照合する"
+        },
+        {
+          "location": "doctor CLI",
+          "result": "verified以外ならcapabilityを消す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "PRがCIの判定を決めるファイルを変えて自分を通す",
+      "places": [
+        {
+          "location": "github.ts CI_TRUST_PATHS",
+          "result": ".npmrcを足す（所有者決定）"
+        },
+        {
+          "location": "所有者の要約のコマンド",
+          "result": "quotePathの影響を受けない-zの形にし、合成repoでciTrustDigestと一致することを試す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "一部の人の指摘・変更だけを見て合否を決める",
+      "places": [
+        {
+          "location": "reducer.ts accepted",
+          "result": "最新のCHANGES_REQUESTEDは誰のものでも止める"
+        },
+        {
+          "location": "findings.ts",
+          "result": "戻す編集も記録する"
+        },
+        {
+          "location": "evidence.ts・webhook.ts",
+          "result": "編集・削除・dismissの配送を印にし、照合で記録へ変える"
+        },
+        {
+          "location": "active.ts",
+          "result": "粗探しの未解消RTがあればレビューを起動しない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "cause_key": "destructive-op-follows-link",
+      "pattern": "リンクや別名を通ってrootや別の場所を消す・書く",
+      "places": [
+        {
+          "location": "runのディレクトリの削除",
+          "result": "runs直下の、このrunのIDの名前のディレクトリだけを、lstatで確かめてから消す"
+        },
+        {
+          "location": "trigger file",
+          "result": "O_NOFOLLOWで開き、通常のファイルでなければ触らない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "cause_key": "database-journal-pair",
+      "pattern": "DBとWALのどちらかに古い値が残る",
+      "places": [
+        {
+          "location": "store.redactResult",
+          "result": "secure_deleteとcheckpoint(TRUNCATE)"
+        },
+        {
+          "location": "Broker・Dispatcherのblocked",
+          "result": "同じメソッドを使う"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "受け口と照合が同時にDBへ書く",
+      "places": [
+        {
+          "location": "受け口",
+          "result": "inboxとmarksだけを1つのtransactionで書く"
+        },
+        {
+          "location": "照合",
+          "result": "inboxのprocessedとmarksの削除を、証跡の保存と同じtransactionで行う"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RECORDS",
+      "pattern": "家計の記録に触れる変更",
+      "places": [
+        {
+          "location": "差分の全体",
+          "result": "なし"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "実装の状態と文書の表がずれる",
+      "places": [
+        {
+          "location": "docs/review-dispatch-implementation.mdのW4の表",
+          "result": "行ごとに済み・残すと理由を書く。W4bで全体を整理する"
+        }
+      ]
+    }
+  ],
+  "deferred": [
+    {
+      "item": "W4の表の3（通知Brokerの公開前の検査）",
+      "reason": "通知Broker（Codex AppのPRコメント）はまだ作らない。start-smallでは受付の通知はローカルの記録とログだけで、周知は調整係の受領記録で行う（pr-review-loopの切替4はどちらかでよい）"
+    },
+    {
+      "item": "W4の表の9（trustedCiDigestsをbase・PRへ結び付けるか）",
+      "reason": "結び付けない案を採る。要約は範囲のファイルの内容そのもののhashなので、同じ内容なら同じ判断になる。所有者の確認を報告で求める"
+    },
+    {
+      "item": "W4の表の15（導入手順）",
+      "reason": "W4bで書く"
+    },
+    {
+      "item": "github.com以外のリンクの扱い",
+      "reason": "過去の公開v1本文の11件が公式文書（code.claude.com・docs.github.com・www.nta.go.jp等）へのリンクで止まる。W2の決定（github.comだけ）を変えるのは所有者の判断。今は止めたまま（blocked）にし、報告で選択肢を示す"
+    },
+    {
+      "item": "PR48-R013〜R016、R014の人の粗探しの記録",
+      "reason": "start-smallは必要なreviewerがClaudeの1者だけで、粗探しは受付が投稿した記録だけを使う。人の手動の記録の取り込みは対象を広げるときに行う"
+    },
+    {
+      "item": "実機の測定（I001・I003・I004・I008・I009）",
+      "reason": "所有者の導入手順（W4b）で測る。CIでは実鍵・実AI・実App・networkを使わない"
+    }
+  ]
+}
