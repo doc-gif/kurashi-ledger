@@ -1,5 +1,6 @@
 import { DatabaseSync, backup } from "node:sqlite";
-import { existsSync, lstatSync, realpathSync, chmodSync } from "node:fs";
+import { lstatSync, realpathSync, chmodSync } from "node:fs";
+import { checkDispatchRoot, present } from "./host.ts";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -19,7 +20,7 @@ export function canonicalRoot(path: string): string {
     throw new Error("Canonical absolute dispatcher root required");
   for (let p = path; ; p = dirname(p)) {
     if (
-      existsSync(join(p, ".git")) ||
+      present(join(p, ".git")) ||
       !lstatSync(p).isDirectory() ||
       lstatSync(p).isSymbolicLink()
     )
@@ -30,6 +31,16 @@ export function canonicalRoot(path: string): string {
   return path;
 }
 const SCHEMA = 2;
+// PR48-R009: a small step back (NTP) keeps using the stored time; the stored clock never moves back.
+export const CLOCK_SKEW_MS = 5000;
+export class ClockRollbackError extends Error {
+  readonly behindMs: number;
+  constructor(behindMs: number) {
+    super("Clock moved backwards; wait for the stored time before launch");
+    this.behindMs = behindMs;
+  }
+}
+const posix = process.platform !== "win32";
 type Row = Record<string, string | number | null>;
 export class Store {
   readonly db: DatabaseSync;
@@ -37,13 +48,16 @@ export class Store {
   // Lifetime singleton wrapper must hold the directory lock before this constructor.
   constructor(root: string, initialize = false) {
     const file = join(canonicalRoot(root), "dispatch.sqlite");
+    // PR48-R010: refuse a root/DB/WAL/SHM with the wrong owner or permissions; never chmod them silently.
+    if (posix) checkDispatchRoot(root);
+    const created = !present(file);
     for (const path of [file, file + "-wal", file + "-shm"])
-      if (existsSync(path)) {
+      if (present(path)) {
         const st = lstatSync(path);
         if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1)
           throw new Error("Unsafe database/journal");
       }
-    if (existsSync(file)) {
+    if (present(file)) {
       if (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink())
         throw new Error("Unsafe database");
       const read = new DatabaseSync(file, { readOnly: true });
@@ -59,8 +73,9 @@ export class Store {
     } else if (!initialize)
       throw new Error("Initialize dispatcher database explicitly");
     this.db = new DatabaseSync(file, { timeout: 2000 });
-    if (process.platform !== "win32") chmodSync(file, 0o600);
     try {
+      // Only a file this constructor just created inside the owner-only root is narrowed here.
+      if (posix && created) chmodSync(file, 0o600);
       this.db.exec(
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
       );
@@ -85,6 +100,7 @@ export class Store {
         CREATE TABLE shadow(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         PRAGMA user_version=2; COMMIT;
       `);
+      if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
     } catch {
       this.db.close();
       throw new Error("Dispatcher storage initialization failed");
@@ -107,18 +123,33 @@ export class Store {
       throw e;
     }
   }
-  private time(now: number): void {
+  private time(now: number): number {
     if (!Number.isSafeInteger(now) || now < 0) throw new Error("Invalid clock");
-    const previous = this.db
-      .prepare("SELECT now FROM clock WHERE id=1")
-      .get() as Row | undefined;
-    if (previous && Number(previous["now"]) > now)
-      throw new Error("Clock moved backwards; reconcile before launch");
+    const stored = this.storedClock();
+    if (stored !== null && stored - now > CLOCK_SKEW_MS)
+      throw new ClockRollbackError(stored - now);
+    const at = stored === null ? now : Math.max(stored, now);
     this.db
       .prepare(
         "INSERT INTO clock VALUES(1,?) ON CONFLICT(id) DO UPDATE SET now=excluded.now",
       )
-      .run(now);
+      .run(at);
+    return at;
+  }
+  private storedClock(): number | null {
+    const row = this.db.prepare("SELECT now FROM clock WHERE id=1").get() as
+      | Row
+      | undefined;
+    return row ? Number(row["now"]) : null;
+  }
+  // Records the current time (monotonic) and returns the time to use. Throws ClockRollbackError.
+  tick(now: number): number {
+    return this.atomic(() => this.time(now));
+  }
+  // Read-only: how far the OS clock is behind the stored clock (0 when it is not).
+  clockBehind(now: number): number {
+    const stored = this.storedClock();
+    return stored === null ? 0 : Math.max(0, stored - now);
   }
   inbox(
     app: number,
@@ -128,16 +159,46 @@ export class Store {
     now: number,
   ): boolean {
     return this.atomic(() => {
-      this.time(now);
+      const at = this.time(now);
       return (
         Number(
           this.db
             .prepare(
               "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload) VALUES(?,?,?,?,?)",
             )
-            .run(app, delivery, event, now, payload).changes,
+            .run(app, delivery, event, at, payload).changes,
         ) === 1
       );
+    });
+  }
+  // PR48-R011: a signed delivery too large to keep. Only its ID and event are kept (payload NULL,
+  // processed 0); it never binds Ready/Review. Reconcile is the recovery path.
+  oversized(app: number, delivery: string, event: string, now: number): boolean {
+    return this.atomic(() => {
+      const at = this.time(now);
+      return (
+        Number(
+          this.db
+            .prepare(
+              "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload) VALUES(?,?,?,?,NULL)",
+            )
+            .run(app, delivery, event, at).changes,
+        ) === 1
+      );
+    });
+  }
+  // Returns the events of unreported oversized deliveries once and marks them reported.
+  drainOversized(): string[] {
+    return this.atomic(() => {
+      const rows = this.db
+        .prepare(
+          "SELECT event FROM inbox WHERE payload IS NULL AND processed=0 ORDER BY received,delivery",
+        )
+        .all() as Row[];
+      this.db
+        .prepare("UPDATE inbox SET processed=1 WHERE payload IS NULL AND processed=0")
+        .run();
+      return rows.map((r) => String(r["event"]));
     });
   }
   pendingInbox(): Row[] {
@@ -294,7 +355,7 @@ export class Store {
     now: number,
   ): Job | null {
     return this.atomic(() => {
-      this.time(now);
+      now = this.time(now);
       this.clearQuota(p, s);
       if (this.quotaPaused(keyOf(p, s.pr))) return null;
       const t = this.target(keyOf(p, s.pr)),
@@ -548,7 +609,7 @@ export class Store {
   }
   retain(now: number): void {
     this.atomic(() => {
-      this.time(now);
+      now = this.time(now);
       this.db
         .prepare(
           "UPDATE inbox SET payload=NULL WHERE processed=1 AND received<?",
@@ -567,7 +628,7 @@ export class Store {
       this.db.prepare("SELECT 1 FROM outbox WHERE state='uncertain'").get()
     )
       throw new Error("Quiesce and reconcile before backup");
-    if (existsSync(destination)) throw new Error("Backup destination exists");
+    if (present(destination)) throw new Error("Backup destination exists");
     await backup(this.db, destination);
   }
 }

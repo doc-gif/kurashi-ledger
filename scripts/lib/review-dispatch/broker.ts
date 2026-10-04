@@ -9,6 +9,7 @@ import {
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
+import { canonicalBody } from "./github.ts";
 
 export function parseResult(raw: string, j: Job): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
@@ -225,7 +226,9 @@ export class ReviewBroker {
     )
       return "stale";
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
-      body = render(result, marker, identityOf(p, this.actor), j.run),
+      body = canonicalBody(
+        render(result, marker, identityOf(p, this.actor), j.run),
+      ),
       digest = hash(body);
     if (
       result.decision === "accepted" &&
@@ -257,13 +260,16 @@ export class ReviewBroker {
       } catch {
         return "uncertain";
       }
-      const matches = reviews.filter(
-        (r) =>
-          r.actor === this.actor &&
-          r.head === j.pair.head &&
-          r.body.includes(marker) &&
-          hash(r.body) === digest,
-      );
+      const marked = reviews.filter(
+          (r) =>
+            r.actor === this.actor &&
+            r.head === j.pair.head &&
+            r.body.includes(marker),
+        ),
+        matches = marked.filter((r) => hash(r.body) === digest);
+      // PR48-R011: a review with our marker but another body hash (GitHub normalization, edit or a
+      // second post) is never counted as posted and never followed by another POST.
+      if (marked.length > matches.length) return "uncertain";
       if (matches.length > 1)
         throw new Error(
           "Duplicate remote reviews; owner reconciliation required",

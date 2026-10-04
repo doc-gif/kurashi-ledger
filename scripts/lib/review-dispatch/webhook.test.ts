@@ -3,7 +3,14 @@ import { test } from "node:test";
 import { createHmac } from "node:crypto";
 import { request } from "node:http";
 import { once } from "node:events";
-import { ingest, serve, MAX_BODY } from "./webhook.ts";
+import {
+  ingest,
+  ingestOversized,
+  serve,
+  MAX_BODY,
+  MAX_DELIVERY,
+} from "./webhook.ts";
+import { CLOCK_SKEW_MS } from "./store.ts";
 import { database, policy } from "../../../tests/fixtures/review-dispatch.ts";
 const secret = Buffer.alloc(32, 7),
   body = Buffer.from(
@@ -115,6 +122,81 @@ test("I003 local HTTP acknowledges durable inbox quickly and refuses unknown rou
     await new Promise<void>((resolve, reject) =>
       server.close((e) => (e ? reject(e) : resolve())),
     );
+    d.cleanup();
+  }
+});
+
+const post = (port: number, h: Record<string, string>, raw: Buffer) =>
+  new Promise<number>((resolve, reject) => {
+    const req = request(
+      { host: "127.0.0.1", port, path: "/webhook", method: "POST", headers: h },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode!));
+      },
+    );
+    req.on("error", reject);
+    req.end(raw);
+  });
+test("R011 signed oversized delivery: streamed HMAC, 413, marker without payload; unsigned leaves nothing", async () => {
+  const d = database(),
+    p = policy();
+  p.mode = "shadow";
+  const server = serve(p, d.store, secret, () => 100);
+  await once(server, "listening");
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const big = Buffer.alloc(MAX_BODY + 4096, 0x20);
+    assert.equal(
+      await post(address.port, { ...headers(big), "x-github-delivery": "forged" }, Buffer.concat([big, Buffer.from("x")])),
+      401,
+    );
+    assert.equal(d.store.drainOversized().length, 0);
+    assert.equal(
+      await post(address.port, { ...headers(big), "x-github-delivery": "oversized" }, big),
+      413,
+    );
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(
+      d.store.db.prepare("SELECT payload FROM inbox WHERE delivery='oversized'").get()!["payload"],
+      null,
+    );
+    assert.deepEqual(d.store.drainOversized(), ["pull_request"]);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((e) => (e ? reject(e) : resolve())),
+    );
+    d.cleanup();
+  }
+});
+test("R011 oversized marker limits: off, size bounds, event allow-list and clock rollback record nothing", () => {
+  const d = database(),
+    p = policy();
+  p.mode = "shadow";
+  try {
+    const big = Buffer.alloc(MAX_BODY + 1),
+      digest = createHmac("sha256", secret).update(big).digest(),
+      h = headers(big);
+    assert.equal(ingestOversized(p, d.store, secret, h, digest, MAX_BODY, 1), 413);
+    assert.equal(ingestOversized(p, d.store, secret, h, digest, MAX_DELIVERY + 1, 1), 413);
+    assert.equal(
+      ingestOversized(p, d.store, secret, { ...h, "x-github-event": "member" }, digest, big.length, 1),
+      400,
+    );
+    assert.equal(ingestOversized(p, d.store, secret, h, Buffer.alloc(32), big.length, 1), 401);
+    d.store.tick(1_000_000);
+    assert.equal(
+      ingestOversized(p, d.store, secret, h, digest, big.length, 1_000_000 - CLOCK_SKEW_MS - 1),
+      503,
+    );
+    // PR48-R009: a normal delivery during a clock rollback is not acknowledged either.
+    assert.equal(ingest(p, d.store, secret, headers(), body, 1_000_000 - CLOCK_SKEW_MS - 1), 503);
+    p.mode = "off";
+    assert.equal(ingestOversized(p, d.store, secret, h, digest, big.length, 1_000_000), 503);
+    assert.deepEqual(d.store.drainOversized(), []);
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
     d.cleanup();
   }
 });

@@ -7,9 +7,10 @@
 | 担当 | 行うこと | 終了地点 |
 | --- | --- | --- |
 | 所有者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定 | 範囲と担当を明示 |
-| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応。条件を満たした自分のPRをマージ | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。条件を満たせばマージ |
+| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応。条件を満たした自分のPRをマージ（[例外](#owner-merge-only)） | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。条件を満たせばマージ |
 | レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
+| レビュー受付（[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)、[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)） | activeのPRだけで、起動条件の判定、粗探し・レビューの起動と投稿、表示用の通知 | マージしない（[規則](#dispatch-active)） |
 
 <a id="merge-conditions"></a>
 
@@ -22,12 +23,42 @@
 - 必須チェック`Quality gate`が成功している。関連ジョブと試験commitが対象head/baseに対応することも確認する。
 - 最新mainを取り込んでおり、確認したbaseが変わっておらず、競合がない。
 - `--match-head-commit`付きのマージコミットで、1件ずつマージする。auto-mergeは使わない。
+- そのPRが[`OWNER_MERGE_ONLY`](#owner-merge-only)にない。
 
 マージ直前にmain先端と確認したbase_shaを照合する。`--match-head-commit`はheadだけを固定するので、マージ後に第1親がそのbase_shaと一致することも確認する。異なれば組み合わせを再検証し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
 
 **Copilotレビューは任意（2026-10-04の[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
+
+<a id="owner-merge-only"></a>
+
+### 所有者だけがマージするPR（OWNER_MERGE_ONLY）
+
+2026-10-04の所有者決定で、全PRに足した条件（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)、[読み方](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）。
+
+| 項目 | 内容 |
+| --- | --- |
+| 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`だけ。写しを作らない |
+| 書き手 | 所有者だけ。AIのAppは読取りだけ |
+| 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
+| 読み方 | マージの直前に、自分のAppの`merge-check`用途（[App手順](github-apps.md#マージ前の確認merge-check)）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない |
+| 判定 | 一覧にある、または読めない（404・認証の失敗・書式の誤り）なら、AIはマージしない |
+| 変更 | 受付がactiveにしたPRは所有者が必ず加え、rollback後も残す。外すのも所有者だけ。受領記録・通知・ラベルでは変わらない |
+
+導入の順序: 所有者が変数（`none`）とAppの「Variables: Read-only」を置いてから、#51をマージする。
+
+<a id="dispatch-active"></a>
+
+### 受付がactiveのPR
+
+2026-10-04の所有者決定（[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。手順は[PR書式](pr-review-loop.md#受付がactiveのpr)。
+
+- AIはマージしない。所有者がGitHubの画面でマージする。`--match-head-commit`の代わりに、headが`APPROVE`のcommit_idと同じことを確かめ、マージコミットで1件ずつマージする。
+- 必要なreviewer以外も含め、最新の`CHANGES_REQUESTED`や未解消の指摘があればマージしない。
+- 受付は、粗探しとレビューの起動と投稿だけを行う。
+- 粗探しの時点を読み替える（所有者承認）: Readyはレビューの依頼。粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。
+- 受領記録と受付の通知は表示と案内だけで、権限を変えない。AIと所有者がすべての身元を共用し、所有者だけの合図がないため。
 
 ## タスクと着手条件
 
@@ -41,7 +72,7 @@ Issueにはtask_id、目的、非対象、spec_revision、承認したrevision�
 
 `backlog → ready → claimed → working → ready-for-review → reviewing → changes-requested → working`
 
-修正不要なら `reviewing → accepted → merged → done`。実装担当がマージの条件を確かめてマージし（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
+修正不要なら `reviewing → accepted → merged → done`。実装担当がマージの条件を確かめてマージし（[例外](#owner-merge-only)は所有者）（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
 
 Open PRだから完成、Draftだから絶対未完成とはみなさない。完了したhead/baseと検証結果を明記した引継ぎで判定する。作業中の古いready報告は無効。
 
@@ -58,6 +89,8 @@ Open PRだから完成、Draftだから絶対未完成とはみなさない。�
 ## 定期実行
 
 確認間隔・job ID・稼働状態は実行環境の設定を正本とする。2026-10-03の[所有者の直接指示を受領した記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)により、Codexレビューは受付とPR専用担当に分け、5分間隔・専用担当最大10件（受付を除く）とした。1 PRに1担当を再利用し、変更なし・作業中・レビュー待ちでは投稿しない。実装側は所有者指定の10分を現在の基準とする。頻度は別設定で、レビュー頻度から変更を推定しない。前runが作業中なら同じ担当を二重起動しない。
+
+旧巡回（Codex・Claudeのレビュー巡回、T23の巡回）は、ownerが管理する巡回の設定で受付の対象PRを飛ばす（[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)）。
 
 巡回は、停止設定→最新mainの規約→GitHubの全必要ページ→既存担当とPR→未対応指摘→承認済み担当タスクの順に確認する。APIの一部取得・認証失敗・rate limitを「PRなし」とみなさない。同じ障害の通知はまとめる。
 
