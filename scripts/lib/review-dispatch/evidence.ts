@@ -18,6 +18,7 @@ import {
   type Snapshot,
 } from "./model.ts";
 import { assess } from "./reducer.ts";
+import { type ChangeRecord, type ItemRecord } from "./findings.ts";
 import { Store } from "./store.ts";
 
 export type Observation = {
@@ -207,6 +208,8 @@ export async function reconcile(
     ready: ReadyBinding[];
     reviews: ReviewBinding[];
     observation: Observation;
+    items: ItemRecord[];
+    changes: ChangeRecord[];
   }[] = [];
   const results: CycleResult[] = [];
   for (const target of p.targets) {
@@ -222,6 +225,8 @@ export async function reconcile(
       historyComplete: false,
       faultfinding: null,
       unresolvedDesign: [],
+      findingItems: store.evidence<ItemRecord>(key, "item"),
+      findingChanges: store.evidence<ChangeRecord>(key, "itemchange"),
     });
     apply(c, ready, reviews, p);
     if (!Number.isFinite(c.observedAt))
@@ -298,7 +303,14 @@ export async function reconcile(
         ...new Set(c.snapshot.reviews.flatMap((r) => r.findings)),
       ].sort(),
     };
-    updates.push({ key, ready, reviews, observation });
+    updates.push({
+      key,
+      ready,
+      reviews,
+      observation,
+      items: c.findingItems,
+      changes: c.findingChanges,
+    });
     results.push({ pr: target.pr, snapshot: c.snapshot, observation });
   }
   // Any failed page/batch leaves Inbox pending and prior observation intact. A crash rolls back BOTH bindings and tombstones.
@@ -308,6 +320,15 @@ export async function reconcile(
         store.saveEvidence(update.key, "ready", r.id, r);
       for (const r of update.reviews)
         store.saveEvidence(update.key, "review", r.id, r);
+      // PR48-R007: first observations and detected edits/deletions are immutable.
+      for (const r of update.items) store.saveEvidence(update.key, "item", r.item, r);
+      for (const r of update.changes)
+        store.saveEvidence(
+          update.key,
+          "itemchange",
+          `${r.change}:${r.item}:${r.hash ?? "none"}`,
+          r,
+        );
       store.saveObservation(update.key, update.observation);
     }
     for (const { row } of deliveries)

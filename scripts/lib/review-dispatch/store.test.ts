@@ -372,7 +372,7 @@ test("R010 Store refuses a root/DB/WAL/SHM with wrong permissions or links and n
     for (const path of [d.root, file, file + "-wal", file + "-shm"]) {
       const mode = lstatSync(path).mode & 0o7777;
       chmodSync(path, mode | 0o040);
-      assert.throws(() => new Store(d.root));
+      assert.throws(() => new Store(d.root), HostCheckError);
       assert.equal(lstatSync(path).mode & 0o7777, mode | 0o040, "not chmod-ed back");
       chmodSync(path, mode);
     }
@@ -382,7 +382,7 @@ test("R010 Store refuses a root/DB/WAL/SHM with wrong permissions or links and n
     d.store.close();
     for (const suffix of ["-wal", "-shm"]) rmSync(file + suffix, { force: true });
     symlinkSync(join(d.root, "elsewhere"), file + "-wal");
-    assert.throws(() => new Store(d.root));
+    assert.throws(() => new Store(d.root), HostCheckError);
     assert.equal(existsSync(join(d.root, "elsewhere")), false);
   } finally {
     d.cleanup();

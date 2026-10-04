@@ -20,6 +20,7 @@ test("R009/R010 CLI reads only an owner-only policy outside the repo, checks the
   const { database, policy } = await import("../tests/fixtures/review-dispatch.ts");
   const { CLOCK_SKEW_MS } = await import("./lib/review-dispatch/store.ts");
   const { hash } = await import("./lib/review-dispatch/model.ts");
+  const { HostCheckError } = await import("./lib/review-dispatch/host.ts");
   const fs = await import("node:fs"),
     { join, dirname, resolve } = await import("node:path");
   const d = database();
@@ -47,10 +48,16 @@ test("R009/R010 CLI reads only an owner-only policy outside the repo, checks the
     out: string[] = [];
   try {
     assert.equal(await main(["init", "--root", d.root, "--policy", file], env, (s) => out.push(s), () => T0), 0);
-    // A policy inside this repository/worktree (or the trusted copy) is refused before use.
-    await assert.rejects(main(["init", "--root", d.root, "--policy", resolve("package.json")], env, () => {}));
+    // A valid owner-only policy inside a repository/worktree (or the trusted copy) is refused before use.
+    const repo = join(d.root, "synthetic-repo");
+    fs.mkdirSync(join(repo, ".git"), { recursive: true });
+    const inRepo = join(repo, "policy.json");
+    fs.copyFileSync(file, inRepo);
+    fs.chmodSync(inRepo, 0o600);
+    await assert.rejects(main(["init", "--root", d.root, "--policy", inRepo], env, () => {}), HostCheckError);
+    await assert.rejects(main(["init", "--root", d.root, "--policy", resolve("package.json")], env, () => {}), HostCheckError);
     fs.chmodSync(file, 0o620);
-    await assert.rejects(main(["shadow", "--root", d.root, "--policy", file], env, () => {}, () => T0));
+    await assert.rejects(main(["shadow", "--root", d.root, "--policy", file], env, () => {}, () => T0), HostCheckError);
     fs.chmodSync(file, 0o600);
     // Behind the stored clock beyond the tolerance: exit 3, nothing recorded, no reconcile.
     const lines: string[] = [];
@@ -64,7 +71,7 @@ test("R009/R010 CLI reads only an owner-only policy outside the repo, checks the
     assert.equal(await main(["shadow", "--root", d.root, "--policy", file], env, () => {}, () => T0 + 1), 0);
     // A lifetime lock file with group/other permissions is not accepted.
     fs.chmodSync(lockPath, 0o644);
-    await assert.rejects(main(["shadow", "--root", d.root, "--policy", file], env, () => {}, () => T0 + 2));
+    await assert.rejects(main(["shadow", "--root", d.root, "--policy", file], env, () => {}, () => T0 + 2), HostCheckError);
   } finally {
     fs.closeSync(fd);
     fs.rmSync(lockPath, { force: true });

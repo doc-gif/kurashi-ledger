@@ -3,13 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  hash,
   samePair,
   type HistoryEvent,
   type Pair,
   type Policy,
   type Snapshot,
 } from "./model.ts";
-import { unresolvedFindings } from "./findings.ts";
+import {
+  unresolvedFindings,
+  type ChangeRecord,
+  type ItemRecord,
+} from "./findings.ts";
 
 export const REQUIRED_JOBS = [
   "Quality gate",
@@ -190,22 +195,69 @@ export type Collection = {
   headRef: string;
   headRepoId: number | null;
   creation: { id: string; actor: number; at: number } | null;
-  // PR48-R008: unchanged `.github`, owner-trusted change, or untrusted change (stays unknown).
+  // PR48-R008: CI-deciding files unchanged, owner-trusted change, or untrusted change (stays unknown).
   workflow: "unchanged" | "trusted" | "untrusted";
+  // PR48-R007: new immutable observation records of finding items, for the caller to persist.
+  findingItems: ItemRecord[];
+  findingChanges: ChangeRecord[];
 };
-// Tree SHA of `.github` in a commit, or null when the commit has none.
-async function githubTree(reader: GhReader, commit: string): Promise<string | null> {
+// PR48-R008: the files that decide the CI judgement. Owner decision (Issue #50, 2026-10-04,
+// issuecomment-5977404200): all of .github, package.json, tools/review_guard/, scripts/check-test-skips.ts
+// and the module it reads. Test contents are excluded and rely on independent content review. A path
+// ending in "/" is a directory prefix; any other path is one file. Widen or narrow the unit only here.
+export const CI_TRUST_PATHS: readonly string[] = [
+  ".github/",
+  "package.json",
+  "tools/review_guard/",
+  "scripts/check-test-skips.ts",
+  "scripts/lib/test-skips.ts",
+];
+// Test contents inside the trust paths (e.g. tools/review_guard/tests/, *.test.ts, test_*.py).
+export const CI_TRUST_EXCLUDED: readonly RegExp[] = [
+  /(?:^|\/)tests\//,
+  /\.test\.[cm]?[jt]s$/,
+  /(?:^|\/)test_[^/]*\.py$/,
+];
+export const inCiTrust = (path: string): boolean =>
+  CI_TRUST_PATHS.some((p) => (p.endsWith("/") ? path.startsWith(p) : path === p)) &&
+  !CI_TRUST_EXCLUDED.some((re) => re.test(path));
+// SHA-256 of the `git ls-tree -r --full-tree <commit>` lines of the trusted files, sorted by path
+// in byte order, each ending in "\n". The owner reproduces it with the command in the docs.
+export function ciTrustDigest(
+  entries: readonly { path: string; mode: string; type: string; sha: string }[],
+): string {
+  const lines = entries
+    .filter((e) => e.type !== "tree" && inCiTrust(e.path))
+    .sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)))
+    .map((e) => `${e.mode} ${e.type} ${e.sha}\t${e.path}\n`);
+  return hash(lines.join(""));
+}
+async function ciTrust(reader: GhReader, commit: string): Promise<string> {
   const c = await reader.object(`git/commits/${commit}`);
-  const root = await reader.object(`git/trees/${sha(object(c["tree"])["sha"])}`);
-  if (root["truncated"] !== false || !Array.isArray(root["tree"]))
+  const t = await reader.object(
+    `git/trees/${sha(object(c["tree"])["sha"])}?recursive=1`,
+  );
+  if (t["truncated"] !== false || !Array.isArray(t["tree"]))
     throw new EvidenceError();
-  const entries = root["tree"]
-    .map(object)
-    .filter((e) => e["path"] === ".github");
-  if (entries.length > 1) throw new EvidenceError();
-  if (!entries.length) return null;
-  if (entries[0]!["type"] !== "tree") return null;
-  return sha(entries[0]!["sha"]);
+  return ciTrustDigest(
+    t["tree"].map((value) => {
+      const e = object(value);
+      if (
+        typeof e["path"] !== "string" ||
+        /[\u0000-\u001f\u007f]/.test(e["path"]) ||
+        typeof e["mode"] !== "string" ||
+        !/^[0-7]{6}$/.test(e["mode"]) ||
+        !["blob", "tree", "commit"].includes(String(e["type"]))
+      )
+        throw new EvidenceError();
+      return {
+        path: e["path"],
+        mode: e["mode"],
+        type: String(e["type"]),
+        sha: sha(e["sha"]),
+      };
+    }),
+  );
 }
 // Inputs below are trusted persisted observations, never PR prose. Missing identity/history stays unknown.
 export async function collect(
@@ -220,6 +272,8 @@ export async function collect(
     historyComplete: boolean;
     faultfinding: Snapshot["faultfinding"];
     unresolvedDesign: string[];
+    findingItems?: ItemRecord[];
+    findingChanges?: ChangeRecord[];
   },
 ): Promise<Collection> {
   if (!p.targets.some((t) => t.pr === prNumber)) throw new EvidenceError();
@@ -273,15 +327,14 @@ export async function collect(
   let jobs: Record<string, unknown>[] = [],
     testedParents: string[] = [],
     testedTree = "";
-  // PR48-R008: any change under .github (workflows, actions, ...) keeps CI unknown until the owner
-  // records the reviewed tree SHA in the policy. A policy revision change then needs a new Ready.
-  const baseGithub = await githubTree(reader, current.base),
-    headGithub = await githubTree(reader, current.head);
+  // PR48-R008: any change in CI_TRUST_PATHS keeps CI unknown until the owner records the reviewed
+  // digest in the policy. A policy revision change then needs a new Ready.
+  const baseTrust = await ciTrust(reader, current.base),
+    headTrust = await ciTrust(reader, current.head);
   const workflow: Collection["workflow"] =
-    baseGithub !== null && headGithub === baseGithub
+    baseTrust === headTrust
       ? "unchanged"
-      : headGithub !== null &&
-          (p.trustedWorkflowTrees ?? []).includes(headGithub)
+      : (p.trustedCiDigests ?? []).includes(headTrust)
         ? "trusted"
         : "untrusted";
   const workflowTrusted = workflow !== "untrusted";
@@ -415,14 +468,32 @@ export async function collect(
     unresolvedDesign: options.unresolvedDesign,
     faultfinding: options.faultfinding,
   };
-  // PR48-R007: the assigned reviewers' unresolved findings block acceptance through their latest review.
+  // PR48-R007: unresolved findings block acceptance through the assigned reviewers' latest reviews.
+  // An owner's finding is attached to every assigned reviewer (owners raise, never resolve others).
   const assignment = p.targets.find((t) => t.pr === prNumber)!;
-  for (const [actor, ids] of unresolvedFindings(
-    prNumber,
-    assignment.reviewers,
+  const observedAt = Date.parse(
+    reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ?? "",
+  );
+  const found = unresolvedFindings({
+    pr: prNumber,
+    head: current.head,
+    reviewers: assignment.reviewers,
+    owners: p.owners,
     reviews,
-    comments.map(object),
-  )) {
+    comments: comments.map(object),
+    conversation: handoffs,
+    observedAt,
+    items: options.findingItems ?? [],
+    changes: options.findingChanges ?? [],
+  });
+  const ownerFindings = [...found.open]
+    .filter(([actor]) => !assignment.reviewers.includes(actor))
+    .flatMap(([, ids]) => ids);
+  for (const actor of assignment.reviewers) {
+    const ids = [
+      ...new Set([...(found.open.get(actor) ?? []), ...ownerFindings]),
+    ].sort();
+    if (!ids.length) continue;
     const latest = snapshot.reviews.findLast((r) => r.actor === actor);
     if (latest) latest.findings = ids;
     else
@@ -457,14 +528,13 @@ export async function collect(
     commits,
     handoffs,
     activity,
-    observedAt: Date.parse(
-      reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ??
-        "",
-    ),
+    observedAt,
     headRef: "refs/heads/" + ref,
     headRepoId:
       (objectOrNull(object(pr["head"])["repo"])?.["id"] as number) ?? null,
     workflow,
+    findingItems: found.items,
+    findingChanges: found.changes,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>

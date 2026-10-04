@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GhReader, REQUIRED_JOBS, type Transport } from "./github.ts";
+import {
+  CI_TRUST_PATHS,
+  GhReader,
+  REQUIRED_JOBS,
+  ciTrustDigest,
+  type Transport,
+} from "./github.ts";
 import { reconcile } from "./evidence.ts";
 import { Store } from "./store.ts";
 import { ingest } from "./webhook.ts";
@@ -14,8 +20,28 @@ import {
   TREE,
 } from "../../../tests/fixtures/review-dispatch.ts";
 
-const BASE_TREE = "6".repeat(40),
-  GITHUB = "5".repeat(40);
+const BASE_TREE = "6".repeat(40);
+// Synthetic repository files: inside the CI trust unit, test contents inside it, and outside it.
+const FILES: Record<string, string> = {
+  ".github/workflows/ci.yml": "1".repeat(40),
+  ".github/PULL_REQUEST_TEMPLATE.md": "2".repeat(40),
+  "package.json": "3".repeat(40),
+  "tools/review_guard/guard.py": "4".repeat(40),
+  "tools/review_guard/tests/test_guard.py": "5".repeat(40),
+  "scripts/check-test-skips.ts": "7".repeat(40),
+  "scripts/lib/test-skips.ts": "8".repeat(40),
+  "scripts/lib/test-skips.test.ts": "9".repeat(40),
+  "scripts/other.ts": "a1".repeat(20),
+  "docs/development.md": "a2".repeat(20),
+  "tests/unit/sample.test.ts": "a3".repeat(20),
+};
+type Listing = { path: string; mode: string; type: string; sha: string }[];
+function listing(changes: Record<string, string | null> = {}): Listing {
+  const files = { ...FILES, ...changes };
+  return Object.entries(files)
+    .filter((e): e is [string, string] => e[1] !== null)
+    .map(([path, sha]) => ({ path, mode: "100644", type: "blob", sha }));
+}
 const t = (seconds: number) =>
   new Date(Date.parse("2026-01-01T00:00:00Z") + seconds * 1000).toISOString();
 function fixture() {
@@ -28,9 +54,10 @@ function fixture() {
     head: HEAD,
     pusher: 20,
     legacy: false,
-    headGithub: GITHUB,
+    headFiles: {} as Record<string, string | null>,
     reviewBody: null as string | null,
     lineComments: [] as Record<string, unknown>[],
+    conversation: [] as Record<string, unknown>[],
   };
   const send: Transport = async (endpoint) => {
     const path = endpoint.replace("/repos/synthetic/repository/", "");
@@ -53,18 +80,10 @@ function fixture() {
       value = { tree: { sha: TREE } };
     else if (path === `git/commits/${state.base}`)
       value = { tree: { sha: BASE_TREE } };
-    else if (path.startsWith("git/trees/"))
-      value = {
-        truncated: false,
-        tree: [
-          { path: "docs", type: "tree", sha: "7".repeat(40) },
-          {
-            path: ".github",
-            type: "tree",
-            sha: path.endsWith(TREE) ? state.headGithub : GITHUB,
-          },
-        ],
-      };
+    else if (path === `git/trees/${TREE}?recursive=1`)
+      value = { truncated: false, tree: listing(state.headFiles) };
+    else if (path === `git/trees/${BASE_TREE}?recursive=1`)
+      value = { truncated: false, tree: listing() };
     else if (path === `git/commits/${"e".repeat(40)}`)
       value = {
         tree: { sha: TREE },
@@ -109,15 +128,18 @@ function fixture() {
     else if (path.startsWith("pulls/1/comments") && !state.fail)
       value = state.lineComments;
     else if (path.startsWith("issues/1/comments"))
-      value = state.legacy
-        ? [
-            {
-              id: 11,
-              user: { id: 20 },
-              body: `<!-- kurashi-ledger:handoff:v1 -->\nworker_status: ready-for-review\nhead_sha: ${state.head}\nbase_sha: ${state.base}`,
-            },
-          ]
-        : [];
+      value = [
+        ...(state.legacy
+          ? [
+              {
+                id: 11,
+                user: { id: 20 },
+                body: `<!-- kurashi-ledger:handoff:v1 -->\nworker_status: ready-for-review\nhead_sha: ${state.head}\nbase_sha: ${state.base}`,
+              },
+            ]
+          : []),
+        ...state.conversation,
+      ];
     else if (path.startsWith("actions/runs?"))
       value = {
         total_count: 1,
@@ -404,8 +426,8 @@ test("R005 real daemon -> Node shadow -> fake gh composition uses reduced token,
         `commits/${HEAD}/statuses?per_page=100`,
         `actions/runs?head_sha=${HEAD}&event=pull_request&per_page=100`,
         `git/commits/${BASE}`,
-        `git/trees/${BASE_TREE}`,
-        `git/trees/${TREE}`,
+        `git/trees/${BASE_TREE}?recursive=1`,
+        `git/trees/${TREE}?recursive=1`,
         `git/commits/${HEAD}`,
         "actions/runs/2/jobs?filter=latest&per_page=100",
         "actions/jobs/3/logs",
@@ -632,29 +654,30 @@ test("R007 findings before the reviewer's approval are resolved by it", async ()
     d.cleanup();
   }
 });
-test("R008 a .github change stays unknown until the owner trusts that exact tree", async () => {
+test("R008 a change to a CI-deciding file stays unknown until the owner trusts that exact digest", async () => {
+  const change = { ".github/workflows/ci.yml": "c1".repeat(20) };
   const d = database(),
     f = fixture(),
     p = policy();
   try {
     f.state.ready = true;
     f.state.now = 5;
-    f.state.headGithub = "4".repeat(40);
+    f.state.headFiles = change;
     d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
     const untrusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(untrusted.observation.workflow, "untrusted");
     assert.equal(untrusted.snapshot.complete, false);
     assert.equal(assess(p, untrusted.snapshot, null).reason, "unknown-evidence");
-    p.trustedWorkflowTrees = ["3".repeat(40)];
+    p.trustedCiDigests = [ciTrustDigest(listing())];
     const other = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(other.observation.workflow, "untrusted");
-    p.trustedWorkflowTrees = ["4".repeat(40)];
+    p.trustedCiDigests = [ciTrustDigest(listing(change))];
     const trusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(trusted.observation.workflow, "trusted");
     assert.equal(trusted.snapshot.complete, true);
     // The Ready seen while CI was unknown is not bound afterwards: a new Ready is required (fail closed).
     assert.equal(assess(p, trusted.snapshot, null).reason, "new-ready-required");
-    f.state.headGithub = GITHUB;
+    f.state.headFiles = {};
     const unchanged = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(unchanged.observation.workflow, "unchanged");
   } finally {
@@ -667,8 +690,8 @@ test("R008 a .github change stays unknown until the owner trusts that exact tree
   try {
     g.state.ready = true;
     g.state.now = 5;
-    g.state.headGithub = "4".repeat(40);
-    q.trustedWorkflowTrees = ["4".repeat(40)];
+    g.state.headFiles = change;
+    q.trustedCiDigests = [ciTrustDigest(listing(change))];
     e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
     const r = (await reconcile(g.reader(), q, e.store))[0]!;
     assert.equal(r.observation.workflow, "trusted");
@@ -677,7 +700,49 @@ test("R008 a .github change stays unknown until the owner trusts that exact tree
     e.cleanup();
   }
 });
-test("R008 required jobs count only from the reviewed ci.yml path; truncated or missing .github is not trusted", async () => {
+test("R008 each trust path (and only those, without test contents) makes workflow trust unknown", async () => {
+  const cases: [Record<string, string | null>, "unchanged" | "untrusted"][] = [
+    [{ ".github/workflows/ci.yml": "c1".repeat(20) }, "untrusted"],
+    [{ ".github/PULL_REQUEST_TEMPLATE.md": "c1".repeat(20) }, "untrusted"],
+    [{ ".github/actions/new/action.yml": "c1".repeat(20) }, "untrusted"],
+    [{ "package.json": "c1".repeat(20) }, "untrusted"],
+    [{ "tools/review_guard/guard.py": "c1".repeat(20) }, "untrusted"],
+    [{ "tools/review_guard/new_helper.py": "c1".repeat(20) }, "untrusted"],
+    [{ "scripts/check-test-skips.ts": "c1".repeat(20) }, "untrusted"],
+    [{ "scripts/lib/test-skips.ts": "c1".repeat(20) }, "untrusted"],
+    [{ "scripts/lib/test-skips.ts": null }, "untrusted"],
+    [{ "tools/review_guard/tests/test_guard.py": "c1".repeat(20) }, "unchanged"],
+    [{ "scripts/lib/test-skips.test.ts": "c1".repeat(20) }, "unchanged"],
+    [{ "scripts/other.ts": "c1".repeat(20) }, "unchanged"],
+    [{ "docs/development.md": "c1".repeat(20) }, "unchanged"],
+    [{ "tests/unit/sample.test.ts": "c1".repeat(20) }, "unchanged"],
+    [{ "package.json.bak": "c1".repeat(20) }, "unchanged"],
+  ];
+  for (const [change, expected] of cases) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    try {
+      f.state.headFiles = change;
+      const r = (await reconcile(f.reader(), p, d.store))[0]!;
+      assert.equal(r.observation.workflow, expected, JSON.stringify(change));
+    } finally {
+      d.cleanup();
+    }
+  }
+  // A mode change (e.g. executable bit) of a trusted file is a change too.
+  const modes = listing();
+  modes.find((e) => e.path === "package.json")!.mode = "100755";
+  assert.notEqual(ciTrustDigest(modes), ciTrustDigest(listing()));
+  assert.deepEqual(CI_TRUST_PATHS, [
+    ".github/",
+    "package.json",
+    "tools/review_guard/",
+    "scripts/check-test-skips.ts",
+    "scripts/lib/test-skips.ts",
+  ]);
+});
+test("R008 required jobs count only from the reviewed ci.yml path; a truncated tree or a removed .github is not trusted", async () => {
   for (const variant of ["other-path", "truncated", "no-github"] as const) {
     const d = database(),
       f = fixture(),
@@ -693,10 +758,10 @@ test("R008 required jobs count only from the reviewed ci.yml path; truncated or 
           v.workflow_runs[0].path = ".github/workflows/added.yml";
           return { ...r, body: JSON.stringify(v) };
         }
-        if (variant !== "other-path" && path.endsWith(`/git/trees/${TREE}`)) {
+        if (variant !== "other-path" && path.endsWith(`/git/trees/${TREE}?recursive=1`)) {
           const v = JSON.parse(r.body);
           if (variant === "truncated") v.truncated = true;
-          else v.tree = v.tree.filter((e: { path: string }) => e.path !== ".github");
+          else v.tree = v.tree.filter((e: { path: string }) => !e.path.startsWith(".github/"));
           return { ...r, body: JSON.stringify(v) };
         }
         return r;
@@ -718,5 +783,46 @@ test("R008 required jobs count only from the reviewed ci.yml path; truncated or 
     } finally {
       d.cleanup();
     }
+  }
+});
+test("R007 a conversation comment after approval blocks; a deleted line finding is remembered across reconciles", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    f.state.conversation = [
+      {
+        id: 31,
+        user: { id: 30 },
+        created_at: t(5),
+        updated_at: t(5),
+        body: "decision: changes-requested\nsynthetic conversation finding",
+      },
+    ];
+    f.state.lineComments = [
+      {
+        id: 21,
+        user: { id: 30 },
+        created_at: t(5),
+        updated_at: t(5),
+        body: "PR1-R002 — synthetic line finding",
+        pull_request_review_id: 77,
+      },
+    ];
+    const first = await boundApproval(f, d, p);
+    assert.deepEqual(first.observation.findings, ["PR1-R002", "issue:31"]);
+    assert.equal(d.store.evidence("1:1", "item").length, 3);
+    // Someone with write access deletes both comments: the deletions are recorded and still block.
+    f.state.conversation = [];
+    f.state.lineComments = [];
+    f.state.now = 8;
+    const second = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(second.observation.findings, ["deleted:comment:21", "deleted:issue:31"]);
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+    const third = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(third.observation.findings, ["deleted:comment:21", "deleted:issue:31"]);
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+  } finally {
+    d.cleanup();
   }
 });

@@ -109,7 +109,9 @@ function fake(changed = false, fail = false): GhReader {
     if (path.startsWith("git/trees/"))
       return response({
         truncated: false,
-        tree: [{ path: ".github", type: "tree", sha: "5".repeat(40) }],
+        tree: [
+          { path: ".github/workflows/ci.yml", mode: "100644", type: "blob", sha: "5".repeat(40) },
+        ],
       });
     if (path.startsWith("compare/"))
       return response({ merge_base_commit: { sha: BASE } });
@@ -315,5 +317,26 @@ test("R011 a marked review whose body hash differs stays uncertain and is never 
     } finally {
       d.cleanup();
     }
+  }
+});
+test("R011/W4 ordering: canonicalisation can join a split key shape, so a publication check must read the canonical body", async () => {
+  const { parseResult } = await import("./broker.ts");
+  // Synthetic shape only (not a real token). A control character splits it before canonicalisation.
+  const key = /gh[pousr]_[A-Za-z0-9_]{16,}/;
+  const split = "ghp_" + "A".repeat(10) + "\u0007" + "B".repeat(10);
+  assert.equal(key.test(split), false);
+  assert.equal(key.test(canonicalBody(split)), true);
+  // On this base the worker fields cannot carry such a character into render(); #53's
+  // publicationFindings is not on this base, so W4 must order: canonicalBody -> publication check -> hash -> POST.
+  const d = database();
+  try {
+    const j = claim(d.store);
+    for (const field of ["summary", "unverified"] as const) {
+      const r = fixtureResult(j) as unknown as Record<string, unknown>;
+      r[field] = field === "summary" ? split : [split];
+      assert.throws(() => parseResult(JSON.stringify(r), j));
+    }
+  } finally {
+    d.cleanup();
   }
 });
