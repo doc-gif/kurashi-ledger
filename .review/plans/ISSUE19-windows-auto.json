@@ -17,7 +17,8 @@
     "scripts/setup.test.ts",
     "tests/support/windows-console.test.ts",
     "tests/support/windows-console.ts",
-    ".github/copilot-instructions.md"
+    ".github/copilot-instructions.md",
+    ".github/scripts/windows-standard-user.ps1"
   ],
   "conflicts": [
     {
@@ -49,6 +50,11 @@
       "description": "main 409bd3f（#40・#42・#46/#48・#47）の取り込みと、開いているPR（2026-10-04時点: #25 T26、#28 T06、#29 T14、#36、#37、#38 T23、#44）との共有ファイルの重なり。docs/development.md（#25・#37）、docs/project-status.md・README.md・docs/implementation-tasks.md（ほぼ全部）、.github/copilot-instructions.md（#25・#28）、docs/testing.md・docs/adr/README.md（#25・#29・#37 等）。#42は、Windowsで飛ばすscripts/github-app-token.test.tsの2件をskipの表に加えた。",
       "state": "resolved",
       "resolution": "mergeで取り込み、#40・#47の正本の書き方と構成を優先した。copilot-instructions.mdは#40の短い版をそのまま採用し、このPRの追記は戻さない。project-status.mdは#40の表を採用し、#19の欄だけをCIで自動の試験にした旨と開発環境の節へのリンクにした。development.mdのskipの表は、#42のgithub-app-token.test.tsのWindowsの行を残し、このPRで外したsetup系のWindowsの行は外したままにして、件数をWindows 2件・root 3件にした。指摘対応と全体の読み直しは次の段階で行う。後から統合される側が、共有の表・状態資料の重なりを解消する。"
+    },
+    {
+      "description": "段階2の全体の読み直し（2026-10-04、head 10a6525、base 409bd3f）。これまでの指摘: PR33-R001（解消済み）、Copilot 4173462487（解消済み）、所有者決定（npm run経由の終了コードはnpmの仕様として受け入れる）。新しい指摘: PR33-R002（Codexのレビュー、head 151d8a7。一般のユーザーのジョブで、15分の時間切れで止めるのはrun.mjsだけで、node --testとその子孫が残ったままユーザー・プロファイルの削除に進む。時間切れの合成のケースでも残らないことをWindowsで確かめる）、PR33-R003（Issue #19の「対象」「準備」「完了の条件」が、更新した表・所有者決定・CIの記録と矛盾）、Copilot 4173544186（PR本文とIssue #19の完了の条件が旧い。PR本文は解消済み）、調整係の依頼（copilot-instructions.mdの#19の古い1文を、規則を書き写さないリンク付きの1行に直す）、2026-10-04の所有者の全体決定（状態資料に作業中を書かない、製品の試験の始まりを主張しない、Copilotは任意）。これらの間に、後戻り・逆向きの要求はないことを確かめた。",
+      "state": "resolved",
+      "resolution": "(1) PR33-R002（設計の問題としてこのPRで直す）: 一般のユーザーの作成・実行・後始末を、.github/scripts/windows-standard-user.ps1にまとめ、workflowからは中身をscriptblockとして読み込んで呼ぶ（スクリプトのファイルを実行しないので、実行ポリシーは関係しない）。後始末は、そのユーザーのすべてのプロセスを止め、なくなるまで待ってから、ユーザーとプロファイルを消し、プロセス・ユーザー・プロファイルのどれかが残れば失敗にする。時間切れのときも、run.mjsだけでなく、そのユーザーのすべてのプロセスを止める。自己試験として、子と孫を残して止まらない合成の処理を短い時間切れで実行し、時間切れになることと、後始末のあとに何も残らないことを、同じジョブで先に確かめる。(2) PR33-R003・Copilot 4173544186: Issue #19の本文の「対象」「経緯」「担当」「準備」「完了の条件」を、setup自身の終了コード（直接起動）とnpm run経由の終了コード（0以外）を分け、3つの確認はPR #33のCIで自動化済み、手で残るのはnpm.cmdのY/Nの対話だけ、という形にそろえる。Issueの書き換えはこのPRのコードと独立なので、統合前に行い、引継ぎにリンクを書く。(3) copilot-instructions.mdの#19の文を、開発環境の節へのリンクの1行に直す。(4) 状態資料のこのPRの行（#19の欄）は、統合したら真になる事実だけで、作業中の状態を書いていないことを確かめた。製品の試験の始まりは書いていない。"
     }
   ],
   "assessments": [
