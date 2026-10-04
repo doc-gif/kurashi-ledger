@@ -1,8 +1,8 @@
 # 人・AI共通のレビュー受付（設計案）
 
-状態: **設計受入済み。default-offの[実装と導入前チェック](review-dispatch-implementation.md)を追加し、独立レビュー待ち**。[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)は、default-offの基盤実装・検証・Claudeの独立レビューで完了する。本導入は所有者の設定後に分ける。Codexが設計から実装まで担当し、設計acceptedのあとに実装PRへ進む。設計PR #46は完了。最後の実装PRだけでIssueを閉じる。
+状態: **設計受入済み。default-offの基盤（[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)、PR #48）はmainに統合済み。** [Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)でactiveへ進める。2026-10-04の所有者決定（O1〜O3とWindows）は§8に記す。正本の移行は[PR書式の「受付がactiveのPR」](pr-review-loop.md#受付がactiveのpr)で行った。
 
-通常のプログラムがGitHubの状態・認可・重複を判定し、条件が揃った仕事だけを人・AIへ渡す。Webhookを入口、15分ごとの照合を取りこぼし対策にする案。導入までは現在の5分確認と[PR書式](pr-review-loop.md)を使う。以下のactive規則はまだ現行規約を置き換えない。
+通常のプログラムがGitHubの状態・認可・重複を判定し、条件が揃った仕事だけを人・AIへ渡す。Webhookを入口にし、15分ごとの照合で取りこぼしを拾う。activeは、所有者がpolicyへ加えたPRだけに効く。ほかのPRは現在の5分確認と[PR書式](pr-review-loop.md)を使う。
 
 ## 1. 標準操作と認可
 
@@ -38,7 +38,7 @@ CIはQuality gateと支持ジョブ、試験mergeの親/head/base・treeを確�
 
 ## 3. 配置とGitHubの身元
 
-初期の配置案は**所有者のMac上のNode.js受付、独立run supervisor、専用SQLite**。製品DB/HTTPサーバーとは分け、レビュー済みmainの固定版から起動する。macOSサービスの有効化はowner作業。クラウド受付・GitHub ActionsでのAI起動は初期案に含めない。Nodeはrepo対応版、SQLiteはnode:sqliteを実装で検証し、WAL/トランザクションを使う。DBを複数ホストで共有しない。
+配置は**所有者のMac上のNode.js受付、独立run supervisor、専用SQLite**。製品DB/HTTPサーバーとは分け、レビュー済みmainの固定版から起動する。macOSサービスの有効化はowner作業。クラウド受付・GitHub ActionsでのAI起動はしない。Windowsでは受付を動かさない（§8）。Nodeはrepo対応版、SQLiteはnode:sqliteを実装で検証し、WAL/トランザクションを使う。DBを複数ホストで共有しない。
 
 | 経路 | 初期構成で固定する身元・権限 |
 | --- | --- |
@@ -52,7 +52,7 @@ dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変
 
 GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointとowner承認のHTTPS到達経路を分ける。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・トンネル・費用・実配送は導入チェックリストへ残す。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路はO1によりCloudflare Tunnelを推奨とし、tunnelはlocalhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの導入手順（Issue #50のW4）に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -95,11 +95,11 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 | 項目 | off | shadow | active（移行後のみ） |
 | --- | --- | --- | --- |
 | Ready/accepted | 現行正本のhandoff・exact-pair decision。COMMENT可 | 現行判定が効力を持つ。標準Ready/native Reviewとの差を記録 | §1/2のReady、独立APPROVEとpair証跡。旧COMMENTを正式承認へ変換しない |
-| Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報、粗探しJobと人の証跡を判定へ集約 |
+| Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報。担当reviewerの粗探しJobと人の証跡を判定へ集約 |
 | 判定/通知 | 現行手順/T23の担当 | 現行側だけ投稿。新受付は判定記録のみ | Issue45受付/Brokerだけ。T23の重複判定/通知を委譲 |
 | T24/既存巡回 | 現行方式 | 現行方式、AIの二重起動なし | 移行したPRだけ新Job管理へ。旧workerの停止を確認してから切替 |
 
-activeの前提は**owner承認の別の正本移行PR**。pr-review-loop、github-agent-operations、T23/T24の台帳を一括で整合し、Ready/accepted/Copilot/粗探しの正本、唯一の判定/通知担当、移行対象を確定する。T23のCI-policy保護責務は残す。未マージ#38/#44のコードを取り込まず、再開もしない。Issue45実装はmerged-mainのAPIとdefault-offのpolicy adapterを用意するだけで、promptから現行規約を上書きしない。
+activeの前提だった**正本移行**は、Issue #50のW0で行った。pr-review-loop、github-agent-operations、T23/T24の台帳が、Ready/accepted/粗探しの正本、唯一の判定/通知担当、切替とrollbackを定める。T23のCI-policy保護責務は残す。未マージ#38のコードを取り込まず、再開もしない。受付はpromptから現行規約を上書きしない。
 
 activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTED/行指摘は認可済みの参考/指摘、DISMISSED/編集は集合を再計算する。複数reviewerは必要集合/人数を満たし、重大未解消指摘やRequest changesを多数決で無視しない。人のApproveもReview commitと成立時pairを証明できなければ保留する。状態変化後の投稿はstaleとして履歴に残す。
 
@@ -128,32 +128,56 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。ownerが明�
 | 実行先 | 固定する接口・制約 |
 | --- | --- |
 | Codex CLI | 固定absolute path/版、codex exec --json、結果schema、--sandbox read-only。agent toolのnetworkは禁止 |
-| Claude CLI | 固定absolute path/版、claude -p --output-format json、結果schema。Read系toolだけ許可し、Bash/Write/Web・MCP/hooksを禁止 |
+| Claude CLI | 固定absolute path/版、claude -p --output-format json、結果schema、購読のログイン（O2）。Read/Grep/Globだけ許可し、Bash/Write/Web・MCP/hooks/pluginsを禁止。層は下の表 |
 | 人 | GitHub操作/通知のみ。AI起動なし |
 | デスクトップチャット | 初期の自動起動対象外。既存巡回はownerの切替手順で扱う |
 
 shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
 
-read-only flagはキーチェーン読取りの隔離ではない。初期macOS backendはsystemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexのtool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
+read-only flagはキーチェーン読取りの隔離ではない。初期macOS backendはsystemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、CLI自身のログイン以外のsecurity/keychain access、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexのtool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
 
 doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
-同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。別ユーザーによる強化は導入判断。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
-
-Claudeの--bareはAPI認証が必要で、既存購読認証を使えるとは仮定しない。購読方式は設定/認証だけを分離した領域と否定試験を必要とする。新しいAPI費用、CLI/認証不足時の別サービスへの切替はowner承認が必要。自動では切り替えない。
+同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。O3により別のOSユーザーは使わない。この残余リスクを受け入れて記録する。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
 
 **IDと原因の言い換えでも戻らない上限**をDBに持つ。ownerの一つのauto-fix許可につき最大2修正、PRごとrolling 24時間にAI review/faultfinding起動最大6回。launch前に予約し、起動不明も消費扱い。ID/世代/再起動/手動pushでリセットしない。上限でpause/needs-owner、ownerが原因/方針を確認して再許可するまで解除しない。通常の取得はAI回数に数えない。現行の「同原因2回の不成功→設計見直し→残ればneeds-owner」も保持し、各修正前に指摘全体と回帰原因を照合する。
 
+### Claudeの起動の層（O2）
+
+Claudeは購読のログインで起動する。`--bare`は購読のログインもkeychainも読まず、API鍵を要する（[headless](https://code.claude.com/docs/en/headless)）。そのため`--bare`とAPI鍵は使わない。次の層を全部重ねる。
+
+| 層 | 設定 | 防ぐもの |
+| --- | --- | --- |
+| 認証 | 起動専用の`CLAUDE_CONFIG_DIR`。ownerがそこで1回ログインする。CLAUDE.mdを置かない | 個人設定・memory・別の認証の混入、API費用 |
+| 設定 | inlineの`--settings` JSON。hooksとpluginsを持たない | hooks・pluginsの実行 |
+| MCP | serverのない`--mcp-config` | MCP serverの接続 |
+| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す。`--allowedTools`もこの3つに限る | 書込み・shell・Web |
+| 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
+| cwd | 取得資料だけの使い捨て領域。repo・worktreeの外で、祖先にもCLAUDE.md・AGENTS.mdがない | repoの指示・設定の自動ロード |
+| OS | `sandbox-exec`のSeatbelt profile。CLI用とtool子process用に分ける | 資料・runtime以外の読取り、policy/DBの書込み、tool子processの資格情報・network |
+
+- 使うflagは[headless](https://code.claude.com/docs/en/headless)と[cli-reference](https://code.claude.com/docs/en/cli-reference)に記載のものだけ。必要なflagが固定版の文書にない、または否定試験で効かないなら、capabilityをdisabledにする。
+- dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く（headlessの記載）。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`が要る。
+- 素の`Read`をallowedToolsに入れると、cwd外の読取りも確認なしになる。範囲付きの規則にするか、cwd内の読取りに任せる。Seatbeltが資料・runtime以外の読取りを拒む。
+- 同じ層を狭める記載済みのflagもある: `--strict-mcp-config`、`--disallowedTools "mcp__*"`、`--safe-mode`、`--permission-prompts none`、`--no-session-persistence`、`--setting-sources`。固定版が対応すれば起動器で併用し、採否を起動器のPRに記録する。
+- CLIのprocessはモデルとの通信と自分のログインの読取りが要る。tool子processは資格情報を読めず、networkも使えない。macOSでログインがkeychainのどの項目に入り、通常のログインと分かれるかは未確認。ownerが実機で測る。
+- ログインが無効・期限切れなら起動しない。人へ1回知らせる。API鍵・別サービスへ自動で切り替えない。新しいAPI費用はowner承認が要る。
+
 ## 8. 実装・移行・完了
 
-1. 設計PR #46はClaudeの独立レビューを経てマージ済み。仕様の追加・変更は実装の差分と一緒に独立レビューする。
-2. accepted後の実装PRでpure reducer、SQLite Inbox/lease/Job/Outbox、gh取得、署名HTTP、通知/Broker boundary、supervisor/CLI capabilityを実装する。合成イベント・fake runnerを必須にし、実AI/App呼出しはdefault off。コードの配置・言語・CI jobは実装計画へ先に記録する。
-3. default-off実装と検証/独立acceptedでIssue45を完了し、残る担当レビューを既存chat/jobで再開する。本導入待ちで他タスクを止めない。
-4. ownerが正本移行PR、URL/購読/秘密、CLI/認証/費用、隔離と許可範囲を確認してから導入する。shadowでは起動・投稿0。15分照合の遅延を現行5分と比較し、許可なく既存確認頻度を変えない。
+1. 設計PR #46と基盤PR #48はマージ済み（Issue #45は完了）。仕様の追加・変更は実装の差分と一緒に独立レビューする。
+2. Issue #50でactiveの部品を作る。W0は正本の移行（この文書と[PR書式](pr-review-loop.md#受付がactiveのpr)）。W1は起動器・Seatbelt・doctor、W2は実行結果の署名（PR48-R003）と実Broker、W3はhost検査とR007/R008、W4はactiveのCLI・Webhookの受け口・launchd・ownerの導入手順。
+3. ownerがW1〜W4のマージ、doctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
+4. ownerがPRごとにactiveへ切り替える。手順とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)が正本。capability不足では人へ案内し、旧巡回を勝手に起動しない。停止中PRの一括再開はしない。
 
-切替は旧worker停止確認→現行pair/Ready/指摘の再取得→移行したPRだけactive。rollbackも新worker終了とuncertain Outboxを確認してから旧方式へ戻す。capability不足では人へ案内し、旧巡回を勝手に起動せずownerの切替設定に従う。停止中PRの一括再開はしない。
+2026-10-04の所有者決定（[Issue #50](https://github.com/doc-gif/kurashi-ledger/issues/50)）:
 
-導入前のowner判断は、O1:到達経路と受付App（将来の専用read-only Appを推奨）、O2:ClaudeのAPI費用/購読認証、O3:別OSユーザー分離。これらは設計受入を止めず、default-offのまま未検証事項として管理する。
+| ID | 決定 | 反映先 |
+| --- | --- | --- |
+| O1 | Webhookで受ける。公開HTTPS経路（Cloudflare Tunnelを推奨）と15分の照合を併用する。受付Appは§3のとおりCodex App。専用のread-only Appへの置換は後の別判断 | §3 |
+| O2 | Claudeは購読のログインで起動する。`--bare`とAPI鍵は使わない。隔離は§7の層を重ねる。Codexは`codex exec --json --sandbox read-only` | §7 |
+| O3 | 別のOSユーザーでの分離は見送る。残余リスクとして記録する | §7 |
+| Windows | 受付はMacだけで動かす。Windowsのbackendは作らない。Windowsでは現行の手動レビュー手順を使う | §3、[PR書式](pr-review-loop.md#受付がactiveのpr) |
 
 ## 9. 受入試験と導入チェックリスト
 
@@ -176,7 +200,7 @@ PR46-I001〜I007は次へ引き継ぐ。
 
 | 指摘ID | 実装受入/導入前に残す確認 |
 | --- | --- |
-| I001 | CLI絶対パス/版変更、schema/結果actor、Claude --bare/API制約、購読隔離、capability失敗時の人/旧方式へのowner制御切替 |
+| I001 | CLI絶対パス/版変更、schema/結果actor、Claudeの購読ログインと§7の層、capability失敗時の人/旧方式へのowner制御切替 |
 | I002 | 対応Nodeのsqlite安定度、途中終了/WAL/移行/バックアップ/未知schema。repo外の合成DBで3 OS試験 |
 | I003 | 10秒以内のHTTP応答、body上限、Appの配送失敗は自動再送に頼らず照合回復。issues等の購読要否、実配送/redelivery IDは導入実測 |
 | I004 | 全ページ/ETag/rate limit、shadowの15分照合と現行5分の遅延/呼出し数比較 |
@@ -190,5 +214,5 @@ pure testsは3 OS、SQLiteは実一時DB、macOSのrun lock/process groupは実f
 
 - 範囲: [Issue45](https://github.com/doc-gif/kurashi-ledger/issues/45)。現在の権限/マージ条件: [運用規約](github-agent-operations.md)、[PR書式](pr-review-loop.md)。今回の機構の正本はこの文書。入口へ詳細を複製しない。
 - 認証: [App手順](github-apps.md)。[Webhook](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps)、[Review API](https://docs.github.com/en/rest/pulls/reviews)、[署名検証](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)。購読候補はpull_request、pull_request_review、pull_request_review_comment、check_run/check_suite、workflow_run、push、issues。実権限/購読は導入確認。
-- [Claude CLI](https://code.claude.com/docs/en/headless)、[flags](https://code.claude.com/docs/en/cli-reference)。この作業環境ではClaude CLI未確認。Codexのexec/helpは確認したが、版・隔離・実起動の証明ではない。
+- [Claude CLI](https://code.claude.com/docs/en/headless)、[flags](https://code.claude.com/docs/en/cli-reference)。§7のflagは2026-10-04にこの文書で確かめた。文書の確認は実行の証明ではない。固定版でのdoctorの否定試験が実起動のcapabilityを決める。Codexのexec/helpも同じ扱い。
 - [Node.js 24 SQLite](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html)。実行版は実装で固定・検証する。
