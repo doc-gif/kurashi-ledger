@@ -105,6 +105,7 @@ function fake(changed = false, fail = false): GhReader {
         draft: false,
         labels: [],
         user: { id: 20 },
+        commits: 0, // GitHub's count; the commit list below is empty (PR58-R002)
       });
     if (path === "git/commits/" + BASE)
       return response({ tree: { sha: "6".repeat(40) } });
@@ -135,6 +136,7 @@ function fake(changed = false, fail = false): GhReader {
       ]);
     if (path.startsWith("actions/runs?"))
       return response({
+        total_count: 1,
         workflow_runs: [
           {
             id: 2,
@@ -147,6 +149,7 @@ function fake(changed = false, fail = false): GhReader {
       });
     if (path.startsWith("actions/runs/2/jobs"))
       return response({
+        total_count: 1,
         jobs: [{ id: 3, name: "Quality gate", conclusion: "success" }],
       });
     if (path === "actions/jobs/3/logs")
@@ -155,7 +158,7 @@ function fake(changed = false, fail = false): GhReader {
         headers: {},
         body: "TESTED_SHA: " + "e".repeat(40),
       };
-    if (path.includes("check-runs")) return response({ check_runs: [] });
+    if (path.includes("check-runs")) return response({ total_count: 0, check_runs: [] });
     if (fail && path.startsWith("pulls/1/comments"))
       return { status: 500, headers: {}, body: "" };
     return response([]);

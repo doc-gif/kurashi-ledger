@@ -1273,3 +1273,82 @@ test("PR48-R015 RT-2: a hold is settled by the first saved reconcile that began 
     d.cleanup();
   }
 });
+test("PR58-R001 a temporarily lost activity anchor holds the observation; the missed Ready binds once history is complete again", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    f.state.now = 2;
+    await reconcile(f.reader(), p, d.store); // complete observation at t(2)
+    f.state.ready = true; // Ready at t(3); its webhook was missed
+    f.state.now = 5;
+    const lost = new GhReader(p.repo, async (path, h) =>
+      path.includes("/activity?") ? { status: 200, headers: { date: t(5) }, body: "[]" } : f.send(path, h),
+    );
+    const [held] = await reconcile(lost, p, d.store);
+    assert.equal(held!.snapshot.historyComplete, false);
+    assert.equal(held!.heldSince !== null, true);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)));
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(later!.heldSince, null);
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound, processed or advanced; a valid count recovers", async () => {
+  for (const count of [undefined, null, "0", -1, 1.5]) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    const name = String(count);
+    try {
+      await reconcile(f.reader(), p, d.store);
+      f.state.ready = true;
+      f.state.now = 5;
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      const odd = new GhReader(p.repo, async (path, h) => {
+        const r = await f.send(path, h);
+        if (!path.endsWith("/pulls/1")) return r;
+        const v = JSON.parse(r.body);
+        if (count === undefined) delete v.commits;
+        else v.commits = count;
+        return { ...r, body: JSON.stringify(v) };
+      });
+      const [held] = await reconcile(odd, p, d.store);
+      assert.equal(held!.snapshot.complete, false, name);
+      assert.equal(d.store.pendingInbox().length, 1, name);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, name);
+      assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)), name);
+      f.state.now = 6; // the count is valid again (0, matching the empty list)
+      const [later] = await reconcile(f.reader(), p, d.store);
+      assert.equal(assess(p, later!.snapshot, null).status, "eligible", name);
+      assert.equal(d.store.pendingInbox().length, 0, name);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // A counted list (workflow runs, jobs, check runs) without a valid total_count is never complete.
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    f.state.ready = true;
+    f.state.now = 5;
+    const uncounted = new GhReader(p.repo, async (path, h) => {
+      const r = await f.send(path, h);
+      if (!path.includes("/actions/runs?")) return r;
+      const v = JSON.parse(r.body);
+      delete v.total_count;
+      return { ...r, body: JSON.stringify(v) };
+    });
+    await assert.rejects(reconcile(uncounted, p, d.store));
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.equal(d.store.observation("1:1"), null);
+  } finally {
+    d.cleanup();
+  }
+});

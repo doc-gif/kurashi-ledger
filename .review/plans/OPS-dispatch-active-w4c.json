@@ -9,6 +9,7 @@
   "scripts/lib/review-dispatch/active.ts",
   "scripts/lib/review-dispatch/evidence.test.ts",
   "scripts/lib/review-dispatch/evidence.ts",
+  "scripts/lib/review-dispatch/github.test.ts",
   "scripts/lib/review-dispatch/github.ts",
   "scripts/lib/review-dispatch/store.test.ts",
   "scripts/lib/review-dispatch/store.ts",
@@ -101,7 +102,7 @@
   {
    "id": "INV-REVIEW",
    "disposition": "preserve",
-   "reason": "R013: 一時的な不完全（取得の途中でPR・その状態・mainが変わった、commitの一覧が足りない）なら、その対象の観測・結合・処理済みの印を保存せず、配送を残す。保留の開始を記録し、1時間続けば所有者に1回知らせる。恒久の原因だけ（変わらないpairでのworkflowの未信頼、一覧の上限250件を超えるPR）なら処理し、結び付けない。R014: W4aで済んだのは受付自身の粗探しの記録だけ。足すのは、観測でのaccepted（受付の判定と現行のdecision: accepted）の比較と、担当reviewerの人の手動の粗探しの記録の読取り（比較だけで、判定の門を開けない）。unresolvedDesignの専用の取得元は作らない（所有者決定 5980777385）。R015: quotaの停止とblockedは時刻未定で作り、作った後に始まった照合で保存したserver時刻で確定する。ownerの解除は確定時刻より後のものだけ数える",
+   "reason": "R013: 一時的な不完全（取得の途中でPR・その状態・mainが変わった、commitの一覧が足りないか件数が不明・不正、branchの履歴が不完全。PR58-R001・R002）なら、その対象の観測・結合・処理済みの印を保存せず、配送を残す。保留の開始を記録し、1時間続けば所有者に1回知らせる。恒久の原因（変わらないpairでのworkflowの未信頼、一覧の上限250件を超えるPR、repoの外のhead）なら処理し、結び付けない。R014: W4aで済んだのは受付自身の粗探しの記録だけ。足すのは、観測でのaccepted（受付の判定と現行のdecision: accepted）の比較と、担当reviewerの人の手動の粗探しの記録の読取り（比較だけで、判定の門を開けない）。unresolvedDesignの専用の取得元は作らない（所有者決定 5980777385）。R015: quotaの停止とblockedは時刻未定で作り、作った後に始まった照合で保存したserver時刻で確定する。ownerの解除は確定時刻より後のものだけ数える",
    "checks": [
     {
      "id": "duplicates",
@@ -110,7 +111,7 @@
     },
     {
      "id": "trust",
-     "method": "evidence.test.ts: 途中で変わった照合のあと配送が残り、後の照合でReadyが結び付くこと（配送あり・なし）。取得の途中でheadがH1→H2になり、H1でworkflowが未信頼に見えても保留されること。workflowの未信頼だけ・250件超えなら処理済みで結び付かないこと。人の記録は比較だけで、理由付きの判定・否定の対応不要を未解消と読むこと。store.test.ts・evidence.test.ts: ローカル時計の遅れ・進み、停止より前の解除、確定前の解除、Job中のpause→unpauseで停止が解けないこと。照合の途中で作った停止はその照合で確定しないこと",
+     "method": "evidence.test.ts: 途中で変わった照合のあと配送が残り、後の照合でReadyが結び付くこと（配送あり・なし）。取得の途中でheadがH1→H2になり、H1でworkflowが未信頼に見えても保留されること。workflowの未信頼だけ・250件超えなら処理済みで結び付かないこと。人の記録は比較だけで、理由付きの判定・否定の対応不要を未解消と読むこと。store.test.ts・evidence.test.ts: ローカル時計の遅れ・進み、停止より前の解除、確定前の解除、Job中のpause→unpauseで停止が解けないこと。照合の途中で作った停止はその照合で確定しないこと。PR58-R001: t=2の完全な観測→t=3のReady（配送なし）→t=5のanchorの一時的な欠落→t=6で、Readyが結び付き適格になること。PR58-R002: 件数の欠落・null・文字列・負・小数で保留し、正しい件数で回復すること。total_countのない件数付きの一覧は取得失敗",
      "expected": "取りこぼしたReadyは回復する。信頼の記録の前のReadyは結び付かない。時計のずれで古い解除を数えない"
     }
    ]
@@ -243,6 +244,22 @@
     {
      "location": "人の手動の粗探しの記録",
      "result": "比較だけ。snapshot.faultfindingには入れない"
+    },
+    {
+     "location": "reconcile: branchの履歴の不完全（activityのanchor）",
+     "result": "恒久の原因がなければ保留（PR58-R001）"
+    },
+    {
+     "location": "collect: pr.commitsの件数",
+     "result": "有限の非負整数でなければ未確認（保留）。PR58-R002"
+    },
+    {
+     "location": "GhReader.pages: 件数付きの一覧（workflow_runs・jobs・check_runs）",
+     "result": "total_countが非負整数でなければ取得失敗"
+    },
+    {
+     "location": "GhReader.pages: 件数のない一覧",
+     "result": "Linkのnextをたどる。件数がないので従来どおり（ページの失敗は取得失敗）"
     }
    ]
   },

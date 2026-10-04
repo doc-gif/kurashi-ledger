@@ -477,11 +477,15 @@ export async function reconcile(
       acceptedDiffers: dispatcherAccepted !== currentAccepted,
       manualFaultfinding: manualFaultfinding(p, c),
     };
-    // PR48-R013: transient incompleteness (the PR, its state or main changed during the fetch, a short commit
-    // page) holds everything. Permanent causes alone (an untrusted workflow evaluated on a stable pair, the
-    // 250-commit list limit) are processed without binding, so a Ready that arrived before the owner recorded
-    // the trust is never bound later (review-dispatch-implementation.md workflowの信頼 3).
-    if (c.transient) held.add(target.pr);
+    // PR48-R013: transient incompleteness (the PR, its state or main changed during the fetch, a short or
+    // unconfirmed commit list) holds everything. So does an incomplete branch history (PR58-R001: a lost
+    // activity anchor can come back; saving would move the recovery window past a missed Ready), unless a
+    // known permanent cause applies: an untrusted workflow evaluated on a stable pair (a Ready that arrived
+    // before the owner recorded the trust is never bound later, review-dispatch-implementation.md workflowの
+    // 信頼 3), the 250-commit list limit, or a head branch outside the repository. Those are processed unbound.
+    const permanent =
+      c.workflow === "untrusted" || c.commitList === "capped" || c.headRepoId !== p.repoId;
+    if (c.transient || (!c.snapshot.historyComplete && !permanent)) held.add(target.pr);
     else
       updates.push({
         key,
