@@ -654,6 +654,7 @@
             {"id": "pay_R1", "recordType": "payslip", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "誤って取り消した"}}
           ]
         },
+        {"op": "save", "opId": "o1b", "at": "2026-10-25T23:59:00.000Z", "expect": {"outcome": "rejected", "reason": "value-invalid"}, "record": {"id": "pay_R1", "recordType": "payslip", "revision": 3, "reason": "void", "changeNote": {"state": "known", "value": "修復: 取り消し直す"}}},
         {
           "op": "save",
           "opId": "o2",
@@ -769,6 +770,7 @@
             }
           ]
         },
+        {"op": "save", "opId": "o1b", "at": "2026-10-25T23:59:00.000Z", "expect": {"outcome": "rejected", "reason": "transition-not-allowed"}, "record": {"id": "pay_R2", "recordType": "payslip", "revision": 2, "reason": "correct-input-error", "importKey": {"state": "not-applicable"}}},
         {
           "op": "save",
           "opId": "o2",
@@ -1160,6 +1162,200 @@
             {"doc": "README.md", "section": "変更の履歴", "quote": "空・空白だけの文字列のwriteRequestId"},
             {"doc": "common-types.md", "section": "10", "quote": "それを最初の結果として返さず、その要求を拒否する"}
           ]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-02-i",
+      "title": "一度消えた行IDは、信頼できない履歴のあとの修復でも使えない（行IDの予約は版1からのすべての改訂）",
+      "covers": [{"doc": "common-types.md", "section": "2"}, {"doc": "common-types.md", "section": "9"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2026-10-25T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": ["fact-state-not-allowed"],
+          "records": [
+            {
+              "id": "pay_Q1",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_1",
+                "paymentKind": {"state": "known", "value": "salary"},
+                "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+                "grossPay": {"state": "known", "value": 105000},
+                "otherEarnings": {
+                  "state": "known",
+                  "value": [{"lineId": "l1", "label": "手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 5000}}]
+                }
+              }
+            },
+            {
+              "id": "pay_Q1",
+              "recordType": "payslip",
+              "revision": 2,
+              "reason": "correct-input-error",
+              "knownOn": {"state": "not-stated"},
+              "body": {"otherEarnings": {"state": "known", "value": []}}
+            },
+            {
+              "id": "pay_Q1",
+              "recordType": "payslip",
+              "revision": 3,
+              "reason": "correct-input-error",
+              "knownOn": {"state": "known", "value": "2026-10-20"},
+              "body": {
+                "otherEarnings": {
+                  "state": "known",
+                  "value": [{"lineId": "l1", "label": "手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 5000}}]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-26T00:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "line-id-reused"},
+          "record": {
+            "id": "pay_Q1",
+            "recordType": "payslip",
+            "revision": 4,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "修復: 把握日を確かめた"},
+            "knownOn": {"state": "known", "value": "2026-10-20"}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-10-26T00:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_Q1",
+            "recordType": "payslip",
+            "revision": 4,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "修復: 行IDをl2にする"},
+            "knownOn": {"state": "known", "value": "2026-10-20"},
+            "body": {
+              "otherEarnings": {
+                "state": "known",
+                "value": [{"lineId": "l2", "label": "手当", "category": {"state": "known", "value": "allowance"}, "amount": {"state": "known", "value": 5000}}]
+              }
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 105000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "版2でl1が消え、版3（未検査）で再び使われた。行IDの予約は版1からのすべての改訂なので、l1を保つ修復（o2）は拒否し、別の行ID（l2）にした修復（o3）で信頼が回復する。",
+          "cites": [{"doc": "common-types.md", "section": "9", "quote": "版の連続、recordedSeqの増加、2の行IDの予約（版1からのすべての改訂）は通常と同じ"}]
+        }
+      ]
+    },
+    {
+      "scenarioId": "TC-02-j",
+      "title": "新しい版を名乗らない取込の知らない区分の値は静的な検査の違反で、修復の訂正で直す。activeからの修復の取消ではbodyを変えない",
+      "covers": [{"doc": "common-types.md", "section": "1"}, {"doc": "common-types.md", "section": "9"}],
+      "rules": {"comparisonMapping": "none", "attribution": "none"},
+      "operations": [
+        {
+          "op": "restoreUnchecked",
+          "opId": "o1",
+          "at": "2026-10-25T00:00:00.000Z",
+          "expect": {"outcome": "restored"},
+          "expectedViolations": ["value-invalid"],
+          "records": [
+            {
+              "id": "pay_J1",
+              "recordType": "payslip",
+              "body": {
+                "employerId": "emp_1",
+                "paymentKind": {"state": "known", "value": "salary"},
+                "scheduledPayDate": {"state": "known", "value": "2026-10-23"},
+                "grossPay": {"state": "known", "value": 105000},
+                "incomeTimingKind": {"state": "known", "value": "junk"}
+              }
+            }
+          ]
+        },
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2026-10-26T00:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "body-change-on-void-or-unvoid"},
+          "record": {
+            "id": "pay_J1",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "void",
+            "changeNote": {"state": "known", "value": "修復: 取り消す"},
+            "body": {"incomeTimingKind": {"state": "unknown"}}
+          }
+        },
+        {
+          "op": "save",
+          "opId": "o3",
+          "at": "2026-10-26T00:01:00.000Z",
+          "expect": {"outcome": "accepted"},
+          "record": {
+            "id": "pay_J1",
+            "recordType": "payslip",
+            "revision": 2,
+            "reason": "correct-input-error",
+            "changeNote": {"state": "known", "value": "修復: 壊れた区分の値をunknownにする"},
+            "body": {"incomeTimingKind": {"state": "unknown"}}
+          }
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "o1",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {
+            "values": [
+              {
+                "state": "incomplete",
+                "knownSum": 0,
+                "coverage": {"state": "not-applicable"},
+                "missing": [{"ref": {"id": "pay_J1", "revision": 1, "line": "whole"}, "field": {"kind": "derived", "key": "save-check"}, "state": "conflict"}]
+              }
+            ]
+          },
+          "reason": "新しい契約版を名乗らない取込の知らない区分の値junkは、読むだけの対象ではなく静的な検査の違反。その明細は信頼できず、集計はsave-checkの不足。",
+          "cites": [{"doc": "common-types.md", "section": "1", "quote": "新しい版を名乗らないデータ（名乗りがない、同じか古い版を名乗る外からの取込等）の知らない項目・知らない値は、静的な検査の違反"}]
+        },
+        {
+          "checkId": "c02",
+          "afterOp": "end",
+          "query": {
+            "kind": "aggregate",
+            "key": {"kind": "payslip-item", "item": "grossPay"},
+            "axis": "scheduled-pay-date",
+            "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-10-01", "to": "2026-10-31"}
+          },
+          "expect": {"values": [{"state": "complete", "knownSum": 105000, "coverage": {"state": "not-applicable"}, "missing": []}]},
+          "reason": "activeからの修復の取消ではbodyを変えられない（o2は拒否）。修復の訂正（changeNoteあり）で区分をunknownに直すと信頼が回復し、集計に入る。",
+          "cites": [{"doc": "common-types.md", "section": "9", "quote": "activeからの修復の取消とunvoidは変えない"}]
         }
       ]
     }

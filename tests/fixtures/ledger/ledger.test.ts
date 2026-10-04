@@ -294,9 +294,10 @@ function factStateOf(v: unknown): string | undefined {
 
 // 共通の型の9の「信頼できる履歴と修復」: 改訂の静的な検査。取消（void）は、取消が決める項目だけに当て、bodyと変えられない
 // 項目（entryChannel・importKey）は直前と同じであることだけを確かめる（同じなら、それらの違反を数えない）。
-function staticCodesFor(rec: Obj, prev: Obj | undefined, mode: CheckMode): { code: string; path: string; message: string }[] {
+// 修復の取消（直前までの履歴が信頼できない記録の取消）は、bodyと変えられない項目にも当てる（所有者の決定（2026-10-04））。
+function staticCodesFor(rec: Obj, prev: Obj | undefined, mode: CheckMode, repair = false): { code: string; path: string; message: string }[] {
   const vs = checkRecordStatic(rec, mode);
-  if (rec["reason"] !== "void" || prev === undefined) return vs;
+  if (rec["reason"] !== "void" || prev === undefined || repair) return vs;
   const same = (f: string): boolean => stableStringify(rec[f]) === stableStringify(prev[f]);
   return vs.filter(
     (v) =>
@@ -324,7 +325,8 @@ function transitionCodes(history: readonly Obj[], rec: Obj, repair: boolean, at:
     if ((reason === "correct-input-error" || reason === "new-information") && ps !== "active") codes.add("transition-not-allowed");
     if (reason === "void" && ps !== "active" && !(repair && ps === "voided")) codes.add("transition-not-allowed");
     if (reason === "unvoid" && ps !== "voided") codes.add("transition-not-allowed");
-    if (reason === "unvoid" || (reason === "void" && !repair)) {
+    // 修復の取消でbodyを変えられるのは、voidedからの再度の取消だけ（所有者の決定（2026-10-04））。
+    if (reason === "unvoid" || (reason === "void" && !(repair && ps === "voided"))) {
       if (stableStringify(rec["body"]) !== stableStringify(prev["body"])) codes.add("body-change-on-void-or-unvoid");
       if (!repair && stableStringify(rec["knownOn"]) !== stableStringify(prev["knownOn"])) codes.add("known-on-not-inherited");
     }
@@ -335,10 +337,14 @@ function transitionCodes(history: readonly Obj[], rec: Obj, repair: boolean, at:
       const note = rec["changeNote"];
       if (!isObj(note) || note["state"] !== "known" || typeof note["value"] !== "string" || note["value"].trim() === "") codes.add("transition-not-allowed");
     }
-    const prevLines = lineIdsOf(prev);
-    const everUsed = new Set<string>();
-    for (const r of history) for (const l of lineIdsOf(r)) everUsed.add(l);
-    for (const l of lineIdsOf(rec)) if (everUsed.has(l) && !prevLines.has(l)) codes.add("line-id-reused");
+    // 行IDの予約（共通の型の2）: 版1からのすべての改訂で、一度消えた行IDは、後の改訂（修復を含む）で使わない。
+    const dropped = new Set<string>();
+    for (let i = 0; i < history.length; i += 1) {
+      const now = lineIdsOf(history[i] as Obj);
+      const next = i + 1 < history.length ? lineIdsOf(history[i + 1] as Obj) : lineIdsOf(rec);
+      for (const l of now) if (!next.has(l)) dropped.add(l);
+    }
+    for (const l of lineIdsOf(rec)) if (dropped.has(l)) codes.add("line-id-reused");
   }
   // 把握日（共通の型の7）: 新しく入力する把握日は、保存の日付（Asia/Tokyo）より後にできない。修復の改訂では引き継ぐ値も入力とみなす。
   const knownOn = rec["knownOn"];
@@ -362,7 +368,7 @@ function trustFlags(state: State, revs: readonly Obj[]): boolean[] {
   revs.forEach((rec, k) => {
     const hist = revs.slice(0, k);
     const prev = hist[hist.length - 1];
-    let valid = staticCodesFor(bare(rec), prev, "read").length === 0 && transitionCodes(hist, rec, !trusted, typeof rec["__at"] === "string" ? rec["__at"] : undefined).size === 0;
+    let valid = staticCodesFor(bare(rec), prev, rec["__newer"] === true ? "read" : "save", !trusted).length === 0 && transitionCodes(hist, rec, !trusted, typeof rec["__at"] === "string" ? rec["__at"] : undefined).size === 0;
     const unchecked = rec["__unchecked"] === true;
     if (valid && unchecked && rec["reason"] === "void" && isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known") {
       const keep = rec["duplicateOf"]["value"];
@@ -376,9 +382,14 @@ function trustFlags(state: State, revs: readonly Obj[]): boolean[] {
 }
 
 function keeperValidAt(state: State, id: string, seq: number): boolean {
-  const revs = (state.records.get(id) ?? []).filter((r) => typeof r["__seq"] === "number" && r["__seq"] <= seq);
+  const at = (rid: string): Obj[] => (state.records.get(rid) ?? []).filter((r) => typeof r["__seq"] === "number" && r["__seq"] <= seq);
+  const revs = at(id);
   const last = revs[revs.length - 1];
   if (last === undefined || last["status"] !== "active") return false;
+  // 残す方は、その連番の見方で、整った差し替えの系列の現在の記録であること（共通の型の9の「有効な記録」）。
+  const lookup: RecordLookup = (rid) => at(rid).at(-1);
+  const series = seriesAmong(lookup, [...state.records.keys()].filter((rid) => at(rid).length > 0));
+  if (series.superseded.has(id) || series.illFormed.has(id)) return false;
   return trustFlags(state, revs).at(-1) === true;
 }
 
@@ -389,7 +400,7 @@ function historyTrusted(state: State, id: string): boolean {
 
 // 古い版では読むだけ（共通の型の1）: 読取の検査では違反でないが保存の検査では違反になる値（知らない拡張列挙の値・知らない項目）を持つ記録。
 function hasNewerContent(rec: Obj | undefined): boolean {
-  if (rec === undefined) return false;
+  if (rec === undefined || rec["__newer"] !== true) return false;
   rec = bare(rec);
   const read = new Set(checkRecordStatic(rec, "read").map((v) => `${v.code}|${v.path}`));
   return checkRecordStatic(rec, "save").some((v) => !read.has(`${v.code}|${v.path}`));
@@ -401,7 +412,8 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
   const id = String(rec["id"]);
   const reason = rec["reason"];
   const prev = latest(state, id);
-  for (const v of staticCodesFor(rec, prev, "save")) {
+  const repairing = prev !== undefined && !historyTrusted(state, id);
+  for (const v of staticCodesFor(rec, prev, "save", repairing)) {
     if (v.code === "shape") problems.add(where, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
     else codes.add(v.code);
   }
@@ -619,13 +631,16 @@ function replayOps(
           if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
           else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }), unchecked: true });
           // 復元は読取の検査（拡張できる列挙の知らない値は違反にしない。共通の型の1）。新しい保存の拒否はsaveの検査（TC-02-aのo05d）。
-          for (const v of staticCodesFor(rec, latest(state, rid), "read")) {
+          // 新しい版のデータ（共通の型の1）だけ読取の検査。それ以外の知らない内容は静的な検査の違反。
+          const newerData = typeof op["sourceContractVersion"] === "string" && op["sourceContractVersion"] > LEDGER_CONTRACT_VERSION;
+          const rprev = latest(state, rid);
+          for (const v of staticCodesFor(rec, rprev, newerData ? "read" : "save", rprev !== undefined && !historyTrusted(state, rid))) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
           for (const x of referencedIds(rec)) if (!exists(state, x) && x !== rec["id"]) problems.add(w, `復元する記録の参照先がない: ${x}`);
           const id = String(rec["id"]);
-          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId, __unchecked: true, __seq: state.seq + 1, __at: op["at"] }]);
+          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId, __unchecked: true, __newer: newerData, __seq: state.seq + 1, __at: op["at"] }]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
           // 履歴全体で予約するキー（共通の型の9）: 復元した改訂のimportKeyも予約する（修復で直したあとも）。
           if (isObj(rec["importKey"]) && rec["importKey"]["state"] === "known") {
@@ -2612,6 +2627,10 @@ test("検査の自己確認: 信頼の回復と修復の規則（共通の型の
     ["信頼できない記録の行を指す配分をacceptedにする", (c) => (opOf(c, "EX-07-e2", "o3")["expect"] = { outcome: "accepted" }), "EX-07-e2 o3"],
     ["知らない値を持つ記録の取消をacceptedにする", (c) => (opOf(c, "EX-05-h2", "o2")["expect"] = { outcome: "accepted" }), "EX-05-h2 o2"],
     ["uncheckedの改訂の再送をreplayedにする", (c) => (opOf(c, "TC-02-h", "o2")["expect"] = { outcome: "replayed", of: "o1" }), "TC-02-h o2"],
+    ["一度消えた行IDを保つ修復をacceptedにする", (c) => (opOf(c, "TC-02-i", "o2")["expect"] = { outcome: "accepted" }), "TC-02-i o2"],
+    ["changeNoteのない修復の訂正をacceptedにする", (c) => (opOf(c, "TC-02-d", "o1b")["expect"] = { outcome: "accepted" }), "TC-02-d o1b"],
+    ["bodyを直さない修復の取消をacceptedにする", (c) => (opOf(c, "TC-02-c", "o1b")["expect"] = { outcome: "accepted" }), "TC-02-c o1b"],
+    ["activeからの修復の取消でbodyを変えてacceptedにする", (c) => (opOf(c, "TC-02-j", "o2")["expect"] = { outcome: "accepted" }), "TC-02-j o2"],
   ];
   for (const [name, f, word] of cases) {
     const p = mutated(f);

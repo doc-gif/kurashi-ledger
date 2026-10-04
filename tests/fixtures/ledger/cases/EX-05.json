@@ -1158,7 +1158,7 @@
           "opId": "o1",
           "at": "2027-01-10T00:00:00.000Z",
           "expect": {"outcome": "restored"},
-          "expectedViolations": [],
+          "sourceContractVersion": "2.1", "expectedViolations": [],
           "records": [
             {
               "id": "pay_507",
@@ -1176,6 +1176,7 @@
         }
       ],
       "checks": [
+        {"checkId": "c03", "afterOp": "end", "query": {"kind": "aggregate", "key": {"kind": "payslip-item", "item": "grossPay"}, "axis": "scheduled-pay-date", "scope": {"employerIds": ["emp_1"], "accountIds": [], "from": "2026-12-01", "to": "2026-12-31"}}, "expect": {"values": [{"state": "complete", "knownSum": 200000, "coverage": {"state": "not-applicable"}, "missing": []}]}, "reason": "新しい版のデータとして入った明細の知らない区分の値と知らない項目は、読取の違反でも保存の検査をすり抜けたデータでもないので、支払予定日の軸の集計（T06の範囲）ではsave-checkにせず、そのまま数える。", "cites": [{"doc": "common-types.md", "section": "1", "quote": "保存の検査の違反（形の違反）とも、9の「保存の検査をすり抜けたデータ」ともみなさない"}]},
         {
           "checkId": "c01",
           "afterOp": "end",
