@@ -88,14 +88,14 @@ GitHubのREST APIにはスレッドの解決状態がなく、書込み権限の
 
 ### workflowの信頼（PR48-R008）
 
-範囲は所有者の決定（[Issue #50の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)）で、CIの判定を決めるファイル: `.github/`の全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む`scripts/lib/test-skips.ts`。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。
+範囲は所有者の決定（[Issue #50の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)）で、CIの判定を決めるファイル: `.github/`の全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。
 
 1. 範囲のファイルを変えるPRは、CIが成功してもunknown（`unknown-evidence`）で止まる。
 2. ownerは差分の独立レビューを確かめ、PRのheadで次の要約を求める（`git ls-tree`の行を範囲で絞り、パスのバイト順に並べたSHA-256）。
 
    ```sh
    git ls-tree -r --full-tree <head> \
-     | grep -E $'\t(\\.github/|package\\.json$|tools/review_guard/|scripts/check-test-skips\\.ts$|scripts/lib/test-skips\\.ts$)' \
+     | grep -E $'\t(\\.github/|package\\.json$|tools/review_guard/|scripts/check-test-skips\\.ts$|scripts/lib/test-skips\\.ts$|docs/development\\.md$)' \
      | grep -Ev $'\t(.*/)?tests/|\\.test\\.[cm]?[jt]s$|\t(.*/)?test_[^/]*\\.py$' \
      | LC_ALL=C sort -t $'\t' -k2,2 | shasum -a 256
    ```

@@ -203,7 +203,8 @@ export type Collection = {
 };
 // PR48-R008: the files that decide the CI judgement. Owner decision (Issue #50, 2026-10-04,
 // issuecomment-5977404200): all of .github, package.json, tools/review_guard/, scripts/check-test-skips.ts
-// and the module it reads. Test contents are excluded and rely on independent content review. A path
+// and what it reads (scripts/lib/test-skips.ts and the skip table in docs/development.md). Test
+// contents are excluded and rely on independent content review. A path
 // ending in "/" is a directory prefix; any other path is one file. Widen or narrow the unit only here.
 export const CI_TRUST_PATHS: readonly string[] = [
   ".github/",
@@ -211,6 +212,7 @@ export const CI_TRUST_PATHS: readonly string[] = [
   "tools/review_guard/",
   "scripts/check-test-skips.ts",
   "scripts/lib/test-skips.ts",
+  "docs/development.md", // the skip table check-test-skips reads (same receipt: "その読む部品")
 ];
 // Test contents inside the trust paths (e.g. tools/review_guard/tests/, *.test.ts, test_*.py).
 export const CI_TRUST_EXCLUDED: readonly RegExp[] = [

@@ -714,7 +714,8 @@ test("R008 each trust path (and only those, without test contents) makes workflo
     [{ "tools/review_guard/tests/test_guard.py": "c1".repeat(20) }, "unchanged"],
     [{ "scripts/lib/test-skips.test.ts": "c1".repeat(20) }, "unchanged"],
     [{ "scripts/other.ts": "c1".repeat(20) }, "unchanged"],
-    [{ "docs/development.md": "c1".repeat(20) }, "unchanged"],
+    [{ "docs/development.md": "c1".repeat(20) }, "untrusted"],
+    [{ "docs/architecture.md": "c1".repeat(20) }, "unchanged"],
     [{ "tests/unit/sample.test.ts": "c1".repeat(20) }, "unchanged"],
     [{ "package.json.bak": "c1".repeat(20) }, "unchanged"],
   ];
@@ -740,6 +741,7 @@ test("R008 each trust path (and only those, without test contents) makes workflo
     "tools/review_guard/",
     "scripts/check-test-skips.ts",
     "scripts/lib/test-skips.ts",
+    "docs/development.md",
   ]);
 });
 test("R008 required jobs count only from the reviewed ci.yml path; a truncated tree or a removed .github is not trusted", async () => {
