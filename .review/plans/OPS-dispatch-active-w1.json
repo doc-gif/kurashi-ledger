@@ -1,0 +1,276 @@
+{
+  "schema_version": 2,
+  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "scripts/lib/review-dispatch/doctor.test.ts",
+    "scripts/lib/review-dispatch/doctor.ts",
+    "scripts/lib/review-dispatch/launcher.test.ts",
+    "scripts/lib/review-dispatch/launcher.ts",
+    "scripts/lib/review-dispatch/runtime.test.ts",
+    "scripts/lib/review-dispatch/runtime.ts",
+    "tools/review_dispatch/seatbelt/cli.sb",
+    "tools/review_dispatch/seatbelt/tool.sb"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #50のW1（起動器・Seatbelt・doctor）。W0が設計§7/§10を所有者決定O1〜O3へ書き換え、W4がactive CLIと導入手順を所有する。W1が設計文書や手順書を直すと、W0/W4と同じ箇所を同時に編集する",
+      "state": "resolved",
+      "resolution": "W1は新しいlauncher/doctor/seatbeltと、runtime.tsのCapabilityの必須probeの追加（加算だけ）に限る。設計・手順の文書は変えず、所有者の実機測定の手順はPR本文に置き、W4がdocsへ移す。runtime.test.tsの合成capabilityには追加したprobe名を足す（判定は弱めない）"
+    },
+    {
+      "description": "O2は「専用CLAUDE_CONFIG_DIRで1回ログイン」を前提にするが、公式のenv-vars文書は「macOSでは購読の資格情報はシステムのキーチェーンに保存され、CLAUDE_CONFIG_DIRの影響を受けない」と書く。CLI全体のprofileでキーチェーンを拒否すると購読認証が動かず、許すとCLIの子孫もキーチェーンへ届く",
+      "state": "resolved",
+      "resolution": "O2は再検討しない。CLI profileはclaudeのときだけキーチェーン（/usr/bin/securityとsecurityd）を許し、codexでは許さない。tool子profileは常に拒否。実CLIの道具経路でのキーチェーン拒否は所有者の測定が揃うまでunverified。この事実と残余リスクを報告・PR本文に書く"
+    },
+    {
+      "description": "設計§7はCLI全体のprofileとtool子processのprofileを分けて両方の適用を証明することを求める。macOSは、sandbox-execで隔離したプロセスの中でのsandbox_applyを拒否する（手元のmacOS 26.5で、外側(allow default)の中のsandbox-execが『Operation not permitted』exit 71）。CLIが自分の子へtool profileを重ねられず、Codexの--sandbox read-onlyのSeatbeltも外側のprofileの中では起動できない",
+      "state": "resolved",
+      "resolution": "入れ子にできたと偽らない。tool profileはdoctorの合成子プロセスと、受付側が直接起動する道具にだけ適用し、実CLIのtool子の拘束（tool-child-confined）は所有者の測定記録が揃うまでunverified。入れ子の拒否はdoctorが実測して理由に残す。Codexは外側profileの中で自分のSeatbeltを起動できないので、測定がない限り起動不可のまま。代案（モデル通信だけを通すlocal proxy、Claudeの道具をRead/Grep/Globに限ることをtool子の境界として受け入れるか）は所有者の判断として報告する"
+    },
+    {
+      "description": "doctorの否定試験に実際のSeatbeltを使うと、CIのmacOS runnerでsandbox-execが使えない可能性がある。docs/development.mdのskipの表はmacOSとLinuxを区別しない",
+      "state": "resolved",
+      "resolution": "skipしない。macOSでは実際のsandbox-execで合成子プロセス（Node.jsの固定probe、実AI・資格情報なし）を拘束して全probeの拒否と、拘束なしの対照の成功を確かめる。macOS以外では同じ試験がdoctorのdisabled（機構なし）を確かめる。CIのmacOS runnerで失敗すれば、所有者の測定へ移す判断を報告する（黙ってskipしない）"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "起動器・doctorは保存先の排他を作らず、supervisorのrun lock・PR leaseも変えない。doctorの合成fixtureは毎回新しい一時ディレクトリだけを使い、製品・受付のDB/lockに触れない。descendant-lockの証拠は既存のsupervisorの責務のまま（Capabilityの既存probe）",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分でlock・flock・store.tsへの変更がないことを読む。doctorのfixtureがmkdtempの新しい場所だけに書くことを試験で確かめる",
+          "expected": "lockの同一性・取得の規則は不変。doctorは既存のlockを取得・解放しない"
+        },
+        {
+          "id": "recovery",
+          "method": "runtime.tsの変更が必須probe名の追加だけであることを差分で確かめ、既存のD03（uncertainの保持）試験を変えずに通す",
+          "expected": "uncertain・lease保持の動作は不変"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "起動器はworkerへ渡す環境をallowlistから作り直し、GH_TOKEN・KL_*・ANTHROPIC_API_KEY・CLAUDE_CODE_OAUTH_TOKEN・OPENAI_API_KEY等を渡さない（PR42-R001の縮小の失敗をfail closed）。Seatbeltは資格情報・policy・DBの領域を拒否する。doctorの否定試験は合成の『鍵』ファイル（SYNTHETIC文字列）だけを使い、実キーチェーン・実CLI・実鍵を読まない。診断の出力は閉じた列挙（probe ID・denied/allowed/inconclusive・理由ID）だけにし、OSのエラー文・パス・子の出力を写さない（PR37-R001）",
+      "checks": [
+        {
+          "id": "public",
+          "method": "stageを明示して`node scripts/check-public.ts --staged`。launcherの試験で、親の環境に偽の秘密（合成値）を入れても結果のenvに出ないこと、余分なenv・相対パス・改行・NUL・保護領域と重なる場所・cwdのCLAUDE.md/AGENTS.md/.claude/.mcp.json/.codexを拒否することを確かめる。doctorの試験で、結果のJSONに合成の秘密の値・fixtureのパスが出ないことを確かめる",
+          "expected": "終了コード0。差分・試験の出力に実在の秘密・個人のパスがない。拒否できない設定・合成の秘密が見えるprobeではcapabilityがverifiedにならない"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "実CLIの版・実行ファイルhash・profileのhash・argvのhashを測定記録と結び、どれかが変われば測定は無効（unverified）。help・版表示を隔離の証拠にしない。CIは固定したNode.jsの版で3 OSの既存の検査を通す（PR12-R103）",
+      "checks": [
+        {
+          "id": "update",
+          "method": "doctorの試験で、版・codeHash・profileHash・argvHashのどれかが違う測定記録を与え、unverifiedになることを確かめる。npm test・typecheck・check:test-skipsを既存のCIで3 OSに通す",
+          "expected": "古い測定・別の版でverifiedにならない。未検証のCLIはdisabled/unverifiedのまま"
+        },
+        {
+          "id": "artifact",
+          "method": "profileは固定ファイル（tools/review_dispatch/seatbelt/）で、起動器はレビュー済みの写しの絶対パスと、そのhashを要求する。macOSの試験でprofileの実ファイルを実際のsandbox-execへ渡す",
+          "expected": "PRのcheckoutや別のprofileで起動しない。profileの改変はhashの不一致で測定を無効にする"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "起動器は資料・設定・run用HOME/TMPの各ルートが、正規化した絶対パスで、policy・DB・repo等の保護ルートと重ならない（等しい・祖先・子孫でない）ことを要求する。別名（symlink）はdoctor側でrealpathしてからSeatbeltへ渡す（PR12-R104）",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "launcherの試験で、空でない・未知のcwd内容（CLAUDE.md等）や存在しない場所を拒否する。doctorは毎回新しい一時ルートを作る",
+          "expected": "既存の受付ルート・製品データを作成・上書きしない"
+        },
+        {
+          "id": "aliases",
+          "method": "`..`・末尾の/・相対・重複する区切りを含むパス、保護ルートの祖先・子孫を与えた試験。macOSの試験はrealpath後のパスでprofileを適用する",
+          "expected": "別名や重なりで保護ルートへ届く起動計画を作らない"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "SQLite・schema・migration・backupを変えない。doctorの『DB書込み』probeは合成の一時ファイルへの書込みが拒否されるかだけを見て、受付のDBを開かない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "store.tsに差分がないことを確かめる",
+          "expected": "DBの形式・transactionは不変"
+        },
+        {
+          "id": "restore",
+          "method": "doctorのfixtureが一時ディレクトリだけに作られ、終了時に消えることを試験で確かめる",
+          "expected": "受付のDB・backupに触れない"
+        },
+        {
+          "id": "manifest",
+          "method": "doctorの測定記録は形式・bindingを厳密に検査し、不明・不正ならunverified",
+          "expected": "不完全な記録で起動可能にならない"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "launcher.ts buildLaunch()の引数（所有者管理のinstall設定とrunの場所）",
+      "data": "実行ファイル・profile・設定ディレクトリ・資料・HOME/TMP・保護ルートの絶対パス、固定版",
+      "trust": "partially-trusted",
+      "control": "正規化済み絶対パス・許可文字だけ、保護ルートとの重なりを拒否、platformがdarwin以外・sandbox-execの固定パス以外は拒否。policyからargvやenvを任意に足す口を設けない"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "launcher.ts buildLaunch()のjob本文（stdinへ渡すプロンプト）",
+      "data": "PRの差分・本文を含みうるjobの文字列",
+      "trust": "untrusted",
+      "control": "argvへ入れずstdinだけで渡す（フラグとして解釈させない）。argvの問い合わせ文は固定の定数。サイズ上限とNULの拒否"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "launcher.tsの起動計画（/usr/bin/sandbox-execへのargvとenv、shellなし）",
+      "data": "CLIのフラグ・Seatbeltのparam・allowlistのenv",
+      "trust": "trusted",
+      "control": "shell:false、envはallowlistから作り直し親の環境を展開しない。Claudeは公式文書にあるフラグだけ（--restricted・--safe-mode・--tools・--allowedTools・--disallowedTools・--permission-mode dontAsk・--permission-prompts none・--settings・--mcp-config・--strict-mcp-config・--no-session-persistence・--disable-slash-commands・--output-format json・--json-schema）、--bareとAPI鍵は使わない。Codexはcodex exec --json --sandbox read-only等の文書化されたフラグだけ。checkPlan()が計画を独立に再検査する"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "doctor.tsのprobe子プロセスの出力（Seatbeltで拘束したNode.jsの固定probe）",
+      "data": "probeの結果（1行のJSON）",
+      "trust": "untrusted",
+      "control": "サイズ上限、厳密なJSONの形（outcomeとcodeの閉じた列挙）以外はinconclusive。EPERMだけをdenied、成功だけをallowed、それ以外はinconclusive。拘束なしの対照が成功しなければinconclusive"
+    },
+    {
+      "id": "B5",
+      "direction": "entry",
+      "location": "doctor.tsに渡す所有者の測定記録（実CLIの道具経路の否定試験の結果）",
+      "data": "backend・版・codeHash・profileHash・argvHash・probeごとの結果",
+      "trust": "partially-trusted",
+      "control": "厳密なschema、現在の値とのbinding一致、未知のキーの拒否。不一致・欠落はunverified。allowedが1つでもあればdisabled"
+    },
+    {
+      "id": "B6",
+      "direction": "exit",
+      "location": "doctor.tsの結果（Capabilityと状態verified/unverified/disabledと理由ID）",
+      "data": "runtime.tsのcapabilityReadyへ渡すprobeの真偽と診断",
+      "trust": "trusted",
+      "control": "全probeがdeniedのときだけtrue。理由は閉じた列挙のIDだけで、OSのエラー文・パス・子の出力を含めない"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "doctorの合成fixture（一時ディレクトリの合成の鍵・policy・DB・設定）と、loopbackの一時TCPサーバー",
+      "data": "SYNTHETICの文字列だけのファイル、127.0.0.1の一時ポート",
+      "trust": "trusted",
+      "control": "mkdtempの新しい場所だけに作り、終了時に消す。外部ネットワーク・実キーチェーン・実CLIを使わない"
+    },
+    {
+      "id": "B8",
+      "direction": "exit",
+      "location": "公開のリポジトリ（コード・profile・試験・計画・PR本文）",
+      "data": "合成の値と手順",
+      "trust": "untrusted",
+      "control": "stageを明示し`check-public --staged`を確かめる。実在のパス・鍵・アカウントを書かない"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "縮小・隔離を確かめられないのに起動・使用へ進む（fail open）",
+      "places": [
+        {"location": "doctor.ts evaluate()", "result": "対照の失敗・probeの不明・測定の欠落はunverified、allowedはdisabled。verifiedは全probeのdeniedだけ"},
+        {"location": "runtime.ts capabilityReady()", "result": "必須probeを増やすだけで、既存の判定を緩めない"},
+        {"location": "launcher.ts buildLaunch()", "result": "darwin以外・sandbox-execでない・保護ルートと重なる計画は例外で止め、計画を返さない"}
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "資格情報に届く道具（CLI・profile）をPRのcheckoutから実行する",
+      "places": [
+        {"location": "launcher.tsのprofile・実行ファイルのパス", "result": "所有者管理のinstall設定の絶対パスだけ。試験はfixtureの一時パスとfakeで、実CLIを起動しない"},
+        {"location": "doctor.tsの実Seatbelt試験", "result": "合成のNode.js probeだけを拘束する。実AI CLI・実鍵を使わない"}
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "診断・結果にOSのエラー文・パス・子の出力・秘密の値を写す",
+      "places": [
+        {"location": "doctor.tsの結果と理由", "result": "probe ID・閉じた列挙のoutcome・理由IDだけ。子の出力は解析後に捨てる"},
+        {"location": "launcher.tsの例外文", "result": "固定の文だけで、渡された値（パス・プロンプト）を含めない"}
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "public-path-exception-scope",
+      "pattern": "公開検査の例外を広げる",
+      "places": [
+        {"location": "scripts/check-public.ts・public-policy", "result": "変更しない。新しいファイルは通常の検査を通す"}
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "pattern": "未実行・別OS・継承した環境の検査を合格と扱う",
+      "places": [
+        {"location": "doctor.testのSeatbelt試験", "result": "macOSでは実sandbox-execで拒否と対照の両方を確かめ、それ以外のOSではdisabledを確かめる。skipしない"},
+        {"location": "launcher.tsのenv", "result": "親の環境を継承しないので、継承した変数で検査が素通りしない"}
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "artifact-release-coherence",
+      "pattern": "版やprofileが変わっても古い証拠で起動する",
+      "places": [
+        {"location": "doctor.tsの測定記録のbinding", "result": "版・codeHash・profileHash・argvHashのどれかの違いでunverified"}
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "install-record-verification-scope",
+      "pattern": "検査が保証すると述べる範囲より狭い範囲しか確かめない",
+      "places": [
+        {"location": "doctorのprobe一覧", "result": "合成子のOS拒否と、実CLIの道具経路（所有者の測定）を別のprobeとして扱い、合成子の結果だけで実CLIを合格にしない。入れ子にできないtool profileはunverifiedとして明示"}
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "cause_key": "destructive-op-follows-link",
+      "pattern": "別名・symlinkで保護領域へ届く",
+      "places": [
+        {"location": "launcher.tsのパス検査", "result": "正規化した絶対パスと保護ルートの重なりの拒否。symlinkの解決は呼び出し側（doctor・W4）でrealpathしてから渡す"},
+        {"location": "doctor.tsのfixture", "result": "realpathした一時ルートをSeatbeltのparamに使う"}
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "doctor・起動器が既存のlockを取る・外す",
+      "places": [
+        {"location": "launcher.ts・doctor.ts", "result": "lockを扱わない"}
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "doctorが受付のDBを開く・書く",
+      "places": [
+        {"location": "doctor.tsのdeny-db probe", "result": "一時の合成ファイルへの書込みだけを試す"}
+      ]
+    }
+  ]
+}
