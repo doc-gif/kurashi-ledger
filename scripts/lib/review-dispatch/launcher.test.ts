@@ -70,10 +70,11 @@ const job = (actor: number): Job => ({
 const opts = {
   platform: "darwin" as const,
   exists: () => false,
-  scan: () => ({ names: [], symlink: false }),
+  scan: () => [],
   readToken: () => TOKEN,
 };
 const flagValue = (p: LaunchPlan, flag: string) => p.args[p.args.indexOf(flag) + 1];
+const file = (name: string) => ({ name, kind: "file" as const, nlink: 1 });
 
 test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, prompt on stdin", () => {
   const secrets = {
@@ -133,7 +134,7 @@ test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, p
     // Job data reaches the CLI only through stdin.
     assert.match(p.stdin, /Head: a{40}\nBase: b{40}/);
     assert.ok(!p.args.some((a) => a.includes("a".repeat(40))));
-    assert.deepEqual(checkPlan(p, "claude"), []);
+    assert.deepEqual(checkPlan(p, claudeInstall(), run()), []);
   } finally {
     process.env = saved;
   }
@@ -151,9 +152,9 @@ test("Codex launch: codex exec --sandbox read-only only, no outer Seatbelt, no t
   ]);
   assert.deepEqual(Object.keys(p.env).sort(), [...ENV_KEYS.codex].sort());
   assert.equal(p.env["CODEX_HOME"], codexInstall().configDir);
-  assert.deepEqual(checkPlan(p, "codex"), []);
+  assert.deepEqual(checkPlan(p, codexInstall(), run()), []);
   const wrapped = { ...p, file: SANDBOX_EXEC, args: ["-f", "/opt/x/cli.sb", codexInstall().executable, ...p.args] };
-  assert.ok(checkPlan(wrapped, "codex").includes("codex-wrapped"));
+  assert.ok(checkPlan(wrapped, codexInstall(), run()).includes("codex-wrapped"));
 });
 
 test("launch refusals fail closed with fixed messages that never echo a path or token", () => {
@@ -182,7 +183,7 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     ["token in materials", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/materials/token" }, run(), opts)],
     ["token in home", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/home/token" }, run(), opts)],
     ["bad token", () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, readToken: () => "short" })],
-    ["old claude", () => buildLaunch(policy(), job(30), { ...claudeInstall(), version: "2.1.258" }, run(), opts)],
+    ["old claude", () => buildLaunch(policy(), job(30), { ...claudeInstall(), version: "2.1.267" }, run(), opts)],
     ["unpinned", () => buildLaunch(policy(), job(30), { ...claudeInstall(), version: "latest" }, run(), opts)],
   ];
   for (const [name, f] of cases)
@@ -193,11 +194,16 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     }, name);
   for (const name of ["CLAUDE.md", "AGENTS.md", ".claude", ".mcp.json", ".codex", ".git", "CLAUDE.local.md"])
     assert.throws(
-      () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => ({ names: ["src", name], symlink: false }) }),
+      () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [file("src"), file(name)] }),
       LaunchError,
       name,
     );
-  assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => ({ names: ["a"], symlink: true }) }), LaunchError);
+  // Case and Unicode normalization do not hide a name (macOS volumes are case-insensitive).
+  for (const name of ["claude.MD", "Agents.md", ".CLAUDE", ".Mcp.Json", "AGENTS.OVERRIDE.MD", ".Git"])
+    assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [file(name)] }), LaunchError, name);
+  assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "a", kind: "other", nlink: 1 }] }), LaunchError);
+  assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "a", kind: "file", nlink: 2 }] }), LaunchError);
+  assert.doesNotThrow(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "src", kind: "dir", nlink: 3 }, file("main.ts")] }));
   assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => { throw new Error("ENOENT"); } }), LaunchError);
   for (const p of ["/srv/synthetic/runs/r1/CLAUDE.md", "/srv/synthetic/AGENTS.md", "/.git"])
     assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, exists: (x) => x === p }), LaunchError, p);
@@ -242,7 +248,7 @@ test("token file: owner-only regular file in an owner-only directory, else refus
   linkSync(file, hard);
   refuses("hard link");
   rmSync(hard);
-  assert.throws(() => readTokenFile(join(dir, "missing")));
+  assert.throws(() => readTokenFile(join(dir, "missing")), (e: unknown) => e instanceof LaunchError && !e.message.includes("/"));
   assert.throws(() => readTokenFile("relative/token"), LaunchError);
 });
 
@@ -251,7 +257,7 @@ test("checkPlan catches tampered plans independently of the builder", () => {
   const edit = (f: (p: LaunchPlan) => void): string[] => {
     const p = base();
     f(p);
-    return checkPlan(p, "claude");
+    return checkPlan(p, claudeInstall(), run());
   };
   const set = (p: LaunchPlan, flag: string, value: string) => {
     p.args[p.args.indexOf(flag) + 1] = value;
@@ -262,6 +268,13 @@ test("checkPlan catches tampered plans independently of the builder", () => {
     set(p, "--settings", JSON.stringify(s));
   };
   assert.ok(edit((p) => p.args.push("--bare")).includes("bare"));
+  // Exact match: duplicates, reordering and later repeats are caught even when named checks pass.
+  assert.ok(edit((p) => p.args.push("--tools", "Read,Grep,Glob")).includes("not-canonical"));
+  assert.ok(edit((p) => p.args.push("--settings", "{}")).includes("not-canonical"));
+  assert.ok(edit((p) => p.args.push("--add-dir", "/srv/synthetic/repo")).includes("not-canonical"));
+  assert.ok(edit((p) => (p.cwd = "/srv/synthetic/other")).includes("not-canonical"));
+  assert.ok(edit((p) => (p.env["HOME"] = "/srv/synthetic/owner")).includes("not-canonical"));
+  assert.deepEqual(edit(() => {}), []);
   assert.ok(edit((p) => (p.env["GH_TOKEN"] = "synthetic")).includes("env-not-allowlisted"));
   for (const k of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "KL_X", "GITHUB_TOKEN"])
     assert.ok(edit((p) => (p.env[k] = "synthetic")).includes("credential-env"), k);
@@ -285,13 +298,13 @@ test("checkPlan catches tampered plans independently of the builder", () => {
   const codex = () => buildLaunch(policy(), job(20), codexInstall(), run(), opts);
   const c1 = codex();
   c1.args.push("--dangerously-bypass-approvals-and-sandbox");
-  assert.ok(checkPlan(c1, "codex").includes("forbidden-flag"));
+  assert.ok(checkPlan(c1, codexInstall(), run()).includes("forbidden-flag"));
   const c2 = codex();
   c2.args[c2.args.indexOf("read-only")] = "danger-full-access";
-  assert.ok(checkPlan(c2, "codex").includes("codex-isolation"));
+  assert.ok(checkPlan(c2, codexInstall(), run()).includes("codex-isolation"));
   const c3 = codex();
   c3.env[TOKEN_ENV] = TOKEN;
-  assert.ok(checkPlan(c3, "codex").includes("credential-env"));
+  assert.ok(checkPlan(c3, codexInstall(), run()).includes("credential-env"));
 });
 
 test("argv template hash ignores per-run paths and the token, and binds the install shape", () => {
@@ -302,12 +315,13 @@ test("argv template hash ignores per-run paths and the token, and binds the inst
   assert.notEqual(argvTemplateHash({ ...claudeInstall(), executable: "/opt/synthetic/claude/2.1.300/bin/other" }), a);
   assert.notEqual(argvTemplateHash({ ...claudeInstall(), cliProfile: "/opt/synthetic/other/cli.sb" }), a);
   assert.notEqual(argvTemplateHash(codexInstall()), a);
-  assert.equal(claudeVersionSupported("2.1.259"), true);
+  assert.equal(claudeVersionSupported("2.1.268"), true);
+  assert.equal(claudeVersionSupported("2.1.267"), false);
   assert.equal(claudeVersionSupported("2.2.0"), true);
   assert.equal(claudeVersionSupported("3.0.0"), true);
-  assert.equal(claudeVersionSupported("2.1.258"), false);
+  assert.equal(claudeVersionSupported("2.1.259"), false);
   assert.equal(claudeVersionSupported("2.0.999"), false);
-  assert.equal(claudeVersionSupported("2.1.259-beta"), false);
+  assert.equal(claudeVersionSupported("2.1.268-beta"), false);
 });
 
 test("synthetic PR tree: CLI configuration anywhere in the materials refuses the launch", (t) => {
@@ -319,7 +333,7 @@ test("synthetic PR tree: CLI configuration anywhere in the materials refuses the
   writeFileSync(join(root, "pr", "src", "main.ts"), "export {};\n");
   writeFileSync(join(root, "diff.txt"), "synthetic diff\n");
   assert.doesNotThrow(plan);
-  assert.equal(scanTree(root).symlink, false);
+  assert.ok(scanTree(root).every((e) => e.kind !== "other"));
   for (const [dir, name, isDir] of [
     ["pr", ".claude", true],
     ["pr/src", ".mcp.json", false],
@@ -327,6 +341,8 @@ test("synthetic PR tree: CLI configuration anywhere in the materials refuses the
     ["pr/src", "AGENTS.md", false],
     ["", ".git", true],
     ["pr", ".codex", true],
+    ["pr", "Claude.md", false],
+    ["pr/src", ".MCP.json", false],
   ] as const) {
     const p = join(root, ...dir.split("/").filter(Boolean), name);
     if (isDir) mkdirSync(p);
@@ -335,6 +351,16 @@ test("synthetic PR tree: CLI configuration anywhere in the materials refuses the
     rmSync(p, { recursive: true });
   }
   assert.doesNotThrow(plan);
+  if (process.platform !== "win32") {
+    // Real links and special files: refused before anything starts.
+    symlinkSync("/srv/synthetic/elsewhere", join(root, "pr", "link"));
+    assert.throws(plan, LaunchError, "symlink");
+    rmSync(join(root, "pr", "link"));
+    linkSync(join(root, "diff.txt"), join(root, "pr", "hard.txt"));
+    assert.throws(plan, LaunchError, "hard link");
+    rmSync(join(root, "pr", "hard.txt"));
+    assert.doesNotThrow(plan);
+  }
 });
 
 test("auth status runs under the same profile and env, Claude only", () => {

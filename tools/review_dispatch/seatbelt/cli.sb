@@ -20,7 +20,22 @@
 (allow process-fork)
 (allow process-exec (literal (param "EXECUTABLE")) (subpath (param "RUNTIME")))
 (allow signal (target same-sandbox))
-(allow sysctl-read)
+(allow sysctl-read
+  (sysctl-name-prefix "hw.")
+  (sysctl-name-prefix "machdep.cpu.")
+  (sysctl-name "kern.osrelease")
+  (sysctl-name "kern.ostype")
+  (sysctl-name "kern.osversion")
+  (sysctl-name "kern.osproductversion")
+  (sysctl-name "kern.version")
+  (sysctl-name "kern.hostname")
+  (sysctl-name "kern.boottime")
+  (sysctl-name "kern.maxfilesperproc")
+  (sysctl-name "kern.argmax")
+  (sysctl-name "kern.usrstack64")
+  (sysctl-name "kern.secure_kernel")
+  (sysctl-name "sysctl.proc_translated")
+  (sysctl-name "vm.pagesize"))
 (allow file-read-metadata)
 (allow system-socket)
 (allow ipc-posix-shm-read-data ipc-posix-shm-write-data ipc-posix-shm-write-create)
@@ -41,9 +56,8 @@
   (subpath "/private/etc/ssl")
   (literal "/dev/null")
   (literal "/dev/random")
-  (literal "/dev/urandom")
-  (literal "/dev/tty"))
-(allow file-write-data (literal "/dev/null") (literal "/dev/tty"))
+  (literal "/dev/urandom"))
+(allow file-write-data (literal "/dev/null"))
 
 (allow file-read* (subpath (param "RUNTIME")) (subpath (param "MATERIALS")))
 (allow file-read* file-write*
@@ -62,8 +76,19 @@
   (global-name "com.apple.system.logger"))
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))
 (allow network-outbound (remote tcp "*:443"))
+;; Not loopback, not even port 443 (local services, the dispatcher itself).
+(deny network-outbound (remote ip "localhost:*"))
+
+;; Other processes: deny-by-default leaves the arguments and environment of same-user
+;; processes readable (KERN_PROCARGS2 is a process-info operation), and the CLI's own
+;; environment holds the setup-token. Only a process's own information stays readable.
+;; BEGIN process-info-deny
+(deny process-info*)
+(allow process-info* (target self))
+;; END process-info-deny
 
 ;; Keychain: never, whatever the rules above allow (last matching rule wins).
+;; BEGIN keychain-deny
 (deny mach-lookup
   (global-name "com.apple.SecurityServer")
   (global-name "com.apple.securityd.xpc")
@@ -76,3 +101,4 @@
 (deny file-read* file-write*
   (regex #"/Library/Keychains(/|$)")
   (regex #"\.keychain(-db)?$"))
+;; END keychain-deny

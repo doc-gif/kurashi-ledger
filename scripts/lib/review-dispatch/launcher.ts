@@ -10,6 +10,7 @@
 // Codex (owner decision): only its own `codex exec --sandbox read-only`, no outer
 // Seatbelt, because macOS refuses a second, stricter sandbox inside the first.
 import { closeSync, fstatSync, lstatSync, openSync, readdirSync, readSync, constants } from "node:fs";
+import { join } from "node:path";
 import { dirname, posix } from "node:path";
 import { hash, type Job, type Policy } from "./model.ts";
 
@@ -101,8 +102,9 @@ export const FIXED_QUERY =
 // --tools removes every other built-in tool; --allowedTools only pre-approves.
 export const CLAUDE_TOOLS = "Read,Grep,Glob";
 // Lowest Claude Code version whose documentation covers every flag below
-// (--permission-prompts needs v2.1.259, --restricted v2.1.248). Older pins fail closed.
-export const MIN_CLAUDE_VERSION = [2, 1, 259] as const;
+// (--permission-prompts needs v2.1.259, --restricted v2.1.248, and `auth status` reports
+// configDirectory from v2.1.268). Older pins fail closed.
+export const MIN_CLAUDE_VERSION = [2, 1, 268] as const;
 // Read rules use the documented `//absolute` anchor and are limited to the materials.
 // Claude applies Read rules to Grep and Glob as well (permissions reference).
 export const readRule = (dir: string): string => `Read(/${dir}/**)`;
@@ -201,15 +203,21 @@ export const within = (child: string, parent: string): boolean =>
 const overlaps = (a: string, b: string): boolean =>
   within(a, b) || within(b, a);
 
-// Every entry name under the materials (recursive) and whether any entry is a symlink.
-export type Scan = (dir: string) => { names: string[]; symlink: boolean };
-export const scanTree: Scan = (dir) => {
-  const entries = readdirSync(dir, { recursive: true, withFileTypes: true });
-  return {
-    names: entries.map((e) => e.name),
-    symlink: entries.some((e) => e.isSymbolicLink()),
-  };
-};
+// Every entry under the materials (recursive): its name, kind and link count.
+export type ScanEntry = { name: string; kind: "file" | "dir" | "other"; nlink: number };
+export type Scan = (dir: string) => ScanEntry[];
+export const scanTree: Scan = (dir) =>
+  readdirSync(dir, { recursive: true, withFileTypes: true }).map((e) => {
+    const st = lstatSync(join(e.parentPath, e.name));
+    return {
+      name: e.name,
+      kind: st.isFile() ? "file" : st.isDirectory() ? "dir" : "other",
+      nlink: st.nlink,
+    };
+  });
+// macOS volumes are usually case-insensitive and names may arrive decomposed (NFD).
+export const nameKey = (name: string): string => name.normalize("NFC").toLowerCase();
+const FORBIDDEN_KEYS = (): Set<string> => new Set(CWD_FORBIDDEN.map(nameKey));
 export type Exists = (path: string) => boolean;
 export const lexists: Exists = (path) => {
   try {
@@ -301,18 +309,21 @@ function validate(
   }
   if ([install.runtime, ...profile].some((r) => overlaps(run.materials, r)))
     fail("materials overlap the install");
-  // Materials keep neutral names: no CLI configuration anywhere in the tree, no links out.
-  let tree: { names: string[]; symlink: boolean };
+  // Materials keep neutral names: no CLI configuration anywhere in the tree (compared
+  // case-insensitively after NFC), only regular files with one link and directories.
+  let tree: ScanEntry[];
   try {
     tree = scan(run.materials);
   } catch {
     return fail("materials cannot be listed");
   }
-  if (tree.symlink) fail("materials contain a symlink");
-  if (tree.names.some((n) => CWD_FORBIDDEN.includes(n)))
+  if (tree.some((e) => e.kind === "other")) fail("materials contain a link or special file");
+  if (tree.some((e) => e.kind === "file" && e.nlink !== 1)) fail("materials contain a hard link");
+  const forbidden = FORBIDDEN_KEYS();
+  if (tree.some((e) => forbidden.has(nameKey(e.name))))
     fail("materials contain CLI configuration");
   for (let d = dirname(run.materials); ; d = dirname(d)) {
-    for (const name of ANCESTOR_FORBIDDEN)
+    for (const name of [...new Set(ANCESTOR_FORBIDDEN.flatMap((n) => [n, n.toLowerCase()]))])
       if (exists(d === "/" ? `/${name}` : `${d}/${name}`))
         fail("a parent of the materials holds instructions");
     if (d === "/") break;
@@ -450,7 +461,7 @@ export function buildLaunch(
     stdin,
     shell: false,
   };
-  if (checkPlan(plan, install.backend).length) fail("plan check failed");
+  if (checkPlan(plan, install, run).length) fail("plan check failed");
   return plan;
 }
 
@@ -482,14 +493,28 @@ export function readTokenFile(
   const uid = deps.uid ?? process.getuid?.();
   const f = deps.fs ?? realTokenFs;
   if (uid === undefined || !canonicalPath(path)) return fail("token file unusable");
-  const parent = f.lstat(dirname(path));
+  // fs errors carry the path, so every failure becomes the same fixed text.
+  const stat = (p: string): TokenStat => {
+    try {
+      return f.lstat(p);
+    } catch {
+      return fail("token file unusable");
+    }
+  };
+  const parent = stat(dirname(path));
   if (!parent.isDirectory() || parent.uid !== uid || (parent.mode & 0o022) !== 0)
     fail("token directory must be owned by the owner and not writable by others");
-  const before = f.lstat(path);
+  const before = stat(path);
   if (!before.isFile() || before.uid !== uid || (before.mode & 0o077) !== 0 || before.nlink !== 1)
     fail("token file must be a regular owner-only file (mode 600 or 400)");
   if (before.size < 20 || before.size > 8192) fail("token file has an unexpected size");
-  const raw = f.read(path, before);
+  let raw: string;
+  try {
+    raw = f.read(path, before);
+  } catch (e) {
+    if (e instanceof LaunchError) throw e;
+    return fail("token file unusable");
+  }
   const token = raw.replace(/\r?\n$/, "");
   if (!/^[A-Za-z0-9._~+/=-]{20,8192}$/.test(token)) fail("token file content is malformed");
   return token;
@@ -514,7 +539,16 @@ const realTokenFs: TokenFs = {
     const fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const st = fstatSync(fd);
-      if (st.ino !== expected.ino || st.dev !== expected.dev || st.size !== expected.size)
+      // Re-check the opened file itself, not only the earlier lstat.
+      if (
+        st.ino !== expected.ino ||
+        st.dev !== expected.dev ||
+        st.size !== expected.size ||
+        st.uid !== expected.uid ||
+        st.mode !== expected.mode ||
+        st.nlink !== 1 ||
+        !st.isFile()
+      )
         fail("token file changed while reading");
       const buf = Buffer.alloc(st.size);
       let off = 0;
@@ -531,8 +565,21 @@ const realTokenFs: TokenFs = {
 };
 
 // Independent re-check of a plan (used by the doctor and tests). Returns problem IDs.
-export function checkPlan(plan: LaunchPlan, backend: Backend): string[] {
+// The plan must equal the canonical argv/env for this install and run exactly (only the
+// token value is taken from the plan, after its format check); the named checks below
+// say what differs. Binding the doctor's measurement hashes to this plan is W4's caller.
+export function checkPlan(plan: LaunchPlan, install: LaunchInstall, run: LaunchRun): string[] {
+  const backend = install.backend;
   const problems: string[] = [];
+  const expected = wrap(install, run, argsFor(install, run));
+  const env = envFor(install, run, backend === "claude" ? (plan.env[TOKEN_ENV] ?? "") : "");
+  if (
+    plan.file !== expected.file ||
+    plan.cwd !== run.materials ||
+    JSON.stringify(plan.args) !== JSON.stringify(expected.args) ||
+    JSON.stringify(Object.entries(plan.env).sort()) !== JSON.stringify(Object.entries(env).sort())
+  )
+    problems.push("not-canonical");
   if (plan.shell !== false) problems.push("shell");
   if (backend === "claude") {
     if (plan.file !== SANDBOX_EXEC) problems.push("not-sandboxed");
