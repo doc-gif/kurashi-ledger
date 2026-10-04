@@ -1,20 +1,17 @@
-"""Read GitHub for the PR patrol and, only when asked, post deduplicated notices.
+"""Read GitHub for the PR patrol and print a read-only report.
 
 Reading uses `gh api` GET requests (the caller's existing gh login; this module never reads a
 token). Any failed, rate-limited or truncated read marks the data incomplete, and the judgment
-becomes "unconfirmed" instead of "no PRs" or "no findings". Posting needs --post; the default is
-a dry run, and posting is serialized across patrols by an OS file lock. It never checks out,
-builds or runs code from a pull request, and never merges.
+becomes "unconfirmed" instead of "no PRs" or "no findings". It never writes to GitHub: posting
+notifications belongs to the Issue #45 receiver (docs/review-dispatch-design.md). It never checks
+out, builds or runs code from a pull request, and never merges.
 """
 import argparse
-import contextlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-import time
 
 import guard
 import patrol
@@ -39,18 +36,18 @@ class GhTransport:
     def __init__(self, timeout=60):
         self.timeout = timeout
 
-    def request(self, method, path, payload=None, text=False):
-        args = ["gh", "api", "--include", "--method", method,
+    def request(self, method, path, text=False):
+        if method != "GET":
+            raise SourceError("refused", "the patrol only reads")
+        args = ["gh", "api", "--include", "--method", "GET",
                 "-H", "Accept: application/vnd.github+json", path]
         if text:
             # Job logs contain terminal escape sequences; gh refuses to print them otherwise.
             # They are stripped before parsing and never shown.
             args.insert(2, "--allow-escape-sequences")
-        if payload is not None:
-            args += ["--input", "-"]
         try:
-            done = subprocess.run(args, input=None if payload is None else json.dumps(payload),
-                                  capture_output=True, text=True, encoding="utf-8", timeout=self.timeout)
+            done = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  encoding="utf-8", timeout=self.timeout)
         except (OSError, subprocess.SubprocessError) as exc:
             raise SourceError("transport", type(exc).__name__) from exc
         return parse_include(done.stdout, done.returncode)
@@ -127,10 +124,6 @@ class GitHub:
             raise SourceError("invalid-response", f"branch {branch}")
         return sha
 
-    def post_comment(self, number, body):
-        status, headers, text = self.transport.request(
-            "POST", f"repos/{self.repo}/issues/{int(number)}/comments", {"body": body})
-        check_status(status, headers, f"comment on #{number}", text)
 
 
 def comment_items(issue_comments, reviews):
@@ -234,93 +227,11 @@ def issue_refs(pull, config):
     return patrol.ISSUE_REF.findall(records[-1]["task_id"]) if records else []
 
 
-def default_lock_path(repository):
-    return Path.home() / ".review-patrol" / (repository.replace("/", "__") + ".lock")
-
-
-@contextlib.contextmanager
-def post_lock(path, timeout=60.0, interval=0.5):
-    """An exclusive OS file lock held for re-read, re-judge and post. Yields False on timeout."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as handle:
-        deadline, locked = time.monotonic() + timeout, False
-        while True:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-                    handle.seek(0)
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                locked = True
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    break
-                time.sleep(interval)
-        try:
-            yield locked
-        finally:
-            if locked:
-                if os.name == "nt":
-                    import msvcrt
-                    handle.seek(0)
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
-def post_notices(gh, config, judgment, dry_run=True, lock_path=None, lock_timeout=60.0):
-    """Post each notice once. With the lock held, re-read the PR from scratch and judge it again;
-    post only when the same notice (kind, head, base) is still due. A patrol that cannot take
-    the lock posts nothing. Patrols that post must share the lock file (one machine)."""
-    due = [(pull["number"], n) for pull in judgment["pulls"] for n in pull.get("notices", [])]
-    if not due:
-        return []
-    if dry_run:
-        return [dict(entry(number, n), action="dry-run") for number, n in due]
-    outcome = []
-    lock = post_lock(lock_path, timeout=lock_timeout) if lock_path else contextlib.nullcontext(True)
-    with lock as locked:
-        for number, notice in due:
-            item = entry(number, notice)
-            if not locked:
-                outcome.append(dict(item, action="skipped-locked"))
-                continue
-            try:
-                value, _ = gh.get(f"repos/{gh.repo}/pulls/{int(number)}")
-                if not isinstance(value, dict) or value.get("state") != "open":
-                    outcome.append(dict(item, action="skipped-changed"))
-                    continue
-                tips, issues = {}, {}
-                fresh = read_pull(gh, value, config, tips, issues)
-                again = patrol.judge_pull(fresh, tips.get(fresh["base_ref"]), config, issues)
-                still = {(n["kind"], n["head_sha"], n["base_sha"]) for n in again["notices"]}
-                if (notice["kind"], notice["head_sha"], notice["base_sha"]) not in still:
-                    action = "skipped-unconfirmed" if again["state"] == patrol.UNCONFIRMED else "skipped-changed"
-                    outcome.append(dict(item, action=action, state=again["state"]))
-                    continue
-                gh.post_comment(number, notice["body"])
-                outcome.append(dict(item, action="posted"))
-            except SourceError as exc:
-                outcome.append(dict(item, action="skipped-unconfirmed", error=str(exc)))
-    return outcome
-
-
-def entry(number, notice):
-    return {"pr": number, "kind": notice["kind"], "head_sha": notice["head_sha"], "base_sha": notice["base_sha"]}
-
-
 def main(argv=None, transport=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=".review/patrol.json")
     parser.add_argument("--pr", type=int, action="append", help="limit to these open PR numbers")
     parser.add_argument("--snapshot-out", help="also write the fetched snapshot (new file only)")
-    parser.add_argument("--post", action="store_true", help="post new notices (default: dry run)")
-    parser.add_argument("--lock-file", help="lock shared by every patrol that posts (default: under the home directory)")
     args = parser.parse_args(argv)
     try:
         guard.require_runtime()
@@ -331,14 +242,6 @@ def main(argv=None, transport=None):
             with Path(args.snapshot_out).open("x", encoding="utf-8", newline="\n") as stream:
                 stream.write(json.dumps(snap, ensure_ascii=False, indent=2) + "\n")
         result = patrol.judge(snap, config)
-        if result["result"] == "unconfirmed":
-            result["posting"] = "not attempted: data is unconfirmed"
-        else:
-            lock = args.lock_file or default_lock_path(config["repository"])
-            result["posting"] = post_notices(gh, config, result, dry_run=not args.post, lock_path=lock)
-        for pull in result["pulls"]:
-            for notice in pull.get("notices", []):
-                notice.pop("body", None)
         print(json.dumps(result, ensure_ascii=True, indent=2))
         return patrol.EXIT_UNCONFIRMED if result["result"] == "unconfirmed" else 0
     except (guard.Invalid, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:

@@ -81,17 +81,16 @@ python3 tools/review_guard/guard.py triage --candidates candidates.json
 
 ## PRの巡回の判定（patrol）
 
-T23で加えた。[PRの引継ぎとレビューのループ](../../docs/pr-review-loop.md)の「レビュー開始の条件」「重複防止」を、開いているPRごとに機械で判定する補助。判定は承認でもマージの許可でもない。
+T23で加えた。[PRの引継ぎとレビューのループ](../../docs/pr-review-loop.md)の「レビュー開始の条件」を、開いているPRごとに機械で判定し、報告を出すだけの読取りの補助。判定は承認でもマージの許可でもない。GitHubへは書き込まない（2026-10-04の所有者決定で、通知の投稿と重複の防止はIssue #45の受付の担当。[レビューの配車の設計](../../docs/review-dispatch-design.md)の5）。
 
 ```sh
 python3 tools/review_guard/github_source.py                 # 開いているPRを読み、判定を表示する（投稿しない）
 python3 tools/review_guard/github_source.py --pr 25         # PRを絞る（複数指定できる）
 python3 tools/review_guard/github_source.py --snapshot-out snap.json
 python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存したデータを、ネットワークなしで判定し直す
-python3 tools/review_guard/github_source.py --post          # 新しい通知だけを投稿する（明示したときだけ）
 ```
 
-設定は`.review/patrol.json`（repo、印の名前空間、必須のcheckの名前と、そのジョブが試験したmerge commitをログに出す環境変数の名前（`tested_commit_env`）、agent_idの先頭から系統（Codex側・Claude側）を決める表（`agent_sides`）、レビュー役のroleとその系統、信頼する作者の関係、追加で信頼するlogin（`trusted_logins`。GitHub Appのbot等。既定は空）、Copilotのアカウント、保護対象のパス）。終了コードは、0が判定済み、1が入力の不備、2が引数の誤り、3が未確認（どれかの取得に失敗した）。
+設定は`.review/patrol.json`（repo、印の名前空間、必須のcheckの名前と、そのジョブが試験したmerge commitをログに出す環境変数の名前（`tested_commit_env`）、agent_idの先頭から系統（Codex側・Claude側）を決める表（`agent_sides`）、レビュー役のroleとその系統、信頼する作者の関係、追加で信頼するlogin（`trusted_logins`。GitHub Appのbot等。既定は空）、Copilotのアカウント、保護対象のパス）。開始条件の不足は、各PRの`gap`（`stale-handoff`・`ci-failed`・`ci-other-base`）として出す。終了コードは、0が判定済み、1が入力の不備、2が引数の誤り、3が未確認（どれかの取得に失敗した）。
 
 ### 分け方
 
@@ -114,16 +113,6 @@ python3 tools/review_guard/github_source.py --post          # 新しい通知だ
 - 保存したsnapshotで判定し直すときは、snapshotの`repository`が設定と一致しなければ拒否する。
 - Copilotは補助。レビューの有無を表示するだけで、未実施・利用不可でも判定を変えず、承認にも数えない。未解決のスレッドは読まない（レビュー担当が確かめる）。
 - 保護対象のパス（workflow・検査器・条件・原因台帳）を変えるPRは`policy_files`に一覧にする。判定は変えない。CIの合格は迂回を防がないので、独立レビューでその変更を確かめる（[修正前の整合確認](../../docs/review-prevention.md)の「独立レビューを必須にする保護」）。
-
-### 通知と重複の防止
-
-`awaiting-fixes`のうち、引継ぎが古いとき（`stale-handoff`）、必須のcheckが失敗したとき（`ci-failed`）、必須のcheckの成功が古いbaseのものだったとき（`ci-other-base`）だけ、通知の候補を作る（[PRレビューのループ](../../docs/pr-review-loop.md)の「開始条件の不足は同じheadに一度だけ知らせる」）。本文は印・種別・PR番号・head/base・固定の文だけで、PRやコメントの文字列を写さない。
-
-- 既定はdry-run。`--post`を付けたときだけ投稿する。
-- （PR、種別、head、base）の印が、信頼する作者のコメントに既にあれば投稿しない。
-- 投稿は、OSのファイルロック（POSIXは`flock`、Windowsは`msvcrt.locking`）を取ってから行う。ロックを持ったまま、PRを一から取り直して判定し直し、同じ（種別、head、base）の通知がまだ必要なときだけ投稿して、ロックを放す。新しい引継ぎ・`working`・CIの回復・読めないレビューの追加・push・baseの更新・close・取り直しの失敗のどれかがあれば投稿しない。別の巡回が先に投稿していれば、取り直しで印が見えるので投稿しない。ロックを60秒で取れなければ、何も投稿しない。
-- ロックのファイルは既定で`<ホーム>/.review-patrol/<owner>__<repo>.lock`（`--lock-file`で変えられる）。GitHubには「印がなければ投稿する」という原子的な操作がないので、重複の防止はこのロックを共有する巡回の間でだけ成り立つ。**`--post`は、同じロックのファイルを使う1台の機械からだけ行い、ほかの機械・クラウドの巡回はdry-runにする。**
-- 判定の全体が未確認なら、どのPRにも投稿しない。
 
 ### 信頼の境界
 

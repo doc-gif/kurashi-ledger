@@ -2,7 +2,9 @@
 
 The core is pure: it reads a snapshot (already fetched GitHub data) and a config, and returns
 a judgment. It never reads the clock, never contacts the network, never posts, and never runs
-code from a pull request. github_source.py fetches the snapshot and is the only optional writer.
+code from a pull request. github_source.py fetches the snapshot with read-only requests.
+Notifications are not part of this tool: the Issue #45 receiver owns them
+(docs/review-dispatch-design.md); a missing start condition is reported as `gap`.
 """
 import argparse
 import fnmatch
@@ -36,13 +38,8 @@ ISSUE_REF = re.compile(r"#([1-9][0-9]{0,8})\b")
 MAX_BODY = 65_536
 MAX_SNAPSHOT = 16 * 1_048_576
 EXIT_UNCONFIRMED = 3  # 0: judged, 1: invalid input, 2: usage (argparse), 3: unconfirmed
-NOTICE_TEXT = {
-    "stale-handoff": "最新のhead/baseに対応するready-for-reviewの引継ぎがない（古い引継ぎは使わない）。"
-                     "新しいhead/baseで検証し、引継ぎを出し直してほしい。",
-    "ci-failed": "このhead/baseの必須のcheckが成功していない。修正して、新しいhead/baseで引き継いでほしい。",
-    "ci-other-base": "必須のcheckの最新の成功は、いまのbaseの先端とのmerge commitを試験したものではない。"
-                     "最新のbaseで試験し直し、引継ぎを出し直してほしい。",
-}
+# Machine-readable start-condition gaps (reported only; nothing is posted).
+GAPS = {"stale-handoff", "ci-failed", "ci-other-base"}
 
 
 def load_config(value):
@@ -81,7 +78,7 @@ def branch_ok(value):
 
 
 def markers(ns):
-    return {f"<!-- {ns}:{kind}:v1 -->": kind for kind in ("handoff", "review", "patrol")}
+    return {f"<!-- {ns}:{kind}:v1 -->": kind for kind in ("handoff", "review")}
 
 
 def parse_records(body, ns):
@@ -160,22 +157,6 @@ def review(fields, config):
             "decision": fields["decision"], "head_sha": fields["head_sha"], "base_sha": fields["base_sha"]}
 
 
-def notice_record(fields):
-    require(fields.get("kind") in NOTICE_TEXT, "unknown notice kind")
-    require(guard.sha(fields.get("head_sha")) and guard.sha(fields.get("base_sha")), "notice needs SHAs")
-    return (fields["kind"], fields["head_sha"], fields["base_sha"])
-
-
-def notice_body(ns, number, kind, head, base):
-    """Fixed text and SHAs only. Nothing written by others is copied into the body."""
-    require(kind in NOTICE_TEXT and guard.sha(head) and guard.sha(base) and isinstance(number, int),
-            "invalid notice")
-    return "\n".join([f"<!-- {ns}:patrol:v1 -->", f"kind: {kind}", f"pr: {number}",
-                      f"head_sha: {head}", f"base_sha: {base}", "",
-                      NOTICE_TEXT[kind],
-                      "この通知は巡回の機械判定で、承認・マージの許可ではない。同じhead/baseには1回だけ投稿する。"])
-
-
 def order(item):
     ident = item.get("id")
     return (str(item.get("created_at") or item.get("at")), ident if isinstance(ident, int) else 0)
@@ -198,7 +179,7 @@ def collect(pull, config):
     ns = config["marker_namespace"]
     trusted = set(config["trusted_associations"])
     trusted_logins = set(config.get("trusted_logins", []))
-    out = {"handoffs": [], "reviews": [], "unreadable": [], "notices": set(), "warnings": []}
+    out = {"handoffs": [], "reviews": [], "unreadable": [], "warnings": []}
     for item in sorted(pull.get("comments", []), key=order):
         records, unmarked, misplaced = parse_records(item.get("body"), ns)
         where = f"{item.get('source', 'comment')} {item.get('id')}"
@@ -219,17 +200,15 @@ def collect(pull, config):
                 require(record["error"] is None and record["kind"], record.get("error") or "invalid record")
                 if record["kind"] == "handoff":
                     out["handoffs"].append(dict(handoff(record["fields"]), **at))
-                elif record["kind"] == "review":
-                    out["reviews"].append(dict(review(record["fields"], config), **at))
                 else:
-                    out["notices"].add(notice_record(record["fields"]))
+                    out["reviews"].append(dict(review(record["fields"], config), **at))
             except Invalid as exc:
                 reason = f"{where}: {record['kind'] or 'unknown'} record not readable ({exc})"
                 out["warnings"].append(reason)
                 if record["kind"] == "handoff":
                     out["handoffs"].append(dict(at, worker_status=None, agent_id=None, task_id="",
                                                 head_sha=None, base_sha=None, invalid=str(exc)))
-                elif record["kind"] != "patrol":
+                else:
                     out["unreadable"].append(dict(at, reason=reason))
     return out
 
@@ -272,7 +251,7 @@ def copilot(pull, config):
 def judge_pull(pull, base_tip, config, issues):
     result = {"number": pull.get("number"), "head_sha": pull.get("head_sha"), "base_ref": pull.get("base_ref"),
               "base_tip": base_tip, "draft": bool(pull.get("draft")), "reasons": [], "warnings": [],
-              "notices": []}
+              "gap": None}
     errors = list(pull.get("errors", []))
     if base_tip is None:
         errors.append(f"base branch {pull.get('base_ref')} tip not read")
@@ -291,16 +270,12 @@ def judge_pull(pull, base_tip, config, issues):
     result["warnings"] += records["warnings"]
     result["copilot"] = copilot(pull, config)
     head, number = pull["head_sha"], pull.get("number")
-    ns = config["marker_namespace"]
 
-    def finish(state, reason, notice=None):
+    def finish(state, reason, gap=None):
+        require(gap is None or gap in GAPS, "unknown gap")
         result["state"] = state
         result["reasons"].append(reason)
-        if notice:
-            key = (notice, head, base_tip)
-            if key not in records["notices"]:
-                result["notices"].append({"kind": notice, "head_sha": head, "base_sha": base_tip,
-                                          "body": notice_body(ns, number, notice, head, base_tip)})
+        result["gap"] = gap
         return result
 
     if not records["handoffs"]:

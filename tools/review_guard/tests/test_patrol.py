@@ -24,7 +24,7 @@ class ClassificationTests(unittest.TestCase):
         result = judged(pull([comment(1, T1, handoff_body())]))
         self.assertEqual(result["result"], "judged")
         self.assertEqual(only(result)["state"], patrol.READY)
-        self.assertEqual(only(result)["notices"], [])
+        self.assertIsNone(only(result)["gap"])
 
     def test_elapsed_time_without_a_handoff_is_never_completion(self):
         old = "2001-01-01T00:00:00Z"
@@ -37,11 +37,10 @@ class ClassificationTests(unittest.TestCase):
     def test_stale_ready_after_push_or_base_update_needs_a_new_handoff(self):
         pushed = only(judged(pull([comment(1, T1, handoff_body(head=HEAD))], head=HEAD2)))
         self.assertEqual(pushed["state"], patrol.FIXES)
-        self.assertEqual([n["kind"] for n in pushed["notices"]], ["stale-handoff"])
-        self.assertEqual(pushed["notices"][0]["head_sha"], HEAD2)
+        self.assertEqual(pushed["gap"], "stale-handoff")
         moved = only(judged(pull([comment(1, T1, handoff_body(base=BASE))]), tip=BASE2))
         self.assertEqual(moved["state"], patrol.FIXES)
-        self.assertEqual(moved["notices"][0]["base_sha"], BASE2)
+        self.assertEqual(moved["gap"], "stale-handoff")
 
     def test_working_or_unreadable_handoff_supersedes_an_earlier_ready(self):
         for later in (handoff_body(status="working（中断中）"), handoff_body(status="ready-for-reviewではない"),
@@ -86,7 +85,7 @@ class ClassificationTests(unittest.TestCase):
         ready = [comment(1, T1, handoff_body(base=BASE2))]
         result = only(judged(pull(ready, ci_base=BASE), tip=BASE2))
         self.assertEqual(result["state"], patrol.FIXES)
-        self.assertEqual([n["kind"] for n in result["notices"]], ["ci-other-base"])
+        self.assertEqual(result["gap"], "ci-other-base")
         accepted = ready + [comment(2, T2, review_body("accepted", base=BASE2))]
         self.assertEqual(only(judged(pull(accepted, ci_base=BASE), tip=BASE2))["state"], patrol.FIXES)
 
@@ -111,7 +110,7 @@ class ClassificationTests(unittest.TestCase):
         ready = [comment(1, T1, handoff_body())]
         failed = only(judged(pull(ready, checks=[gate("failure")])))
         self.assertEqual(failed["state"], patrol.FIXES)
-        self.assertEqual([n["kind"] for n in failed["notices"]], ["ci-failed"])
+        self.assertEqual(failed["gap"], "ci-failed")
         for checks in ([gate(status="in_progress")], [], [gate(head=HEAD2)],
                        [dict(gate(), name="checks (linux)")]):
             with self.subTest(checks=checks):
@@ -141,7 +140,7 @@ class ClassificationTests(unittest.TestCase):
         unread = judged(pull([comment(1, T1, handoff_body())]), issues={})
         self.assertEqual(unread["result"], "unconfirmed")
         self.assertEqual(only(unread)["state"], patrol.UNCONFIRMED)
-        self.assertEqual(only(unread)["notices"], [])
+        self.assertIsNone(only(unread)["gap"])
 
     def test_draft_is_work_in_progress_even_with_a_matching_ready(self):
         # PR38-R006: back to Draft after a ready (and even after an accepted) is not a candidate.
@@ -151,7 +150,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(only(judged(pull(accepted)))["state"], patrol.ACCEPTED)
         self.assertEqual(only(judged(pull(accepted, draft=True)))["state"], patrol.IN_PROGRESS)
         stale = only(judged(pull(ready, head=HEAD2, draft=True)))
-        self.assertEqual((stale["state"], stale["notices"]), (patrol.IN_PROGRESS, []))
+        self.assertEqual((stale["state"], stale["gap"]), (patrol.IN_PROGRESS, None))
         self.assertEqual(only(judged(pull([comment(1, T1, handoff_body(status="needs-owner"))], draft=True)))["state"],
                          patrol.OWNER)
 
@@ -302,29 +301,26 @@ class CopilotTests(unittest.TestCase):
                          "not-reviewed-current-head")
 
 
-class NoticeTests(unittest.TestCase):
-    def test_same_notice_is_not_repeated_for_the_same_head_and_base(self):
+class ReportOnlyTests(unittest.TestCase):
+    def test_gap_is_reported_and_nothing_is_composed_for_posting(self):
+        # 2026-10-04 owner decision: notifications belong to the Issue #45 receiver, not T23.
         stale = [comment(1, T1, handoff_body(head=HEAD))]
-        first = only(judged(pull(stale, head=HEAD2)))
-        body = first["notices"][0]["body"]
-        again = only(judged(pull(stale + [comment(2, T2, body)], head=HEAD2)))
-        self.assertEqual(again["state"], patrol.FIXES)
-        self.assertEqual(again["notices"], [])
-        newer = only(judged(pull(stale + [comment(2, T2, body)], head="3" * 40)))
-        self.assertEqual(len(newer["notices"]), 1)
+        result = only(judged(pull(stale, head=HEAD2)))
+        self.assertEqual((result["state"], result["gap"]), (patrol.FIXES, "stale-handoff"))
+        self.assertNotIn("notices", result)
+        self.assertFalse(hasattr(patrol, "notice_body"))
 
-    def test_notice_from_an_untrusted_author_does_not_suppress(self):
-        stale = [comment(1, T1, handoff_body(head=HEAD))]
-        body = only(judged(pull(stale, head=HEAD2)))["notices"][0]["body"]
-        result = only(judged(pull(stale + [comment(2, T2, body, association="NONE")], head=HEAD2)))
-        self.assertEqual(len(result["notices"]), 1)
+    def test_old_patrol_notice_comments_are_not_records(self):
+        old = f"<!-- {NS}:patrol:v1 -->\nkind: stale-handoff\nhead_sha: {HEAD2}\nbase_sha: {BASE}"
+        stale = [comment(1, T1, handoff_body(head=HEAD)), comment(2, T2, old)]
+        result = only(judged(pull(stale, head=HEAD2)))
+        self.assertEqual((result["state"], result["gap"]), (patrol.FIXES, "stale-handoff"))
 
-    def test_notice_body_copies_nothing_written_by_others(self):
+    def test_text_written_by_others_is_data(self):
         evil = "$(touch pwned) `rm -rf /` <script>x</script>"
-        stale = [comment(1, T1, handoff_body(head=HEAD, task=evil + " #7"))]
-        body = only(judged(pull(stale, head=HEAD2)))["notices"][0]["body"]
-        self.assertNotIn("pwned", body)
-        self.assertTrue(body.startswith(f"<!-- {NS}:patrol:v1 -->\nkind: stale-handoff\npr: 5\n"))
+        result = only(judged(pull([comment(1, T1, handoff_body(task=evil + " #7"))])))
+        self.assertEqual(result["state"], patrol.READY)
+        self.assertEqual(result["handoff"]["task_id"], evil + " #7")
 
 
 class UnconfirmedTests(unittest.TestCase):
@@ -334,7 +330,7 @@ class UnconfirmedTests(unittest.TestCase):
         result = judged(broken)
         self.assertEqual(result["result"], "unconfirmed")
         self.assertEqual(only(result)["state"], patrol.UNCONFIRMED)
-        self.assertEqual(only(result)["notices"], [])
+        self.assertIsNone(only(result)["gap"])
 
     def test_failed_list_is_not_an_empty_repository(self):
         snap = snapshot()

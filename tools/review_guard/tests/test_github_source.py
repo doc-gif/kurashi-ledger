@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
-from patrol_fixtures import (BASE, BASE2, HEAD, HEAD2, NS, config, gate, github_source, handoff_body, patrol)
+from patrol_fixtures import (BASE, BASE2, HEAD, HEAD2, config, gate, github_source, handoff_body, patrol)
 
 REPO = "example-owner/example-repo"
 API = "https://api.github.com/"
@@ -34,8 +34,6 @@ class FakeGitHub:
         self.changed_files = {}  # number -> changed_files in the PR detail, when it differs from the list
         self.fail = {}          # path prefix -> (status, headers)
         self.calls = []
-        self.posted = []
-        self.on_recheck = None  # called after every comments read; a barrier in the race tests
         self.mutex = threading.Lock()
         self.next_run = 100
 
@@ -73,28 +71,21 @@ class FakeGitHub:
         value = {"total_count": len(items), key: chunk} if key else chunk
         return self.response(200, value, headers)
 
-    def request(self, method, target, payload=None, text=False):
+    def request(self, method, target, text=False):
         split = urlsplit(target if target.startswith("http") else API + target)
         path = split.path.lstrip("/")
         parts = path.split("/")
         with self.mutex:
-            response = self.handle(method, path, parts, parse_qs(split.query), payload, text)
-        if self.on_recheck and method == "GET" and parts[3:4] == ["issues"] and parts[5:6] == ["comments"]:
-            self.on_recheck(self)  # after the comments were read: both patrols have re-read
-        return response
+            return self.handle(method, path, parts, parse_qs(split.query), text)
 
-    def handle(self, method, path, parts, query, payload, text):
+    def handle(self, method, path, parts, query, text):
         self.calls.append((method, path, text))
         for prefix, (status, headers) in self.fail.items():
             if path.startswith(prefix):
                 message = "You have exceeded a secondary rate limit" if "x-synthetic" in headers else "failure"
                 return self.response(status, {"message": message}, headers)
-        if method == "POST" and parts[3] == "issues" and parts[5] == "comments":
-            number = int(parts[4])
-            self.comments[number].append(raw_comment(1000 + len(self.posted), payload["body"],
-                                                     at="2026-01-02T00:00:00Z"))
-            self.posted.append((number, payload["body"]))
-            return self.response(201, {"id": 1})
+        if method != "GET":
+            return self.response(405, {"message": "the fake API only serves reads"})
         if parts[3:] == ["branches", "main"]:
             return self.response(200, {"commit": {"sha": self.tip}})
         if parts[3] == "pulls" and len(parts) == 4:
@@ -127,9 +118,12 @@ def run(fake, *argv):
         path = Path(folder) / "patrol.json"
         path.write_text(json.dumps(config()), encoding="utf-8")
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = github_source.main(["--config", str(path), "--lock-file", str(Path(folder) / "patrol.lock"),
-                                       *argv], transport=fake)
+            code = github_source.main(["--config", str(path), *argv], transport=fake)
     return code, out.getvalue(), err.getvalue()
+
+
+def writes(fake):
+    return [call for call in fake.calls if call[0] != "GET"]
 
 
 def judge_all(fake):
@@ -173,10 +167,10 @@ class SourceTests(unittest.TestCase):
                 fake.add_pull(5, head=HEAD2, comments=[raw_comment(1, handoff_body(head=HEAD))],
                               files=[f"src/f{i}.ts" for i in range(files)])
                 fake.changed_files[5] = changed
-                code, out, _ = run(fake, "--post")
+                code, out, _ = run(fake)
                 self.assertEqual(code, patrol.EXIT_UNCONFIRMED)
                 self.assertIn("incomplete", json.loads(out)["pulls"][0]["reasons"][0])
-                self.assertEqual(fake.posted, [])
+                self.assertEqual(writes(fake), [])
 
     def test_check_run_total_mismatch_is_incomplete(self):
         fake = FakeGitHub()
@@ -196,7 +190,7 @@ class SourceTests(unittest.TestCase):
 
     def test_next_link_outside_the_api_is_refused(self):
         fake = FakeGitHub()
-        fake.request = lambda method, path, payload=None, text=False: (
+        fake.request = lambda method, path, text=False: (
             200, {"link": '<https://example.invalid/x?page=2>; rel="next"'}, "[]")
         with self.assertRaises(github_source.SourceError):
             self.gh(fake).pages("repos/x/y/pulls")
@@ -238,10 +232,10 @@ class SourceTests(unittest.TestCase):
                     fake.fail[f"repos/{REPO}/issues/7"] = (403, {"x-ratelimit-remaining": "0"})
                 else:
                     fake.issues = {}
-                code, out, _ = run(fake, "--post")
+                code, out, _ = run(fake)
                 self.assertEqual(code, patrol.EXIT_UNCONFIRMED)
                 self.assertEqual(json.loads(out)["pulls"][0]["state"], patrol.UNCONFIRMED)
-                self.assertEqual(fake.posted, [])
+                self.assertEqual(writes(fake), [])
 
     def test_ci_evidence_is_read_from_the_gate_log_and_the_tested_merge(self):
         fake = FakeGitHub()
@@ -259,7 +253,7 @@ class SourceTests(unittest.TestCase):
         fake.tip = BASE2
         _, result = judge_all(fake)
         self.assertEqual(result["pulls"][0]["state"], patrol.FIXES)
-        self.assertEqual(result["pulls"][0]["notices"][0]["kind"], "ci-other-base")
+        self.assertEqual(result["pulls"][0]["gap"], "ci-other-base")
         fake.add_gate(HEAD, tested_base=BASE2)  # a re-run on the new base
         _, result = judge_all(fake)
         self.assertEqual(result["pulls"][0]["state"], patrol.READY)
@@ -302,138 +296,61 @@ class SourceTests(unittest.TestCase):
         self.assertEqual((status, headers["link"], body), (200, "<x>", "[]"))
         with self.assertRaises(github_source.SourceError):
             github_source.parse_include("gh: not logged in", 1)
+        with mock.patch.object(github_source.subprocess, "run") as never:
+            with self.assertRaises(github_source.SourceError):
+                github_source.GhTransport().request("POST", "repos/a/b/issues/1/comments")
+            never.assert_not_called()
 
 
-class PostingTests(unittest.TestCase):
+class ReadOnlyTests(unittest.TestCase):
+    """2026-10-04 owner decision: T23 only reads and reports; the Issue #45 receiver posts."""
+
     def stale(self, fake):
-        # The handoff is for HEAD, the PR is at HEAD2: one stale-handoff notice is due.
+        # The handoff is for HEAD, the PR is at HEAD2: a stale-handoff gap.
         fake.add_pull(5, head=HEAD2, comments=[raw_comment(1, handoff_body(head=HEAD))])
 
-    def test_dry_run_is_the_default_and_posts_nothing(self):
+    def test_the_cli_reports_the_gap_and_sends_only_reads(self):
         fake = FakeGitHub()
         self.stale(fake)
         code, out, _ = run(fake)
         self.assertEqual(code, 0)
-        self.assertEqual(fake.posted, [])
-        self.assertEqual(json.loads(out)["posting"][0]["action"], "dry-run")
-        self.assertFalse(any(method == "POST" for method, _, _ in fake.calls))
+        pull = json.loads(out)["pulls"][0]
+        self.assertEqual((pull["state"], pull["gap"]), (patrol.FIXES, "stale-handoff"))
+        self.assertNotIn("posting", json.loads(out))
+        self.assertTrue(fake.calls)
+        self.assertEqual(writes(fake), [])
 
-    def test_post_once_then_skip_the_same_head(self):
+    def test_there_is_no_post_option(self):
         fake = FakeGitHub()
         self.stale(fake)
-        self.assertEqual(run(fake, "--post")[0], 0)
-        self.assertEqual(len(fake.posted), 1)
-        self.assertTrue(fake.posted[0][1].startswith(f"<!-- {NS}:patrol:v1 -->\n"))
-        code, out, _ = run(fake, "--post")
-        self.assertEqual(len(fake.posted), 1)
-        self.assertEqual(json.loads(out)["pulls"][0]["notices"], [])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            run(fake, "--post")
+        self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(hasattr(github_source, "post_notices"))
+        self.assertEqual(writes(fake), [])
 
-    def test_state_change_before_posting_is_judged_again(self):
-        # PR38-R003: re-read and re-judge; post only if the same notice is still due.
-        at = "2026-01-01T00:00:02Z"
-        changes = {
-            "new ready": lambda f: f.comments[5].append(raw_comment(2, handoff_body(head=HEAD2), at=at)),
-            "working": lambda f: f.comments[5].append(
-                raw_comment(2, handoff_body(status="working", head=HEAD2), at=at)),
-            "unreadable review": lambda f: f.comments[5].append(
-                raw_comment(2, "role: codex-reviewer\ndecision: accepted", at=at)),
-            "head pushed": lambda f: f.pulls[5]["head"].update(sha="3" * 40),
-            "base moved": lambda f: setattr(f, "tip", BASE2),
-            "closed": lambda f: f.pulls[5].update(state="closed"),
-        }
-        for name, change in changes.items():
-            with self.subTest(change=name):
-                fake = FakeGitHub()
-                self.stale(fake)
-                gh, judgment = judge_all(fake)
-                change(fake)
-                outcome = github_source.post_notices(gh, config(), judgment, dry_run=False)
-                self.assertIn(outcome[0]["action"], {"skipped-changed", "skipped-unconfirmed"})
-                self.assertEqual(fake.posted, [])
-
-    def test_ci_recovery_before_posting_cancels_ci_failed(self):
-        fake = FakeGitHub()
-        fake.add_pull(5, head=HEAD, comments=[raw_comment(1, handoff_body(head=HEAD))], gate_run=False)
-        fake.add_gate(HEAD, conclusion="failure")
-        gh, judgment = judge_all(fake)
-        self.assertEqual(judgment["pulls"][0]["notices"][0]["kind"], "ci-failed")
-        fake.add_gate(HEAD)  # a re-run succeeded
-        outcome = github_source.post_notices(gh, config(), judgment, dry_run=False)
-        self.assertEqual((outcome[0]["action"], outcome[0]["state"]), ("skipped-changed", patrol.READY))
-        self.assertEqual(fake.posted, [])
-
-    def test_failed_re_read_skips_posting(self):
+    def test_concurrent_patrols_read_the_same_state_and_write_nothing(self):
         fake = FakeGitHub()
         self.stale(fake)
-        gh, judgment = judge_all(fake)
-        fake.fail[f"repos/{REPO}/issues/5/comments"] = (403, {"x-ratelimit-remaining": "0"})
-        outcome = github_source.post_notices(gh, config(), judgment, dry_run=False)
-        self.assertEqual(outcome[0]["action"], "skipped-unconfirmed")
-        self.assertEqual(fake.posted, [])
-
-    def race(self, lock_path):
-        """Two patrols judge the same state, then both re-read before either posts (barrier)."""
-        fake = FakeGitHub()
-        self.stale(fake)
-        gh, first = judge_all(fake)
-        _, second = judge_all(fake)
-        barrier = threading.Barrier(2, timeout=1.0)
-
-        def wait(_):
-            with contextlib.suppress(threading.BrokenBarrierError):
-                barrier.wait()
-        fake.on_recheck = wait
         results = []
-
-        def patrol_run(judgment):
-            results.extend(github_source.post_notices(gh, config(), judgment, dry_run=False,
-                                                      lock_path=lock_path, lock_timeout=10))
-        threads = [threading.Thread(target=patrol_run, args=(j,)) for j in (first, second)]
+        threads = [threading.Thread(target=lambda: results.append(judge_all(fake)[1])) for _ in range(2)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(20)
-        return fake, sorted(r["action"] for r in results)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(writes(fake), [])
 
-    def test_concurrent_patrols_without_the_lock_would_post_twice(self):
-        # Shows that the race test really races: without a lock both re-read, then both post.
-        fake, actions = self.race(None)
-        self.assertEqual(len(fake.posted), 2)
-        self.assertEqual(actions, ["posted", "posted"])
-
-    def test_concurrent_patrols_with_the_lock_post_once(self):
-        # PR38-R005: the OS file lock serializes re-read, re-judge and post across patrols.
-        with tempfile.TemporaryDirectory() as folder:
-            fake, actions = self.race(Path(folder) / "patrol.lock")
-        self.assertEqual(len(fake.posted), 1)
-        self.assertEqual(actions, ["posted", "skipped-changed"])
-
-    def test_lock_timeout_posts_nothing(self):
-        fake = FakeGitHub()
-        self.stale(fake)
-        gh, judgment = judge_all(fake)
-        done = []
-        with tempfile.TemporaryDirectory() as folder:
-            lock = Path(folder) / "patrol.lock"
-            with github_source.post_lock(lock) as held:
-                self.assertTrue(held)
-                worker = threading.Thread(target=lambda: done.extend(github_source.post_notices(
-                    gh, config(), judgment, dry_run=False, lock_path=lock, lock_timeout=0.2)))
-                worker.start()
-                worker.join(10)
-        self.assertEqual(done[0]["action"], "skipped-locked")
-        self.assertEqual(fake.posted, [])
-
-    def test_unconfirmed_run_posts_nothing_and_exits_3(self):
+    def test_unconfirmed_run_exits_3(self):
         fake = FakeGitHub()
         self.stale(fake)
         fake.add_pull(6)
         fake.fail[f"repos/{REPO}/pulls/6/files"] = (429, {})
-        code, out, _ = run(fake, "--post")
+        code, out, _ = run(fake)
         self.assertEqual(code, patrol.EXIT_UNCONFIRMED)
-        self.assertEqual(fake.posted, [])
-        self.assertIn("not attempted", json.loads(out)["posting"])
-
+        self.assertEqual(json.loads(out)["result"], "unconfirmed")
+        self.assertEqual(writes(fake), [])
 
 if __name__ == "__main__":
     unittest.main()
