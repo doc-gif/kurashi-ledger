@@ -174,7 +174,7 @@ required_reviewers: <login/App IDの一覧>
 
 ### 切替（PRごと）
 
-前提: Issue #50のW1〜W4がマージ済み。doctorの否定試験とhost検査が合格。Webhookの経路・購読・秘密を設定済み。shadowで現行の判定との差を確かめた。
+前提: [導入手順](review-dispatch-runbook.md)の1〜13が済んでいる（doctorの合格、host検査、Webhook、shadow）。2と3のコマンドは導入手順の14。
 
 初期の範囲（[start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したClaudeだけ、修正は手動。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出たとownerが判断してから広げる。
 

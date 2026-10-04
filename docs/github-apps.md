@@ -33,11 +33,11 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Checks | Read-only | CIの結果の確認（check run） |
 | Commit statuses | Read-only | CIの結果の確認（commit status） |
 | Workflows | Read and write | `.github/workflows/`を変えるcommitのpush（その用途のトークンにだけ付ける） |
-| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。所有者が足す（下の「マージ前の確認」） |
+| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。所有者が足す（下の「マージ直前にAIが行う確認」） |
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
-webhookは使わない。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
+webhookは、受付の受信に使うCodexのAppだけ（[導入手順](review-dispatch-runbook.md#11-webhookの秘密と購読codexのapp)）。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
 
 ### 所有者が行ったこと
 
@@ -67,11 +67,11 @@ webhookは使わない。インストールできるのは所有者のアカウ�
 sha=<レビュー済みのmainの40文字のSHA>
 repo=<この repo の checkout>
 git -C "$repo" fetch origin --prune || exit 1
-git -C "$repo" merge-base --is-ancestor "$sha" origin/main || exit 1
-dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"
+git -C "$repo" merge-base --is-ancestor "${sha}" origin/main || exit 1
+dir="$HOME/.local/share/kurashi-ledger-app-token/${sha}"
 mkdir -p "$dir/lib" && chmod 700 "$dir"
-git -C "$repo" cat-file blob "$sha:scripts/github-app-token.ts" > "$dir/github-app-token.ts"
-git -C "$repo" cat-file blob "$sha:scripts/lib/github-app-token.ts" > "$dir/lib/github-app-token.ts"
+git -C "$repo" cat-file blob "${sha}:scripts/github-app-token.ts" > "$dir/github-app-token.ts"
+git -C "$repo" cat-file blob "${sha}:scripts/lib/github-app-token.ts" > "$dir/lib/github-app-token.ts"
 printf '{"type":"module"}\n' > "$dir/package.json"
 ```
 
@@ -92,7 +92,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
-  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ前の確認」） |
+  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ直前にAIが行う確認」） |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
@@ -265,11 +265,9 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
 
-## マージ前の確認（merge-check）
+## マージ直前にAIが行う確認（merge-check）
 
-この節のコマンドは#55のマージと写しの作り直しの後に使う。それまでは125で終わる。
-
-2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値は、PR番号をカンマか改行で区切ったもの。`none`は「なし」。ほかの値は読めない扱い。判定の正本は[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節になる予定（PR #51で追加。#51のマージまでは経過措置として、この1行に従う）。
+AIはマージの直前に、リポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。書式と判定の正本は[運用規約](github-agent-operations.md#owner-merge-only)。
 
 最初に、写しの場所を設定する。`写しがない`と出たら止め、下の「A. 信頼した写しを作り直す」を行う。
 
@@ -292,7 +290,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 終了コードが0でない、または値の書式が違えば、マージしない。
 
-**所有者が済ませたこと（2026-10-04）:** 2つのApp（CodexとClaude）に Variables: Read-only を足し、インストール先で承認した。リポジトリ変数`OWNER_MERGE_ONLY`を`none`で作った。残りは、マージ後の写しの作り直しと実際の鍵での確認（下）。それまで`merge-check`は使えない（古い写しは125で終わる）。
+**所有者が済ませたこと（2026-10-04）:** 2つのAppに Variables: Read-only を足し、変数`OWNER_MERGE_ONLY`を`none`で作り、#55のマージ後に下のAとBで確かめた（[結果](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977952619)）。
 
 ### マージ後の所有者の確認
 
@@ -305,8 +303,8 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 ```sh
 sha=$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)
 repo=$(git rev-parse --show-toplevel)
-dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"
-echo "$sha $repo"
+dir="$HOME/.local/share/kurashi-ledger-app-token/${sha}"
+echo "${sha} ${repo}"
 ```
 
    期待: 40文字のSHAと、1のcheckoutのパス。
@@ -314,7 +312,7 @@ echo "$sha $repo"
 5. 写しが`sha`の中身と同じか確かめる:
 
 ```sh
-for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file blob "$sha:scripts/$f" | cmp - "$dir/$f" && echo "OK $f"; done
+for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file blob "${sha}:scripts/${f}" | cmp - "$dir/$f" && echo "OK $f"; done
 ```
 
    期待: `OK github-app-token.ts`と`OK lib/github-app-token.ts`の2行。ほかの表示が出たら、その写しを使わない。
@@ -385,18 +383,16 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 
 11. 結果をIssue #50に記録する。6〜10で2xxが出たら、すぐ記録し、AIのマージを止めたままにする。
 
-**発行が失敗したとき:** 3〜5で期待の値が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。GitHubが発行を拒む（多くは`HTTP 422`）か、発行されたトークンが完全一致の照合で失敗する（例: `権限（actions_variables: read）が付かなかった`）。どちらでもコマンドは実行しない。権限の名前`actions_variables`が違うおそれがある。そのときは:
+**発行が失敗したとき:** 3〜5で期待の値が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。GitHubが発行を拒む（多くは`HTTP 422`）か、発行されたトークンが完全一致の照合で失敗する（例: `権限（actions_variables: read）が付かなかった`）。どちらでもコマンドは実行しない。そのときは:
 
 1. 標準エラーの文をIssue #50に記録する（トークン・鍵は表示されない）。
 2. AIは変数を読めない扱いのままにし、マージしない。照合を緩めない。doc-gifで読まない。
-3. 名前を直すPRを待つ。
+3. 原因を直すPRを待つ。
 
 **残る限界:** doc-gifは所有者と共用なので、doc-gifの資格情報で`OWNER_MERGE_ONLY`を書き換えられる。GitHubはこれを止めない。AIはdoc-gifで変数を読まず、書かない（規則）。防ぐには、AIが使えない所有者だけの身元が要る。
-
-**確かめていないこと:** トークンの要求で、権限の名前`actions_variables`が受け付けられるか。この名前は、GitHub docsの権限の一覧のデータ（Variablesのread）から取った。RESTのOpenAPIの`app-permissions`には載っていない。違えば、スクリプトは安全側に失敗する。そのときは名前を直すPRを出す。
 
 ## レビュー受付の読取り用途
 
 `dispatch-read`はcontents、pull_requests、issues、actions、checks、statusesをreadに限定します。metadata:readはGitHubの追加分です。書込み・Administration・workflowsは付けません。変更は権限制御として独立レビューし、承認済みmainの固定版へownerが更新してから使います。実鍵の試験をPR checkoutから行わないでください。
 
-[受付の導入手順](review-dispatch-implementation.md)は既定offです。用途追加だけでWebhook・実AI・投稿・rulesetを有効にしません。
+[受付の導入手順](review-dispatch-runbook.md)は既定offから始めます。用途追加だけでWebhook・実AI・投稿・rulesetを有効にしません。

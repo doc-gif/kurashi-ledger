@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template. docs/review-dispatch-runbook.md renders the @NAME@ values; do not edit by hand. -->
+<!-- The Webhook receiver on 127.0.0.1:@PORT@. It reads the policy at start: restart it after a policy change. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@.serve</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@PYTHON@</string>
+    <string>@COPY@/tools/review_dispatch/supervisor.py</string>
+    <string>receiver</string>
+    <string>--root</string>
+    <string>@ROOT@</string>
+    <string>--</string>
+    <string>@NODE@</string>
+    <string>@COPY@/scripts/review-dispatch.ts</string>
+    <string>serve</string>
+    <string>--root</string>
+    <string>@ROOT@</string>
+    <string>--policy</string>
+    <string>@POLICY@</string>
+    <string>--secret-file</string>
+    <string>@SECRET@</string>
+    <string>--port</string>
+    <string>@PORT@</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>@HOME@</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>@LOGS@/serve.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOGS@/serve.err</string>
+</dict>
+</plist>
