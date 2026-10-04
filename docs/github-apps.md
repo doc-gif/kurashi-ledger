@@ -267,10 +267,20 @@ ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflows�
 
 ## マージ前の確認（merge-check）
 
+この節のコマンドは#55のマージと写しの作り直しの後に使う。それまでは125で終わる。
+
 2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値は、PR番号をカンマか改行で区切ったもの。`none`は「なし」。ほかの値は読めない扱い。判定の正本は[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節になる予定（PR #51で追加。#51のマージまでは経過措置として、この1行に従う）。
 
+ClaudeのAppで読む:
+
 ```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|claude> --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+```
+
+CodexのAppで読む:
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
 終了コードが0でない、または値の書式が違えば、マージしない。
@@ -281,25 +291,35 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 
 #### A. 信頼した写しを作り直す
 
-1. マージのSHAを調べる: `gh pr view 55 --repo doc-gif/kurashi-ledger --json state,mergeCommit --jq '.state + " " + .mergeCommit.oid'`。期待: `MERGED <40文字のSHA>`。
-2. 変数を設定する: `sha=<1のSHA>`、`repo=<このrepoのcheckout>`（PRのcheckoutではないもの）、`dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"`。
-3. 上の「信頼した写し」のコマンドの3行目以降（`git -C "$repo" fetch`から）を、サブシェル`( … )`で囲んで実行する。期待: 何も表示されずに終わる。
-4. 写しが`sha`の中身と同じか確かめる:
+1. このrepoのmainのcheckout（PRのcheckoutではないもの）へ移動する。
+2. マージされたことを確かめる: `gh pr view 55 --repo doc-gif/kurashi-ledger --json state --jq .state`。期待: `MERGED`。
+3. 変数を設定する（1行ずつ実行する）:
+
+```sh
+sha=$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)
+repo=$(git rev-parse --show-toplevel)
+dir="$HOME/.local/share/kurashi-ledger-app-token/$sha"
+echo "$sha $repo"
+```
+
+   期待: 40文字のSHAと、1のcheckoutのパス。
+4. 上の「信頼した写し」のコマンドの3行目以降（`git -C "$repo" fetch`から）を、サブシェル`( … )`で囲んで実行する。期待: 何も表示されずに終わる。
+5. 写しが`sha`の中身と同じか確かめる:
 
 ```sh
 for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file blob "$sha:scripts/$f" | cmp - "$dir/$f" && echo "OK $f"; done
 ```
 
    期待: `OK github-app-token.ts`と`OK lib/github-app-token.ts`の2行。ほかの表示が出たら、その写しを使わない。
-5. 権限を確かめる: `ls -ld "$dir"`。期待: `drwx------`（中のファイルにほかの利用者は届かない）。
-6. 新しい用途があるか確かめる: `grep -c "'merge-check'" "$dir/lib/github-app-token.ts"`。期待: 1以上。
+6. 権限を確かめる: `ls -ld "$dir"`。期待: `drwx------`（中のファイルにほかの利用者は届かない）。
+7. 新しい用途があるか確かめる: `grep -c "'merge-check'" "$dir/lib/github-app-token.ts"`。期待: 1以上。
 
 #### B. 実際の鍵で確かめる
 
-所有者が行う。`--agent codex`は所有者だけが実行する（AIはほかのAIの鍵を読まない）。AIが`--agent claude`で行うときは、各コマンドを`cd "$HOME" && zsh -ic '<コマンド>'`で実行する。
+所有者が行う。`--agent codex`は所有者だけが実行する（AIはほかのAIの鍵を読まない）。AIが`--agent claude`で行うときは、各コマンドを`$HOME`から`zsh -ic`で包んで実行する（IDの環境変数を読むため）。
 
 1. `cd "$HOME" && zsh -i`を実行する。期待: IDの環境変数を読み込んだシェルになる。
-2. `export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/<マージのSHA>"`を実行する。
+2. 写しの場所を設定する: `export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"`。続けて`ls "$KL_APP_TOKEN_DIR"`。期待: `github-app-token.ts  lib  package.json`。
 3. `merge-check`のトークンで、触れるrepoを読む（スクリプトは子の前にも同じ確認をする）。期待: `1`と`["doc-gif/kurashi-ledger"]`。失敗すると、この用途は使えない。スクリプトは125で終わり、コマンドを実行しない（安全側）。
 
 ```sh
@@ -318,10 +338,11 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
-6. `review`では読めないことを確かめる。期待: `HTTP 403`か`HTTP 404`。`--purpose implement`でも同じ。
+6. `review`と`implement`では読めないことを確かめる。期待: どちらも`HTTP 403`か`HTTP 404`。
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose review -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
 7. `merge-check`で変数を作れないことを確かめる（名前を空にしてあるので、権限があっても作られず422になる）。期待: `HTTP 403`。
