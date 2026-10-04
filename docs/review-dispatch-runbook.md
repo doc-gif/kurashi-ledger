@@ -334,7 +334,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 13. 最初のshadow
 
-前提: W4c（PR番号は後で）がマージ済み（R013・R016、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）。写しがそれより古ければ「[更新したとき](#更新したとき)」の写しの行を行う。
+前提: [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)がマージ済み（R013・R016、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）。写しがそれより古ければ「[更新したとき](#更新したとき)」の写しの行を行う。
 
 1. CodexのAppの設定 → Advanced → Recent Deliveriesで、`ping`をRedeliverする。期待: 応答`400`（秘密は一致し、`ping`は受け付けない種類）。`401`なら秘密が違う。
 2. cycleを1回動かす。
@@ -355,7 +355,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 14. 1件のPRをactiveにする
 
-前提: W4c（PR番号は後で）がマージ済み（R015、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）で、写しがそれを含む。
+前提: [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)がマージ済み（R015、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）で、写しがそれを含む。
 
 [切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは2と3。
 

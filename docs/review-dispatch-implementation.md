@@ -137,7 +137,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 | PR48-R006 / I003 | 実Webhookの前に、配送のbase.shaとtimeline・updated_atの実際の値を測る（導入手順の13）。結合できなければunknownを保ち、結合の規則を独立レビューで直す |
 | I010 | App作成PRのCopilotの応答は任意の補助情報。起動・マージの条件に戻さない |
 | I011 | 共有された従来アカウントの身元移行。結合と照合のコードはある。実repoの`identity`の設定は未検証 |
-| [PR #48のレビュー](https://github.com/doc-gif/kurashi-ledger/pull/48)のR013・R015・R016（不完全な照合でも配送を処理済みにする、quota解除の時計の混在、観測の記録の保持期限） | W4c（PR番号は後で）で直す。R013・R016は実機のshadowの前、R015はactiveの前（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)） |
+| [PR #48のレビュー](https://github.com/doc-gif/kurashi-ledger/pull/48)のR013・R015・R016（不完全な照合でも配送を処理済みにする、quota解除の時計の混在、観測の記録の保持期限） | [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)で直す。R013・R016は実機のshadowの前、R015はactiveの前（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)） |
 | PR48-R014の残り（人の手動の粗探しの記録と、acceptedの比較） | 対象を広げる前（「正本移行/active前」とされた）。start-smallは受付が投稿した粗探しだけを使う |
 | 通知Broker（Codex AppのPRコメント） | 作っていない。start-smallの周知は調整係の受領記録と受付のログで行う（[切替](pr-review-loop.md#切替prごと)の4はどちらかでよい）。作るときは同じ公開検査を掛ける |
 | Codexの自動起動、auto-fix、旧workerとの自動の交代 | 無効（[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)）。受付はマージしない |
