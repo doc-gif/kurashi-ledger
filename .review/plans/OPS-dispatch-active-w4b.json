@@ -1,0 +1,186 @@
+{
+  "schema_version": 2,
+  "base_sha": "dbf17492bb276d5102c50b3e4f04e1b14871e7d1",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "README.md",
+    "docs/github-agent-operations.md",
+    "docs/github-apps.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-dispatch-implementation.md",
+    "docs/review-dispatch-runbook.md",
+    "tools/review_dispatch/launchd/cycle.plist.in",
+    "tools/review_dispatch/launchd/serve.plist.in",
+    "tools/review_dispatch/launchd/tunnel.plist.in"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "文書とlaunchdの雛形だけ。実際のID・URL・鍵・個人のパスを書かず、手順はコマンドで値を求める。秘密は画面に出さない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "`node scripts/check-public.ts --staged`、差分の目視、`git grep`で実在のApp ID・トンネルのURL・`/Users/`の有無",
+          "expected": "公開検査が終了0。実在の値・URL・個人のパスがない。setup-tokenは隠した入力で読み、Webhookの秘密はクリップボードへ渡し、どちらも表示しない"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "導入手順と重複の整理。判定・マージの規則は変えず、正本へリンクする。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "変更した各文書で、同じ概念の説明が2か所にないかを読む。整理した重複を一覧にする",
+          "expected": "概念ごとに置き場所が1つ。ほかはリンクだけ"
+        },
+        {
+          "id": "trust",
+          "method": "手順で、AIの投稿・記録が所有者の判断やマージの権限を作らないことを、運用規約のdispatch-activeと照合する",
+          "expected": "マージは所有者。`OWNER_MERGE_ONLY`は所有者が足し、rollback後も残す。手順の値はAIの自己申告に頼らない"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "入口（README・状態資料・設計§8・PR書式の切替）を新しい手順書へ向ける。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "手順が#56のコードと、このPRの雛形を含むmainの写しを前提にすることを確かめる",
+          "expected": "写しは#56を含むmainから作り、雛形がなければ止まる"
+        },
+        {
+          "id": "entrypoints",
+          "method": "README・project-status・設計§3/§8・pr-review-loopの切替・github-appsの記述が同じ手順書を指すか、リンクと見出しの検査で確かめる",
+          "expected": "リンク切れ・古いアンカーが0件。`webhookは使わない`等の古い記述が残らない"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "手順書の変数の段（所有者が編集する値）",
+      "data": "対象PR・port・トンネルのホスト名",
+      "trust": "untrusted",
+      "control": "各手順の確認行で、値がなければ止まる。portとPRの範囲は受付のCLIも検査する"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "`claude setup-token`の出力",
+      "data": "購読の長期トークン",
+      "trust": "trusted",
+      "control": "隠した入力で読み、所有者だけのファイル（600）へ書く。表示・履歴に残さない"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "launchdの雛形の展開（sed）",
+      "data": "計算したパスとApp ID",
+      "trust": "trusted",
+      "control": "写しの雛形だけを使い、`plutil -lint`で確かめる。展開先は所有者のLaunchAgents"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "公開HTTPS（Cloudflare Tunnel）→ 127.0.0.1の受け口",
+      "data": "GitHubの配送",
+      "trust": "untrusted",
+      "control": "名前付きトンネルは`/webhook`だけを転送する。受け口がHMAC・大きさ・repo・installationを検査する（既存のコード）"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "所有者のGitHub操作（`OWNER_MERGE_ONLY`、Appの設定）",
+      "data": "PR番号、Webhookの設定",
+      "trust": "trusted",
+      "control": "所有者だけが行う。AIの手順にしない。URLと秘密はrepoに書かない"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "鍵を扱う道具・受付をPRのcheckoutから実行する",
+      "places": [
+        {
+          "location": "手順書の写しの作成",
+          "result": "mainをcloneしてarchiveで取り出す。PRのcheckoutは使わない"
+        },
+        {
+          "location": "launchdの雛形",
+          "result": "写しのパスだけを使う"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "App のトークンが取れないときにdoc-gifの資格情報で続ける",
+      "places": [
+        {
+          "location": "cycleのlaunchd",
+          "result": "token wrapper経由だけ。失敗すれば受付は起動しない"
+        },
+        {
+          "location": "所有者のghの読取り（IDの取得・測定）",
+          "result": "所有者自身の読取りだけ。AIの手順にしない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "手順の出力・ログに秘密や本文が出る",
+      "places": [
+        {
+          "location": "setup-token・Webhookの秘密",
+          "result": "表示しない（隠した入力・pbcopy）"
+        },
+        {
+          "location": "launchdのログ",
+          "result": "受付はIDと件数だけを出す。ログの置き場所は所有者だけ（700）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-assessment-drift",
+      "pattern": "zshで壊れるコマンド（`$sha:`、山括弧の置換、コメント行、`return`）が文書に残る",
+      "places": [
+        {
+          "location": "docs/github-apps.mdの信頼した写し",
+          "result": "`${sha}:`に直す"
+        },
+        {
+          "location": "新しい手順書の全コマンド",
+          "result": "変数は先頭の段で求め、確認行はサブシェルの`exit 1`。`git grep`で`$[a-z_]+:`と`<`の置換を探す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "見出しの変更・新しい手順書で入口のリンクが古くなる",
+      "places": [
+        {
+          "location": "`マージ前の確認（merge-check）`へのリンク",
+          "result": "見出しを変え、全repoのアンカーを直す。検査で0件"
+        },
+        {
+          "location": "README・project-status・設計・PR書式",
+          "result": "手順書へのリンクに揃える"
+        }
+      ]
+    }
+  ]
+}
