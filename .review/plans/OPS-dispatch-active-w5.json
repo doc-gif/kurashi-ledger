@@ -1,0 +1,266 @@
+{
+  "schema_version": 2,
+  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "docs/github-apps.md",
+    "scripts/github-app-token.test.ts",
+    "scripts/github-app-token.ts",
+    "scripts/lib/github-app-token.ts"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #50のW0（PR #51）は、文書でAIが`OWNER_MERGE_ONLY`を自分のAppの`merge-check`用途で読むと書くが、その用途はまだない。用途が使えるまで、AIは変数を読めない扱いでマージしない（所有者決定 https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281）。",
+      "state": "resolved",
+      "resolution": "このPR（W5）で用途を足す。W0の文書は変えない（W0の担当）。導入順はW0の記述どおり: 所有者が両Appに「Variables: Read-only」を足してインストール先で承認 → このPRをマージ → 所有者がマージ後のSHAで信頼した写しを作り直す → #51。"
+    },
+    {
+      "description": "APIのトークン要求での権限のキー名が、OpenAPIのapp-permissionsの一覧に「variables」系として載っていない。GitHub docsの権限データ（github/docs src/github-apps/data/fpt-2022-11-28/server-to-server-permissions.json）では、`GET /repos/{owner}/{repo}/actions/variables/{name}`のread権限のキーは`actions_variables`（ほかの用途のキー`pull_requests`・`contents`等と同じ命名）。",
+      "state": "resolved",
+      "resolution": "`actions_variables: read`を要求する。実際のAppで受け付けられるかは未確認として文書の「確かめていないこと」に書く。違えば、完全一致の照合で安全側に失敗し（子を起動しない）、マージもされない。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "GitHub Appのトークンの用途を1つ足すだけ。保存先・lock・プロセスの排他に触れない（パスの選択規則でscripts/**が当たるだけ）。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "recovery",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "権限の表に読取りだけの用途を1つ足す。既存の完全一致の照合・repoの確認・失効・秘密を出さない経路をそのまま使い、照合を緩めない。試験は合成の鍵と番兵だけで、実際の鍵・App・ネットワークを使わない。Codexの鍵を読まない。実行は信頼した写しからだけで、このPRのcheckoutから実鍵で実行しない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "試験: merge-checkの完全一致で子が1回起動し、要求のpermissionsが{actions_variables:'read'}だけ。余分（contents:read、actions_variables:write、administration）・不足（actions_variablesなし）・水準違いでは125、子なし、DELETE /installation/tokenで失効、出力に秘密なし。codex・claudeの両方。`node scripts/check-public.ts --staged`と差分の目視",
+          "expected": "全試験が通り、公開検査は終了コード0。差分に実在の鍵・ID・トークン・個人のパスがない"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "not-applicable",
+      "reason": "配布物・更新・build・installには触れない。トークンのスクリプトはnpm scriptでなく、信頼した写しで手動実行する道具。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "artifact",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "データのルート・初回利用・別名に触れない。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "aliases",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "保存・rollback・restore・manifestに触れない。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "restore",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "manifest",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "not-applicable",
+      "reason": "タスク台帳・依存・入口（npm script等）を変えない。用途の追加は文書docs/github-apps.mdの表とPR本文にだけ書き、台帳のT23/T24はW0の担当。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        },
+        {
+          "id": "entrypoints",
+          "method": "差分が`scripts/github-app-token.ts`・`scripts/lib/github-app-token.ts`・その試験・`docs/github-apps.md`だけであることを`git diff --stat origin/main`で確かめる",
+          "expected": "保存先・lock・ルート・配布物・タスク依存に触れる変更がない"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "scripts/lib/github-app-token.ts parseArgs（--purpose）",
+      "data": "利用者が渡す用途の名前",
+      "trust": "untrusted",
+      "control": "既知の5つの名前だけを受け付け、ほかはUsageErrorで125。値は表示しない"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "tokenRequest（POST /app/installations/{id}/access_tokens）",
+      "data": "要求する権限 {actions_variables: read} とrepositories [kurashi-ledger]",
+      "trust": "trusted",
+      "control": "PURPOSESの定数だけを送る。metadataはGitHubが加える"
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": "checkGrantedScope と verifyTokenRepositories（発行の応答と GET /installation/repositories）",
+      "data": "GitHubが付けた権限・repoの一覧",
+      "trust": "untrusted",
+      "control": "既存の完全一致の照合（余分・不足・水準違い・__proto__を拒否、metadata:readだけ許す）とrepo 1件の確認。違えば失効させ子を起動しない"
+    },
+    {
+      "id": "B4",
+      "direction": "exit",
+      "location": "子プロセス（gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY）",
+      "data": "GH_TOKENに置いた読取りだけのトークン",
+      "trust": "trusted",
+      "control": "既存のchildEnvironment（doc-gifの資格情報に戻らない）。トークンは表示しない。子の終了後に失効"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "新しい用途だけ照合が緩い、または一部の経路で照合を飛ばす",
+      "places": [
+        {
+          "location": "checkGrantedScope",
+          "result": "用途ごとの分岐はなく、PURPOSES[purpose]と完全一致を見る。新しい用途も同じ経路。変更なし"
+        },
+        {
+          "location": "IMPLICIT_PERMISSIONS",
+          "result": "metadata:readだけ。merge-checkのために足さない"
+        },
+        {
+          "location": "isPurpose・parseArgsのエラー文・USAGE",
+          "result": "用途の一覧に足す。PURPOSESのキーと試験で一致を確かめる"
+        },
+        {
+          "location": "verifyTokenRepositories",
+          "result": "用途に依らず実行される。変更なし"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "新しい用途をPRのcheckoutから実鍵で試す・使う",
+      "places": [
+        {
+          "location": "このPRの作業",
+          "result": "実鍵で実行しない。pushは既存の信頼した写し（be56946…）で行う"
+        },
+        {
+          "location": "docs/github-apps.md の手順",
+          "result": "マージ後に所有者がマージ後のSHAで写しを作り直してから使う、と書く"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "新しい用途の失敗の文に、GitHubの応答の値をそのまま出す",
+      "places": [
+        {
+          "location": "checkGrantedScope の権限名の表示",
+          "result": "名前は/^[a-z_]{1,40}$/のときだけ出す既存の規則のまま。値（水準）は要求側の定数だけ"
+        },
+        {
+          "location": "parseArgs の用途のエラー",
+          "result": "受け取った値は表示しない既存の規則のまま。一覧は定数"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "トークンの用途の追加が、この条件の対象に波及する",
+      "places": [
+        {
+          "location": "planned_paths の4ファイル",
+          "result": "保存先・lock・ルート・配布・台帳に触れない。非該当"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "トークンの用途の追加が、この条件の対象に波及する",
+      "places": [
+        {
+          "location": "planned_paths の4ファイル",
+          "result": "保存先・lock・ルート・配布・台帳に触れない。非該当"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "トークンの用途の追加が、この条件の対象に波及する",
+      "places": [
+        {
+          "location": "planned_paths の4ファイル",
+          "result": "保存先・lock・ルート・配布・台帳に触れない。非該当"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "トークンの用途の追加が、この条件の対象に波及する",
+      "places": [
+        {
+          "location": "planned_paths の4ファイル",
+          "result": "保存先・lock・ルート・配布・台帳に触れない。非該当"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "トークンの用途の追加が、この条件の対象に波及する",
+      "places": [
+        {
+          "location": "planned_paths の4ファイル",
+          "result": "保存先・lock・ルート・配布・台帳に触れない。非該当"
+        }
+      ]
+    }
+  ]
+}
