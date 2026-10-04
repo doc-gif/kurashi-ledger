@@ -271,6 +271,13 @@ ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflows�
 
 2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値は、PR番号をカンマか改行で区切ったもの。`none`は「なし」。ほかの値は読めない扱い。判定の正本は[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節になる予定（PR #51で追加。#51のマージまでは経過措置として、この1行に従う）。
 
+最初に、写しの場所を設定する。`写しがない`と出たら止め、下の「A. 信頼した写しを作り直す」を行う。
+
+```sh
+export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"
+test -f "$KL_APP_TOKEN_DIR/github-app-token.ts" || echo "写しがない。先にAを行う"
+```
+
 ClaudeのAppで読む:
 
 ```sh
@@ -319,7 +326,13 @@ for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file
 所有者が行う。`--agent codex`は所有者だけが実行する（AIはほかのAIの鍵を読まない）。AIが`--agent claude`で行うときは、各コマンドを`$HOME`から`zsh -ic`で包んで実行する（IDの環境変数を読むため）。
 
 1. `cd "$HOME" && zsh -i`を実行する。期待: IDの環境変数を読み込んだシェルになる。
-2. 写しの場所を設定する: `export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"`。続けて`ls "$KL_APP_TOKEN_DIR"`。期待: `github-app-token.ts  lib  package.json`。
+2. 写しの場所を設定する。期待: 何も表示されない。`写しがない`と出たら止め、Aを行う。
+
+```sh
+export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"
+test -f "$KL_APP_TOKEN_DIR/github-app-token.ts" || echo "写しがない。先にAを行う"
+```
+
 3. `merge-check`のトークンで、触れるrepoを読む（スクリプトは子の前にも同じ確認をする）。期待: `1`と`["doc-gif/kurashi-ledger"]`。失敗すると、この用途は使えない。スクリプトは125で終わり、コマンドを実行しない（安全側）。
 
 ```sh
