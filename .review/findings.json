@@ -680,13 +680,15 @@
       "id": "PR37-R001",
       "invariant_id": "INV-PRIVACY",
       "cause_key": "logged-value-carries-data",
-      "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。",
+      "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
       "sources": [
         "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
         "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
         "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
         "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
-        "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961"
+        "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+        "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+        "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
       ]
     }
   ]

@@ -196,16 +196,16 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 
 ## 依存の更新（Dependabot）
 
-2026-10-03に所有者がDependabotを含めることを承認した（Issue #35、[所有者本人の直接確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804)。下の「所有者の決定」の3を変えた）。理由と設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)の4.5、設定は`.github/dependabot.yml`。
+2026-10-03に所有者がDependabotを含めることを承認した（Issue #35、[所有者の直接確認をCodexが受領した記録](https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804)。下の「所有者の決定」の3を変えた）。理由と設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)の4.5、設定は`.github/dependabot.yml`。
 
-- 提案: npm（`package.json`とlockfile）とGitHub Actions（`.github/workflows/`のSHAの固定）の新しい版を、毎週月曜日の9時（日本時間）に確かめてPRにする。公開から7日（npmのメジャーは14日）待ってから提案する。npmのminor・patchは1つのPRにまとめ、メジャーは依存ごとのPRにする。`@types/node`のメジャーは、Node.jsのメジャーの更新（T28）と合わせるので提案させない。Pythonの依存の宣言はないので対象にしない。セキュリティ更新（repoの設定で有効にした場合）は、待たずに、別のまとまりのPRになる。
+- 提案: npm（`package.json`とlockfile）とGitHub Actions（`.github/workflows/`のSHAの固定。`.github/workflows/`の外にある`tools/review_guard/adapters/github-actions.yml`は対象外なので、actionを採用したときに同じPRで手で合わせる）の新しい版を、毎週月曜日の9時（日本時間）に確かめてPRにする。公開から7日（npmのメジャーは14日）待ってから提案する。npmのminor・patchは1つのPRにまとめ、メジャーは依存ごとのPRにする。`@types/node`のメジャーは、Node.jsのメジャーの更新（T28）と合わせるので提案させない。Pythonの依存の宣言はないので対象にしない。セキュリティ更新（repoの設定で有効にした場合）は、待たずに、別のまとまりのPRになる。
 - **提案のPRはそのままマージしない。** 提案のPRはPRの計画（`.review/plans/`）を含まないので、CIの`review plan`と`Quality gate`が失敗する。これは意図した状態で、例外は作らない。auto-merge・`@dependabot merge`は使わない。Dependabotのbranchへpushしない（ほかの担当のbranchへpushしない規約。Dependabotがbranchを作り直すと、足した変更が消える）。
 - 採用の手順:
   1. 所有者または調整係が、提案のPRごとに採用のIssue（`.github/ISSUE_TEMPLATE/task.md`の項目。task_idは`DEPS-pr<提案のPR番号>`、提案のPRへのリンク、対象の依存と版、共有資源）を作り、採用の担当を割り当てる（[着手の条件](github-agent-operations.md#タスクと着手条件)。task_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`にそろえる。提案のPR1つに、Issue1つ・計画1つ・branch1つ・採用のPR1つを対応させ、名前に提案のPR番号を入れる。同じ日に提案が複数あっても衝突しない。セキュリティ更新を先に割り当てる）。npmの更新は`package.json`とlockfileを変えるので、ほかのタスク（T08等）がそれを使っている間は待つ。
   2. 担当は、最新のmainから自分のbranch（`task/deps-pr<提案のPR番号>-<担当名>`。例: `task/deps-pr41-claude`）を作り、**提案のcommitを取り込む前に**、計画`.review/plans/DEPS-pr<提案のPR番号>.json`（`task_id`は`DEPS-pr<提案のPR番号>`）をcommitする（[修正前の整合確認](review-prevention.md)の「変更前の手順」の5の順序）。予定のパスは、提案のPRの変更したファイル（`gh pr diff <番号> --name-only`等で、checkoutせずに読む）。
   3. 計画のcommitのあとで、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。
   4. 変更の内容（リリースノート）、lockfileの`resolved`が`https://registry.npmjs.org/`だけであること、新しくインストールスクリプトを持つ依存がないこと（lockfileの`hasInstallScript`）、ライセンスを確かめてPRに書く。actionの更新では、新しいSHAが公式のリポジトリのタグを指すことを確かめる。`npm run setup`と3つのOSのCIを通す。
-  5. Draft PR→別の担当の内容レビュー→[マージの条件](github-agent-operations.md#merge-conditions)、の通常の流れで進める。
+  5. Draft PR→実装していない担当による事前のレッドチーム→実装していない担当の内容レビュー→[マージの条件](github-agent-operations.md#merge-conditions)、の通常の流れで進める。
   6. 採用のPRがマージされたら、提案のPRに採用のPRのリンクを書いて閉じる。採用しない場合は理由を書いて閉じる。続けて止めたい依存は、`@dependabot ignore`ではなく`.github/dependabot.yml`を変える（設定をレビューに載せるため）。
 - repoの設定（Dependabot alerts・security updates）は、所有者が確かめる（ADR-0010の4.5の「所有者が確かめる設定」）。
 
@@ -240,7 +240,7 @@ T02で所有者の判断を求めた事項について、所有者が2026-10-02�
 | --- | --- | --- |
 | 1 | 固定した版（24.15.0以上）とWindowsでの確認 | ローカルのNode.jsは当面24.14.0のままにする。固定した範囲（`>=24.15.0 <25`）とWindowsでの確認（`npm run setup`・`npm run typecheck`・`npm test`・`npm run build`）は、T05の受入条件に移す（[タスク台帳](implementation-tasks.md)のT05）。T02では、固定した版とWindowsで一度も実行していない |
 | 2 | 元checkoutの未追跡の試作と`node_modules` | 当面残す。T02の統合後に扱いを見直す。削除しない |
-| 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める。**2026-10-03に、Dependabotの部分を変えた:** 所有者がDependabotを含めることを承認した（Issue #35。[所有者本人の直接確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804)）。提案のPRは計画を付けた担当のPRで取り込む（上の「依存の更新（Dependabot）」）。Gitのhookは入れないまま。採用の頻度はT25で決める |
+| 3 | Gitのhookと依存の自動更新（Dependabot） | いまは入れない。依存の更新の運用はT25で決める。**2026-10-03に、Dependabotの部分を変えた:** 所有者がDependabotを含めることを承認した（Issue #35。[所有者の直接確認をCodexが受領した記録](https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804)）。提案のPRは計画を付けた担当のPRで取り込む（上の「依存の更新（Dependabot）」）。Gitのhookは入れないまま。採用の頻度はT25で決める |
 | 4 | `npm run setup`が利用者の`~/.npmrc`を読まないこと | 受け入れる（プロキシや独自のregistryは使っていない）。プロキシが必要になったら、`HTTPS_PROXY`等の環境変数で渡す（上の「npmの設定」） |
 
 2026-10-03に所有者が実装側のチャットで、このrepoのNode.jsとPythonの版をmiseで管理すると決めた（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。上の1の「ローカルのNode.jsは当面24.14.0のまま」は、所有者がmiseを入れるまでの扱いになる。
