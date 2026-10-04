@@ -78,8 +78,9 @@ jobs:
 
   # Windowsの一般のユーザー（管理者でない）での試験（Issue #19）。GitHubのWindowsのrunnerは管理者で動くので、
   # 一時のローカルユーザー（Usersだけに属する）を作り、そのユーザーとしてログオンして（Start-Process -Credential）
-  # npm testと同じ試験を実行し、skipを照合する。パスワードはこのジョブの中で乱数から作り、表示もファイルへの保存も
-  # しない（ユーザーの作成と起動に渡すだけ）。runnerは使い捨てのVMで、最後にユーザーを消す。
+  # npm testと同じ試験を実行し、skipを照合する。作成・実行・後始末は .github/scripts/windows-standard-user.ps1。
+  # パスワードはこのジョブの中で乱数から作り、表示もファイルへの保存もしない。runnerは使い捨てのVMで、最後に
+  # そのユーザーのプロセスを止めてから、ユーザーとプロファイルを消す。
   # docs/development.md の「CI」と「Windowsのコンソールの中断の試験」。
   windows-standard-user:
     name: checks (windows, standard user)
@@ -101,96 +102,44 @@ jobs:
       - name: npm run setup
         id: setup
         run: npm run setup
-      - name: Run the tests of npm test as a temporary standard user
-        id: test
+      # 時間切れの後始末の自己試験: 子と孫を残して止まらない処理を短い時間切れで実行し、時間切れになることと、
+      # 後始末のあとにそのユーザーのプロセス・ユーザー・プロファイルが残らないことを確かめる（PR33-R002）。
+      - name: Self-test the timeout cleanup of the standard user
+        id: selftest
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        # Windows PowerShell 5.1（Windowsに同梱。ローカルユーザーの操作のモジュールがそのまま動く）。5.1はスクリプトの
-        # 文字コードを決め打ちできないので、表示する文字列は英語にする。
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
+          $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user-selftest'
+          try {
+            & $helper -Action Run -UserName $env:KL_STD_USER -OutputDir $dir -Mode hang -TimeoutSeconds 20
+            if (-not (Test-Path (Join-Path $dir 'timed-out'))) { throw 'the hanging self-test did not time out' }
+          } finally {
+            & $helper -Action Cleanup -UserName $env:KL_STD_USER
+          }
+      - name: Run the tests of npm test as a temporary standard user
+        id: test
+        if: ${{ !cancelled() && steps.selftest.outcome == 'success' }}
+        # Windows PowerShell 5.1（Windowsに同梱。ローカルユーザーの操作のモジュールがそのまま動く）。
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
           $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user'
-          New-Item -ItemType Directory -Path $dir | Out-Null
-          # npm testと同じ対象（package.jsonのtestのscript）を、npmを通さずにnode --testで実行する。
-          $script = (Get-Content -Raw package.json | ConvertFrom-Json).scripts.test
-          if ($script -notmatch '^node --test ("[^"]+" ?)+$') { throw "cannot read the test script of package.json: $script" }
-          $node = (Get-Command node).Source
-          # 実行するユーザーに書込みを許すのは、出力のディレクトリだけ（一時ファイルは自分のプロファイルに置く）。
-          [System.IO.File]::WriteAllText((Join-Path $dir 'run.mjs'), @'
-          import { spawnSync } from 'node:child_process';
-          import { closeSync, mkdtempSync, openSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-          import { tmpdir } from 'node:os';
-          import { join } from 'node:path';
-          const [dir, ...args] = process.argv.slice(2);
-          const groups = spawnSync('whoami', ['/groups', '/fo', 'csv', '/nh'], { encoding: 'utf8' });
-          // ファイルのsymlinkを作れるか（作れなければ、install-record.test.tsは弱めて確かめ、diagnosticを出す）。
-          const probe = mkdtempSync(join(tmpdir(), 'kl-symlink-'));
-          let symlink = true;
-          try { writeFileSync(join(probe, 'target'), ''); symlinkSync(join(probe, 'target'), join(probe, 'link'), 'file'); } catch { symlink = false; }
-          rmSync(probe, { recursive: true, force: true });
-          const out = openSync(join(dir, 'npm-test.txt'), 'w');
-          const run = spawnSync(process.execPath, args, { stdio: ['ignore', out, out] });
-          closeSync(out);
-          writeFileSync(join(dir, 'result.json'), JSON.stringify({ status: run.status, signal: run.signal, error: run.error?.message ?? null, groups: groups.stdout ?? '', symlink }));
-          '@)
-          # 乱数のパスワード。表示もファイルへの保存もせず、このステップの中でだけ使う（ユーザーの作成と起動に渡す）。
-          $bytes = New-Object byte[] 48
-          $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-          $rng.GetBytes($bytes)
-          $rng.Dispose()
-          $plain = [Convert]::ToBase64String($bytes) + 'aA1!'
-          [Array]::Clear($bytes, 0, $bytes.Length)
-          New-LocalUser -Name $env:KL_STD_USER -Password (ConvertTo-SecureString $plain -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires -Description 'Temporary standard user for CI' | Out-Null
-          Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $env:KL_STD_USER
-          icacls $dir /grant "$($env:KL_STD_USER):(OI)(CI)M" | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
-          # 試験を読むためにworkspaceを読めるようにする（継承するACEとして加え、下の階層にも効かせる）。
-          icacls $env:GITHUB_WORKSPACE /grant "$($env:KL_STD_USER):(OI)(CI)RX" | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
-          $arguments = '"' + (Join-Path $dir 'run.mjs') + '" "' + $dir + '" ' + $script.Substring('node '.Length)
-          # そのユーザーとしてログオンして起動する（CreateProcessWithLogonW。プロファイルを読み込む）。
-          $credential = New-Object System.Management.Automation.PSCredential("$env:COMPUTERNAME\$env:KL_STD_USER", (ConvertTo-SecureString $plain -AsPlainText -Force))
-          Remove-Variable plain
-          $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $env:GITHUB_WORKSPACE -Credential $credential -LoadUserProfile -WindowStyle Hidden -PassThru
-          Remove-Variable credential
-          $handle = $process.Handle
-          if (-not $process.WaitForExit(15 * 60 * 1000)) {
-            Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw 'the tests as the standard user did not finish in time'
-          }
-          $result = Join-Path $dir 'result.json'
-          if (-not (Test-Path $result)) {
-            Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt') -ErrorAction SilentlyContinue
-            throw "the runner ended without writing the result (exit code $($process.ExitCode))"
-          }
-          Get-Content -Encoding UTF8 (Join-Path $dir 'npm-test.txt')
-          $r = Get-Content -Raw $result | ConvertFrom-Json
-          # 管理者でないこと: 整合性レベルがMedium（S-1-16-8192）で、High以上がなく、Administrators（S-1-5-32-544）を含まない。
-          $standard = ($r.groups -match 'S-1-16-8192') -and ($r.groups -notmatch 'S-1-16-12288|S-1-16-16384') -and ($r.groups -notmatch 'S-1-5-32-544')
-          $summary = @(
-            '### Tests as a temporary Windows standard user'
-            ''
-            "- Not an administrator (Medium integrity, no Administrators group): $standard"
-            "- Exit code of node --test: $($r.status) (signal: $($r.signal), start error: $($r.error))"
-            "- The user can create file symlinks: $($r.symlink)"
-            ''
-          ) -join "`n"
-          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, $summary + "`n")
-          if (-not $standard) { throw 'the tests did not run as a standard (non-administrator) user' }
-          if ($r.status -ne 0) { throw "the tests failed as the standard user (exit code $($r.status))" }
+          & $helper -Action Run -UserName $env:KL_STD_USER -OutputDir $dir -Mode tests -TimeoutSeconds 900
+          if (Test-Path (Join-Path $dir 'timed-out')) { throw 'the tests as the standard user did not finish in time' }
       - name: Compare the skipped tests with docs/development.md
         if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
         run: npm run check:test-skips -- "$RUNNER_TEMP/kl-standard-user/npm-test.txt"
-      - name: Remove the temporary user
+      # 成否にかかわらず、そのユーザーのすべてのプロセスを止めてからユーザーとプロファイルを消し、残れば失敗にする。
+      - name: Remove the temporary user, its processes and its profile
         if: ${{ always() }}
         shell: powershell
         run: |
-          $user = Get-LocalUser -Name $env:KL_STD_USER -ErrorAction SilentlyContinue
-          if ($null -ne $user) {
-            Remove-LocalUser -Name $env:KL_STD_USER
-            Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $user.SID.Value } | Remove-CimInstance -ErrorAction Continue
-          }
+          $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
+          & $helper -Action Cleanup -UserName $env:KL_STD_USER
 
   browser:
     name: browser (${{ matrix.name }})
