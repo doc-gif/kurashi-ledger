@@ -92,14 +92,14 @@ function defaultFor(field: string, spec: Spec): unknown | typeof NO_DEFAULT {
   return NO_DEFAULT;
 }
 
-function expandObject(fields: Readonly<Record<string, Spec>>, given: Obj, where: string, type?: RecordType): Obj {
+function expandObject(fields: Readonly<Record<string, Spec>>, given: Obj, where: string, type?: RecordType, legacy10 = false): Obj {
   const out: Obj = {};
   for (const [field, spec] of Object.entries(fields)) {
     if (field in given) {
       out[field] = expandNested(spec, given[field], `${where}.${field}`);
       continue;
     }
-    const cond = type === undefined ? undefined : conditionalDefault(type, field, given);
+    const cond = type === undefined ? undefined : legacy10 && type === "payslip" && field === "incomeTimingKind" ? { state: "unknown" } : conditionalDefault(type, field, given);
     const d = cond === undefined ? defaultFor(field, spec) : cond;
     if (d === NO_DEFAULT) throw new Error(`${where}.${field}: 既定のない項目を省略している`);
     out[field] = d;
@@ -127,6 +127,8 @@ export interface ExpandContext {
   // writeRequestIdを書かなかったときの既定。省略すると w-<scenarioId>-<opId>（保存の操作ごとに1つ。同じ操作の再送は同じキー）。
   // restoreUncheckedのように1つの操作で複数の改訂を置く場合は、改訂ごとに一意のキーを渡す（restoredWriteRequestId）。
   defaultWriteRequestId?: string;
+  // 契約版1.0のデータとして読む（README（契約）の「1.0のデータの読み方」）。2.0で足したFactの項目は、書いていなければunknown。
+  legacy10?: boolean;
 }
 
 // restoreUncheckedで置く改訂ごとの既定のwriteRequestId。writeRequestIdはデータベース全体で予約するキーなので（共通の型の9・10）、
@@ -152,7 +154,7 @@ export function expandRecord(compact: Obj, ctx: ExpandContext): Obj {
   const given = isObj(compact["body"]) ? compact["body"] : {};
   let body: Obj;
   if (reason === "create" || prev === undefined) {
-    body = expandObject(BODY[type], given, `${ctx.opId}.body`, type);
+    body = expandObject(BODY[type], given, `${ctx.opId}.body`, type, ctx.legacy10 === true);
   } else {
     const base = isObj(prev["body"]) ? prev["body"] : {};
     const merged: Obj = { ...base };

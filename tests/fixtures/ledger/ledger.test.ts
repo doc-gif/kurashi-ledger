@@ -35,6 +35,7 @@ import {
   type RecordType,
   type StaticCode,
 } from "./contract-shape.ts";
+import type { CheckMode } from "./contract-shape.ts";
 import {
   CONTRACTS_DIR,
   expandRecord,
@@ -70,6 +71,7 @@ const SCENARIO_REASONS: ReadonlySet<string> = new Set([
   "write-request-conflict",
 ]);
 const SEMANTIC_REASONS: ReadonlySet<string> = new Set([
+  "newer-content-read-only",
   "supersede-dimension-mismatch",
   "supersede-shape",
   "employment-term-overlap",
@@ -122,6 +124,7 @@ const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: re
   "forecast-remaining": { states: ["unknown"], ref: ["forecast"], line: "line" },
   "unreconciled-amount": { states: ["unknown"], ref: ["bank-deposit", "payslip"] },
   "save-check": { states: ["conflict"], ref: RECORD_TYPES },
+  "orphan-duplicate": { states: ["conflict"], ref: RECORD_TYPES },
 };
 
 // AggregateKeyの表（共通の型の11）。許すscopeの次元は修飾子で決まる場合がある（allowedDims）。
@@ -212,7 +215,7 @@ interface State {
   evidence: Map<string, Obj>;
   sha: Map<string, string>;
   runs: Map<string, Obj>;
-  writeRequests: Map<string, { opId: string; content: string }>;
+  writeRequests: Map<string, { opId: string; content: string; unchecked?: boolean }>;
   importKeys: Map<string, string>;
   seq: number;
 }
@@ -289,47 +292,137 @@ function factStateOf(v: unknown): string | undefined {
   return isObj(v) && typeof v["state"] === "string" ? v["state"] : undefined;
 }
 
-// 保存1件の、記録とその記録の前の版だけで決まる違反（静的・場面の違反）の分類を返す。
-function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems: Problems): Set<string> {
+// 共通の型の9の「信頼できる履歴と修復」: 改訂の静的な検査。取消（void）は、取消が決める項目だけに当て、bodyと変えられない
+// 項目（entryChannel・importKey）は直前と同じであることだけを確かめる（同じなら、それらの違反を数えない）。
+function staticCodesFor(rec: Obj, prev: Obj | undefined, mode: CheckMode): { code: string; path: string; message: string }[] {
+  const vs = checkRecordStatic(rec, mode);
+  if (rec["reason"] !== "void" || prev === undefined) return vs;
+  const same = (f: string): boolean => stableStringify(rec[f]) === stableStringify(prev[f]);
+  return vs.filter(
+    (v) =>
+      !(
+        (v.path.startsWith("$.body") && same("body")) ||
+        (v.path.startsWith("$.importKey") && same("importKey") && same("entryChannel")) ||
+        (v.path.startsWith("$.entryChannel") && same("entryChannel"))
+      ),
+  );
+}
+
+// 直前からの遷移（共通の型の9）。repairは、直前までの履歴が信頼できない記録への修復の改訂（同9の「修復の遷移」）。
+// historyは前の版までの改訂（最後が直前）。atは保存の時計の値（読取ではその改訂のrecordedAt）。
+function transitionCodes(history: readonly Obj[], rec: Obj, repair: boolean, at: string | undefined): Set<string> {
   const codes = new Set<string>();
-  for (const v of checkRecordStatic(rec)) {
-    if (v.code === "shape") problems.add(where, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
-    else codes.add(v.code);
-  }
-  const id = String(rec["id"]);
   const reason = rec["reason"];
-  const prev = latest(state, id);
+  const prev = history[history.length - 1];
   if (reason === "create") {
-    if (state.records.has(id)) codes.add("transition-not-allowed");
+    if (prev !== undefined) codes.add("transition-not-allowed");
   } else if (prev === undefined) {
     codes.add("ref-target-missing");
   } else {
+    if (rec["revision"] !== (typeof prev["revision"] === "number" ? prev["revision"] + 1 : NaN)) codes.add("revision-gap");
+    const ps = prev["status"];
+    if ((reason === "correct-input-error" || reason === "new-information") && ps !== "active") codes.add("transition-not-allowed");
+    if (reason === "void" && ps !== "active" && !(repair && ps === "voided")) codes.add("transition-not-allowed");
+    if (reason === "unvoid" && ps !== "voided") codes.add("transition-not-allowed");
+    if (reason === "unvoid" || (reason === "void" && !repair)) {
+      if (stableStringify(rec["body"]) !== stableStringify(prev["body"])) codes.add("body-change-on-void-or-unvoid");
+      if (!repair && stableStringify(rec["knownOn"]) !== stableStringify(prev["knownOn"])) codes.add("known-on-not-inherited");
+    }
+    for (const f of repair ? ["recordType"] : ["recordType", "entryChannel", "importKey"]) {
+      if (stableStringify(rec[f]) !== stableStringify(prev[f])) codes.add("immutable-field-changed");
+    }
+    if (repair) {
+      const note = rec["changeNote"];
+      if (!isObj(note) || note["state"] !== "known" || typeof note["value"] !== "string" || note["value"].trim() === "") codes.add("transition-not-allowed");
+    }
+    const prevLines = lineIdsOf(prev);
+    const everUsed = new Set<string>();
+    for (const r of history) for (const l of lineIdsOf(r)) everUsed.add(l);
+    for (const l of lineIdsOf(rec)) if (everUsed.has(l) && !prevLines.has(l)) codes.add("line-id-reused");
+  }
+  // 把握日（共通の型の7）: 新しく入力する把握日は、保存の日付（Asia/Tokyo）より後にできない。修復の改訂では引き継ぐ値も入力とみなす。
+  const knownOn = rec["knownOn"];
+  if (isObj(knownOn) && knownOn["state"] === "known" && typeof knownOn["value"] === "string" && typeof at === "string") {
+    const fresh = repair || reason === "create" || reason === "new-information" || (reason === "correct-input-error" && stableStringify(knownOn) !== stableStringify(prev?.["knownOn"]));
+    if (fresh && knownOn["value"] > jstDate(at)) codes.add("known-on-in-future");
+  }
+  return codes;
+}
+
+// 改訂ごとの信頼（共通の型の9）。版kが信頼できる ⇔ 版kが妥当で、版k-1まで信頼できるか版kがchecked（restoreUncheckedでない）。
+// 未検査の取消でduplicateOfがknownなら、その改訂の1つ前の連番の見方で残す方が有効（取消しておらず信頼できる）であること。
+// 保存した改訂から、台帳の補助の項目（__opId・__seq・__at・__unchecked）を除いた記録。
+function bare(r: Obj): Obj {
+  return Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith("__")));
+}
+
+function trustFlags(state: State, revs: readonly Obj[]): boolean[] {
+  const out: boolean[] = [];
+  let trusted = true;
+  revs.forEach((rec, k) => {
+    const hist = revs.slice(0, k);
+    const prev = hist[hist.length - 1];
+    let valid = staticCodesFor(bare(rec), prev, "read").length === 0 && transitionCodes(hist, rec, !trusted, typeof rec["__at"] === "string" ? rec["__at"] : undefined).size === 0;
+    const unchecked = rec["__unchecked"] === true;
+    if (valid && unchecked && rec["reason"] === "void" && isObj(rec["duplicateOf"]) && rec["duplicateOf"]["state"] === "known") {
+      const keep = rec["duplicateOf"]["value"];
+      const seq = typeof rec["__seq"] === "number" ? rec["__seq"] - 1 : 0;
+      valid = isObj(keep) && typeof keep["id"] === "string" && keeperValidAt(state, keep["id"], seq);
+    }
+    trusted = valid && (trusted || !unchecked);
+    out.push(trusted);
+  });
+  return out;
+}
+
+function keeperValidAt(state: State, id: string, seq: number): boolean {
+  const revs = (state.records.get(id) ?? []).filter((r) => typeof r["__seq"] === "number" && r["__seq"] <= seq);
+  const last = revs[revs.length - 1];
+  if (last === undefined || last["status"] !== "active") return false;
+  return trustFlags(state, revs).at(-1) === true;
+}
+
+function historyTrusted(state: State, id: string): boolean {
+  const revs = state.records.get(id) ?? [];
+  return revs.length === 0 || trustFlags(state, revs).at(-1) === true;
+}
+
+// 古い版では読むだけ（共通の型の1）: 読取の検査では違反でないが保存の検査では違反になる値（知らない拡張列挙の値・知らない項目）を持つ記録。
+function hasNewerContent(rec: Obj | undefined): boolean {
+  if (rec === undefined) return false;
+  rec = bare(rec);
+  const read = new Set(checkRecordStatic(rec, "read").map((v) => `${v.code}|${v.path}`));
+  return checkRecordStatic(rec, "save").some((v) => !read.has(`${v.code}|${v.path}`));
+}
+
+// 保存1件の、記録とその記録の前の版だけで決まる違反（静的・場面の違反）の分類を返す。
+function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems: Problems): Set<string> {
+  const codes = new Set<string>();
+  const id = String(rec["id"]);
+  const reason = rec["reason"];
+  const prev = latest(state, id);
+  for (const v of staticCodesFor(rec, prev, "save")) {
+    if (v.code === "shape") problems.add(where, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
+    else codes.add(v.code);
+  }
+  if (reason === "create") {
+    if (state.records.has(id)) codes.add("transition-not-allowed");
+  } else if (prev !== undefined) {
     const revision = typeof rec["revision"] === "number" ? rec["revision"] : 0;
     const base = typeof op["baseRevision"] === "number" ? op["baseRevision"] : revision - 1;
     if (revision !== base + 1) problems.add(where, "revisionがbaseRevision＋1でない");
     if (base !== prev["revision"]) codes.add("stale-base-revision");
-    const ps = prev["status"];
-    if ((reason === "correct-input-error" || reason === "new-information" || reason === "void") && ps !== "active") codes.add("transition-not-allowed");
-    if (reason === "unvoid" && ps !== "voided") codes.add("transition-not-allowed");
-    if (reason === "void" || reason === "unvoid") {
-      if (stableStringify(rec["body"]) !== stableStringify(prev["body"])) codes.add("body-change-on-void-or-unvoid");
-      if (stableStringify(rec["knownOn"]) !== stableStringify(prev["knownOn"])) problems.add(where, "取消・取消の取り消しは把握日を引き継ぐ（fixtureの誤り）");
-    }
-    for (const f of ["recordType", "entryChannel", "importKey"]) {
-      if (stableStringify(rec[f]) !== stableStringify(prev[f])) codes.add("immutable-field-changed");
-    }
-    const all = state.records.get(id) ?? [];
-    const prevLines = lineIdsOf(prev);
-    const everUsed = new Set<string>();
-    for (const r of all) for (const l of lineIdsOf(r)) everUsed.add(l);
-    for (const l of lineIdsOf(rec)) if (everUsed.has(l) && !prevLines.has(l)) codes.add("line-id-reused");
   }
-  // 把握日（共通の型の7）: 新しく入力する把握日は、保存の時計の日付（Asia/Tokyo）より後にできない。
-  const knownOn = rec["knownOn"];
-  if (isObj(knownOn) && knownOn["state"] === "known" && typeof knownOn["value"] === "string" && typeof op["at"] === "string") {
-    const fresh = reason === "create" || reason === "new-information" || (reason === "correct-input-error" && stableStringify(knownOn) !== stableStringify(prev?.["knownOn"]));
-    if (fresh && knownOn["value"] > jstDate(op["at"])) codes.add("known-on-in-future");
+  const history = state.records.get(id) ?? [];
+  const repair = prev !== undefined && !historyTrusted(state, id);
+  const tcodes = transitionCodes(reason === "create" ? [] : history, rec, repair, typeof op["at"] === "string" ? op["at"] : undefined);
+  if (tcodes.has("known-on-not-inherited")) {
+    tcodes.delete("known-on-not-inherited");
+    problems.add(where, "取消・取消の取り消しは把握日を引き継ぐ（fixtureの誤り）");
   }
+  // 版の連続は、保存では基にした版（stale-base-revision）で確かめる。
+  tcodes.delete("revision-gap");
+  for (const c of tcodes) codes.add(c);
   // 参照先の実在（共通の型の2）。duplicateOfの先は、自分以外の有効な記録（9）。
   const refs = referencedIds(rec);
   for (const r of refs) if (r !== id && !exists(state, r)) codes.add("ref-target-missing");
@@ -354,6 +447,8 @@ function saveViolations(state: State, rec: Obj, op: Obj, where: string, problems
       if (isObj(ref) && typeof ref["id"] === "string" && typeof ref["line"] === "string" && ref["line"] !== "whole") {
         const target = latest(state, ref["id"]);
         if (target !== undefined && !referableLineIds(target).has(ref["line"])) codes.add("ref-target-invalid");
+        // 信頼できない記録の行は、実在を確かめられないので指せない（共通の型の2）。
+        if (target !== undefined && !historyTrusted(state, ref["id"])) codes.add("ref-target-invalid");
       }
     }
   }
@@ -431,8 +526,10 @@ function replayOps(
         const wrid = String(rec["writeRequestId"]);
         const content = stableStringify({ ...rec, writeRequestId: undefined });
         const seen = state.writeRequests.get(wrid);
-        if (seen !== undefined && seen.content !== content) codes.add("write-request-conflict");
-        const replay = seen !== undefined && seen.content === content;
+        if (seen !== undefined && (seen.content !== content || seen.unchecked === true)) codes.add("write-request-conflict");
+        // 古い版では読むだけ（共通の型の1）: 知らない値・項目を持つ記録の改訂は受け付けない。
+        const newer = rec["reason"] !== "create" && hasNewerContent(latest(state, id));
+        const replay = seen !== undefined && seen.content === content && seen.unchecked !== true;
         let importHit: string | undefined;
         if (rec["entryChannel"] === "import" && isObj(rec["importKey"]) && rec["importKey"]["state"] === "known") {
           const k = `${String(rec["recordType"])}|${stableStringify(rec["importKey"]["value"])}`;
@@ -443,7 +540,8 @@ function replayOps(
           if (replay) problems.add(w, "同じwriteRequestIdで同じ内容の保存は、新しい記録を作らない（replayed）");
           if (importHit !== undefined) problems.add(w, `同じimportKeyの記録${importHit}がある（existing-returned）`);
           if (codes.size > 0) problems.add(w, `acceptedを期待するが、契約の保存の条件に当たる: ${[...codes].join(", ")}`);
-          const stored = { ...rec, __opId: opId };
+          if (newer) problems.add(w, "acceptedを期待するが、この版が知らない値・項目を持つ記録の改訂（newer-content-read-only）");
+          const stored = { ...rec, __opId: opId, __seq: state.seq + 1, __at: op["at"] };
           state.records.set(id, [...(state.records.get(id) ?? []), stored]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
           if (seen === undefined) state.writeRequests.set(wrid, { opId, content });
@@ -459,6 +557,8 @@ function replayOps(
             if (!codes.has(reason)) problems.add(w, `拒否の理由${reason}を期待するが、記録にその違反がない（見つかったもの: ${[...codes].join(", ") || "なし"}）`);
           } else if (codes.size > 0) {
             problems.add(w, `意味の判定による拒否${reason}を期待するが、記録だけで判定できる違反もある（理由が一意に決まらない）: ${[...codes].join(", ")}`);
+          } else if (reason === "newer-content-read-only" && !newer) {
+            problems.add(w, "newer-content-read-onlyを期待するが、記録はこの版が知らない値・項目を持たない");
           }
         } else if (outcome === "replayed") {
           if (!replay || seen === undefined || expect["of"] !== seen.opId) problems.add(w, "replayedを期待するが、同じwriteRequestIdで同じ内容の先の保存がない");
@@ -508,7 +608,7 @@ function replayOps(
           const rid = String(r["id"]);
           const rrev = typeof r["revision"] === "number" ? r["revision"] : 1;
           try {
-            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, rid), defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, rrev) });
+            rec = expandRecord(r, { scenarioId, opId, previous: latest(state, rid), defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, rrev), legacy10: op["sourceContractVersion"] === "1.0" });
           } catch (e) {
             problems.add(w, `記録を補えない: ${(e as Error).message}`);
             continue;
@@ -517,16 +617,21 @@ function replayOps(
           const rwrid = String(rec["writeRequestId"]);
           const rseen = state.writeRequests.get(rwrid);
           if (rseen !== undefined) problems.add(w, `records[${ri}]のwriteRequestId ${rwrid}が、${rseen.opId}の保存と重なる`);
-          else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }) });
+          else state.writeRequests.set(rwrid, { opId: `${opId}/records[${ri}]`, content: stableStringify({ ...rec, writeRequestId: undefined }), unchecked: true });
           // 復元は読取の検査（拡張できる列挙の知らない値は違反にしない。共通の型の1）。新しい保存の拒否はsaveの検査（TC-02-aのo05d）。
-          for (const v of checkRecordStatic(rec, "read")) {
+          for (const v of staticCodesFor(rec, latest(state, rid), "read")) {
             if (v.code === "shape") problems.add(w, `形の誤り（fixtureの誤り）: ${v.path} ${v.message}`);
             else found.add(v.code);
           }
           for (const x of referencedIds(rec)) if (!exists(state, x) && x !== rec["id"]) problems.add(w, `復元する記録の参照先がない: ${x}`);
           const id = String(rec["id"]);
-          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId }]);
+          state.records.set(id, [...(state.records.get(id) ?? []), { ...rec, __opId: opId, __unchecked: true, __seq: state.seq + 1, __at: op["at"] }]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
+          // 履歴全体で予約するキー（共通の型の9）: 復元した改訂のimportKeyも予約する（修復で直したあとも）。
+          if (isObj(rec["importKey"]) && rec["importKey"]["state"] === "known") {
+            const ik = `${String(rec["recordType"])}|${stableStringify(rec["importKey"]["value"])}`;
+            if (!state.importKeys.has(ik)) state.importKeys.set(ik, id);
+          }
           consume();
         }
         if (stableStringify([...found].sort()) !== stableStringify([...expected].sort())) {
@@ -2487,6 +2592,26 @@ test("検査の自己確認: 例示の対応表の形・項目・一意性・排
       assert.ok(chk);
       chk["expect"] = { state: "not-compared" };
     }, "EX-06-a c01"],
+  ];
+  for (const [name, f, word] of cases) {
+    const p = mutated(f);
+    assert.ok(p.some((x) => x.includes(word)), `${name}: ${p.join(" / ") || "見つからない"}`);
+  }
+});
+
+test("検査の自己確認: 信頼の回復と修復の規則（共通の型の9）を台帳の検査が見落とさない", () => {
+  assert.deepEqual(mutated(() => undefined), []);
+  const opOf = (c: LedgerFiles, sid: string, oid: string): Obj => op(scenario(firstCase(c, sid.startsWith("EX-07") ? "EX-07" : sid.startsWith("EX-05") ? "EX-05" : "TC-02"), sid), oid);
+  const cases: [string, (c: LedgerFiles) => void, string][] = [
+    ["changeNoteのない修復をacceptedにする", (c) => (opOf(c, "TC-02-c", "o2")["expect"] = { outcome: "accepted" }), "TC-02-c o2"],
+    ["修復でない通常の取消のbodyの変更をacceptedにする", (c) => {
+      const o = opOf(c, "TC-02-g", "o4");
+      (o["record"] as Obj)["body"] = { grossPay: { state: "known", value: 1 } };
+    }, "TC-02-g o4"],
+    ["未来の把握日の修復をacceptedにする", (c) => (opOf(c, "TC-02-e", "o3")["expect"] = { outcome: "accepted" }), "TC-02-e o3"],
+    ["信頼できない記録の行を指す配分をacceptedにする", (c) => (opOf(c, "EX-07-e2", "o3")["expect"] = { outcome: "accepted" }), "EX-07-e2 o3"],
+    ["知らない値を持つ記録の取消をacceptedにする", (c) => (opOf(c, "EX-05-h2", "o2")["expect"] = { outcome: "accepted" }), "EX-05-h2 o2"],
+    ["uncheckedの改訂の再送をreplayedにする", (c) => (opOf(c, "TC-02-h", "o2")["expect"] = { outcome: "replayed", of: "o1" }), "TC-02-h o2"],
   ];
   for (const [name, f, word] of cases) {
     const p = mutated(f);

@@ -1220,6 +1220,35 @@
           ]
         }
       ]
+    },
+    {
+      "scenarioId": "EX-05-h2",
+      "title": "この版が知らない値・項目を持つ明細は、この版では取消もできない（読むだけ）",
+      "covers": [{"doc": "examples.md", "section": "EX-05"}],
+      "rules": {"comparisonMapping": "none", "attribution": "EX-05-scheduled-pay-date-year"},
+      "baseScenario": "EX-05-h",
+      "operations": [
+        {
+          "op": "save",
+          "opId": "o2",
+          "at": "2027-01-11T00:00:00.000Z",
+          "expect": {"outcome": "rejected", "reason": "newer-content-read-only"},
+          "record": {"id": "pay_507", "recordType": "payslip", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "取り消す"}}
+        }
+      ],
+      "checks": [
+        {
+          "checkId": "c01",
+          "afterOp": "end",
+          "query": {"kind": "attribution", "payslip": "pay_507"},
+          "expect": {"state": "undetermined", "year": {"state": "unknown"}, "candidateYears": [{"from": null, "to": null}]},
+          "reason": "取消は拒否され、pay_507は版1のまま（帰属はundetermined、候補の年はすべての年）。知らない区分の値と項目を持つ記録は、この版では表示と判定だけに使い、改訂・取消を受け付けない。",
+          "cites": [
+            {"doc": "common-types.md", "section": "1", "quote": "その記録の改訂（訂正・新しい情報・取消・取消の取り消し・9の修復の改訂）の保存を受け付けない"},
+            {"doc": "examples.md", "section": "EX-05", "quote": "訂正も取消も保存できない"}
+          ]
+        }
+      ]
     }
   ]
 }

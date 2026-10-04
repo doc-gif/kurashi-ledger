@@ -45,7 +45,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | EX-08 | EX-08 | 金額の4つの状態、新しい情報による変化と把握時点の再現 | T06・T10・T12 |
 | EX-09 | EX-09 | 雇用条件の期間の重なり（不明な境界） | T06・T17 |
 | TC-01 | 共通の型の2・7・9 | 改訂の競合、理由と状態の遷移、存在しない参照、不正な期間、把握日とAsia/Tokyoの日付、取消の先、変えられない項目 | T06・T07・T09 |
-| TC-02 | 共通の型の4・12 | Factの許す状態（帰属の区分は`known`・`unknown`だけで、並べていない値と、`ordinary`の明細の遡及差額の行も拒否）、行IDの予約語`whole`（保存の拒否と、復元で入った場合の`save-check`）、検査を通した改訂による回復（回復の前の時点はincompleteのまま）、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
+| TC-02 | 共通の型の4・12 | Factの許す状態（帰属の区分は`known`・`unknown`だけで、並べていない値と、`ordinary`の明細の遡及差額の行も拒否）、行IDの予約語`whole`（保存の拒否と、復元で入った場合の`save-check`）、検査を通した改訂による回復（回復の前の時点はincompleteのまま）、修復の改訂（再度の取消・importKey・把握日）、未検査の取消の指し合いと残す方がない二重登録、契約版1.0のデータと空白だけの文字列、`unchecked`の改訂の再送、金額の符号と範囲、並びの一意のキー、集計のoverflow | T06・T07・T12 |
 | TC-03 | 共通の型の5、照合の規則の2・8 | 分からない値で絞り込まない（日付・明細の種類・行の並び・結んだ入金の日付・期間の端） | T06・T11 |
 | TC-04 | 記録の型の10 | 差し替えの系列の取消と取消の取り消し、拒否する形（自己参照・循環・分岐・次元の不一致）、未確認の系列、把握時点の再現 | T06・T11 |
 | TC-05 | 照合の規則の3、記録の型の5 | 通勤手当を含む振込と精算の入金の混在 | T11 |
@@ -94,7 +94,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | --- | --- | --- |
 | `save` | 記録の改訂1件の保存。`at`は注入する時計の値（記録日時）。`record`は省略した項目を既定で補う（下）。改訂は`baseRevision`（省略時は`revision`−1）を基にする | `accepted`（`recordedSeq`の期待を書いてよい）、`rejected`（`reason`）、`replayed`（同じ`writeRequestId`・同じ内容。`of`は最初の操作）、`existing-returned`（同じ`importKey`。`record`は返す記録） |
 | `saveEvidenceFile` | 証憑ファイルの保存（改訂を持たない） | `accepted`、`existing-returned`（同じ`sha256`） |
-| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く（読取の検査。拡張できる列挙のこの契約版が知らない値は違反にしない。共通の型の1。新しい保存の`save`は、並べていない値を`value-invalid`で拒否する） | `restored` |
+| `restoreUnchecked` | 保存の検査を通らずに入った記録（古いデータの復元・取込等）を置く。照合の判定の入力を作るためのもので、T12の復元の手順の期待値ではない。`expectedViolations`に、その記録が記録だけで判定できる保存の条件のどれに当たるかを書く（読取の検査。拡張できる列挙のこの契約版が知らない値は違反にしない。共通の型の1。新しい保存の`save`は、並べていない値を`value-invalid`で拒否する）。`restoreUnchecked`で置く改訂は`unchecked`（共通の型の9の`saveCheck`）。`sourceContractVersion: "1.0"`を付けた操作は契約版1.0のデータとして読み、2.0で足した`Fact`の項目（給与明細の`incomeTimingKind`）は、書いていなければ`unknown`で補う | `restored` |
 | `saveRun` | 計算runの保存。`run`は射影（下の「runの射影」） | `accepted`、`rejected`（`reason`） |
 
 拒否された保存は記録を作らず、保存の連番も使わない。記録のIDは、試験で注入するID生成器が返す値として扱う。拒否された新規の保存と同じIDで、あとで保存し直す場面がある（拒否された保存は記録を作らないので、一度使ったIDの再利用にはならないと読む。下の「未決事項」）。
@@ -136,6 +136,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 | `over-allocation`、`allocation-limit-undeterminable`、`allocation-sign`、`confirm-condition-unmet` | 意味 | 照合の規則の3 |
 | `identity-dimension-mismatch`、`identity-dimension-undetermined` | 意味 | 照合の規則の3の「識別の次元」、共通の型の13 |
 | `decision-validation` | 意味 | 照合の規則の4（保存の検証） |
+| `newer-content-read-only` | 意味 | 共通の型の1の「古い版では読むだけ」（この版が知らない値・項目を持つ記録の改訂・取消） |
 | `run-previous-mismatch`、`run-chain-exists`、`run-scope-not-allowed`、`run-scope-noncanonical`、`run-request-mismatch`、`run-closure-mismatch`、`run-snapshot-mismatch` | 意味 | 計算結果の1・3 |
 
 ### 検査の種類
@@ -200,6 +201,7 @@ fixtureはJSONだけで、画像・PDF・CSVは置かない。すべて合成の
 - 共通の設定から操作を順に当てはめ、補った記録が契約の保存の条件（`contract-shape.ts`）を満たすこと。拒否の理由のうち「静的」「場面」のものは、その違反を記録が実際に含むこと。意味の判定による拒否は、それらの違反を含まないこと。二重登録の取消の残す方（`duplicateOf`）が、取消しておらず、整った差し替えの系列の現在の記録であること（未確認の系列や、自己参照・循環を含む系列の記録は残す方にできない）。現在の見方（検査の`view`を省略、または`kind`が`current`）の`seriesStatus`の期待値が、`afterOp`の時点の最新の改訂から系列の補助で導いた状態（`voided`・`unconfirmed-series`・`superseded`・`current`）と一致すること。時点を指定した見方（`record-seq`・`record-time`・`known-on`）の期待値と`not-in-view`は、最新の状態と比べない（その見方の改訂を選んで導くのはT06）。ほかの検査で台帳の状態を使うのは、記録・版・行・runが`afterOp`の時点で実在することの確認だけで、見方から導く値を最新の状態と比べない。差し替えの系列の判定は、runの射影の不足の判断・`duplicateOf`の残す方・`seriesStatus`のどれでも、同じ1つの補助（記録の型の10の1〜5）の結果だけを使い、入口ごとに食い違わせない。参照先が先に保存されていること（参照は`contract-shape.ts`の型の表でIDかRefの項目だけから取り、摘要・表示名・メモの文字列はIDに似ていても参照にしない。入力順の依存の判定も同じ）。`recordedSeq`の期待が保存の順と合うこと。
 - `orderVariants`が操作の並べ替えで、参照先・前の版より前に置かれた操作がないこと。
 - 期待の形: 集計の状態と`missing`・`knownSum`の関係（共通の型の11の状態の表）、集計の要求のscopeが許す次元（`forecast-remaining`で口座を許すのは`deposit-amount`だけ。拒否を期待する検査は`{ error: rejected-request }`で書ける）、不足の行の項目名・派生キー・状態・参照先の種類、候補の年の範囲の形、採用の写しの形等。期待の中の並びのobjectでない要素は、位置を示して問題にする。
+- 改訂の信頼（共通の型の9の「信頼できる履歴と修復」）: 各改訂の妥当性（静的な検査。取消は取消が決める項目だけ）と直前からの遷移を、保存と読取で同じ規則で確かめ、直前までの履歴が信頼できない記録への保存は修復の改訂（`changeNote`が必要、再度の取消・`entryChannel`・`importKey`の修復、把握日は入力とみなす）として確かめる。未検査の取消の`duplicateOf`は、その改訂の1つ前の連番で残す方が有効だったか。`unchecked`の改訂と同じ`writeRequestId`の再送は拒否。信頼できない記録の行を指す照合配分は拒否。この版が知らない値・項目を持つ記録の改訂は拒否（`newer-content-read-only`）。
 - 照合配分が行を指す参照は、その項目が指せる種類の行に実在すること（給与明細は支給の行`otherEarnings`だけで、控除の行は指せない。予測は見込みの行）。確かめるのは配分の版1と、`from`・`to`を直前の版から変える改訂だけ（共通の型の2）。
 - 例示の規則（`illustrativeRules`）の名前・説明・引用と、比較の対応表の`pairs`・`notCompared`の項目・一意性・排他性。比較の期待値の状態が、場面の対応表と合うこと（対応表にない項目は`rule-pending`、`notCompared`の項目は`not-compared`）。
 - 引用の語句が契約の節に実在すること、examples.mdのEX-NNの見出しと小見出しをすべての場面のどれかが扱うこと、受入条件のタグをそれぞれ1つ以上の場面が持つこと、制度のケースの必須の項目。
