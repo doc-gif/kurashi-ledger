@@ -187,6 +187,10 @@ const STORED_FIELDS = [...PROPOSED_FIELDS, "recordedAt", "recordedSeq"];
 export interface StaticCheckOptions {
   // trueなら保存した改訂（recordedAt・recordedSeqを持つ）として確かめる。falseなら保存しようとしている改訂（idはあってもなくてもよい）。
   readonly stored: boolean;
+  // trueなら、取消（void）の改訂として、その改訂が決める項目（骨格、status・reason・duplicateOf・writeRequestId・changeNote・
+  // 把握日）だけを確かめる。bodyと変えられない項目（entryChannel・importKey）は、直前の版と同じであることを遷移の検査で確かめる
+  // （所有者の判断「信頼できない記録だけ修復を許す」。PR #36の共通の型の9。D2）。
+  readonly voidScope?: boolean;
 }
 
 // 改訂1件の静的な検査。違反がなければ空の並び。
@@ -238,11 +242,12 @@ export function checkRevisionStatic(record: unknown, options: StaticCheckOptions
   if (reason !== "void") requireStates(record["duplicateOf"], ["not-applicable"], "$.duplicateOf", out, "voidでない改訂のduplicateOfはnot-applicable");
   const dup = knownValue(record["duplicateOf"]);
   if (isObj(dup) && Object.hasOwn(record, "id") && dup["id"] === record["id"]) out.add("ref-target-invalid", "$.duplicateOf", "自分自身を残す方にできない");
+  checkValue({ t: "text", nonEmpty: true }, record["writeRequestId"], "$.writeRequestId", out);
+  if (options.voidScope === true) return out.list;
   const channel = record["entryChannel"];
   if (channel !== "manual" && channel !== "import") out.add("value-invalid", "$.entryChannel", "manual・importではない");
   checkFact({ t: "object", fields: { source: { t: "text", nonEmpty: true }, key: { t: "text", nonEmpty: true } } }, ENVELOPE_STATES.importKey, record["importKey"], "$.importKey", out);
   requireStates(record["importKey"], channel === "import" ? ["known"] : ["not-applicable"], "$.importKey", out, "importKeyはentryChannelがimportの場合だけknown");
-  checkValue({ t: "text", nonEmpty: true }, record["writeRequestId"], "$.writeRequestId", out);
   const body = record["body"];
   checkObject(BODY_SPECS[recordType], body, "$.body", out);
   if (isObj(body)) {
@@ -444,4 +449,21 @@ export function checkEvidenceFileStatic(file: unknown): Violation[] {
     if (!isInstant(file["importedAt"])) out.add("value-invalid", "$.importedAt", "Instantではない");
   }
   return out.list;
+}
+
+// この版の表にない項目（bodyのobjectの、仕様にない項目）を持つか。新しい契約版で足した項目を古い版が読む場合に当たる。この版では
+// その記録を読むだけにし、改訂を保存しない（所有者の判断「古い版では読むだけにする」）。形の違う値（型の違反）は対象にしない。
+export function hasUnknownContent(recordType: RecordType, body: unknown): boolean {
+  return unknownIn({ t: "object", fields: BODY_SPECS[recordType] }, body);
+}
+
+function unknownIn(spec: Spec, v: unknown): boolean {
+  if (spec.t === "object") {
+    if (!isObj(v)) return false;
+    return Object.keys(v).some((k) => !Object.hasOwn(spec.fields, k) || unknownIn(spec.fields[k] as Spec, v[k]));
+  }
+  if (spec.t === "fact") return isObj(v) && v["state"] === "known" && Object.hasOwn(v, "value") && unknownIn(spec.of, v["value"]);
+  if (spec.t === "list") return Array.isArray(v) && v.some((e) => unknownIn(spec.of, e));
+  if (spec.t === "period") return isObj(v) && Object.keys(v).some((k) => k !== "start" && k !== "end");
+  return false;
 }

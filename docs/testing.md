@@ -1,6 +1,10 @@
 # Test strategy
 
-Product tests start with the record domain (T06, `src/domain/records/*.test.ts`): unit tests for amount states, IDs, revisions, point-in-time views, supersede series, master canonical IDs and record-only aggregates, and a test that replays the T03 fixture ledger through the domain and compares outcomes and the T06-owned checks with the ledger's expected values (checks owned by T11 and T15 are listed as out of scope and matched against the ledger). T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). T05 added CI and the browser test base (Playwright; tests live in `e2e/*.spec.ts` and run with `npm run test:browser`). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
+Product tests (the areas are listed under "製品の試験" in docs/project-status.md):
+
+- Record domain (T06, `src/domain/records/*.test.ts`): unit tests for amount states, IDs, revisions, point-in-time views, supersede series, master canonical IDs and record-only aggregates, and a test that replays the T03 fixture ledger through the domain and compares outcomes and the T06-owned checks with the ledger's expected values (checks owned by T11 and T15 are listed as out of scope and matched against the ledger).
+
+T02 added tests for the development tooling only (`npm test`: the install record and `npm run setup`, the publication check, and the pinned Node.js runtime; see docs/development.md). T05 added CI and the browser test base (Playwright; tests live in `e2e/*.spec.ts` and run with `npm run test:browser`). The review tool has its own tests (see tools/review_guard/README.md). Earlier local bootstrap experiments were inventoried in T02 and were not adopted as-is.
 
 ## Required acceptance cases as features are added
 

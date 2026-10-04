@@ -4,7 +4,7 @@
 // 照合配分の確定の条件・識別の次元・配分の符号、照合の判断の保存の検証（T11）と、計算runの保存（T15）は、ここでは行わない。
 
 import { knownValue, stateOf } from "./fact.ts";
-import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, RECORD_PREFIX, RUN_PREFIX, recordTypeOfId, type IdGenerator, type RecordType } from "./ids.ts";
+import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, isRecordType, RECORD_PREFIX, RUN_PREFIX, recordTypeOfId, type IdGenerator, type RecordType } from "./ids.ts";
 import {
   bodyOf,
   idInUse,
@@ -31,8 +31,8 @@ import { dependentKey, dependentViolations, isEffective, SeriesCache, type Depen
 import { REJECTION_REASONS, type RejectionReason, type Violation } from "./reasons.ts";
 import { canonicalMasterId, masterRefsOf } from "./masters.ts";
 import { analyzeSeries, isSeriesType, problemKey } from "./series.ts";
-import { checkAgainstPrevious, isHistoryValid, knownOnInFuture, sameJson } from "./history.ts";
-import { checkEvidenceFileStatic, checkRevisionStatic, lineObjects } from "./validate.ts";
+import { checkAgainstPrevious, isHistoryValid, knownOnInFuture, sameJson, staticCheckFor } from "./history.ts";
+import { checkEvidenceFileStatic, checkRevisionStatic, hasUnknownContent, lineObjects } from "./validate.ts";
 import { isInstant } from "./values.ts";
 import { CURRENT, type ResolvedView } from "./views.ts";
 
@@ -118,7 +118,9 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
   // 2. 記録1件で決まる検査。冪等キーで既存の記録を返す前に、要求そのものを確かめる（検査を迂回させない）。
   const recordType = proposal["recordType"];
   const isCreate = proposal["reason"] === "create";
-  const staticViolations = checkRevisionStatic(proposal, { stored: false });
+  // 新規は全体を静的に確かめる。改訂は、直前の版が分かってから確かめる（取消は、その改訂が決める項目だけ。staticCheckFor）。
+  const staticViolations = isCreate ? checkRevisionStatic(proposal, { stored: false }) : [];
+  if (!isCreate && !isRecordType(recordType)) staticViolations.push({ reason: "value-invalid", path: "$.recordType", message: `記録の種類ではない: ${String(recordType)}` });
   if (isCreate && Object.hasOwn(proposal, "id")) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "新規の保存のIDはID生成器が割り当てる（書かない）" });
   if (isCreate && Object.hasOwn(input, "baseRevision")) staticViolations.push({ reason: "value-invalid", path: "$.baseRevision", message: "新規の保存にbaseRevisionは書かない（改訂だけ）" });
   if (!isCreate && !Object.hasOwn(proposal, "id")) staticViolations.push({ reason: "value-invalid", path: "$.id", message: "改訂の保存には記録のIDが要る" });
@@ -154,13 +156,27 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
     if (!isIdWithPrefix(id, RECORD_PREFIX[type])) return reject(ledger, one("value-invalid", "$.id", `ID生成器の値が${type}のIDではない: ${id}`));
     if (idInUse(ledger, id)) return reject(ledger, one("id-already-used", "$.id", `すでに使われたID: ${id}`));
   } else {
-    id = proposal["id"] as string;
+    if (typeof proposal["id"] !== "string") return reject(ledger, one("value-invalid", "$.id", "記録のIDが文字列ではない"));
+    id = proposal["id"];
     previous = latestRevision(ledger, id);
     if (previous === undefined) return reject(ledger, one("record-not-found", "$.id", `改訂する記録がない: ${id}`));
-    const scenario = checkAgainstPrevious(revisionsOf(ledger, id), proposal, baseRevision as number);
+    // この版の表にない項目を持つ記録は、この版では読むだけにする（所有者の判断「古い版では読むだけにする」）。
+    if (hasUnknownContent(previous.recordType, previous.body)) {
+      return reject(ledger, one("read-only-unknown-content", "$.body", "この版が知らない項目を持つ記録は、この版では改訂しない（読むだけ）"));
+    }
+    const statics = staticCheckFor(proposal, previous, false);
+    if (statics.length > 0) return reject(ledger, statics);
+    const predecessorTrusted = isHistoryValid(ledger, previous);
+    const scenario = checkAgainstPrevious(revisionsOf(ledger, id), proposal, baseRevision as number, { predecessorTrusted });
     if (scenario.length > 0) return reject(ledger, scenario);
-    const future = knownOnInFuture(proposal, previous, now);
+    const future = knownOnInFuture(proposal, previous, now, predecessorTrusted);
     if (future.length > 0) return reject(ledger, future);
+    // 修復でimportKeyを直す場合、直した先のキーが別の記録に予約されていれば拒否する（古いキーの予約は保つ）。
+    const ik = knownValue(proposal["importKey"]);
+    if (!sameJson(proposal["importKey"], previous.importKey) && isObj(ik) && typeof ik["source"] === "string" && typeof ik["key"] === "string") {
+      const owner = ledger.importKeys.get(importKeyIndex(type, { source: ik["source"], key: ik["key"] }));
+      if (owner !== undefined && owner !== id) return reject(ledger, one("import-key-reserved", "$.importKey", `importKeyは別の記録${owner}に予約されている`));
+    }
   }
   const revision: Revision = Object.freeze({
     id,

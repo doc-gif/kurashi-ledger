@@ -6,6 +6,7 @@ import { isUnchecked, revisionsOf, type Ledger, type Revision, type RevisionReas
 import type { RejectionReason, Violation } from "./reasons.ts";
 import { LINE_LISTS } from "./schema.ts";
 import { checkRevisionStatic, lineObjects } from "./validate.ts";
+import { isEffective, SeriesCache } from "./effective.ts";
 import { compareDates, tokyoDateOf } from "./values.ts";
 
 type Obj = Readonly<Record<string, unknown>>;
@@ -45,9 +46,11 @@ const PREVIOUS_STATUS: Readonly<Record<Exclude<RevisionReason, "create">, "activ
 
 // 利用者が新しく入力する把握日（新規・新しい情報、把握日の写し誤りを直す入力誤りの訂正）は、保存のときの時計の日付
 // （Asia/Tokyo）より後にできない。前の改訂から引き継いだ把握日は検査しない（共通の型の7）。
-export function knownOnInFuture(proposal: Obj, previous: Revision | undefined, now: string): Violation[] {
+// predecessorTrustedは、直前の版が信頼できるか。信頼できない直前の版から引き継ぐ把握日も、新しく入力したものとして検査する
+// （N-P2-1）。把握日を直前から変えた改訂（修復を含む）も同じ。
+export function knownOnInFuture(proposal: Obj, previous: Revision | undefined, now: string, predecessorTrusted = true): Violation[] {
   const reason = proposal["reason"];
-  const entered = reason === "create" || reason === "new-information" || (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous?.knownOn));
+  const entered = reason === "create" || reason === "new-information" || !sameJson(proposal["knownOn"], previous?.knownOn) || !predecessorTrusted;
   if (!entered) return [];
   const k = knownValue(proposal["knownOn"]);
   const today = tokyoDateOf(now);
@@ -56,34 +59,65 @@ export function knownOnInFuture(proposal: Obj, previous: Revision | undefined, n
 
 // 改訂とその前の版で決まる保存の検査（共通の型の9の改訂のモデル、2の行IDの予約、7の把握日）。historyは前の版までの改訂
 // （版の昇順、最後が直前の版）。保存のとき（save.ts）と、検査をすり抜けた履歴を確かめるとき（isHistoryValid）の両方で使う。
-export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj, baseRevision: number): Violation[] {
+export interface TransitionContext {
+  // 直前の版が信頼できるか（isHistoryValid）。信頼できない記録に限り、修復の改訂を許す。
+  readonly predecessorTrusted: boolean;
+}
+
+// changeNoteがknownで空でない（空白だけでない）か。
+export function hasNote(proposal: Obj): boolean {
+  const note = knownValue(proposal["changeNote"]);
+  return typeof note === "string" && note.trim() !== "";
+}
+
+// 改訂とその前の版で決まる保存の検査（共通の型の9の改訂のモデル、2の行IDの予約、7の把握日）。historyは前の版までの改訂
+// （版の昇順、最後が直前の版）。保存のとき（save.ts）と、検査をすり抜けた履歴を確かめるとき（isHistoryValid）の両方で使う。
+// 修復の改訂（所有者の判断「信頼できない記録だけ修復を許す」）: 直前の版が信頼できない記録で、changeNote（knownで空でない）を書いた
+// 改訂は、次を許す。(a) 変えられない項目（entryChannel・importKey）を直す。(b) 取消済みの記録をもう一度取り消し（voided→voided）、
+// bodyを直す。(c) 把握日を直す（理由を問わない。新しく入力した把握日として検査する）。ほかの検査はすべて当てる。
+export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj, baseRevision: number, ctx: TransitionContext = { predecessorTrusted: true }): Violation[] {
   const previous = history[history.length - 1];
   if (previous === undefined) return one("transition-not-allowed", "$.reason", "改訂の前の版がない");
   const reason = proposal["reason"] as RevisionReason;
+  const repair = !ctx.predecessorTrusted && hasNote(proposal);
   if (proposal["recordType"] !== previous.recordType) return one("immutable-field-changed", "$.recordType", "recordTypeは改訂で変えられない");
   // 古い版での上書きを拒否する（共通の型の9）。
   if (baseRevision !== previous.revision) return one("stale-base-revision", "$.baseRevision", `基にした版${baseRevision}が現在の版${previous.revision}と違う`);
   if (proposal["revision"] !== previous.revision + 1) return one("transition-not-allowed", "$.revision", `版は直前の版${previous.revision}に1を足したもの`);
   if (reason === "create") return one("transition-not-allowed", "$.reason", "createは版1だけ");
   if (!Object.hasOwn(PREVIOUS_STATUS, reason)) return one("value-invalid", "$.reason", `改訂の理由ではない: ${String(reason)}`);
-  if (previous.status !== PREVIOUS_STATUS[reason]) return one("transition-not-allowed", "$.reason", `${reason}は直前のstatusが${PREVIOUS_STATUS[reason]}のときだけ（直前は${previous.status}）`);
-  if (proposal["entryChannel"] !== previous.entryChannel) return one("immutable-field-changed", "$.entryChannel", "entryChannelは改訂で変えられない");
-  if (!sameJson(proposal["importKey"], previous.importKey)) return one("immutable-field-changed", "$.importKey", "importKeyは改訂で変えられない");
+  const revoid = repair && reason === "void" && previous.status === "voided";
+  if (previous.status !== PREVIOUS_STATUS[reason] && !revoid) {
+    return one("transition-not-allowed", "$.reason", `${reason}は直前のstatusが${PREVIOUS_STATUS[reason]}のときだけ（直前は${previous.status}）`);
+  }
+  if (!repair && proposal["entryChannel"] !== previous.entryChannel) return one("immutable-field-changed", "$.entryChannel", "entryChannelは改訂で変えられない");
+  if (!repair && !sameJson(proposal["importKey"], previous.importKey)) return one("immutable-field-changed", "$.importKey", "importKeyは改訂で変えられない");
   if (reason === "void" || reason === "unvoid") {
-    // 取消と取消の取り消しは、statusとduplicateOfだけを変える。bodyは直前と同じ（共通の型の9）。
-    if (!sameJson(proposal["body"], previous.body)) return one("body-change-on-void-or-unvoid", "$.body", "取消・取消の取り消しではbodyを変えない");
-    // 把握日は直前の改訂の把握日を引き継ぐ（共通の型の7の「把握日の決め方」）。
-    if (!sameJson(proposal["knownOn"], previous.knownOn)) return one("known-on-not-inherited", "$.knownOn", "取消・取消の取り消しは直前の把握日を引き継ぐ");
+    // 取消と取消の取り消しは、statusとduplicateOfだけを変える。bodyは直前と同じ（共通の型の9）。修復の再度の取消だけは、bodyを直せる。
+    if (!revoid && !sameJson(proposal["body"], previous.body)) return one("body-change-on-void-or-unvoid", "$.body", "取消・取消の取り消しではbodyを変えない");
+    // 把握日は直前の改訂の把握日を引き継ぐ（共通の型の7の「把握日の決め方」）。修復では直せる。
+    if (!repair && !sameJson(proposal["knownOn"], previous.knownOn)) return one("known-on-not-inherited", "$.knownOn", "取消・取消の取り消しは直前の把握日を引き継ぐ");
   }
   // 入力誤りの訂正は把握日を引き継ぐ。変えてよいのは把握日そのものの写し誤りを直す場合だけで、その場合はchangeNoteに書く
   // （共通の型の7の「把握日の決め方」）。changeNoteがknownで空でない（空白だけでない）ときだけ許す（PR28-R004）。
-  const note = knownValue(proposal["changeNote"]);
-  if (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous.knownOn) && (typeof note !== "string" || note.trim() === "")) {
+  if (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous.knownOn) && !hasNote(proposal)) {
     return one("known-on-not-inherited", "$.changeNote", "入力誤りの訂正で把握日を変えるときは、changeNoteに理由を書く");
   }
   const typed = checkTypeTransition(previous, proposal, reason);
   if (typed.length > 0) return typed;
   return checkLineIdReservation(history, proposal, previous);
+}
+
+// 取消の改訂の静的な検査の範囲（PR #36の共通の型の9、所有者の判断1）: 取消（void）で、bodyと変えられない項目が直前の版と
+// 同じなら、その改訂が決める項目だけを確かめる。修復の再度の取消でbody等を変えた場合は、変えた値も確かめる（全体の検査）。
+export function staticCheckFor(proposal: Obj, previous: Revision | undefined, stored: boolean): Violation[] {
+  const voidScope =
+    proposal["reason"] === "void" &&
+    previous !== undefined &&
+    sameJson(proposal["body"], previous.body) &&
+    proposal["entryChannel"] === previous.entryChannel &&
+    sameJson(proposal["importKey"], previous.importKey);
+  return checkRevisionStatic(proposal, { stored, voidScope });
 }
 
 // 記録の種類ごとの、改訂の理由と前後の値の規則（PR28-R008）。保存のときと、検査をすり抜けた履歴の検査で同じに使う。
@@ -223,7 +257,10 @@ function checkLineIdReservation(history: readonly Revision[], proposal: Obj, pre
 // (c) 検査を通らずに置いた改訂（未検査）は、(a)を満たし、かつ直前の版も信頼できるときだけ信頼する（版1は(a)だけ）。
 // 不正な版は履歴に要確認として残るが、そのあとに検査を通った保存があれば、その版から先の判定は止まらない。見方で選ばれた
 // 改訂より後の改訂は使わないので、回復より前の時点の見方では、これまでどおり信頼できない。
-// その版だけの検査の結果は、前の改訂が変わらないので、改訂のobjectごとに覚える。
+// その版だけの検査の結果は、改訂のobjectごとに覚える（localMemo）。前提（N-P3-5。T07の受入にも書く）: 台帳は追記だけで、
+// 同じ改訂のobjectは、つねに同じ前の改訂の並び・同じ検査の印・同じそれより前の保存（直前の連番までの記録）を持つ台帳にだけ
+// 現れる。版だけの検査は、その改訂と、それより前に保存されたものだけで決まる（直前の版の信頼、直前の連番の見方での残す方）。
+// 読み込み（T07）は改訂ごとに新しいobjectを作るので、別の台帳の結果を持ち込まない。
 const localMemo = new WeakMap<Revision, boolean>();
 
 export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
@@ -234,7 +271,7 @@ export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
     const r = list[k] as Revision;
     let ok = localMemo.get(r);
     if (ok === undefined) {
-      ok = revisionValid(list.slice(0, k), r);
+      ok = revisionValid(ledger, list.slice(0, k), r);
       localMemo.set(r, ok);
     }
     if (!ok) return false;
@@ -243,13 +280,26 @@ export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
   return true;
 }
 
-function revisionValid(prior: readonly Revision[], r: Revision): boolean {
-  if (checkRevisionStatic(r, { stored: true }).length > 0) return false;
-  if (r.revision !== prior.length + 1) return false;
+function revisionValid(ledger: Ledger, prior: readonly Revision[], r: Revision): boolean {
   const previous = prior[prior.length - 1];
+  if (staticCheckFor(r as unknown as Obj, previous, true).length > 0) return false;
+  if (r.revision !== prior.length + 1) return false;
+  const predecessorTrusted = previous === undefined || isHistoryValid(ledger, previous);
   if (previous !== undefined) {
     if (r.recordedSeq <= previous.recordedSeq) return false;
-    if (checkAgainstPrevious(prior, r as unknown as Obj, previous.revision).length > 0) return false;
+    if (checkAgainstPrevious(prior, r as unknown as Obj, previous.revision, { predecessorTrusted }).length > 0) return false;
   }
-  return knownOnInFuture(r as unknown as Obj, previous, r.recordedAt).length === 0;
+  if (knownOnInFuture(r as unknown as Obj, previous, r.recordedAt, predecessorTrusted).length > 0) return false;
+  // 未検査の取消でduplicateOfがknownのもの（N-P2-3、所有者の判断3）: その改訂の直前の連番の記録時点の見方で、残す方が有効な記録
+  // だったときだけ信頼する（指し合う取消を両方とも信頼しない）。検査済みの取消は、保存のときに確かめている。
+  if (r.reason === "void" && isUnchecked(ledger, r)) {
+    const dup = knownValue(r.duplicateOf);
+    if (dup !== undefined) {
+      const target = isObj(dup) ? dup["id"] : undefined;
+      if (typeof target !== "string") return false;
+      const view = { kind: "record-seq", seq: r.recordedSeq - 1 } as const;
+      if (!isEffective(ledger, target, view, new SeriesCache(ledger, view))) return false;
+    }
+  }
+  return true;
 }

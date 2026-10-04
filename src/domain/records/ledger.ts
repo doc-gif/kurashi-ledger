@@ -67,9 +67,10 @@ export interface Ledger {
   readonly sha256s: ReadonlyMap<string, string>;
   // 計算runのID（予約するキー。中身はT15）。
   readonly runIds: ReadonlySet<string>;
-  // 検査を通らずに置いた改訂（復元・取込等。未検査）の、revisionKeyの集合。ここにない改訂は、検査を通って保存したもの（検査済み）。
-  // T07は、この区別を改訂ごとの印として永続化し、読み込みで復元する（所有者の判断「正しい保存で信頼を回復」。P1-1）。
-  readonly unchecked: ReadonlySet<string>;
+  // 検査を通って保存した改訂（検査済み）の、revisionKeyの集合。印がない改訂は、検査を通らずに置いたもの（未検査。復元・取込等）と
+  // して扱う（印の欠落を検査済みと読まない。N-P2-2）。T07は、この区別を改訂ごとの印（契約版2.0のsaveCheck）として永続化し、
+  // 読み込みで復元する（所有者の判断「正しい保存で信頼を回復」。P1-1）。
+  readonly checked: ReadonlySet<string>;
 }
 
 export function revisionKey(id: string, revision: number): string {
@@ -77,7 +78,7 @@ export function revisionKey(id: string, revision: number): string {
 }
 
 export function isUnchecked(ledger: Ledger, revision: Revision): boolean {
-  return ledger.unchecked.has(revisionKey(revision.id, revision.revision));
+  return !ledger.checked.has(revisionKey(revision.id, revision.revision));
 }
 
 export interface RequestResult {
@@ -99,7 +100,7 @@ export function emptyLedger(): Ledger {
     importKeys: new Map(),
     sha256s: new Map(),
     runIds: new Set(),
-    unchecked: new Set(),
+    checked: new Set(),
   };
 }
 
@@ -145,11 +146,11 @@ export function compareStrings(a: string, b: string): number {
 export function withRevision(ledger: Ledger, revision: Revision, checked: boolean): Ledger {
   const revisions = new Map(ledger.revisions);
   revisions.set(revision.id, Object.freeze([...(ledger.revisions.get(revision.id) ?? []), revision]));
-  let unchecked = ledger.unchecked;
-  if (!checked) {
-    const next = new Set(unchecked);
+  let checkedSet = ledger.checked;
+  if (checked) {
+    const next = new Set(checkedSet);
     next.add(revisionKey(revision.id, revision.revision));
-    unchecked = next;
+    checkedSet = next;
   }
   const writeRequests = new Map(ledger.writeRequests);
   writeRequests.set(revision.writeRequestId, revision);
@@ -169,7 +170,7 @@ export function withRevision(ledger: Ledger, revision: Revision, checked: boolea
       }
     }
   }
-  return { ...ledger, saves: Object.freeze([...ledger.saves, Object.freeze({ kind: "revision" as const, revision })]), revisions, writeRequests, importKeys, unchecked };
+  return { ...ledger, saves: Object.freeze([...ledger.saves, Object.freeze({ kind: "revision" as const, revision })]), revisions, writeRequests, importKeys, checked: checkedSet };
 }
 
 // 既存の記録を返した要求の結果を足す（記録・改訂・保存の連番は作らない）。

@@ -29,7 +29,9 @@ export type RejectionReason =
   // T06が足した名前（台帳に該当する場面がない）
   | "record-not-found" // 改訂しようとした記録が存在しない（共通の型の9。改訂は既存の記録にだけ続けられる）
   | "id-already-used" // 新規の保存に、すでに使われたIDが割り当てられた（共通の型の2。一度使ったIDは再利用しない）
-  | "known-on-not-inherited"; // 取消・取消の取り消しの把握日が直前の改訂と違う、または入力誤りの訂正で把握日を変えるのにchangeNoteがknownで空でない文字列でない（共通の型の7の「把握日の決め方」）
+  | "known-on-not-inherited" // 取消・取消の取り消しの把握日が直前の改訂と違う、または入力誤りの訂正で把握日を変えるのにchangeNoteがknownで空でない文字列でない（共通の型の7の「把握日の決め方」）
+  | "import-key-reserved" // 修復の改訂でimportKeyを直す先のキーが、別の記録に予約されている（共通の型の9・10の「履歴全体で予約するキー」）
+  | "read-only-unknown-content"; // この版の表にない項目を持つ記録は、この版では読むだけで改訂を保存しない（所有者の判断「古い版では読むだけにする」）
 
 // 拒否の理由の一覧。違反が複数あれば、この順で最初のものを保存の結果の理由にする（違反はすべて返す）。
 export const REJECTION_REASONS: readonly RejectionReason[] = [
@@ -56,6 +58,8 @@ export const REJECTION_REASONS: readonly RejectionReason[] = [
   "master-void-referenced",
   "canonical-change-breaks-check",
   "issuer-kind-mismatch",
+  "import-key-reserved",
+  "read-only-unknown-content",
 ];
 
 export interface Violation {
