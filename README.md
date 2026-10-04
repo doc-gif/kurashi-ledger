@@ -2,18 +2,22 @@
 
 複数勤務先の給与・銀行入金、税金・社会保険の記録と見通しを管理する個人向けアプリの設計プロジェクトです。
 
-**2026-10-02に製品の実装を始めました。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算、製品の試験はまだありません（開発用のスクリプトの試験とCIはあります）。実装側AIは作業中のPRをDraftにし、レビュー依頼時はOpenへ切り替えて引き継ぎます。引継ぎ後は、実装していない別のAIの内容レビューを待ちます。マージは、そのレビューのacceptedと[規約の条件](AGENTS.md)を満たした自分のPRだけを実装側が手動で行い、自動マージは行いません。
+**2026-10-02に製品の実装を始めました。** このリポジトリは設計資料とAIエージェント向けの作業規約を共有します。利用できるアプリ、税・保険の計算、製品の試験はまだありません（開発用のスクリプトの試験とCIはあります）。実装側AIは作業中のPRをDraftにし、レビュー依頼時はOpenへ切り替えて引き継ぎます。引継ぎ後は、実装していない別のAIの内容レビューを待ちます。マージは、そのレビューのacceptedと[マージ条件](docs/github-agent-operations.md#merge-conditions)を満たした自分のPRだけを実装側が手動で行い、自動マージは行いません。
 
 ## 別のAIが作業を引き継ぐとき
 
 最初に [AGENTS.md](AGENTS.md) と [現在の状態](docs/project-status.md) を読んでください。最新mainと関連Issue・PRを確認し、実装の許可・担当・依存関係が揃ってからタスク専用worktreeで着手します。古い会話やcloneの状態だけで進めません。
+
+## 運用資料の読み方
+
+進捗の正本は各[Issue・PR](https://github.com/doc-gif/kurashi-ledger/issues)です。[状態資料](docs/project-status.md)は公開範囲と所有者決定、担当・権限・マージ条件は[運用規約](docs/github-agent-operations.md)、短い完了報告とレビューの書式は[PRレビューループ](docs/pr-review-loop.md)を正本とします。AI向けの文章整理には[Google Technical Writingに基づくスキル](.agents/skills/google-technical-writing/SKILL.md)を使います。人向けの結論は日本語、AI専用の入口とスキルは英語を基本とします。共有の運用手順は日本語で読みやすく整理し、必要な証跡は省略しません。
 
 ## 開発環境
 
 いま使えるのは、開発用の設定・スクリプトとその試験、ブラウザ試験の基盤、CIです。アプリの起動、UIのビルド、製品の試験はまだありません。
 
 - Node.js 24（24.15.0以上。`package.json`の`devEngines`）を入れ、`npm run setup`で依存を導入します（`npm ci`を直接使わない）。WindowsのPowerShellでは`npm.cmd`を使います。
-- 手元の版は[mise](https://mise.jdx.dev)でそろえられます。ルートの`mise.toml`がNode.js 24.21.0とPython 3.11.17を固定し、どのworktreeでも`mise install`で同じ版になります（macOSの導入、Windowsでの扱い、版の正本の役割は[開発環境](docs/development.md)の「miseで版をそろえる」）。
+- 手元のNode.jsとPythonの正確な版は[mise.toml](mise.toml)で管理します。導入・Windowsでの扱い・対応範囲との関係は[開発環境](docs/development.md)の「miseで版をそろえる」を参照してください。
 - `npm run typecheck`（型検査）、`npm test`（開発用スクリプトの試験と、合成データの台帳の検査）、`npm run check:public`（公開検査。commitの前は`-- --staged`）。
 - `npm run test:browser:install`（このOSに要るブラウザを入れる）と`npm run test:browser`（Playwrightのブラウザ試験。ChromiumをMac・Windows・Linux、WebKitをMac）。
 - CI（`.github/workflows/ci.yml`）: PRとmainへのpushで、上の検査とブラウザ試験、レビュー運用ツールの検査をLinux・Windows・macOSで実行し、最後のQuality gateで結果をまとめます。CIの合格は、別の担当の内容レビューやマージの条件の代わりになりません。
@@ -30,6 +34,8 @@
 - [デザインの基礎・トークン・部品の仕様（Figmaとの対応）](design/README.md)
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
+- [AIのGitHub App（CodexとClaudeの身元、トークンの発行）](docs/github-apps.md)
+- [人・AI共通のレビュー受付の設計](docs/review-dispatch-design.md)と[実装・導入前チェック](docs/review-dispatch-implementation.md)（Issue #45、既定off・本導入前）
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
 - [Claude Code等へ渡す定期確認の指示](docs/external-worker.md)
 - [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)

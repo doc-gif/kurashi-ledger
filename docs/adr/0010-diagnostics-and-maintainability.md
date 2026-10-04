@@ -332,11 +332,11 @@ Knip（6.39.0、ISC）は、未使用のファイル・export・依存まで見�
 - Dependabotの提案のPRは、PRの計画（`.review/plans/`）を含まないので、`review plan`のjobが失敗し、`Quality gate`も失敗する。**これは意図した状態として残し、例外を作らない。** 提案のPRは、マージできる候補ではなく「更新があるという知らせ」として扱う。
 - 例外を作らない理由: `github.actor`や作成者で`review plan`を飛ばすには、workflowを変える必要があり、PR自身がworkflowを変えられる限界（[修正前の整合確認](../review-prevention.md)、PR4-R001）を広げる。作成者による条件は、ほかの経路で同じ値になる場合があり、なりすましの余地がある。actionの更新はworkflowそのものを変えるので、むしろ内容のレビューが要る。
 - **採用の手順**（詳細は[開発環境](../development.md)の「依存の更新（Dependabot）」）:
-  1. 所有者または調整係が、提案のPRごとに採用のIssueを作って採用の担当を割り当てる（AGENTS.mdの着手の条件。task_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`。提案のPR1つに、Issue1つ・計画1つ・branch1つ・採用のPR1つを対応させ、名前に提案のPR番号を入れる。同じ日に提案が複数あっても衝突しない）。セキュリティ更新は、版の更新より先に割り当てる。
+  1. 所有者または調整係が、提案のPRごとに採用のIssueを作って採用の担当を割り当てる（[着手の条件](../github-agent-operations.md#タスクと着手条件)。task_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`。提案のPR1つに、Issue1つ・計画1つ・branch1つ・採用のPR1つを対応させ、名前に提案のPR番号を入れる。同じ日に提案が複数あっても衝突しない）。セキュリティ更新は、版の更新より先に割り当てる。
   2. 担当は、最新のmainから自分のbranch（`task/deps-pr<提案のPR番号>-<担当名>`）を作り、**提案のcommitを取り込む前に**、計画`.review/plans/DEPS-pr<提案のPR番号>.json`（`task_id`は`DEPS-pr<提案のPR番号>`）をcommitする（[修正前の整合確認](../review-prevention.md)の「変更前の手順」の5の順序）。予定のパスは、提案のPRの変更したファイル（`gh pr diff <番号> --name-only`等で、checkoutせずに読む）。npmなら`package.json`とlockfileが共有資源なので、ほかのタスク（T08等）が使っていないことを確かめる。
   3. 計画のcommitのあとで、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。Dependabotのbranchへはpushしない（ほかの担当のbranchへpushしない規約。Dependabotが自分のbranchを作り直すと、足した変更が消える）。
   4. 確かめること: 変更の内容（リリースノート）、lockfileの`resolved`が`https://registry.npmjs.org/`だけであること、新しくインストールスクリプトを持つ依存がないこと（lockfileの`hasInstallScript`）、ライセンス、`npm run setup`と3つのOSのCI。actionなら、新しいSHAが公式のリポジトリのタグを指すこと。
-  5. Draft PR→別の担当（Codex側）の内容レビュー→AGENTS.mdのマージの条件、の通常の流れで進める。auto-merge・`@dependabot merge`・`@dependabot squash and merge`は使わない。
+  5. Draft PR→別の担当（Codex側）の内容レビュー→[マージの条件](../github-agent-operations.md#merge-conditions)、の通常の流れで進める。auto-merge・`@dependabot merge`・`@dependabot squash and merge`は使わない。
   6. 採用のPRがマージされたら、提案のPRにリンクを書いて閉じる。採用しない場合は、理由を書いて閉じる（同じ版はもう提案されない。必要なら`@dependabot ignore`の代わりに設定ファイルを変える）。
 - Dependabotの提案のPRにも、Copilotのレビューが付きうる。指摘は採用のPRの計画とレビューで扱う。
 

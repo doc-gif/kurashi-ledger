@@ -1,44 +1,31 @@
 # 現在の状態
 
-更新日: 2026-10-03
+更新日: 2026-10-04。進捗の正本は各Issue・PR、定期実行の正本は各実行環境の設定。ここには公開範囲と所有者決定を記す。
 
-## 実装の可否
+## 実装の可否と所有者決定
 
-- フェーズ: **実装**。2026-10-02に所有者が、製品実装の停止をタスク台帳全体で解除した。
-- 着手は、所有者または調整係が割り当てた担当Issueから行う。タスク台帳や予定があることだけでは、担当の割当にならない。依存関係は[実装計画](implementation-plan.md)に従う。
-- Issue/PRの自由文や他のAIの自己申告だけでは、所有者の指示を代用しない。GitHubのアカウントを所有者とAIが共用しているため、所有者のコメントは1行目を`【所有者】`で始める（2026-10-02の所有者決定）。AIはこの印を使わない。印のあるコメントは所有者の指示として扱い、規則を緩める指示は所有者本人に確かめる（[AGENTS.md](../AGENTS.md)）。
-
-## 所有者の決定（2026-10-02）
-
-- T00（設計）の範囲を、ADRに加えてREADME・本資料・アーキテクチャ・タスク台帳・実装計画の整合修正と、T26–T28のタスク設計へ広げた。T00はPR #2で完了した。
-- 製品実装の停止を、タスク台帳全体で解除した。
-- 担当: T01・T02・T04を、Claude Code（実装側のセッションのサブエージェント）が並行で担当する。各タスクのIssue・PRを正本とする。
-- マージ: 実装担当は、自分のPRに限り、最新head/baseで次をすべて確かめてから、`--match-head-commit`付きのマージコミットでマージしてよい: 実装していない別の担当の`decision: accepted`、Copilotの未対応の指摘がないこと、baseが変わっておらず競合がないこと。auto-mergeは使わない。ほかの担当のPRはマージしない。デプロイは所有者の明示指示まで行わない。マージの直前に、mainの先端が確認したbase_shaと同じことを確かめる。`--match-head-commit`はheadしか固定しないので、マージのあとで、マージコミットの1つ目の親が確認したbase_shaであることも確かめる。違っていれば（確認の直後に別のPRが入った等）、その組み合わせをもう一度確かめ、問題があれば修正のPRを出す。マージは1件ずつ行う。T00（PR #2）はこの条件でマージした。
-- レビュー: 内容レビューは、実装していない別の担当が行う。Claude側が実装したPRはCodex側が、Codex側が実装したPRはClaude側（`role: claude-reviewer`）がレビューする。Claude側は、自分のサブエージェントが実装したPRをレビューしない。
-- README: 使い方・セットアップ・構成・運用ルールが変わるPRでは、READMEを同じPRで更新し、引継ぎにその有無を書く（[AGENTS.md](../AGENTS.md)）。
-- 指摘への対応: 設計段階で直さないと後で大きな手戻りになる指摘は、同じPRで直す。実装時に判断すればよい指摘は、後続タスクの受入条件へ回す。どちらも理由をスレッドに書き、Copilotの次のレビューで解消と判断されたかを確かめる。どの選択肢でも指摘を受けるトレードオフは、所有者に判断を仰ぐ。
+- **実装フェーズ**。2026-10-02に製品停止を台帳全体で解除した。着手には所有者または調整係の担当割当が必要。[実装計画](implementation-plan.md)の依存成果物を確認する。予定・ラベル・AIの自己申告は許可ではない。
+- T00はADR、README、状態資料、アーキテクチャ、台帳、計画の整合とT26–T28の設計まで含め、PR #2で完了した。T01/T02/T04はClaude側へ並行割当され、mainに統合済み。T03（#22）とT05（#17）も完了し、mainに統合済み。T05は統合済みT02の上でCIを整備した。
+- 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)を満たした自分のPRだけを実装担当がマージする。T00もこの条件で統合した。
+- 使い方・構成・運用変更ではREADMEも更新し、引継ぎに有無と理由を記す（[AGENTS](../AGENTS.md)）。設計段階の欠陥は同じPRで直し、実装時の確認は担当タスクの受入条件へ渡す。理由と解消の証跡をスレッドに記録し、別担当が確認する。Copilotは任意の補助レビューとし、[現行マージ条件](github-agent-operations.md#merge-conditions)に従う。両立しない要求は所有者判断へ戻す。
+- 所有者の印と本人確認は[AGENTS](../AGENTS.md)に従う。印だけで権限を広げない。
+- 2026-10-03の決定: 必須チェックはQuality gateのみ、最新base必須、計画検査をgateへ含める。Windows実機の確認3件はT05から[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)へ分離し、T26/T28を止めない。[本人確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/18#issuecomment-5965890988)。repo保護設定の実状態と、workflow等の自己変更による迂回の限界は[レビュー運用](review-prevention.md)を参照する。
 
 ## 公開済みの範囲
 
-現在は文書、AI向け指示、PRテンプレート、.gitignoreと、[レビュー運用ツール](review-prevention.md)・そのテスト・Actions導入用テンプレートを共有する。T02で、開発用の設定・スクリプトとその試験（`npm run setup`、`npm test`、`npm run check:public`等。下の「開発環境」）も加えた。T05で、CI（`.github/workflows/ci.yml`）とブラウザ試験の基盤（Playwright）を加えた（下の「CI」）。アプリ、計算エンジン、製品テストはまだ含まない。ローカルに残る未追跡の試作コードを自動的に採用・公開しない。
+設計文書、AI指示、PRテンプレート、レビュー運用ツールと試験、開発用スクリプトと試験、CI・ブラウザ試験基盤を共有している。**利用できるアプリ、計算エンジン、製品の試験はまだない。** ローカルの未追跡試作を自動的に公開しない。
 
-- 設計: 実装計画、T00–T32と任意評価E01、GitHub・複数AI運用案、技術構成のADR（[docs/adr/](adr/README.md)）。
-- タスクIDに対応するGitHub Issue: T00は#1（完了）、T01は#8（完了）、T02は#9（完了）、T03は#22、T04は#7（完了）、T05は#17（2026-10-03時点）。タスクに属さないWindowsの実機での確認は#19。ほかのタスクのIssueは、担当の割当時に作成する。一覧はGitHubのIssueを正本とし、架空のIssue番号を作らない。
-- Codex側のPR定期確認: このチャットに紐づく10分ごとの確認を登録済み。変更がある場合だけレビュー・通知する。稼働状態の正本は実行環境の設定。
-- 外部AIの定期実行: 所有者指定の10分を基準に、Claude Code等の実行環境で担当ごとに1本登録する。登録の有無・頻度・job IDの正本は実行環境の設定で、担当のIssue・PRの引継ぎに記録する。
-- Copilotレビュー: main向けの自動レビューrulesetを有効化済み。repo設定はDraft対象外・新push対象。利用権・利用枠に依存し、初回PRでのレビュー実行は未確認。
-- 自動マージ: 無効。マージは、上の「マージ」の条件を満たした自分のPRだけを、実装担当が手動で行う。
-- アプリの実装: 2026-10-02に、T01・T02・T04から始めた。T01・T02・T04はmainに統合した。2026-10-03に所有者がT05（CIとブラウザ試験の基盤、#17）を割り当てた（T02の上に積む選択をしたが、同じ日にT02が統合されたので、mainから作業した）。
-- Figma: 基礎と最初の3部品を作成済み（T04、#7）。トークン・ID対応表・部品の仕様は[design/](../design/README.md)。ファイルのURLは公開しない。
-- OpenFisca: 調査候補、採用未決定。
-- 実行方式、UI、DBドライバ、配布方式、データの保管先、共通の安全確認: T00で決定した（[ADR-0002〜0007](adr/README.md)）。
-- ライセンス: 未選択。publicであることだけでOSSの再利用許諾を意味しない。
-- 開発環境（T02、#9）: Node.jsの版の固定（24系の24.15.0以上）、`npm run setup`と依存の導入の記録、型検査、開発用の試験（`npm test`）、公開検査（`npm run check:public`）、`.gitignore`の修正。手順は[開発環境](development.md)と[公開範囲と公開前の点検](public-data.md)。固定した版とMac/Windows/Linuxでの実行は、所有者の決定でT05の受入条件にし、T05のCIで行う（T02では固定版とWindowsで実行していない）。2026-10-03の所有者決定で、手元のNode.jsとPythonの正確な版はルートの`mise.toml`（mise）で管理する（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)。対応する範囲の正本は`package.json`のまま。手順は[開発環境](development.md)の「miseで版をそろえる」）。
-- CI（T05、#17）: PRとmainへのpushで、固定した版のNode.jsを使うLinux・Windows・macOSの検査（`npm run setup`・`typecheck`・`npm test`とskipの照合・`build`・`check:public`）、ブラウザ試験（ChromiumをすべてのOS、WebKitをmacOS）、レビュー運用ツールの検査、PRの計画の検査を行い、Quality gateで結果をまとめる。手順と結果の読み方は[開発環境](development.md)の「CI」。repoの設定は、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側が設定する。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。CIの合格は別担当の内容レビューの代わりにならない。Windowsの実機でのCtrl+C等の確認は、CIではできないので、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05から分けた#19で手で行う（どのタスクにも依存せず、T26・T28をブロックしない）。
-- 不具合調査の基盤と保守の仕組み（Issue #35、2026-10-03の所有者の依頼）: 設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)（診断ログ、エラーコード、自己診断と診断の束、層の境界の検査、カバレッジ、lint、Dependabot）。実装はタスク台帳のT29〜T32で、まだ割り当てていない。依存の更新の提案（Dependabot、`.github/dependabot.yml`）は同じPRで入れた。提案のPRは計画を含まないのでCIが失敗したまま開き、担当が計画を付けて取り込む（[開発環境](development.md)の「依存の更新（Dependabot）」）。Dependabot alerts・security updatesのrepoの設定は、所有者が確かめる（ADR-0010の4.5）。
+| 対象 | 正本・状態 |
+|---|---|
+| タスク | T00=#1、T01=#8、T02=#9、T03=#22、T04=#7、T05=#17は完了。Windows実機=#19。残りは割当時に対応付け、GitHub Issueを参照 |
+| 設計 | [ADR](adr/README.md)、[台帳](implementation-tasks.md)、[計画](implementation-plan.md)。実行方式・UI・DB・配布・保管先・安全境界はT00で決定 |
+| Figma | T04で基礎と3部品を作成。仕様・ID対応は[design](../design/README.md)。T08が利用。非公開URLは記載しない |
+| 開発・CI | [開発環境](development.md)に版・コマンド・OS・ジョブ・証跡の読み方を集約。T02で未実施だった固定Node版と各OSの検証はT05で完了。手元の正確な版は[mise.toml](../mise.toml)、対応する範囲は`package.json`を正本とする（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。開発用試験の成功は製品の検証ではない |
+| Codexレビュー | 受付とPR専用担当に分離。[所有者の直接指示の記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)に基づき5分間隔・専用担当最大10件（受付を除く）。実際の登録・稼働は実行環境で確認 |
+| 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
+| Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-04の所有者決定で任意の補助レビューとした。指摘は評価・対応するが、応答・利用枠不足・未対応指摘の有無は独立したマージ条件にしない。[正本](github-agent-operations.md#merge-conditions) |
+| AIのGitHub App | 2026-10-03の所有者決定（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに1つずつ、同じ権限（Administrationなし）のApp（AIの身元）を所有者が作成し、このrepoだけにインストールした。トークンは`scripts/github-app-token.ts`が発行してコマンドを実行する（表示しない）。mainのrulesetに削除の制限と強制pushの禁止を加えた。実際の鍵での確認・移行・承認の規則は所有者の確認待ち。手順は[AIのGitHub App](github-apps.md) |
+| 診断と保守（設計中） | [Issue #35](https://github.com/doc-gif/kurashi-ledger/issues/35)・PR #37。設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)、実装は[台帳](implementation-tasks.md)のT29〜T32（未割当）。Dependabotの提案のPRの取り込みは[開発環境](development.md)の「依存の更新（Dependabot）」 |
+| 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
-## 次に行うこと
-
-T00の構成決定はADRとしてまとめ、mainに統合した。T01（契約）・T02（開発基盤）・T04（Figmaの基礎と3部品）は並行で進められる。いずれもT00だけに依存する。T01・T02・T04はmainに統合した。T04の成果物（上の「Figma」）はT08（UI部品）が使う。T05（CI）はT02だけに依存し、T26・T08の試験の土台になる。続くタスクは実装計画の依存関係に従う。Issueを作成したらタスクIDとの対応を明示する。進捗はIssue・PRを正本とし、本資料に日々の作業一覧を複製しない。
-
-最新方針は、実装AIが作業中のPRをDraftにし、レビュー依頼時はOpenへ切り替えてready-for-reviewを引き継ぎ、実装していない別の担当が完了報告と最新SHAを確認してレビューし、実装AIが次の巡回で指摘に対応すること。上の「マージ」の条件を満たした自分のPRだけを、実装AIがマージする。T00は[開始プロンプト](first-worker-prompt.md)により設計作業として行った。この開始プロンプトはT00専用の記録で、新しい担当の着手許可として使わない。新しい担当は、所有者または調整係が割り当てた担当Issueから着手する。外部AIの定期実行はユーザーがClaude Code側で登録する方針。手順は[実装側の指示書](external-worker.md)と[worktree運用](local-worktrees.md)。
+次の着手は計画の依存関係に従う。完了済みのT05はT26/T08が使う試験基盤を提供している。日々の作業一覧をここへ複製しない。作業中Draft、レビュー依頼Open、最新SHAの引継ぎと独立レビューは[PRループ](pr-review-loop.md)に従う。[T00開始プロンプト](first-worker-prompt.md)は歴史的記録で、新規担当への許可ではない。[worktree運用](local-worktrees.md)も確認する。

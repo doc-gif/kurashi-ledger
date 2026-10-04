@@ -115,9 +115,10 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 | --- | --- | --- | --- |
 | Windows | `scripts/setup-lock.test.ts`の3件（「実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える」「Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える」「SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える」）、`scripts/setup.test.ts`の1件（「Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える」） | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（`kill`は強制終了になる）。`SIGTERM`・`SIGHUP`は、Windowsのsetupが受けるシグナルではない | Windowsの実機のコンソールでのCtrl+CとCtrl+Breakの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
 | Windows | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | Windowsの実機での、印を消せないときのCtrl+Cの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
+| Windows | `scripts/github-app-token.test.ts`の2件（「実際のファイルで: 鍵ファイルへのsymlinkとFIFOを、開く前に拒む（FIFOで止まらない）」「実際のプロセスとシグナルで: 子の実行中のSIGINT・SIGTERMを子へ転送し、子の終了後に失効させて128+番号で終える」） | WindowsのファイルシステムにはFIFOがなく、ファイルのsymlinkの作成には開発者モードか管理者の権限が要るので、試験の中で確実に作れない。Node.jsは、Windowsでほかのプロセスへシグナルを送れない（`kill`は強制終了になる） | 鍵ファイルは、同じ判定（lstatで通常のファイルでないものを開く前に拒む、開いた後の置き換えを拒む）を、純粋な関数の試験（「鍵ファイルは、symlink・置き換え・…」）と、実際のディレクトリの試験で、すべてのOSで確かめる。Windowsでは`--key-file`より`--key-stdin`を勧める（[AIのGitHub App](github-apps.md)）。シグナルは、同じ転送・失効・終了コードを、シグナルを注入した試験（「発行から失効までにシグナルを受けたら…」「確認の途中でシグナルを受けたら…」）で、すべてのOSで確かめる。Windowsの実機でのCtrl+C・Ctrl+Breakの確認はまだ行っていない（[AIのGitHub App](github-apps.md)の「確かめていないこと」） |
 | macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで5件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで7件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
 
 飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
 
@@ -200,11 +201,11 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - 提案: npm（`package.json`とlockfile）とGitHub Actions（`.github/workflows/`のSHAの固定）の新しい版を、毎週月曜日の9時（日本時間）に確かめてPRにする。公開から7日（npmのメジャーは14日）待ってから提案する。npmのminor・patchは1つのPRにまとめ、メジャーは依存ごとのPRにする。`@types/node`のメジャーは、Node.jsのメジャーの更新（T28）と合わせるので提案させない。Pythonの依存の宣言はないので対象にしない。セキュリティ更新（repoの設定で有効にした場合）は、待たずに、別のまとまりのPRになる。
 - **提案のPRはそのままマージしない。** 提案のPRはPRの計画（`.review/plans/`）を含まないので、CIの`review plan`と`Quality gate`が失敗する。これは意図した状態で、例外は作らない。auto-merge・`@dependabot merge`は使わない。Dependabotのbranchへpushしない（ほかの担当のbranchへpushしない規約。Dependabotがbranchを作り直すと、足した変更が消える）。
 - 採用の手順:
-  1. 所有者または調整係が、提案のPRごとに採用のIssue（`.github/ISSUE_TEMPLATE/task.md`の項目。task_idは`DEPS-pr<提案のPR番号>`、提案のPRへのリンク、対象の依存と版、共有資源）を作り、採用の担当を割り当てる（[AGENTS.md](../AGENTS.md)の着手の条件。task_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`にそろえる。提案のPR1つに、Issue1つ・計画1つ・branch1つ・採用のPR1つを対応させ、名前に提案のPR番号を入れる。同じ日に提案が複数あっても衝突しない。セキュリティ更新を先に割り当てる）。npmの更新は`package.json`とlockfileを変えるので、ほかのタスク（T08等）がそれを使っている間は待つ。
+  1. 所有者または調整係が、提案のPRごとに採用のIssue（`.github/ISSUE_TEMPLATE/task.md`の項目。task_idは`DEPS-pr<提案のPR番号>`、提案のPRへのリンク、対象の依存と版、共有資源）を作り、採用の担当を割り当てる（[着手の条件](github-agent-operations.md#タスクと着手条件)。task_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`にそろえる。提案のPR1つに、Issue1つ・計画1つ・branch1つ・採用のPR1つを対応させ、名前に提案のPR番号を入れる。同じ日に提案が複数あっても衝突しない。セキュリティ更新を先に割り当てる）。npmの更新は`package.json`とlockfileを変えるので、ほかのタスク（T08等）がそれを使っている間は待つ。
   2. 担当は、最新のmainから自分のbranch（`task/deps-pr<提案のPR番号>-<担当名>`。例: `task/deps-pr41-claude`）を作り、**提案のcommitを取り込む前に**、計画`.review/plans/DEPS-pr<提案のPR番号>.json`（`task_id`は`DEPS-pr<提案のPR番号>`）をcommitする（[修正前の整合確認](review-prevention.md)の「変更前の手順」の5の順序）。予定のパスは、提案のPRの変更したファイル（`gh pr diff <番号> --name-only`等で、checkoutせずに読む）。
   3. 計画のcommitのあとで、提案のPRのcommitをそのまま取り込む（`git cherry-pick`。lockfileを作り直さない）。
   4. 変更の内容（リリースノート）、lockfileの`resolved`が`https://registry.npmjs.org/`だけであること、新しくインストールスクリプトを持つ依存がないこと（lockfileの`hasInstallScript`）、ライセンスを確かめてPRに書く。actionの更新では、新しいSHAが公式のリポジトリのタグを指すことを確かめる。`npm run setup`と3つのOSのCIを通す。
-  5. Draft PR→別の担当の内容レビュー→[AGENTS.md](../AGENTS.md)のマージの条件、の通常の流れで進める。
+  5. Draft PR→別の担当の内容レビュー→[マージの条件](github-agent-operations.md#merge-conditions)、の通常の流れで進める。
   6. 採用のPRがマージされたら、提案のPRに採用のPRのリンクを書いて閉じる。採用しない場合は理由を書いて閉じる。続けて止めたい依存は、`@dependabot ignore`ではなく`.github/dependabot.yml`を変える（設定をレビューに載せるため）。
 - repoの設定（Dependabot alerts・security updates）は、所有者が確かめる（ADR-0010の4.5の「所有者が確かめる設定」）。
 

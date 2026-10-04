@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "base_sha": "a04c8e31d3bc76c16a70dbf5bf21ebd6fe8e8076",
+  "task_id": "OPS-copilot-optional",
+  "planned_paths": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "docs/github-agent-operations.md",
+    "docs/github-apps.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-prevention.md"
+  ],
+  "conflicts": [
+    {
+      "description": "Existing operations, review loop, status and newly merged dispatcher design require a Copilot response or quota exception. Owner now makes it optional.",
+      "state": "resolved",
+      "resolution": "Replace only the obsolete Copilot gate and dependent current references. Keep independent exact-pair accepted, pre-submission faultfinding, CI, unchanged incorporated base, matching-head merge/first-parent verification. No runtime activation or excluded task resumption."
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "Publish only the public owner-decision record; no secrets or private transcript.",
+      "checks": [
+        {
+          "id": "public",
+          "method": "Inspect staged publication scan and all public links.",
+          "expected": "Only public owner-decision evidence and synthetic policy metadata; no credentials, local paths or private conversation transcript."
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "change-proposed",
+      "reason": "Direct owner changes the supplemental Copilot gate; independent review, finding traceability and all other checks remain.",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Inspect existing finding IDs/history, old quota evidence and late Copilot handling.",
+          "expected": "Existing findings remain evaluated and addressed with stable IDs; optional response never means hide defects. Historical merge evidence remains available."
+        },
+        {
+          "id": "trust",
+          "method": "Compare every retained merge gate with direct owner record; inspect changes-requested and late material findings handling.",
+          "expected": "Copilot response/quota/unresolved-count alone does not block. Independent accepted and completed non-implementer faultfinding remain exact-pair gates; material defects still require resolution through independent review. No self-approval, CI weakening, auto-merge, deployment or credential fallback."
+        }
+      ],
+      "decision_references": [
+        "https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503"
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Keep current entrypoints and default-off dispatcher design consistent without implementing or activating services.",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "Compare default-off Issue45 design and paused T23/T24 tasks against the policy-only diff.",
+          "expected": "No implementation, schema, workflow, ruleset or paused task changes; production migration remains separate owner-approved work."
+        },
+        {
+          "id": "entrypoints",
+          "method": "Compare operations anchor, review loop, review prevention, project status, design trigger/acceptance matrix and README links. Include PR template and App review instructions found during the entrypoint search.",
+          "expected": "One canonical gate; no current entrypoint waits for Copilot. README existing canonical links suffice; handoff metadata unchanged."
+        }
+      ]
+    }
+  ]
+}
