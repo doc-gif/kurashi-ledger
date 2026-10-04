@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "ISSUE19",
   "planned_paths": [
     ".github/workflows/ci.yml",
@@ -44,6 +44,11 @@
       "description": "所有者決定（2026-10-03、PR #33の調整係の記録5970070883・Issue #19）: Windowsでnpm run setupをCtrl+C等で止めたときのnpm run経由の終了コードを「npmの仕様として受け入れる」。これまでの計画・試験の注記・文書・引継ぎは、この扱いを「所有者の判断待ち」としていた。",
       "state": "resolved",
       "resolution": "setupの動きと試験の判定は変えない（npm run経由はWindowsで0以外を確かめ、観測値はdiagnosticに出す。setup自身の130・149と、全プロセスの終了後に記録と印が残らないことを保証の対象として確かめる）。scripts/setup.test.tsの注記、docs/development.mdの「Windowsのコンソールの中断の試験」、ADR-0008の試験の節の記述を、判断待ちから決定済みに直す。Issue #19の期待1（と、同じ扱いになる2・3）を、setup自身の終了コードとnpm run経由の終了コードを分けた形に直す。引継ぎと返信から「判断待ち」を外す。PR33-R001の残件の記録（Issue #19のコメント5970056559）は観測のまま残す。"
+    },
+    {
+      "description": "main 409bd3f（#40・#42・#46/#48・#47）の取り込みと、開いているPR（2026-10-04時点: #25 T26、#28 T06、#29 T14、#36、#37、#38 T23、#44）との共有ファイルの重なり。docs/development.md（#25・#37）、docs/project-status.md・README.md・docs/implementation-tasks.md（ほぼ全部）、.github/copilot-instructions.md（#25・#28）、docs/testing.md・docs/adr/README.md（#25・#29・#37 等）。#42は、Windowsで飛ばすscripts/github-app-token.test.tsの2件をskipの表に加えた。",
+      "state": "resolved",
+      "resolution": "mergeで取り込み、#40・#47の正本の書き方と構成を優先した。copilot-instructions.mdは#40の短い版をそのまま採用し、このPRの追記は戻さない。project-status.mdは#40の表を採用し、#19の欄だけをCIで自動の試験にした旨と開発環境の節へのリンクにした。development.mdのskipの表は、#42のgithub-app-token.test.tsのWindowsの行を残し、このPRで外したsetup系のWindowsの行は外したままにして、件数をWindows 2件・root 3件にした。指摘対応と全体の読み直しは次の段階で行う。後から統合される側が、共有の表・状態資料の重なりを解消する。"
     }
   ],
   "assessments": [
