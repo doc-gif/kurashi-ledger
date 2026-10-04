@@ -105,7 +105,7 @@ python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存した
 | `unconfirmed` | 未確認 | 取得の失敗・rate limit・ページの取り切れなさ・ファイル一覧の件数がPRの`changed_files`と合わない（上限の3,000件での打切りを含む）・baseの先端が読めない・引継ぎが名指しするIssueが読めない、最新の引継ぎと同じ秒に別の資源（issue commentとpull review）の記録がある、系統を決められないレビューがある、必須のcheckの成功が試験したmerge commitをログとcommitから確かめられない、または`ready-for-review`のあとに読めないレビュー役の記録（印のないもの、書式の誤り）がある |
 
 - 経過時間は判定に使わない（時計を読まない）。無更新のPRは、引継ぎがなければいつまでも`in-progress`。Openであることは完了の根拠にしない。Draftは作業中として扱う（[AGENTS.md](../../AGENTS.md)の作業中Draft・レビュー依頼Open）。
-- 役割は、本文の印（`<!-- <名前空間>:handoff:v1 -->`・`<!-- <名前空間>:review:v1 -->`）と`role:`欄だけで決める。全員が同じGitHubアカウントで書くので、loginでは決めない。GitHubのレビューの状態（APPROVED等）やCOMMENTかどうかも使わない。印は**本文の1行目**（先頭の空行は除く）にあるものだけを読み、2行目以降の印（前置きのあとの例示、コードブロック、後置の書式例）は記録にしない（警告に出す）。`role: reviewer`（旧表記）も読む。
+- 役割は、本文の印（`<!-- <名前空間>:handoff:v1 -->`・`<!-- <名前空間>:review:v1 -->`）と`role:`欄だけで決める。人のアカウント（doc-gif）は所有者と複数のAIが共用してきたので、loginでは役割を決めない。人のアカウントの記録では、GitHubのレビューの状態（APPROVED等）やCOMMENTかどうかも使わない。GitHub Appのbotのpull reviewは、`commit_id`が記録の`head_sha`と同じで、GitHubの状態がdecisionに対応する（accepted→APPROVED、changes-requested→CHANGES_REQUESTED、needs-owner→COMMENTED）ときだけ数え、食い違えば読めない記録にする。botのdecisionがissue commentにあれば警告する。PENDING（未提出）のレビューは読まず、DISMISSEDのレビューは数えない。出力の`handoff`・`review`には書いたアカウントのloginを入れる。印は**本文の1行目**（先頭の空行は除く）にあるものだけを読み（そのすぐあとの同じ名前空間の別の印、例えばIssue #45のBrokerの`<!-- kurashi-ledger:dispatch-run:v1:<run> -->`は読み飛ばす）、2行目以降の印（前置きのあとの例示、コードブロック、後置の書式例）は記録にしない（警告に出す）。`role: reviewer`（旧表記）も読む。
 - 人のアカウントの記録は、作者の関係（`author_association`）が`trusted_associations`のときだけ読む。GitHub Appのbotの記録は`author_association`が`NONE`になるので、`trusted_logins`（botのloginから系統への対応。このrepoではCodexとClaudeのApp）に設定したbotのものだけを読む。知らないbot・`NONE`の人の記録は読まない。これは役割の識別ではなく、public repoで第三者が書いた印を除くため。botの記録は、印の系統（引継ぎは`agent_id`の先頭、レビューは`role`）とbotの系統を照合し、食い違えば数えずに未確認にする。
 - 必須のcheckの成功は、そのrunが試験したmerge commitが、いまのbaseの先端とheadを親に持つときだけ数える。試験したcommitはジョブのログの`<tested_commit_env>: <SHA>`の行（このrepoではQuality gateの`TESTED_SHA`）から読み、commitのAPIで親を確かめる。PRやrunのAPIのbase.shaは更新が遅れるので使わない。
 - レビューは、実装と反対の系統のものだけを数える（Claude側の実装はCodex側、Codex側の実装はClaude側。[現在の状態](../../docs/project-status.md)の「レビュー」）。実装の系統は引継ぎの`agent_id`の先頭、レビューの系統は`role`（`codex-reviewer`・`claude-reviewer`）で決める。旧表記の`role: reviewer`はレビューの`agent_id`の先頭で決める。`role`と`agent_id`の系統が食い違う、または決められないレビューは未確認にする。同じ系統の別のsubagentのレビューは数えない。`agent_id`は協調用の表示で、本人確認ではない（同じアカウントの間は、書いた本人を機械では確かめられない）。
@@ -117,7 +117,7 @@ python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存した
 ### 信頼の境界
 
 - `patrol.py`（判定の中核）は、ネットワーク・投稿・時計・プロセスの起動を使わない純粋な関数。試験は合成のfixtureで行う。
-- `github_source.py`は、`gh api`を固定の引数の並びで呼ぶ（shellを使わない）。読取りはGETだけで、ghの既存のログインを使い、トークンを読まない・出力しない。次のページは`https://api.github.com/`のLinkだけをたどる。
+- `github_source.py`は、`gh api`を固定の引数の並びで呼ぶ（shellを使わない）。読取りはGETだけで、ghの既定のログイン（いまはdoc-gifの資格情報）を使い、トークンを読まない・出力しない。そのため、**レビュー済みのmainの写し（作業中のPRのcheckoutではない）からだけ実行する**。Issue #45への移行のあとは、読取りだけに縮小したAppのトークン（`dispatch-read`）で実行することを勧める。次のページは`https://api.github.com/`のLinkだけをたどる。
 - PRのコードをcheckout・build・実行しない。PRの本文・コメントは文字列として読むだけで、コマンドとして解釈しない。
 - GitHub Actionsからは動かさない（定期実行やコメントの投稿をActionsに加えない。[GitHub・複数AIの運用](../../docs/github-agent-operations.md)の「定期実行」）。CIでは、この判定の試験（`tests/test_patrol.py`・`tests/test_github_source.py`）だけを、既存の`review tools`のジョブで実行する。定期的な巡回への組込みはT24で行う。
 

@@ -47,6 +47,14 @@ class PatrolConfigTests(unittest.TestCase):
         self.assertEqual(self.config["reviewer_roles"]["codex-reviewer"], "codex")
         self.assertEqual(self.config["reviewer_roles"]["claude-reviewer"], "claude")
 
+    def test_policy_paths_cover_ci_entry_points_and_the_review_dispatch(self):
+        # CI runs through package.json scripts (PR4-R001 variant); #45 parts are permission control (I007).
+        for path in ["package.json", "tsconfig.json", "e2e/tsconfig.json", "scripts/review-dispatch.ts",
+                     "scripts/lib/review-dispatch/broker.ts", "tools/review_dispatch/supervisor.py"]:
+            with self.subTest(path=path):
+                self.assertTrue(any(patrol.fnmatch.fnmatchcase(path, p) for p in self.config["policy_paths"]))
+                self.assertTrue((root / path).exists(), path)
+
     def test_app_bots_map_to_their_own_side(self):
         # docs/github-apps.md: one App per AI; their records have author_association NONE.
         self.assertEqual(self.config["trusted_logins"],

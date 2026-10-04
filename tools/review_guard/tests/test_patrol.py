@@ -235,6 +235,22 @@ class SameAccountAndTrustTests(unittest.TestCase):
         self.assertEqual(result["state"], patrol.READY)
         self.assertEqual(sum("untrusted" in w for w in result["warnings"]), 2)
 
+    def test_broker_render_shape_with_a_second_namespace_marker(self):
+        # Red team P2-B: the Issue #45 Broker writes a dispatch-run marker on line 2 (broker.ts render).
+        broker = (f"<!-- {NS}:review:v1 -->\n<!-- {NS}:dispatch-run:v1:run-7 -->\nrole: codex-reviewer\n"
+                  f"agent_id: codex/run-7\nhead_sha: {HEAD}\nbase_sha: {BASE}\ndecision: changes-requested\n\n> 要約\n")
+        result = only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, broker)])))
+        self.assertEqual(result["state"], patrol.FIXES)
+        # A handoff/review marker on line 2 is not skipped: it is a second record, so the first has no fields.
+        doubled = f"<!-- {NS}:review:v1 -->\n" + review_body("accepted")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, doubled)])))["state"],
+                         patrol.UNCONFIRMED)
+        # Another namespace is not skipped either.
+        foreign = (f"<!-- {NS}:review:v1 -->\n<!-- other-ns:dispatch-run:v1:x -->\nrole: codex-reviewer\n"
+                   f"agent_id: codex/x\nhead_sha: {HEAD}\nbase_sha: {BASE}\ndecision: accepted")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, foreign)])))["state"],
+                         patrol.UNCONFIRMED)
+
     def test_only_a_marker_on_the_first_line_is_a_record(self):
         # PR38-R004: an example after a preface, inside a fence or after a real record never counts.
         examples = ["例として次のように書く。\n\n" + review_body("accepted"),
@@ -282,6 +298,56 @@ class SameAccountAndTrustTests(unittest.TestCase):
                 result = only(judged(pull([comment(1, T1, handoff_body()), other])))
                 self.assertEqual(result["state"], patrol.READY)
                 self.assertTrue(any("untrusted" in w for w in result["warnings"]))
+
+    def bot_review(self, decision, state, commit=HEAD, cid=2, at=T2, login="example-codex[bot]", **kw):
+        return comment(cid, at, review_body(decision, **kw), association="NONE", login=login, source="review",
+                       review_state=state, commit_id=commit)
+
+    def test_bot_native_review_must_match_commit_and_state(self):
+        # Red team P2-A: the native state and commit of a bot review must agree with the record.
+        ready = comment(1, T1, handoff_body())
+        for decision, state, expected in [("accepted", "APPROVED", patrol.ACCEPTED),
+                                          ("changes-requested", "CHANGES_REQUESTED", patrol.FIXES),
+                                          ("needs-owner", "COMMENTED", patrol.OWNER)]:
+            with self.subTest(decision=decision):
+                result = only(judged(pull([ready, self.bot_review(decision, state)])))
+                self.assertEqual(result["state"], expected)
+                self.assertEqual(result["review"]["login"], "example-codex[bot]")
+        for decision, state, commit in [("accepted", "COMMENTED", HEAD), ("accepted", "CHANGES_REQUESTED", HEAD),
+                                        ("changes-requested", "APPROVED", HEAD), ("needs-owner", "APPROVED", HEAD),
+                                        ("accepted", "APPROVED", HEAD2)]:
+            with self.subTest(decision=decision, state=state, commit=commit[:1]):
+                result = only(judged(pull([ready, self.bot_review(decision, state, commit=commit)])))
+                self.assertEqual(result["state"], patrol.UNCONFIRMED)
+        # Before the latest ready, the same mismatch is history: a warning only.
+        result = only(judged(pull([self.bot_review("accepted", "COMMENTED", cid=1, at=T1),
+                                   comment(2, T2, handoff_body())])))
+        self.assertEqual(result["state"], patrol.READY)
+        self.assertTrue(any("does not match" in w for w in result["warnings"]))
+
+    def test_pending_and_dismissed_reviews_are_not_counted(self):
+        ready = comment(1, T1, handoff_body())
+        pending = self.bot_review("accepted", "PENDING")
+        self.assertEqual(only(judged(pull([ready, pending])))["state"], patrol.READY)
+        unsubmitted = dict(self.bot_review("accepted", "APPROVED"), created_at=None)
+        self.assertEqual(only(judged(pull([ready, unsubmitted])))["state"], patrol.READY)
+        dismissed = self.bot_review("changes-requested", "DISMISSED")
+        result = only(judged(pull([ready, dismissed])))
+        self.assertEqual(result["state"], patrol.READY)
+        self.assertTrue(any("dismissed" in w for w in result["warnings"]))
+        human_dismissed = comment(2, T2, review_body("accepted"), source="review", review_state="DISMISSED",
+                                  commit_id=HEAD)
+        self.assertEqual(only(judged(pull([ready, human_dismissed])))["state"], patrol.READY)
+
+    def test_bot_decision_in_an_issue_comment_warns(self):
+        bot_comment = comment(2, T2, review_body("accepted"), association="NONE", login="example-codex[bot]")
+        result = only(judged(pull([comment(1, T1, handoff_body()), bot_comment])))
+        self.assertTrue(any("issue comment" in w for w in result["warnings"]))
+
+    def test_human_comment_reviews_keep_working(self):
+        # doc-gif style COMMENT record on the PR's review API: no native state mapping is required.
+        commented = comment(2, T2, review_body("accepted"), source="review", review_state="COMMENTED", commit_id=HEAD)
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), commented])))["state"], patrol.ACCEPTED)
 
     def test_human_account_records_keep_the_association_rule(self):
         # doc-gif style: OWNER association, no bot mapping, no family cross-check.
@@ -398,6 +464,7 @@ class ParseAndConfigTests(unittest.TestCase):
     def test_config_is_validated(self):
         for key, value in [("marker_namespace", "Bad Name"), ("repository", "no-slash"),
                            ("tested_commit_env", "lower"), ("trusted_logins", ["a-list"]), ("trusted_logins", {"x[bot]": "unknown-side"}),
+                           ("trusted_logins", {"Not-A-Bot": "codex"}), ("trusted_logins", {"name[bot] ": "codex"}),
                            ("agent_sides", {"codex": ["codex"]}),
                            ("reviewer_roles", {"codex-reviewer": "unknown-side"}),
                            ("trusted_associations", []), ("policy_paths", ["/abs"]), ("reviewer_roles", {})]:

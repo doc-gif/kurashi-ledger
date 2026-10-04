@@ -34,6 +34,8 @@ ACCEPTED = "accepted"             # a reviewer accepted this head/base; merge co
 UNCONFIRMED = "unconfirmed"       # some data could not be read; never read as "nothing to do"
 
 ANY_SIDE = "*"  # a reviewer role whose side comes from the agent_id (the legacy `role: reviewer`)
+# The native review state a bot (GitHub App) review must carry for each decision.
+REVIEW_STATE = {"accepted": "APPROVED", "changes-requested": "CHANGES_REQUESTED", "needs-owner": "COMMENTED"}
 DECISIONS = {"accepted", "changes-requested", "needs-owner"}
 WORKER_STATUSES = {"ready-for-review", "working", "needs-owner", "blocked", "paused"}
 # The leading status word counts ("working（中断中）" is working). "ready-for-reviewではない" does not match.
@@ -68,8 +70,9 @@ def load_config(value):
         guard.text(k) and (v in sides or v == ANY_SIDE) for k, v in roles.items()),
         "reviewer_roles must map each role to a side in agent_sides, or to * (side from agent_id)")
     logins = value.get("trusted_logins", {})
-    require(isinstance(logins, dict) and all(guard.text(k) and v in sides for k, v in logins.items()),
-            "trusted_logins must map each bot login to a side in agent_sides")
+    require(isinstance(logins, dict) and all(
+        isinstance(k, str) and re.fullmatch(r"[a-z0-9-]+\[bot\]", k) is not None and v in sides
+        for k, v in logins.items()), "trusted_logins must map each bot login (name[bot]) to a side in agent_sides")
     for key in ("trusted_associations", "copilot_logins", "policy_paths"):
         require(isinstance(value.get(key), list) and value[key] and all(
             guard.text(item) for item in value[key]), f"{key} must be a non-empty list of strings")
@@ -108,7 +111,13 @@ def parse_records(body, ns):
     misplaced = any(line in known for line in lines[1:])
     if lines[0] in known:
         fields, error = {}, None
-        for line in lines[1:]:
+        rest = lines[1:]
+        # Other markers of the same namespace right after the first one (e.g. the Issue #45 Broker's
+        # `<!-- <ns>:dispatch-run:v1:<run> -->`) are metadata of the same record: skip them.
+        other = re.compile(rf"<!-- {re.escape(ns)}:[a-z0-9-]+:v1[^>]*-->")
+        while rest and rest[0] not in known and other.fullmatch(rest[0]):
+            rest = rest[1:]
+        for line in rest:
             match = FIELD.fullmatch(line)
             if not match:
                 break
@@ -186,10 +195,12 @@ def collect(pull, config):
     bots = config.get("trusted_logins", {})
     out = {"handoffs": [], "reviews": [], "unreadable": [], "warnings": []}
     for item in sorted(pull.get("comments", []), key=order):
+        if item.get("source") == "review" and (item.get("review_state") == "PENDING" or not item.get("created_at")):
+            continue  # an unsubmitted review is visible only to its author and decides nothing
         records, unmarked, misplaced = parse_records(item.get("body"), ns)
         where = f"{item.get('source', 'comment')} {item.get('id')}"
         at = {"at": item.get("created_at"), "id": item.get("id") if isinstance(item.get("id"), int) else 0,
-              "source": item.get("source", "comment")}
+              "source": item.get("source", "comment"), "login": item.get("login")}
         bot_side = bots.get(item.get("login"))
         if item.get("author_association") not in trusted and bot_side is None:
             if records or unmarked or misplaced:
@@ -213,6 +224,19 @@ def collect(pull, config):
                 if bot_side is not None and side != bot_side:
                     # A configured bot writes for one AI only; a record for another side is not counted.
                     raise Mismatch(f"written by {item.get('login')} ({bot_side}) for side {side}")
+                if record["kind"] == "review" and item.get("source") == "review" \
+                        and item.get("review_state") == "DISMISSED":
+                    out["warnings"].append(f"{where}: dismissed review; not counted")
+                    continue
+                if record["kind"] == "review" and bot_side is not None:
+                    if item.get("source") == "review":
+                        # A bot review is a native GitHub review: its commit and state must match the record.
+                        require(item.get("commit_id") == value["head_sha"],
+                                "the review's commit_id is not the recorded head_sha")
+                        require(item.get("review_state") == REVIEW_STATE[value["decision"]],
+                                f"GitHub state {item.get('review_state')} does not match decision {value['decision']}")
+                    else:
+                        out["warnings"].append(f"{where}: a bot decision in an issue comment, not a native review")
                 (out["handoffs"] if record["kind"] == "handoff" else out["reviews"]).append(dict(value, **at))
             except Invalid as exc:
                 reason = f"{where}: {record['kind'] or 'unknown'} record not readable ({exc})"
@@ -294,7 +318,8 @@ def judge_pull(pull, base_tip, config, issues):
     if not records["handoffs"]:
         return finish(IN_PROGRESS, "no handoff; elapsed time or Open state is not completion")
     latest = records["handoffs"][-1]
-    result["handoff"] = {k: latest[k] for k in ("worker_status", "agent_id", "task_id", "head_sha", "base_sha", "id")}
+    result["handoff"] = {k: latest.get(k) for k in ("worker_status", "agent_id", "task_id", "head_sha", "base_sha",
+                                                    "id", "login")}
     tied = same_second_elsewhere(latest, records["handoffs"] + records["reviews"] + records["unreadable"])
     if tied:
         result.update(state=UNCONFIRMED, reasons=[
@@ -355,7 +380,7 @@ def judge_pull(pull, base_tip, config, issues):
             result.update(state=UNCONFIRMED, reasons=[
                 "a comment and a review with different decisions share a timestamp; the latest cannot be proven"])
             return result
-        result["review"] = {k: last[k] for k in ("role", "side", "agent_id", "decision", "id")}
+        result["review"] = {k: last.get(k) for k in ("role", "side", "agent_id", "decision", "id", "login")}
         if last["decision"] == "needs-owner":
             return finish(OWNER, "the reviewer recorded needs-owner for this head/base")
         if last["decision"] == "changes-requested":

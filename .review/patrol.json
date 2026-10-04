@@ -45,6 +45,12 @@
     "e2e/strict-reporter.ts",
     "playwright.config.ts",
     "scripts/github-app-token.ts",
-    "scripts/lib/github-app-token.ts"
+    "scripts/lib/github-app-token.ts",
+    "package.json",
+    "tsconfig.json",
+    "e2e/tsconfig.json",
+    "scripts/lib/review-dispatch/**",
+    "scripts/review-dispatch.ts",
+    "tools/review_dispatch/**"
   ]
 }
