@@ -133,7 +133,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 2つ目の出力が`<codexのAppの名前>[bot] <レビューしたheadのSHA> APPROVED`であることを確かめる。投稿者が自分のAppのbotでない（doc-gif等）、`commit_id`が違う、のどれかなら、そのレビューを`decision`の記録として使わず、所有者に知らせる（自分で取り消そうとしない）。`changes-requested`・`needs-owner`は、`event=REQUEST_CHANGES`・`event=COMMENT`で同じように送り、同じく投稿者を確かめる。本文のファイルは、作業ディレクトリの外の一時の場所に置き、送ったら消す。ClaudeがレビューするときはClaudeのApp（`--agent claude --purpose review`）で行う。
 
 - **自分が実装した、または自分のAppでpushしたPRを承認しない。** GitHubは、PRの作者による承認を受け付けない。rulesetの「最新のpushの承認」は、最後にpushした身元の承認を数えない。それでも、規則として、AIは自分の差分を承認しない（下の「ruleset」の前提を参照）。
-- rulesetの承認の規則を設定するまでは、Appの承認もマージの必須条件ではない。マージの条件は[マージ条件の正本](github-agent-operations.md#merge-conditions)のまま（Copilotの利用枠不足のときの暫定条件も、そこに従う）。
+- rulesetの承認の規則を設定するまでは、Appの承認もマージの必須条件ではない。マージの条件は[マージ条件の正本](github-agent-operations.md#merge-conditions)のまま（Copilotは任意の補助レビュー）。
 
 ## 実装側の操作（push・PR・コメント・マージ）
 

@@ -88,14 +88,14 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 
 ## 5. 判定と現行運用との切替
 
-起動はowner許可、操作認可、独立性、Open/non-Draft、exact-pair Ready、最新main取り込み、必要CI、未処理依頼、枠/予算が全て揃った時だけ。Copilotはそのheadへのレビューまたは明示的な利用枠不足応答を先に確認する。応答なしを枠不足とみなさない。
+起動はowner許可、操作認可、独立性、Open/non-Draft、exact-pair Ready、最新main取り込み、必要CI、未処理依頼、枠/予算が全て揃った時だけ。Copilotレビューは[現行マージ条件](github-agent-operations.md#merge-conditions)で任意としたため、応答・利用枠不足の証拠を起動条件にしない。
 
-枠不足の暫定条件は[現行マージ条件](github-agent-operations.md#merge-conditions)の適用範囲を維持する。別担当のdesign-faultfinding Job/人の証跡とexact-pair acceptedを必要とし、未解消設計指摘があれば止める。AIの粗探しもreview quota/PR leaseに含める。Copilotが後から新しい指摘を出した場合はacceptedを保留し、独立評価を待つ。通常コメントへの返信では再レビューを仮定しない。
+提出前の別担当のdesign-faultfinding Job/人の証跡とexact-pair acceptedを常に必要とし、未解消設計指摘があれば止める。AIの粗探しもreview quota/PR leaseに含める。Copilotの後着指摘は独立に評価・対応し、重大な欠陥なら独立受入を再確認する。無応答や指摘の未対応表示だけでacceptedを取り消さず、通常コメントへの返信で再レビューを仮定しない。
 
 | 項目 | off | shadow | active（移行後のみ） |
 | --- | --- | --- | --- |
 | Ready/accepted | 現行正本のhandoff・exact-pair decision。COMMENT可 | 現行判定が効力を持つ。標準Ready/native Reviewとの差を記録 | §1/2のReady、独立APPROVEとpair証跡。旧COMMENTを正式承認へ変換しない |
-| Copilot/粗探し | 現行条件・明示した暫定証跡 | 同じ条件との差を記録 | 上記起動条件、粗探しJobと人の証跡を一つの判定へ集約 |
+| Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報、粗探しJobと人の証跡を判定へ集約 |
 | 判定/通知 | 現行手順/T23の担当 | 現行側だけ投稿。新受付は判定記録のみ | Issue45受付/Brokerだけ。T23の重複判定/通知を委譲 |
 | T24/既存巡回 | 現行方式 | 現行方式、AIの二重起動なし | 移行したPRだけ新Job管理へ。旧workerの停止を確認してから切替 |
 
@@ -103,7 +103,7 @@ activeの前提は**owner承認の別の正本移行PR**。pr-review-loop、gith
 
 activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTED/行指摘は認可済みの参考/指摘、DISMISSED/編集は集合を再計算する。複数reviewerは必要集合/人数を満たし、重大未解消指摘やRequest changesを多数決で無視しない。人のApproveもReview commitと成立時pairを証明できなければ保留する。状態変化後の投稿はstaleとして履歴に残す。
 
-受付はマージしない。実装担当が最新pair/CI/独立accepted/Copilot/競合を再確認し、match-head付きmerge commitとfirst-parent検証を行う。repo保護設定の変更は別のowner作業。
+受付はマージしない。実装担当が最新pair/CI/独立accepted/粗探し/競合を再確認し、match-head付きmerge commitとfirst-parent検証を行う。repo保護設定の変更は別のowner作業。
 
 ## 6. 身元を結ぶBrokerと通知
 
@@ -165,7 +165,7 @@ Claudeの--bareはAPI認証が必要で、既存購読認証を使えるとは�
 | D02 | 二重配送、両App/違うdelivery ID、逆順、pause後7日超の再配送 | 同じ仕事/投稿は1件。payload削除でも古いReadyを復活させない |
 | D03 | dispatcherだけ落下し子が生存、spawn/manifest間の故障、PID再利用、POST不明 | supervisorへ制御再接続。子孫終了不明はlease保持・再起動/再POSTなし |
 | D04 | main更新、push/force-push、retarget、Ready/Review競合、履歴欠落 | 最新mainの祖先証明と試験merge親照合。unknownに旧pairを付け直さず新Ready要求 |
-| D05 | CI pending/失敗/skip、API途中失敗、Copilot遅延/後着/枠不足 | AI起動0またはaccepted保留。独立評価/粗探し証跡を省略しない |
+| D05 | CI pending/失敗/skip、必須証拠のAPI途中失敗、Copilot遅延/後着/枠不足 | CI/必須証拠が不明なら起動0。Copilot無応答/枠不足だけでは止めず、後着の重大欠陥は独立受入を再確認。粗探し証跡を省略しない |
 | D06 | wrong Ready actor、第三者COMMENT、他run/identityの結果、自分のpush承認、dismissal | 認可外の起動/修正入力/承認0。pause解除はownerだけ |
 | D07 | 偽署名/別repo/install/body過大、token不在、管理者fallback、鍵/DB/network否定試験 | 副作用/秘密出力0。ghまたはworkerを起動しない |
 | D08 | 自分の投稿/通知、指摘ID振り直し、世代更新、再起動で修正往復 | noticeからAI起動0、persisted quotaを越えずowner pause |
