@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "base_sha": "ef74922f34ddabdd617d8a8425ccc944724fd5bc",
+  "task_id": "OPS-review-dispatch",
+  "planned_paths": [
+    ".review/tests/test_dispatch_supervisor.py",
+    "README.md",
+    "docs/github-apps.md",
+    "docs/review-dispatch-implementation.md",
+    "scripts/github-app-token.test.ts",
+    "scripts/lib/github-app-token.ts",
+    "scripts/lib/review-dispatch/broker.test.ts",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
+    "scripts/lib/review-dispatch/github.ts",
+    "scripts/lib/review-dispatch/model.ts",
+    "scripts/lib/review-dispatch/reducer.test.ts",
+    "scripts/lib/review-dispatch/reducer.ts",
+    "scripts/lib/review-dispatch/runtime.test.ts",
+    "scripts/lib/review-dispatch/runtime.ts",
+    "scripts/lib/review-dispatch/store.test.ts",
+    "scripts/lib/review-dispatch/store.ts",
+    "scripts/lib/review-dispatch/webhook.test.ts",
+    "scripts/lib/review-dispatch/webhook.ts",
+    "scripts/review-dispatch.test.ts",
+    "scripts/review-dispatch.ts",
+    "tools/review_dispatch/supervisor.py"
+  ],
+  "conflicts": [
+    {
+      "description": "Design PR46 and policy PR47 merged/verified. Paused T23/PR38 and PR44 overlap eventual migration. Legacy shared human identity remains ambiguous.",
+      "state": "resolved",
+      "resolution": "Implement default-off infrastructure on verified latest main. No paused code import or active canonical migration. Keep ambiguous shared identities disabled; distinct human/AI identities tested synthetically. Actual CLI isolation, live App delivery and O1-O3 are owner rollout checks."
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "Dispatcher storage/locks are separate from product DB. Apply PR2-R007 alias/restore lessons to stable OS locks, PR leases and inherited run locks (I009).",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "Test canonical DB directory, aliases/replacement and daemon singleton, per-run fcntl lock inherited across wrapper/worker/setsid grandchild. Keep lock files outside replaceable DB files.",
+          "expected": "Same resource cannot get two live owners; unsupported backend fails before opening storage or launching."
+        },
+        {
+          "id": "recovery",
+          "method": "Actual Python fixture process tests: dispatcher dies/child lives, wrapper dies/setsid child survives, PID reuse/unknown termination, cancellation; Node store tests claim across job kinds and generations.",
+          "expected": "No expiry steal or lock-only release; run ownership blocks duplicate launch until complete descendant termination is proven. Windows backend disabled without verified equivalent."
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "Preserve PR42-R001/R004/R006 across dispatch-read, collector, per-identity broker and sandbox. Own source/tests use fixture credentials; never read Claude key.",
+      "checks": [
+        {
+          "id": "public",
+          "method": "Stage explicit paths/public checker; injected gh/token endpoints, worker env/tool/file/OS capability-negative probes, wrong repo/install/actor/result rejection. Add dispatch-read with exact read-only grant tests; no production credential invocation from candidate code.",
+          "expected": "No real secrets/private paths in diffs/logs/DB. Missing token stops before gh, empty gh config blocks fallback, fake broker verifies run/actor/hash without keys. Unverified actual AI isolation remains disabled and listed (I001/I008)."
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "No product deployment/build changes. Pin supported Node/Python/CLI versions and code revision; default off until owner upgrades trusted installation (I007).",
+      "checks": [
+        {
+          "id": "update",
+          "method": "Run existing npm/typecheck/test/public and 3-OS CI; test below-runtime/unknown schema/version/config rejection and rollback with backup. Help/version reads do not prove CLI capabilities.",
+          "expected": "No forced engine bypass, silent migration or live CLI fallback. Unverified runtime/backend cannot activate; existing application source/DB are untouched."
+        },
+        {
+          "id": "artifact",
+          "method": "Doctor validates fixed executable paths/version/profile hashes and trust manifests, all files in synthetic standalone data root; fault recovery/partial manifest writes tested.",
+          "expected": "No startup from PR checkout or swapping trusted binaries/config in flight. Stale/missing capability evidence disables worker; code/settings rollout waits owner."
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "PR46-D001-D009 resolved by independent Claude review5402105926/APPROVE5402107567; implement D01-D10 and I001-I011 without self-approval or loop reset.",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Reducer/store tests cover actor table, replay/tombstones, reversed delivery, per-PR lease/generation, quota reservations (2 fixes/authorization,6 starts/rolling24h), uncertain launch/post and notification markers. Actual supervisor fixtures plus fake gh/runner/outbox.",
+          "expected": "One job across kinds per PR, max10 reviewers, no retry uncertain side effects, no notification/comment loops; ID changes/restarts retain quotas and fixed finding IDs."
+        },
+        {
+          "id": "trust",
+          "method": "Trace Ready evidence against current main ancestry and server history, page/CI/merge parents failures, Copilot absence/late arrival, reviewer independence including pushers, result origin/assigned identity/hash, all approval/dismissal paths. Read/Read-Grep probes use actual worker tool paths (I008); legacy shared identity actions blocked (I011).",
+          "expected": "Only fresh stable main/head, authenticated Ready, CI and independent actor admit work. Copilot response/quota is optional per owner decision; evaluate material findings, never fabricate acceptance. Actual CLI capabilities remain disabled until owner-approved isolation probes. Claude reviews implementation independently."
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "Use dedicated repo-external dispatcher data, never product storage. Preserve first-use/alias/interruption distinctions from PR2-R002/PR12-R104.",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "SQLite/init/supervisor tests start missing root, incomplete manifest, unknown schema, interrupted startup, restoration of new and existing synthetic data roots.",
+          "expected": "Initialization never overwrites partial/unknown state. First-use is explicit and mode off by default."
+        },
+        {
+          "id": "aliases",
+          "method": "Validate allowed canonical absolute root, no symlink/junction/unsafe ancestors, and identity across aliases. Test paths on all 3 OS through pure fixtures; actual POSIX file-lock backend separately.",
+          "expected": "No external target followed or replacement of data root while live ownership exists; unsupported backend cannot claim a safe launch."
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "preserve",
+      "reason": "Dedicated dispatcher SQLite and WAL preserve inbox tombstones, lease/quota/outbox provenance; no application DB access. Apply PR2-R001 rollback lesson.",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "SQLite transaction/fault tests for migration/claim/result/outbox boundaries, hot WAL recovery and unknown schema. Never copy live DB main file alone.",
+          "expected": "Atomic ownership/results, retained journal pairing and explicit failure; no erased uncertain state or automatic destructive rollback."
+        },
+        {
+          "id": "restore",
+          "method": "Use SQLite-consistent backup while quiesced; restore into empty/existing synthetic root under lifetime OS lock, with crash checkpoints before/after manifest/DB replacement.",
+          "expected": "No restore over a live daemon/run; generation/consumed IDs/quotas/uncertain rows survive. Unknown evidence requires reconciliation, not duplicate work."
+        },
+        {
+          "id": "manifest",
+          "method": "Validate version/size/hash and per-run result identity with fake clock/corrupt/missing manifest fixtures; keep secrets and raw AI transcripts outside records.",
+          "expected": "Unknown/corrupt/incomplete manifest denies resume/activation; payload TTL never deletes replay/ownership evidence."
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Issue45 same Codex designer/implementer, Claude independent review. Default-off completion differs from owner production rollout; pending dependencies and human participation remain explicit.",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "Use merged PR46/PR47; no paused code import. Existing TS and Python CI run tests on three OS. Add dispatch-read with exact-grant tests; actual POSIX supervisor tested on POSIX, Windows explicitly disabled without skipped tests.",
+          "expected": "Implementation is a complete default-off path, not a renamed prototype/production activation. Actual Claude/Webhook/OS isolates and O1-O3 remain disabled rollout checks; no unsupported desktop start API or unapproved paid services."
+        },
+        {
+          "id": "entrypoints",
+          "method": "README links proposed design/runbook and off/shadow CLI; runbook maps D01-D10/I001-I011 actual evidence, active migration prerequisites, notice dedup and original 5-minute poll ownership. Compare help, defaults, token-purpose docs and final handoff.",
+          "expected": "Clear Japanese user instructions/English AI job schema. No policy overriden via prompt, automatic old-job restart, App/ruleset change or deployment. Only final implementation PR closes Issue45; remaining assigned reviews resume after verified infrastructure completion."
+        }
+      ]
+    }
+  ]
+}
