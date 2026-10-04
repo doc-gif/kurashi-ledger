@@ -192,7 +192,8 @@ PARAM = re.compile(r'[A-Z_]{1,32}=[^\0\n]*')
 
 def file_sha256(path):
     h = hashlib.sha256()
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    # O_NOFOLLOW exists on every POSIX system; Windows (no real worker backend) only hashes in tests.
+    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0))
     try:
         while True:
             chunk = os.read(fd, 1 << 20)
