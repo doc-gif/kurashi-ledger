@@ -90,7 +90,7 @@ function fake(changed = false, fail = false): GhReader {
     }
     if (path === "pulls/1")
       return response({
-        head: { sha: HEAD },
+        head: { sha: HEAD, ref: "synthetic-branch", repo: { id: 1 } },
         base: { sha: BASE, ref: "main", repo: { id: 1 } },
         state: "open",
         draft: false,
@@ -196,13 +196,34 @@ test("D06 authenticated sender must match re-fetched Ready event actor/time and 
   );
 });
 
-test('D01/D06 native human review binds only authenticated establishment pair and current review state', async () => {
-  const c=await collect(fake(),policy(),1,{requiredJobs:['Quality gate'],ready:[],pushers:null,historyComplete:false,faultfinding:null,unresolvedDesign:[]});
-  const review={id:7,user:{id:40},commit_id:HEAD,state:'APPROVED',submitted_at:'2026-01-01T00:00:01Z'};
+test("D01/D06 native human review binds only authenticated establishment pair and current review state", async () => {
+  const c = await collect(fake(), policy(), 1, {
+    requiredJobs: ["Quality gate"],
+    ready: [],
+    pushers: null,
+    historyComplete: false,
+    faultfinding: null,
+    unresolvedDesign: [],
+  });
+  const review = {
+    id: 7,
+    user: { id: 40 },
+    commit_id: HEAD,
+    state: "APPROVED",
+    submitted_at: "2026-01-01T00:00:01Z",
+  };
   c.reviews.push(review);
-  const payload={action:'submitted',sender:{id:40},review,pull_request:{head:{sha:HEAD},base:{sha:BASE}}};
-  assert.deepEqual(bindReview(payload,c)?.pair,{head:HEAD,base:BASE});
-  assert.equal(bindReview({...payload,sender:{id:20}},c),null);
-  c.reviews[0]!['state']='DISMISSED';
-  assert.equal(bindReview({...payload,review:{...review,state:'APPROVED'}},c),null);
+  const payload = {
+    action: "submitted",
+    sender: { id: 40 },
+    review,
+    pull_request: { head: { sha: HEAD }, base: { sha: BASE } },
+  };
+  assert.deepEqual(bindReview(payload, c)?.pair, { head: HEAD, base: BASE });
+  assert.equal(bindReview({ ...payload, sender: { id: 20 } }, c), null);
+  c.reviews[0]!["state"] = "DISMISSED";
+  assert.equal(
+    bindReview({ ...payload, review: { ...review, state: "APPROVED" } }, c),
+    null,
+  );
 });

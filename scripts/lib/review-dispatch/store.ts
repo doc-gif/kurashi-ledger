@@ -29,7 +29,7 @@ export function canonicalRoot(path: string): string {
   if (realpathSync(path) !== path) throw new Error("Aliased dispatcher root");
   return path;
 }
-const SCHEMA = 1;
+const SCHEMA = 2;
 type Row = Record<string, string | number | null>;
 export class Store {
   readonly db: DatabaseSync;
@@ -80,7 +80,10 @@ export class Store {
         CREATE TABLE notices(id TEXT PRIMARY KEY);
         CREATE TABLE clock(id INTEGER PRIMARY KEY CHECK(id=1),now INTEGER);
         CREATE TABLE acceptance(id TEXT PRIMARY KEY,value TEXT NOT NULL);
-        PRAGMA user_version=1; COMMIT;
+        CREATE TABLE evidence(id TEXT PRIMARY KEY,key TEXT,value TEXT NOT NULL);
+        CREATE TABLE quota_pause(key TEXT PRIMARY KEY,at INTEGER NOT NULL,owner_clear TEXT);
+        CREATE TABLE shadow(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        PRAGMA user_version=2; COMMIT;
       `);
     } catch {
       this.db.close();
@@ -144,6 +147,48 @@ export class Store {
       )
       .all() as Row[];
   }
+  // Immutable event establishment evidence survives payload TTL. Never rebind an old ID to a new pair.
+  evidence<T>(key: string, kind: string): T[] {
+    return (
+      this.db
+        .prepare("SELECT value FROM evidence WHERE key=? AND id LIKE ?")
+        .all(key, kind + ":%") as Row[]
+    ).map((r) => JSON.parse(String(r["value"])) as T);
+  }
+  saveEvidence(key: string, kind: string, id: string, value: unknown): void {
+    const identity = `${kind}:${key}:${id}`,
+      raw = JSON.stringify(value);
+    const old = this.db
+      .prepare("SELECT value FROM evidence WHERE id=?")
+      .get(identity) as Row | undefined;
+    if (old && old["value"] !== raw)
+      throw new Error("Event establishment evidence changed");
+    this.db
+      .prepare("INSERT OR IGNORE INTO evidence VALUES(?,?,?)")
+      .run(identity, key, raw);
+    if (kind === "review")
+      this.db
+        .prepare("INSERT OR IGNORE INTO acceptance VALUES(?,?)")
+        .run(
+          identity,
+          JSON.stringify({ ...(value as object), key, stale: false }),
+        );
+  }
+  observation<T>(key: string): T | null {
+    const row = this.db
+      .prepare("SELECT value FROM shadow WHERE key=?")
+      .get(key) as Row | undefined;
+    return row ? (JSON.parse(String(row["value"])) as T) : null;
+  }
+  saveObservation(key: string, value: unknown): void {
+    const raw = JSON.stringify(value);
+    this.saveEvidence(key, "observation", hash(raw), value);
+    this.db
+      .prepare(
+        "INSERT INTO shadow VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(key, raw);
+  }
   processed(app: number, delivery: string): void {
     this.db
       .prepare("UPDATE inbox SET processed=1 WHERE app=? AND delivery=?")
@@ -164,6 +209,13 @@ export class Store {
   }
   observe(t: Target): boolean {
     return this.atomic(() => {
+      if (this.quotaPaused(t.key))
+        t = {
+          ...t,
+          paused: true,
+          status: "waiting",
+          reason: "quota-owner-required",
+        };
       const prior = this.target(t.key),
         lease = this.db
           .prepare("SELECT job FROM leases WHERE key=?")
@@ -211,6 +263,29 @@ export class Store {
       return true;
     });
   }
+  quotaPaused(key: string): boolean {
+    return !!this.db
+      .prepare("SELECT 1 FROM quota_pause WHERE key=? AND owner_clear IS NULL")
+      .get(key);
+  }
+  clearQuota(p: Policy, s: Snapshot): void {
+    const row = this.db
+      .prepare("SELECT at FROM quota_pause WHERE key=? AND owner_clear IS NULL")
+      .get(keyOf(p, s.pr)) as Row | undefined;
+    if (!row || !s.complete || !s.historyComplete) return;
+    const event = s.history
+      .filter(
+        (e) =>
+          e.kind === "unpause" &&
+          p.owners.includes(e.actor) &&
+          e.at > Number(row["at"]),
+      )
+      .at(-1);
+    if (event)
+      this.db
+        .prepare("UPDATE quota_pause SET owner_clear=? WHERE key=?")
+        .run(event.id, keyOf(p, s.pr));
+  }
   claim(
     p: Policy,
     s: Snapshot,
@@ -220,11 +295,13 @@ export class Store {
   ): Job | null {
     return this.atomic(() => {
       this.time(now);
+      this.clearQuota(p, s);
+      if (this.quotaPaused(keyOf(p, s.pr))) return null;
       const t = this.target(keyOf(p, s.pr)),
         fresh = assess(p, s, t, this.consumed()),
         a = p.actors.find((x) => x.id === actor);
       if (
-        p.mode !== 'active' ||
+        p.mode !== "active" ||
         !t ||
         fresh.status !== "eligible" ||
         fresh.generation !== t.generation ||
@@ -266,7 +343,24 @@ export class Store {
         )["n"],
       );
       if (used >= 6) {
-        this.notice(`${t.key}:quota`);
+        this.db
+          .prepare(
+            "INSERT INTO quota_pause VALUES(?,?,NULL) ON CONFLICT(key) DO UPDATE SET at=excluded.at,owner_clear=NULL",
+          )
+          .run(t.key, now);
+        this.db
+          .prepare("UPDATE targets SET value=? WHERE key=?")
+          .run(
+            JSON.stringify({
+              ...t,
+              paused: true,
+              status: "waiting",
+              reason: "quota-owner-required",
+              generation: t.generation + 1,
+            }),
+            t.key,
+          );
+        this.notice(`${t.key}:quota:${now}`);
         return null;
       }
       if (
@@ -313,9 +407,7 @@ export class Store {
       return j;
     });
   }
-  job(
-    id: string,
-  ): {
+  job(id: string): {
     job: Job;
     status: string;
     cancel: boolean;

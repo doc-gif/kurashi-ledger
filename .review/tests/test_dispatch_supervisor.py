@@ -166,3 +166,16 @@ class SupervisorTests(unittest.TestCase):
             if parent.poll() is None:
                 parent.kill()
                 parent.wait()
+
+    def test_read_token_reaches_only_trusted_daemon_not_fixture_workers(self):
+        if self.disabled_windows():
+            return
+        marker = self.root / 'env.json'
+        code = "import os,json; open(%r,'w').write(json.dumps({'read':os.environ.get('GH_TOKEN')=='synthetic-read','other':'GITHUB_TOKEN' in os.environ,'hooks':'NODE_OPTIONS' in os.environ}))" % str(marker)
+        env = dict(os.environ, GH_TOKEN='synthetic-read', GITHUB_TOKEN='forbidden', NODE_OPTIONS='forbidden')
+        daemon = subprocess.run(self.command('daemon', '--', sys.executable, '-c', code), env=env, capture_output=True)
+        self.assertEqual(daemon.returncode, 0)
+        self.assertEqual(json.loads(marker.read_text()), {'read': True, 'other': False, 'hooks': False})
+        worker = subprocess.run(self.command('run-fixture', '--run', 'no-auth', '--', sys.executable, '-c', code), env=env, capture_output=True)
+        self.assertEqual(worker.returncode, 0)
+        self.assertEqual(json.loads(marker.read_text()), {'read': False, 'other': False, 'hooks': False})

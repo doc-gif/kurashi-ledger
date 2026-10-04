@@ -87,6 +87,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
+  | `dispatch-read` | contents・pull_requests・issues・actions・checks・statuses:read（metadata:readは追加分） | Codex Appによる受付の取得・shadow照合。書込み・worker用認証には使わない |
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |

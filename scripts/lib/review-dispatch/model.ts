@@ -18,7 +18,18 @@ export type Policy = {
   receiveAppId: number;
   owners: number[];
   actors: Actor[];
-  targets: { pr: number; implementer: number; reviewers: number[] }[];
+  targets: {
+    pr: number;
+    implementer: number;
+    reviewers: number[];
+    // Explicit owner migration evidence. API activity must contain this exact anchor; no author/committer guess.
+    identity?: {
+      activity: string;
+      head: string;
+      at: number;
+      pushers: number[];
+    };
+  }[];
   maxConcurrent: number;
   executorLimits: Record<string, number>;
 };
@@ -158,6 +169,16 @@ export function validatePolicy(value: unknown): Policy {
         !Number.isSafeInteger(t.pr) ||
         t.pr < 1 ||
         !p.actors.some((a) => a.id === t.implementer) ||
+        (t.identity !== undefined &&
+          (!/^[a-zA-Z0-9-]{1,100}$/.test(t.identity.activity) ||
+            !/^[a-f0-9]{40}$/.test(t.identity.head) ||
+            !Number.isSafeInteger(t.identity.at) ||
+            t.identity.at < 0 ||
+            !Array.isArray(t.identity.pushers) ||
+            !t.identity.pushers.length ||
+            t.identity.pushers.some(
+              (id) => !p.actors.some((a) => a.id === id),
+            ))) ||
         !Array.isArray(t.reviewers) ||
         !t.reviewers.length ||
         new Set(t.reviewers).size !== t.reviewers.length ||

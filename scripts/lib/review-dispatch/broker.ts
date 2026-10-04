@@ -19,6 +19,13 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   } catch {
     throw new Error("Invalid worker result");
   }
+  const singleLine = (v: string): boolean =>
+    !/[\r\n\u0000-\u001f\u007f]/.test(v);
+  const safeProse = (v: string): boolean =>
+    !/[<@]/.test(v) &&
+    !/(?:^|\n)\s*(?:role|agent_id|head_sha|base_sha|decision|worker_status|plan_path|plan_commit)\s*:/i.test(
+      v,
+    );
   const fields = [
     "schema",
     "run",
@@ -58,7 +65,12 @@ export function parseResult(raw: string, j: Job): WorkerResult {
       Object.keys(f).sort().join() !== "completion,id,impact,location" ||
       !new RegExp(`^PR${j.key.split(":")[1]}-[A-Z][0-9]{3}$`).test(f.id) ||
       [f.location, f.impact, f.completion].some(
-        (v) => typeof v !== "string" || !v.trim() || v.length > 1200,
+        (v) =>
+          typeof v !== "string" ||
+          !v.trim() ||
+          v.length > 1200 ||
+          !singleLine(v) ||
+          !safeProse(v),
       )
     )
       throw new Error("Invalid finding");
@@ -74,7 +86,12 @@ export function parseResult(raw: string, j: Job): WorkerResult {
         !/^https:\/\/github\.com\/[a-zA-Z0-9/_?.=#&%-]+$/.test(x),
     ) ||
     r.unverified.some(
-      (x) => typeof x !== "string" || !x.trim() || x.length > 1200,
+      (x) =>
+        typeof x !== "string" ||
+        !x.trim() ||
+        x.length > 1200 ||
+        !singleLine(x) ||
+        !safeProse(x),
     )
   )
     throw new Error("Invalid evidence");
@@ -84,6 +101,11 @@ export function parseResult(raw: string, j: Job): WorkerResult {
     )
   )
     throw new Error("Private material in result");
+  if (
+    !safeProse(r.summary) ||
+    /[\u0000-\u0008\u000b-\u001f\u007f]/.test(r.summary)
+  )
+    throw new Error("Unsafe result prose");
   return r;
 }
 export type PostedReview = {
@@ -107,6 +129,8 @@ export type Provenance = {
   resultHash: string;
   signature: string;
 };
+// Fixture integrity helper, not an implemented real-run origin/key-isolation boundary.
+// A real runner must receive an outside-worker authenticated endpoint and verifier-only Broker first.
 export class RunChannel {
   private readonly secret: Buffer;
   constructor(secret: Buffer) {
@@ -186,7 +210,11 @@ export class ReviewBroker {
       throw new Error("Stored result hash changed");
     if (
       !owned ||
-      owned.job.run !== j.run || owned.job.actor !== j.actor || owned.job.generation !== j.generation || owned.job.policy !== j.policy || !samePair(owned.job.pair,j.pair) ||
+      owned.job.run !== j.run ||
+      owned.job.actor !== j.actor ||
+      owned.job.generation !== j.generation ||
+      owned.job.policy !== j.policy ||
+      !samePair(owned.job.pair, j.pair) ||
       owned.cancel ||
       owned.status !== "result-ready" ||
       t.status !== "eligible" ||
@@ -197,7 +225,7 @@ export class ReviewBroker {
     )
       return "stale";
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
-      body = render(result, marker),
+      body = render(result, marker, identityOf(p, this.actor), j.run),
       digest = hash(body);
     if (
       result.decision === "accepted" &&
@@ -264,9 +292,32 @@ export class ReviewBroker {
     return recover();
   }
 }
-export function render(r: WorkerResult, marker: string): string {
+export type BrokerIdentity = {
+  role: "codex-reviewer" | "claude-reviewer";
+  agent: "codex" | "claude";
+};
+function identityOf(p: Policy, actor: number): BrokerIdentity {
+  const configured = p.actors.find((a) => a.id === actor);
+  if (
+    configured?.kind !== "ai" ||
+    !["codex", "claude"].includes(configured.executor)
+  )
+    throw new Error("Fixed AI identity unavailable");
+  const agent = configured.executor as "codex" | "claude";
+  return { role: `${agent}-reviewer`, agent };
+}
+// Called only after strict parseResult. Worker prose is quoted; metadata is trusted installation/run data.
+export function render(
+  r: WorkerResult,
+  marker: string,
+  identity: BrokerIdentity,
+  run: string,
+): string {
   return (
-    `<!-- kurashi-ledger:review:v1 -->\n<!-- ${marker} -->\nrole: reviewer\nagent_id: ${r.actor}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\ndecision: ${r.decision}\n\n${r.summary}\n` +
+    `<!-- kurashi-ledger:review:v1 -->\n<!-- ${marker} -->\nrole: ${identity.role}\nagent_id: ${identity.agent}/${run}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\ndecision: ${r.decision}\n\n${r.summary
+      .split(/\r?\n/)
+      .map((line) => `> ${line}`)
+      .join("\n")}\n` +
     r.findings
       .map(
         (f) =>

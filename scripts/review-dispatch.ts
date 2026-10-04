@@ -4,15 +4,13 @@ import { pathToFileURL } from "node:url";
 import { validatePolicy, hash } from "./lib/review-dispatch/model.ts";
 import { Store, canonicalRoot } from "./lib/review-dispatch/store.ts";
 import { Dispatcher } from "./lib/review-dispatch/runtime.ts";
-import {
-  GhReader,
-  collect,
-  ghTransport,
-} from "./lib/review-dispatch/github.ts";
+import { GhReader, ghTransport } from "./lib/review-dispatch/github.ts";
+import { reconcile } from "./lib/review-dispatch/evidence.ts";
 export const HELP = `レビュー受付（初期状態はoff）
   node scripts/review-dispatch.ts                 off: 読取り・起動・投稿なし
   node scripts/review-dispatch.ts --help          この説明
-  python3 tools/review_dispatch/supervisor.py daemon --root <専用ルート> -- <絶対Node> <信頼した写し>/scripts/review-dispatch.ts init|shadow --root <専用ルート> --policy <owner管理JSON>
+  python3 tools/review_dispatch/supervisor.py daemon --root <専用ルート> -- <絶対Node> <信頼した写し>/scripts/review-dispatch.ts init --root <専用ルート> --policy <owner管理JSON>
+  <絶対Node> <信頼した写し>/scripts/github-app-token.ts --agent codex --purpose dispatch-read --app-id <ID> --installation-id <ID> -- <絶対Python> <信頼した写し>/tools/review_dispatch/supervisor.py daemon --root <専用ルート> -- <絶対Node> <信頼した写し>/scripts/review-dispatch.ts shadow --root <専用ルート> --policy <owner管理JSON> --gh <絶対gh>
 shadowは取得・判定・記録だけ。GH_TOKENはレビュー済みdispatch-read wrapperから渡す。
 active/実AI/修正push/投稿のCLIは本導入の別レビュー・設定まで無効。
 `;
@@ -75,18 +73,9 @@ export async function main(
         ghTransport(token, values.get("--gh") ?? ""),
       ),
       dispatcher = new Dispatcher(policy, store);
-    // Initial migration history is unknown. No owner/role inferred from legacy shared accounts.
-    for (const target of policy.targets) {
-      const c = await collect(reader, policy, target.pr, {
-        requiredJobs: ["Quality gate"],
-        ready: [],
-        pushers: null,
-        historyComplete: false,
-        faultfinding: null,
-        unresolvedDesign: [],
-      });
-      const r = dispatcher.observe(c.snapshot);
-      if (r.notice) log(`PR #${target.pr}: ${r.status}`);
+    for (const result of await reconcile(reader, policy, store)) {
+      const r = dispatcher.observe(result.snapshot);
+      if (r.notice) log(`PR #${result.pr}: ${r.status}`);
     }
     return 0;
   } finally {

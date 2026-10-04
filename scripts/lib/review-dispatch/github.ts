@@ -71,7 +71,12 @@ export class GhReader {
       throw new EvidenceError();
     if (r.status === 304) {
       if (!old) throw new EvidenceError();
-      return old;
+      const cached = {
+        ...old,
+        headers: { ...old.headers, date: r.headers["date"] ?? "" },
+      };
+      this.cache.set(path, cached);
+      return cached;
     }
     if (r.status !== 200 || Buffer.byteLength(r.body) > 8 * 1024 * 1024)
       throw new EvidenceError();
@@ -178,6 +183,12 @@ export type Collection = {
   reviews: Record<string, unknown>[];
   comments: unknown[];
   commits: unknown[];
+  handoffs: Record<string, unknown>[];
+  activity: Record<string, unknown>[];
+  observedAt: number;
+  headRef: string;
+  headRepoId: number | null;
+  creation: { id: string; actor: number; at: number } | null;
 };
 // Inputs below are trusted persisted observations, never PR prose. Missing identity/history stays unknown.
 export async function collect(
@@ -208,6 +219,15 @@ export async function collect(
   ).map(object);
   const reviews = (
     await reader.pages(`pulls/${prNumber}/reviews?per_page=100`)
+  ).map(object);
+  const handoffs = (
+    await reader.pages(`issues/${prNumber}/comments?per_page=100`)
+  ).map(object);
+  const ref = text(object(pr["head"]), "ref");
+  const activity = (
+    await reader.pages(
+      `activity?ref=${encodeURIComponent("refs/heads/" + ref)}&per_page=100`,
+    )
   ).map(object);
   const comments = await reader.pages(
     `pulls/${prNumber}/comments?per_page=100`,
@@ -265,7 +285,18 @@ export async function collect(
       }
     }
   }
-  const history: HistoryEvent[] = [];
+  const createdAt = Date.parse(String(pr["created_at"]));
+  const creation =
+    Number.isSafeInteger(pr["id"]) && Number.isFinite(createdAt)
+      ? {
+          id: `created:${pr["id"]}:${pr["created_at"]}`,
+          actor: id(object(pr["user"])),
+          at: createdAt,
+        }
+      : null;
+  const history: HistoryEvent[] = creation
+    ? [{ ...creation, kind: "ready", pair: null }]
+    : [];
   for (const e of timeline) {
     const kind =
       (
@@ -273,6 +304,7 @@ export async function collect(
           ready_for_review: "ready",
           convert_to_draft: "draft",
           head_ref_force_pushed: "push",
+          base_ref_changed: "push",
           review_requested: "request",
         } as Record<string, HistoryEvent["kind"]>
       )[String(e["event"])] ??
@@ -372,11 +404,21 @@ export async function collect(
     snapshot.complete = false;
   return {
     policyRevision: p.revision,
+    creation,
     snapshot,
     timeline,
     reviews,
     comments,
     commits,
+    handoffs,
+    activity,
+    observedAt: Date.parse(
+      reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ??
+        "",
+    ),
+    headRef: "refs/heads/" + ref,
+    headRepoId:
+      (objectOrNull(object(pr["head"])["repo"])?.["id"] as number) ?? null,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>
@@ -398,9 +440,26 @@ export function bindReady(
   c: Collection,
 ): ReadyBinding | null {
   const b = object(payload);
-  if (b["action"] !== "ready_for_review") return null;
+  if (b["action"] !== "ready_for_review" && b["action"] !== "opened")
+    return null;
   const pr = object(b["pull_request"]),
     actor = id(object(b["sender"]));
+  if (b["action"] === "opened") {
+    const rawPair = {
+      head: sha(object(pr["head"])["sha"]),
+      base: sha(object(pr["base"])["sha"]),
+    };
+    if (
+      !c.creation ||
+      pr["draft"] !== false ||
+      c.creation.actor !== actor ||
+      c.creation.at !== Date.parse(String(pr["created_at"])) ||
+      !c.snapshot.complete ||
+      !samePair(rawPair, c.snapshot.pair)
+    )
+      return null;
+    return { ...c.creation, pair: rawPair, policy: c.policyRevision };
+  }
   const at = Date.parse(text(pr, "updated_at"));
   const matches = c.timeline.filter(
     (e) =>

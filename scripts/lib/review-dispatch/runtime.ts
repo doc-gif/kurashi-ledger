@@ -62,6 +62,7 @@ export class Dispatcher {
     this.store = store;
   }
   observe(s: Snapshot): { status: string; accepted: boolean; notice: boolean } {
+    this.store.clearQuota(this.policy, s);
     const previous = this.store.target(`${this.policy.repoId}:${s.pr}`),
       t = assess(this.policy, s, previous, this.store.consumed());
     const saved = this.store.observe(t);
@@ -71,8 +72,11 @@ export class Dispatcher {
         `${t.key}:${t.reason}:${t.pair.head}:${t.pair.base}:${t.generation}`,
       );
     return {
-      status: saved ? t.reason : "cancel-required",
-      accepted: saved && accepted(this.policy, s, t),
+      status: saved
+        ? (this.store.target(t.key)?.reason ?? t.reason)
+        : "cancel-required",
+      accepted:
+        saved && !this.store.quotaPaused(t.key) && accepted(this.policy, s, t),
       notice,
     };
   }
@@ -103,6 +107,7 @@ export class Dispatcher {
       }
       parseResult(value.result, j);
       this.store.result(j, value.result);
+      // Fixture integrity tag only: dispatcher signs its fake runner return. This does NOT authenticate a real run endpoint.
       const outcome = await broker.submit(
         this.policy,
         j,

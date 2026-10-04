@@ -225,10 +225,84 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
       read.prepare("SELECT delivery FROM inbox").get()!["delivery"],
       "retained",
     );
-    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 1);
+    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 2);
     read.close();
   } finally {
     d.cleanup();
     e.cleanup();
+  }
+});
+
+test("R002 quota pause survives the rolling window, generation changes and reopen; only owner unpause plus new Ready restores eligibility", () => {
+  const d = database(),
+    p = policy(),
+    s = snapshot();
+  try {
+    for (let n = 1; n <= 7; n++) {
+      s.pair.head = n.toString(16).repeat(40);
+      s.finalPair = { ...s.pair };
+      s.testedParents = [s.pair.base, s.pair.head];
+      s.history[1]!.id = "quota-ready" + n;
+      s.history[1]!.pair = { ...s.pair };
+      d.store.observe(assess(p, s, d.store.target("1:1")));
+      const j = d.store.claim(p, s, 30, "review", 100 + n);
+      if (n <= 6) {
+        assert.ok(j);
+        d.store.release(j, {
+          run: j.run,
+          neverStarted: true,
+          treeEnded: false,
+          uncertain: false,
+        });
+      } else assert.equal(j, null);
+    }
+    assert.equal(d.store.quotaPaused("1:1"), true);
+    d.store.close();
+    const resumed = new Store(d.root);
+    try {
+      const later = 86400200;
+      resumed.observe(assess(p, s, resumed.target("1:1")));
+      assert.equal(resumed.claim(p, s, 30, "review", later), null);
+      s.history.push({
+        id: "wrong-unpause",
+        kind: "unpause",
+        actor: 20,
+        at: later,
+        pair: null,
+      });
+      resumed.clearQuota(p, s);
+      assert.equal(resumed.quotaPaused("1:1"), true);
+      s.history.push({
+        id: "owner-unpause",
+        kind: "unpause",
+        actor: 10,
+        at: later + 1,
+        pair: null,
+      });
+      resumed.clearQuota(p, s);
+      resumed.observe(assess(p, s, resumed.target("1:1")));
+      assert.equal(resumed.claim(p, s, 30, "review", later + 2), null);
+      s.history.push({
+        id: "new-ready",
+        kind: "ready",
+        actor: 20,
+        at: later + 3,
+        pair: { ...s.pair },
+        policy: p.revision,
+      });
+      resumed.observe(assess(p, s, resumed.target("1:1")));
+      const j = resumed.claim(p, s, 30, "review", later + 4);
+      assert.ok(j);
+      resumed.release(j, {
+        run: j.run,
+        neverStarted: true,
+        treeEnded: false,
+        uncertain: false,
+      });
+    } finally {
+      resumed.close();
+    }
+  } finally {
+    d.cleanup();
   }
 });

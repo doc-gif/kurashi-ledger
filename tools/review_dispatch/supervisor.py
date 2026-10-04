@@ -103,6 +103,9 @@ def run(root, mode, run_id, command):
         durable(manifest, value)  # Committed before spawn; interrupted window is uncertain.
     env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root),
            'LANG': 'C.UTF-8', 'KL_DISPATCH_LOCK_FD' if mode == 'daemon' else 'KL_RUN_LOCK_FD': str(fd)}
+    # Only the trusted daemon receives its reduced read token; worker/fixture environments never inherit it.
+    if mode == 'daemon' and os.environ.get('GH_TOKEN'):
+        env['GH_TOKEN'] = os.environ['GH_TOKEN']
     child = None
     cancel = False
 

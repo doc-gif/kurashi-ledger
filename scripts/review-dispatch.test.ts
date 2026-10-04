@@ -7,6 +7,10 @@ test("default command is off without reading policy/database/auth or spawning", 
   assert.equal(out.length, 1);
   assert.match(out[0]!, /off/);
   assert.match(HELP, /本導入/);
+  assert.match(
+    HELP,
+    /--purpose dispatch-read[\s\S]*supervisor.py daemon[\s\S]* shadow [\s\S]*--gh <絶対gh>/,
+  );
 });
 test("unknown/active CLI cannot activate live integration", async () => {
   await assert.rejects(main(["active"], {}, () => {}));
