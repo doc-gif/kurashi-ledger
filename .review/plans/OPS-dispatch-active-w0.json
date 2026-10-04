@@ -34,6 +34,11 @@
       "description": "Red team round 2 on 9af6c88 (issuecomment-5977366093): new P1 notice forgery (Codex implementer posts via Codex App; doc-gif is shared by AIs), P2 notice kinds, P2 missing decision evidence; P3s. Owner receipt issuecomment-5977365862 adds O2-token, Codex without outer Seatbelt, R009=5s, R008=.github.",
       "state": "resolved",
       "resolution": "Root cause: a GitHub comment that any AI identity can author was used as an input to rule choice and merge. Fix: dispatch-notice is display-only and never an input to the merge judgement or to old-vs-active choice. The active PR set and required reviewers come only from owner-confirmed records (the owner's instruction received by the coordinator and posted as a receipt, like issuecomment-5977365862); the PR's implementer never writes it; without it the old rules apply and nothing merges on active evidence. Old-patrol exclusion is an owner setting only. Notice kinds (switch/change/rollback) stay for display. Link the receipt from design §8 and the reinterpretation paragraph. §7: Claude gets CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` via the supervisor; the Claude profile denies all keychain access; env allowlist excludes ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN (higher precedence). Codex runs only with its own --sandbox read-only (no outer Seatbelt, macOS rejects nesting); keychain/App-key reach is a real-Mac measurement. R009/R008 recorded in §8. P3: Read() only; moving App keys needs a separate independently reviewed App-procedure PR; config-dir residual settings check is W1. Variant sweep: every place that reads the notice (pr-review-loop 対象/担当/マージ表/切替/rollback, operations merge+polling, external-worker, design §6)."
+    },
+    {
+      "description": "Red team round 3 on e431a86 (issuecomment-5977423642): the forgery moved from the notice to the receipt (Claude implementer and coordinator share the Claude App). Escalated as an oscillation; owner decided active-merge (issuecomment-5977430810). Also P2 Codex read scope, P3 auth precedence, R008 replaced (issuecomment-5977404200).",
+      "state": "resolved",
+      "resolution": "Root cause: the AIs share every identity (Mac, account, Apps), so no owner-only signal exists inside GitHub; any rule that lets a comment decide active-vs-old for merging is forgeable. Fix by removing merge authority instead of moving the signal: AIs never merge active PRs; the owner merges in the GitHub UI after checking the unchanged conditions (red-team timing reinterpreted). The dispatcher only launches and posts reviews and red team. Receipts and notices are display/guidance only. Old patrols skip only PRs listed in the owner's out-of-repo setting. Implementers stop at the handoff; a PR that was ever active stays owner-merged (forgery can only stop an AI merge). Residual risk stated: the design guards mistakes and injection, not an AI breaking rules on the shared account (incl. forged doc-gif approvals). Codex stays disabled until probes show no reads outside materials and no PR AGENTS.md/config load; neutral cwd applies to Codex. §7 env allowlist excludes all higher-precedence auth sources; W1 checks authMethod. §8: active-merge row, R008 replaced."
     }
   ],
   "assessments": [
@@ -154,6 +159,14 @@
         {
           "location": "design §7 auth row and Codex row",
           "result": "Claude: setup-token via supervisor env, no keychain at all; Codex: own read-only sandbox only, keychain reach measured on the real Mac"
+        },
+        {
+          "location": "design §7 Codex row and doctor probes",
+          "result": "Codex disabled until no reads outside materials and no PR AGENTS.md/config load; neutral cwd for Codex"
+        },
+        {
+          "location": "design §7 auth row",
+          "result": "env allowlist excludes every auth source with higher precedence than CLAUDE_CODE_OAUTH_TOKEN"
         }
       ]
     },
@@ -174,7 +187,7 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2); also: an AI-authorable comment (dispatch-notice) used as authority for rule choice, reviewer set or patrol skip (PR51 RT2 P1)",
+      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2); also: an AI-authorable comment (dispatch-notice) used as authority for rule choice, reviewer set or patrol skip (PR51 RT2 P1); also: any comment (receipt or notice) that decides active-vs-old rules for merging, when every identity is shared (PR51 RT3 P1)",
       "places": [
         {
           "location": "github-agent-operations 分担/定期実行",
@@ -207,6 +220,10 @@
         {
           "location": "design §6 notice sentence",
           "result": "Display-only, never an input"
+        },
+        {
+          "location": "pr-review-loop active section, operations merge/roles/polling, external-worker, T24, design §5",
+          "result": "AIs never merge active PRs; owner merges in the UI; receipts/notices are display only; patrol skip only via owner out-of-repo setting"
         }
       ]
     },
