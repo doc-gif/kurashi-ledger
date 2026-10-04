@@ -138,15 +138,15 @@ PR<N>-R002: <同上>
 | 項目 | 内容 |
 | --- | --- |
 | 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`の1か所だけ。MacもWindowsも同じ値を読む。写しを作らない |
-| 書き手 | 所有者だけ。AIのAppには変数の権限がない |
+| 書き手 | 所有者だけ。AIのAppの権限は読取りだけ |
 | 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
-| 読み方 | マージの直前に`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。AIのAppは読めないので、doc-gifのghのログインで読むだけにする。書込みはしない |
+| 読み方 | マージの直前に、自分のAIのAppの`merge-check`用途（読取りだけ、[W5](https://github.com/doc-gif/kurashi-ledger/issues/50)のPR）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)） |
 | 判定 | PRが一覧にある、または404・認証の失敗・書式の誤りなら、AIはマージしない |
 | activeとの関係 | ownerはactiveにしたPRを必ず加え、rollback後も残す。外すのもownerだけ |
 
 - 受領記録・通知・ラベル・PR本文は、この一覧を変えない。
-- APIはcollaboratorの権限を要し、Appなら「Variables」のreadが要る（[Variables API](https://docs.github.com/en/rest/actions/variables)）。AIのAppで読むには、この権限の用途を足す別のPR（[App手順](github-apps.md)の変更）が要る。
-- 導入の順序: 所有者が変数を作る（`none`でよい）。そのあとでこのPR（#51）をマージする。
+- Appは「Variables」のreadが要る（[Variables API](https://docs.github.com/en/rest/actions/variables)）。W5のPRがマージされ、所有者が両方のAppに「Variables: Read-only」を足すまで、AIは変数を読めない扱いにし、どのPRもマージしない。
+- 導入の順序: 所有者が変数（`none`）とAppの権限を置く → W5のPRをマージ → このPR（#51）をマージ。
 
 例: ownerがPR #Nをactiveにし、`OWNER_MERGE_ONLY`に加える。のちにrollbackし、policyからは外す。新しい旧方式のworkerは変数を読み、#Nがあるのでマージせず引継ぎで止まる。受領記録や通知を足しても消しても、結果は同じ。
 
@@ -192,7 +192,7 @@ required_reviewers: <login/App IDの一覧>
 
 - `Quality gate`・最新main・競合なしは変わらない。mainが進めば、新しいReady・粗探し・レビューが要る。
 - `CHANGES_REQUESTED`や未解消の指摘があれば、マージしない。
-- 画面のマージコミットで1件ずつマージし、第1親が確認したbaseと一致することを確かめる。
+- `--match-head-commit`の代わりに、所有者は画面でheadが`APPROVE`のcommit_idと同じことを確かめ、マージコミットで1件ずつマージする。マージ後に第1親が確認したbaseと一致することを確かめる。
 - 人の操作の結合を受付の記録で証明できなければ保留する。SHAの自己申告で補わない（GitHubのReviewにbaseはない）。
 
 例（人だけ）: 人がDraft→Readyにする。受付がそのReadyを今のpairと認可済みの身元に結び付け、粗探しJobを起動する。未解消のRTがなければ、人のreviewerへ標準のレビュー依頼を送る。reviewerが画面でApproveし、受付がその結合を保存する。所有者が結合・粗探し・CIを確かめてマージする。
@@ -220,4 +220,4 @@ required_reviewers: <login/App IDの一覧>
 
 ### 残余リスク
 
-この仕組みは、取り違え・誤り・PRの内容による注入を防ぐ。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）は防がない。防ぐには、AIが使えない所有者だけの身元が要る。
+この仕組みは、取り違え・誤り・PRの内容による注入を防ぐ。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）は防がない。doc-gif（所有者と共用）で`OWNER_MERGE_ONLY`を書き換えられる。防ぐには、AIが使えない所有者だけの身元が要る。

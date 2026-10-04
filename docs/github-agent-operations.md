@@ -25,7 +25,7 @@
 - `--match-head-commit`付きのマージコミットで、1件ずつマージする。auto-mergeは使わない。
 - マージの直前にリポジトリ変数`OWNER_MERGE_ONLY`を読み、そのPRが一覧にないことを確かめる。一覧にある、または読めないなら、AIはマージしない。2026-10-04の所有者決定で足した条件（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)、読み方は[OWNER_MERGE_ONLY](pr-review-loop.md#所有者だけがマージするprowner_merge_only)）。
 
-**受付がactiveのPR:** AIはマージしない。所有者がGitHubの画面で、上の条件を確かめてマージする。粗探しの時点は所有者承認で読み替える。詳細と証跡は[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)。
+**受付がactiveのPR:** AIはマージしない。所有者がGitHubの画面で、上の条件を確かめてマージする。`--match-head-commit`の代わりに、画面でheadが`APPROVE`のcommit_idと同じことを確かめ、マージコミットで1件ずつマージする。粗探しの時点は所有者承認で読み替える。詳細と証跡は[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)。
 
 マージ直前にmain先端と確認したbase_shaを照合する。`--match-head-commit`はheadだけを固定するので、マージ後に第1親がそのbase_shaと一致することも確認する。異なれば組み合わせを再検証し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
 
