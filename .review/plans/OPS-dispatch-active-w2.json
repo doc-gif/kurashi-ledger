@@ -44,6 +44,11 @@
       "description": "PR #53の粗探し2回目（issuecomment-5977500358）: N1 SHAの許可がworkerの書くevidenceから作られる。N2 blockedの結果の平文がDB（最終本文だけで当たる経路）とsupervisorの署名済み封筒に残る",
       "state": "resolved",
       "resolution": "N1（締め付け。前回の推奨の穴を塞ぐ）: 許可するSHAは、Brokerと受付が自分で取り直したsnapshotで確かめられる値（pair、finalPair、timelineのpush等のhead/base）とrun IDだけ。evidenceはparseResultで固定の形（actions/runs/<数字>、pull/<n>#pullrequestreview-<数字>、commit/<40桁>）に限り、公開検査でrepoがpolicyのrepoであること、commitのSHAが許可集合にあることを確かめる。PR全commitの一覧はsnapshotにないので、それ以外のcommitリンクは安全側に止まる（一覧の取得はW3/W4）。N2: (b) Brokerがblockedを返したら、DBの結果をhashだけの形へ置き換える（store.tsはW3が変更中なので、publication.tsの関数が同じjobのhash一致を条件にUPDATEする。Store APIへの移動はW4）。(a) supervisorにredact操作を足し、封筒をhashだけの内容に置き換える。受付はRunnerの任意のredactをblockedのときに呼ぶ（実接続はW4）。封筒の置き場をworkerのHOME/TMPDIRから分けるのはW4の必須項目(5)"
+    },
+    {
+      "description": "PR #53の粗探し3回目: parseResultが内容（秘密の形、\\p{Cf}、全角の似た文字、外部リンク等）で拒否した結果はredactされず、署名済み封筒の平文が残る。Runner.redactが省略可能でfail-open",
+      "state": "resolved",
+      "resolution": "parseResultの拒否を2種類に分ける。内容の拒否はResultContentErrorとし、受付はblockedとして扱う（DBはhashだけ、通知1回、leaseを保持、redactを呼ぶ）。形の拒否（JSON・項目・大きさ）はuncertainのままだが、封筒が残りうるのでredactを呼ぶ。Runnerの型をfixtureとそれ以外に分け、fixture以外はredactを必須にする。createRunnerと受付の入口で、redactのない実runnerを拒否する（capability-disabled）。redactの失敗はblocked/uncertainを保ったままownerへ通知する。P3: redact後の封筒に署名を残し、hashだけで監査できるようにする。SQLiteのWAL・空きページに旧値が残る点と、PRAGMA secure_deleteの検討はW4の必須項目(8)に書く"
     }
   ],
   "assessments": [
