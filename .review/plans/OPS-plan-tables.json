@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "OPS-plan-tables",
   "planned_paths": [
     ".review/tests/test_repository_routing.py",
