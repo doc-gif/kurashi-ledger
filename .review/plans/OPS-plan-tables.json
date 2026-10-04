@@ -3,11 +3,14 @@
   "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "OPS-plan-tables",
   "planned_paths": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
     ".review/tests/test_repository_routing.py",
+    "docs/external-worker.md",
     "docs/pr-review-loop.md",
     "docs/review-prevention.md",
     "tools/review_guard/README.md",
     "tools/review_guard/guard.py",
+    "tools/review_guard/tests/test_ci.py",
     "tools/review_guard/tests/test_guard.py"
   ],
   "conflicts": [
@@ -19,7 +22,7 @@
     {
       "description": "すべての計画に表を必須にすると、mainの既存の計画と進行中のPR（2026-10-04時点で#25・#28・#29・#33・#36・#37・#38）の版1の計画が一度に失敗する",
       "state": "resolved",
-      "resolution": "版の繰上げで移行する。`prepare`は版2を出し、版2は表が必須。版1は移行前の計画として受け付け、出力の`plan_tables: legacy-v1`でレビュー担当に見せる。2026-10-04に、進行中の7件のPRの計画を、mainを取り込んだ状態（base=main）で旧・新の検査器にかけ、どちらでも通ることを確かめた。新しい計画を版1で書くことは文書で禁じ、粗探しと内容レビューが指摘する。進行中のPRがなくなったあとで、baseにない新しい計画の版1をCIで拒否する後続を提案する"
+      "resolution": "版の繰上げで移行する。`prepare`は版2を出し、版2は表が必須。版1は移行前の計画として受け付け、出力の`plan_tables: legacy-v1`でレビュー担当に見せる。2026-10-04に、進行中の7件のPRの計画を、mainを取り込んだ状態（base=main）で旧・新の検査器にかけ、どちらでも通ることを確かめた。新しい計画を版1で書くことは文書で禁じ、粗探しと内容レビューが指摘する。進行中のPRがなくなったあとで、baseにない新しい計画の版1をCIで拒否する後続を提案する。抜け道はIssue #49で塞ぐ（所有者決定）"
     },
     {
       "description": "`prepare`が版2の空の表を出すと、`prepare`→`check`を使う固有の試験（`.review/tests/test_repository_routing.py`、#38の`test_component_routing.py`）が失敗する",
@@ -39,23 +42,28 @@
     {
       "description": "Issue #45/#48のreview-dispatch（default-off）との整合。dispatchは必須のジョブに`review plan`を含め、粗探しの証跡を{actor, pair, unresolved}で持ち、activeでは粗探しの身元が実装の身元と別の許可されたreviewerであることを求める。設計は#44のコードを取り込まないと明記している",
       "state": "resolved",
-      "resolution": "dispatchのコードに計画の版・表を読む処理はなく、`review plan`のジョブ名・終了コードも変えないので、版2は衝突しない。粗探しの報告の形式は、対象のhead/base（pair）と未解消の指摘（RT-番号）を持つので、dispatchの証跡に対応できる。身元: 現行（dispatchがoff）では、粗探しの担当は実装していない担当で、同じ系統でもよい（正本の「実装していない担当」）。dispatchをactiveにする正本移行のときは、粗探しの身元の規則をそちらに合わせる必要がある（同じAppの投稿は実装の身元と区別できない）。文書にそのことを書き、判断が要る点として調整役へ報告する。#44からdispatchのコードは変えない"
+      "resolution": "dispatchのコードに計画の版・表を読む処理はなく、`review plan`のジョブ名・終了コードも変えないので、版2は衝突しない。粗探しの報告の形式は、対象のhead/base（pair）と未解消の指摘（RT-番号）を持つので、dispatchの証跡に対応できる。身元: 現行（dispatchがoff）では、粗探しの担当は実装していない担当で、同じ系統でもよい（正本の「実装していない担当」）。dispatchをactiveにする正本移行のときは、粗探しの身元の規則をそちらに合わせる必要がある（同じAppの投稿は実装の身元と区別できない）。文書にそのことを書き、2026-10-04の所有者決定で、active移行のPRで決める。#44からdispatchのコードは変えない"
     },
     {
       "description": "所有者の再開の指示で、進行中のPRは計画に表を任意で加えてよいことになった。新しい検査器は版1でも表があれば厳密に検査するので、違う形で書いた計画は#44のマージ後に失敗しうる",
       "state": "resolved",
       "resolution": "厳密さは保つ（形の違う表を黙って通すと、表の検査が意味を失う）。2026-10-04時点で、進行中のPRの計画に表はない。形はこのPRのreview-prevention.mdが正本で、エラー文は欠けた項目を名指しする。表を任意で加える担当には、この形に合わせるよう調整役から伝えてもらう（報告に書く）"
+    },
+    {
+      "description": "粗探しの報告に別の印（handoff・review・dispatch）を引用すると、review-dispatchの旧方式の判定（evidence.tsのlegacyReadyは本文のどこかにhandoffの印があれば読む）がそれを引継ぎとして読みうる",
+      "state": "resolved",
+      "resolution": "粗探しの報告は、自分の印のほかに、ほかの印を引用しないと書く。dispatchのコードは変えない"
     }
   ],
   "assessments": [
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "変更はレビュー運用ツール（guard.py）とその試験、手順の文書だけ。試験・記入例は合成の値（架空の不変条件ID・原因キー・パス）だけを使い、実データ・秘密・個人のパスを書かない。red teamの手順では、PRの本文・差分を資料として読むだけにし、報告に実データや秘密を写さないこと、PRのコードを資格情報のある環境で実行しないことを定める。guardのエラーに計画由来の文字列を出すときはJSONの表記（改行をエスケープ）にし、公開のCIログで行を偽装させない（PR12-R002の「同じ規則をすべての経路に」と同じ考え方で、新旧のエラー経路をそろえる）。",
+      "reason": "変更はレビュー運用ツール（guard.py）とその試験、手順の文書だけ。試験・記入例は合成の値（架空の不変条件ID・原因キー・パス）だけを使い、実データ・秘密・個人のパスを書かない。red teamの手順では、PRの本文・差分を資料として読むだけにし、報告に実データや秘密を写さないこと、PRのコードを資格情報のある環境で実行しないことを定める。guardのエラーに計画由来の文字列を出すときはJSONの表記（改行をエスケープ）にし、公開のCIログで行を偽装させない。粗探しRT-1に従い、PRが変えうる値（計画、ci.pyが読むPRの条件の台帳・原因台帳、JSONのキー）を含むすべてのエラー文をshown()に通す（read_jsonの重複キー、validateの各文、計画の表）。",
       "checks": [
         {
           "id": "public",
-          "method": "commitの前に`node scripts/check-public.ts --staged`を実行して終了コードを確かめ、stageした差分（試験のfixture・記入例・計画）を読む。guardのエラーの経路を、改行を含む値を入れた合成の計画で試験する",
+          "method": "commitの前に`node scripts/check-public.ts --staged`を実行して終了コードを確かめ、stageした差分（試験のfixture・記入例・計画）を読む。guardのエラーの経路を、改行を含む値を入れた合成の計画で試験する。read_json・validate・ci.py（PRの原因台帳に改行を含むID）の経路で偽装の試験を足す",
           "expected": "終了コード0。差分に実在の勤務先・金額・個人のパス・トークンがない。改行を含む計画の値はエラー文の中でエスケープされ、行頭に`::`等の新しい行を作らない"
         }
       ]
@@ -63,7 +71,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "施策2（計画の表）をguardの`check`に加える。既存の検査（base・task_id・ファイル名・計画の個数・未計画パス・選ばれた条件・シナリオ・衝突・change-proposedの参照）は順序も含めて変えず、表の検査を後ろに足すだけにする。新しい計画の版`schema_version: 2`では`boundaries`と`variant_analysis`を必須にし、版1は移行前の計画として受け付ける（表があれば同じ規則で検査する）。CIはbaseの検査器を使うので、このPRの計画は版1に表を加えて書き（自己の免除にならない）、新しい検査器での確認は手元とレビューで行う。構造の検査は記入の充足だけを示し、表の内容の正しさ・網羅は別担当（red teamと内容レビュー）が確かめる。",
+      "reason": "施策2（計画の表）をguardの`check`に加える。既存の検査（base・task_id・ファイル名・計画の個数・未計画パス・選ばれた条件・シナリオ・衝突・change-proposedの参照）は順序も含めて変えず、表の検査を後ろに足すだけにする。新しい計画の版`schema_version: 2`では`boundaries`と`variant_analysis`を必須にし、版1は移行前の計画として受け付ける（表があれば同じ規則で検査する）。CIはbaseの検査器を使うので、このPRの計画は版1に表を加えて書き（自己の免除にならない）、新しい検査器での確認は手元とレビューで行う。構造の検査は記入の充足だけを示し、表の内容の正しさ・網羅は別担当（red teamと内容レビュー）が確かめる。粗探しの証跡は最終のhead/baseに結び付ける（修正後の確かめ直しは、実装していない担当が最終のhead/baseで新しい記録を出し、RTごとに解消・対応不要・未解消を書く。baseだけ変わったときはbaseの差分の影響だけを確かめる）。RTを台帳に入れるときは内容レビュー担当がPR<N>-R###を付け、同じ原因は既存IDへまとめる。causes_not_analyzedは一覧だけ（所有者決定）。版1の抜け道はIssue #49。",
       "checks": [
         {
           "id": "duplicates",
@@ -80,7 +88,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "#40がマージされ、規約の置き場所が決まった。施策の概要・施策2・施策3はreview-prevention.mdに置き、施策1（粗探し）の手順と報告の形式はpr-review-loop.mdに移す。マージ条件は再掲せず正本へリンクする。Draftの条件のうち「#38を待つ」は2026-10-04の所有者決定で外した。#38とはどちらが先でもよく、あとからマージする側が取り込みで整合させる。AGENTS.md・CLAUDE.md・PRテンプレートは変えない（既存のリンクからreview-prevention.mdとpr-review-loop.mdに届く）。",
+      "reason": "#40がマージされ、規約の置き場所が決まった。施策の概要・施策2・施策3はreview-prevention.mdに置き、施策1（粗探し）の手順と報告の形式はpr-review-loop.mdに移す。マージ条件は再掲せず正本へリンクする。Draftの条件のうち「#38を待つ」は2026-10-04の所有者決定で外した。#38とはどちらが先でもよく、あとからマージする側が取り込みで整合させる。AGENTS.md・CLAUDE.md・PRテンプレートは変えない（既存のリンクからreview-prevention.mdとpr-review-loop.mdに届く）。2026-10-04の所有者決定（RT-4）で、入口のdocs/external-worker.mdとPRテンプレートにも、粗探しの記録が対象head/baseにあるまでready-for-reviewを出さないことを1文ずつ足す。",
       "checks": [
         {
           "id": "dependencies",
@@ -107,10 +115,18 @@
     {
       "id": "B2",
       "direction": "entry",
-      "location": "guard.py validate/check の--catalog・--ledger（CIではbaseのcheckout）",
+      "location": "guard.py validate/check の--catalog・--ledger（CIではbaseのcheckout、手元では利用者が指定）",
       "data": "不変条件の台帳と原因台帳",
       "trust": "trusted",
       "control": "CIはレビュー済みのbaseのものだけを使う（ci.pyは変えない）。手元では利用者が指定するので、既存の`validate`で構造を検査する"
+    },
+    {
+      "id": "B2a",
+      "direction": "entry",
+      "location": "ci.py が読むPRの .review/invariants.json・.review/findings.json（candidate）",
+      "data": "PRの作者が変えうる条件の台帳と原因台帳",
+      "trust": "untrusted",
+      "control": "guard.validateで構造を検査し、エラー文の値はJSONの表記にする。計画の判定にはbaseの台帳だけを使い、PRの台帳は差分の報告だけに使う"
     },
     {
       "id": "B3",
@@ -150,7 +166,7 @@
       "location": "red teamの報告（PRのコメント）",
       "data": "監査の結果（原因キーごとの判定、確かめた箇所）",
       "trust": "untrusted",
-      "control": "決まった形式（印・対象のhead/base・表）だけを書き、実データ・秘密・PRの文字列の長い引用を書かない。レビュー記録の印とroleを使わず、内容レビューやacceptedと取り違えさせない。投稿はAIのGitHub App（github-apps.md）で行い、所有者のアカウントの保存済み資格情報に戻らない"
+      "control": "決まった形式（印・対象のhead/base・表）だけを書き、実データ・秘密・PRの文字列の長い引用を書かない。レビュー記録の印とroleを使わず、内容レビューやacceptedと取り違えさせない。投稿はAIのGitHub App（github-apps.md）で行い、所有者のアカウントの保存済み資格情報に戻らない。投稿するのは調整役か、粗探しの担当がレビュー済みmainから取り出したAppの道具の写しで行う。ほかの印（handoff・review・dispatch）を引用しない"
     }
   ],
   "variant_analysis": [
@@ -160,20 +176,28 @@
       "pattern": "同じ規則を一部の経路にだけ適用する（新しいエラーの文だけエスケープし、既存の文が計画の値をそのまま出す等）",
       "places": [
         {
-          "location": "guard.py index() の重複IDの文",
-          "result": "計画由来のIDをそのまま出していた。JSONの表記にそろえる"
+          "location": "guard.py read_json の重複キーの文",
+          "result": "PRの計画・台帳のキーをそのまま出していた。shown()に通す（RT-1）"
         },
         {
-          "location": "guard.py check() の未計画パス・選ばれた条件の欠落の文",
-          "result": "パスはpath_okで改行を拒否済み、条件IDは台帳由来。変更不要"
+          "location": "guard.py validate の各文（condition・paths・related・scenarios・指摘ID・原因・trim・出典）",
+          "result": "ci.pyはPRの台帳もvalidateするので、IDをそのまま出していた。shown()に通す（RT-1）"
+        },
+        {
+          "location": "guard.py index() の重複IDの文",
+          "result": "shown()に通す"
+        },
+        {
+          "location": "guard.py check() の未計画パス・条件の欠落・disposition・シナリオの文",
+          "result": "パスはpath_okで改行を拒否済み。条件IDとシナリオIDはbaseの台帳のIDと一致を確かめたあとだけ出す。そのままでよい"
         },
         {
           "location": "新しい表の検査の文（boundaries・variant_analysis）",
-          "result": "計画由来の値はすべてJSONの表記で出す"
+          "result": "計画由来の値はshown()で出す"
         },
         {
           "location": "ci.py の例外の出力",
-          "result": "guardの例外の文をそのまま出すので、guard側でそろえれば足りる"
+          "result": "guardの例外の文をそのまま出すので、guard側でそろえれば足りる。PRの台帳に改行を含むIDの試験を足す"
         }
       ]
     },
@@ -200,6 +224,14 @@
         {
           "location": "版の比較（計画の schema_version、台帳の schema_version）",
           "result": "Pythonでは JSON の true と 1.0 が 1 と等しいので、版1として通っていた。整数だけを受け付けるようにそろえる（計画・catalog・ledgerの3か所）"
+        },
+        {
+          "location": "版1の抜け道",
+          "result": "新しい計画を版1で書けば表なしで通る。Issue #49で塞ぐ（所有者決定）"
+        },
+        {
+          "location": "boundariesのid",
+          "result": "前後空白のあるidを拒否する（原因キーと同じ規則）"
         }
       ]
     },
@@ -225,7 +257,7 @@
         },
         {
           "location": "ci.py",
-          "result": "core の check() を呼ぶ。変更不要"
+          "result": "core の check() を呼ぶので表の検査は同じ。ただしPRの台帳をvalidateするので、エラー文のエスケープはguard側で直す（RT-1）"
         },
         {
           "location": "adapters/github-actions.yml",
@@ -361,12 +393,16 @@
       "pattern": "red teamの時点と、作業中Draft・レビュー依頼Openの規約が食い違う",
       "places": [
         {
-          "location": "docs/pr-review-loop.md の1",
-          "result": "Openとready-for-reviewは依頼のときだけ。red teamはその前（Draft・working）に置く"
+          "location": "docs/pr-review-loop.md の提出前の粗探しと1",
+          "result": "粗探しの記録が対象head/baseにあるまでready-for-reviewを出さないと書く"
+        },
+        {
+          "location": "docs/external-worker.md",
+          "result": "同じことを1文足す（所有者決定）"
         },
         {
           "location": ".github/PULL_REQUEST_TEMPLATE.md",
-          "result": "Draft/Openの記述を変えない"
+          "result": "同じことを1行足す（所有者決定）"
         }
       ]
     },
@@ -382,6 +418,10 @@
         {
           "location": "scripts/lib/review-dispatch/broker.ts のworkerの文の検査",
           "result": "role・decision・plan_path等の行を含む文を拒否する。粗探しの報告はdispatchのworkerの結果ではなく、印もrole行も別なので衝突しない"
+        },
+        {
+          "location": "scripts/lib/review-dispatch/evidence.ts legacyReady",
+          "result": "本文のどこかにhandoffの印があれば引継ぎとして読む。粗探しの報告はほかの印を引用しないと書く"
         }
       ]
     },
@@ -637,5 +677,27 @@
         }
       ]
     }
-  }
+  },
+  "owner_decisions": [
+    {
+      "date": "2026-10-04",
+      "source": "実装側のチャットでの所有者の決定（粗探しRT-4）",
+      "decision": "「#44で一緒に直す」: 入口のdocs/external-worker.mdと.github/PULL_REQUEST_TEMPLATE.mdも、粗探しの記録が対象head/baseにあるまでDraft・workingに留まりready-for-reviewを出さないと書く"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "同上（版1の抜け道）",
+      "decision": "「後続のIssueで塞ぐ」: Issue #49。ci.pyで、版1をbaseにある計画とbase側の許可リストの計画だけに限る。着手はPR #44のマージ時に進行中のPRの計画がすべて入るか閉じたとき、または2026-10-31の早いほう"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "同上（causes_not_analyzed）",
+      "decision": "「今は一覧を出すだけ」: 失敗にしない。網羅は粗探しが確かめる。見落としが続けば必須にしうる"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "同上（dispatchのactive時の粗探しの投稿者）",
+      "decision": "「本番移行のときに決める」: review-dispatchをactiveにする正本移行のPRで決める。今は変えない"
+    }
+  ]
 }
