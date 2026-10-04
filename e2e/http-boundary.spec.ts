@@ -93,7 +93,7 @@ async function openFromLaunchFile(page: Page, server: LocalServer): Promise<void
   await expect(page.locator('#state')).toHaveText('接続済み');
 }
 
-test('起動用の一時ファイル（file://）から開くと、cookieに交換して画面へ移り、トークンはURL・Referer・ログ・履歴に残らない', async ({ page, context }) => {
+test('起動用の一時ファイル（file://）から開くと、cookieに交換して画面へ移り、トークンはURL・Referer・ログに残らず、戻る操作（タブの履歴）でトークン付きのURLに戻らない', async ({ page, context }) => {
   const h = await startHarness();
   const seen = observe(h.server.port);
   try {
@@ -121,7 +121,8 @@ test('起動用の一時ファイル（file://）から開くと、cookieに交�
     expect(h.logs.join('\n')).not.toContain(token);
     expect(h.logs).toContain('POST /api/session 204');
 
-    // 戻る操作でも、トークン付きのURL（フラグメントを含む）に戻らない。
+    // 戻る操作でも、トークン付きのURL（フラグメントを含む）に戻らない（タブの履歴の項目はreplaceStateで置き換わる）。
+    // ブラウザの閲覧履歴（履歴のDB）に使用済みのトークン付きURLが残るかは、ここでは確かめない（T13で実機で確かめる）。
     const visited = [page.url()];
     for (let i = 0; i < 3; i += 1) {
       await page.goBack({ waitUntil: 'commit' }).catch(() => null);
@@ -144,7 +145,7 @@ test('起動用の一時ファイル（file://）から開くと、cookieに交�
   }
 });
 
-test('ブラウザのDOMで、起動の識別子のmetaはちょうど1つで、コメントや紛らわしいtitleのあるページからもAPIを呼べる', async ({ page }) => {
+test('ブラウザのDOMで、起動の識別子のmetaは注入したものだけで、コメントや紛らわしいtitleのあるページからもAPIを呼べる', async ({ page }) => {
   const h = await startHarness();
   try {
     await openFromLaunchFile(page, h.server);
@@ -290,7 +291,7 @@ test('起動し直したあと、前の起動のページのままのAPI要求�
   }
 });
 
-test('文字参照で書いたmetaのnameは、ブラウザのDOMと同じに判定し、配信したページでは識別子のmetaがちょうど1つになる', async ({ page }) => {
+test('文字参照で書いたmetaのnameは、補助の検査がブラウザのDOMと同じに判定し、配信したページでは識別子のmetaが注入したものだけになる', async ({ page }) => {
   const names = [
     'kurashi&#45ledger-launch-id',
     'kurashi&#x2dledger&#x2Dlaunch&#45;id',
@@ -332,7 +333,7 @@ test('文字参照で書いたmetaのnameは、ブラウザのDOMと同じに判
   }
 });
 
-test('コメントの終わりの書き方（<!-->・<!--->・--!>）も、ブラウザのDOMとサーバーの判定が一致し、配信したページでは識別子のmetaがちょうど1つになる', async ({ page }) => {
+test('コメントの終わりの書き方（<!-->・<!--->・--!>）も、ブラウザのDOMと補助の検査の判定が一致し、配信したページでは識別子のmetaが注入したものだけになる', async ({ page }) => {
   const meta = '<meta name="kurashi-ledger-launch-id" content="x">';
   const heads = [
     `<!-->${meta}<!-- -->`,
@@ -366,6 +367,35 @@ test('コメントの終わりの書き方（<!-->・<!--->・--!>）も、ブ�
         );
         expect(ids, head).toEqual([server.launchId]);
       }
+    }
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+});
+
+test('起動の識別子は、ブラウザのDOMで木の順の最初のmetaになる（SVGのtitleや終わらないtitleで、補助の検査がmetaを見落とす場合も。所有者の決定2、F10）', async ({ page }) => {
+  const pages = [
+    '<!doctype html><html lang="ja"><head><title>t</title></head><body><svg><title><meta name="kurashi-ledger-launch-id" content="x"></title></svg></body></html>',
+    "<!doctype html><html lang=\"ja\"><head><title>x</titlex><a b='</title><meta name=\"kurashi-ledger-launch-id\" c=' e='><i j='>'></head><body></body></html>",
+  ];
+  const files = new Map(pages.map((html, i) => [`f${i}.html`, html]));
+  const staticSource: StaticSource = {
+    read: async (segments) => {
+      const body = files.get(segments.join('/'));
+      return body === undefined ? undefined : { body: Buffer.from(body), contentType: 'text/html; charset=utf-8' };
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('e2e-first-meta');
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, staticSource });
+  try {
+    for (const [i, html] of pages.entries()) {
+      const response = await page.goto(`${server.origin}/f${i}.html`);
+      expect(response?.status(), html).toBe(200);
+      const first = await page.evaluate(() => document.querySelector('meta[name="kurashi-ledger-launch-id"]')?.getAttribute('content'));
+      expect(first, html).toBe(server.launchId);
+      const firstChild = await page.evaluate(() => document.head.firstElementChild?.getAttribute('content'));
+      expect(firstChild, html).toBe(server.launchId);
     }
   } finally {
     await server.close();

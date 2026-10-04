@@ -3,16 +3,18 @@
 import assert from 'node:assert/strict';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer as createNetServer, connect, type Socket } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { exchange, ownerOnlyTempDirectory, sameOriginHeaders, send, sendRaw, tokenOf } from '../../../tests/support/http.ts';
-import { PRODUCTION_CSP } from './response-headers.ts';
+import { verifyTokenDirectory } from './launch-file.ts';
+import { PRODUCTION_CSP, requiredResponseHeaders } from './response-headers.ts';
 import {
   LOGGABLE_ERROR_CODES,
+  MAX_CONNECTIONS,
   PortInUseError,
   devRequestContext,
   loggableErrorCode,
@@ -1442,4 +1444,310 @@ test('ログに出してよい例外の符号は、入口ごとの許可リス�
   }
   assert.equal(loggableErrorCode('EACCES', LOGGABLE_ERROR_CODES.handler), 'other');
   assert.equal(loggableErrorCode(null, LOGGABLE_ERROR_CODES.client), 'other');
+});
+
+// 応答の出口の構造（2026-10-03の所有者の決定1、レッドチームのF1〜F9・F15、Codex 5401315825のPR25-R009の継続）。
+
+// 1回の要求の処理の中から、このサーバーのhttp.Serverを取り出す（試験でserverの誤りを注入するため）。
+function captureServer(port: number): Promise<Server> {
+  return new Promise((resolve, reject) => {
+    const onStart = (message: unknown): void => {
+      unsubscribe('http.server.request.start', onStart);
+      resolve((message as { server: Server }).server);
+    };
+    subscribe('http.server.request.start', onStart);
+    send(port, { path: '/api/test/state' }).catch(reject);
+  });
+}
+
+// 生の要求を送り、相手が閉じるまで（または上限時間まで）に受け取ったバイト列を返す。
+function exchangeRaw(port: number, text: string, after?: (socket: Socket) => void, timeoutMs = 5000): Promise<{ readonly raw: string; readonly closed: boolean }> {
+  return new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    const chunks: Buffer[] = [];
+    let done = false;
+    const finish = (closed: boolean): void => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve({ raw: Buffer.concat(chunks).toString('latin1'), closed });
+    };
+    socket.on('data', (c: Buffer) => {
+      chunks.push(c);
+      after?.(socket);
+    });
+    socket.on('close', () => finish(true));
+    socket.on('error', () => {});
+    setTimeout(() => finish(false), timeoutMs).unref();
+    if (text !== '') socket.write(text);
+  });
+}
+
+const FORGED: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Content-Security-Policy': 'default-src *',
+  'Cache-Control': 'max-age=31536000',
+  'Cross-Origin-Opener-Policy': 'unsafe-none',
+  'X-Kurashi-Ledger-Reason': 'forged-reason',
+  'X-Synthetic': 'kept',
+};
+const flat = (h: Record<string, string>): string[] => Object.entries(h).flat();
+
+test('writeHead・writeHeaderの引数の形によらず、必須のヘッダを付け直し、CORSと偽の理由を外し、ほかのヘッダは渡す（F1・F8、PR25-R009）', async () => {
+  type Call = (res: ServerResponse) => void;
+  const variants: Record<string, Call> = {
+    object: (res) => res.writeHead(200, FORGED),
+    'object-undefined': (res) => (res.writeHead as (...a: unknown[]) => ServerResponse)(200, FORGED, undefined),
+    'object-null': (res) => (res.writeHead as (...a: unknown[]) => ServerResponse)(200, FORGED, null),
+    'reason-object': (res) => res.writeHead(200, 'OK', FORGED),
+    flat: (res) => res.writeHead(200, flat(FORGED)),
+    'flat-undefined': (res) => (res.writeHead as (...a: unknown[]) => ServerResponse)(200, flat(FORGED), undefined),
+    'extra-fourth': (res) => (res.writeHead as (...a: unknown[]) => ServerResponse)(200, FORGED, undefined, 'extra'),
+    forwarded: (res) => {
+      const inner = res.writeHead;
+      const forward = function (this: ServerResponse, c: unknown, m: unknown, h: unknown): ServerResponse {
+        return (inner as (...a: unknown[]) => ServerResponse).call(this, c, m, h);
+      };
+      forward.call(res, 200, FORGED, undefined);
+    },
+    'set-header': (res) => {
+      for (const [name, value] of Object.entries(FORGED)) res.setHeader(name, value);
+    },
+    'write-header-alias': (res) => (res as unknown as { writeHeader: (...a: unknown[]) => void }).writeHeader(200, FORGED),
+  };
+  const dev = {
+    middleware: (req: IncomingMessage, res: ServerResponse) => {
+      variants[(req.url ?? '').slice(1)]?.(res);
+      res.end('synthetic');
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('exit-shapes');
+  const logs: string[] = [];
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+  try {
+    for (const name of Object.keys(variants)) {
+      const res = await sendRaw(server.port, `GET /${name} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: close\r\n\r\n`);
+      const { statusLines, fields } = rawHead(res.raw);
+      assert.equal(res.status, 200, name);
+      assert.equal(statusLines, 1, name);
+      for (const [header, value] of requiredResponseHeaders('x')) {
+        if (header === 'Content-Security-Policy') continue;
+        assert.equal(fields.get(header.toLowerCase()), value, `${name} ${header}`);
+      }
+      assert.ok((fields.get('content-security-policy') ?? '').startsWith("default-src 'self'"), name);
+      assert.equal((res.raw.match(/\r\ncontent-security-policy:/gi) ?? []).length, 1, name);
+      assert.equal((res.raw.match(/\r\ncache-control:/gi) ?? []).length, 1, name);
+      assert.deepEqual([...fields.keys()].filter((k) => k.startsWith('access-control-')), [], name);
+      assert.equal(fields.has('x-kurashi-ledger-reason'), false, name);
+      assert.equal(fields.get('x-synthetic'), 'kept', name);
+    }
+    assert.equal(logs.join('\n').includes('forged-reason'), false);
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+});
+
+test('1xx・600以上・整数でない状態は、明示・暗黙（statusCode）・別名・flushHeaders・APIの返り値のどれでも書かず、trailersも書かない（F2・F15、PR25-R009）', async () => {
+  type Call = (res: ServerResponse) => void;
+  const hint = { Link: '<https://example.invalid/x>; rel=preload' };
+  const variants: Record<string, Call> = {
+    'write-head-103': (res) => res.writeHead(103, hint),
+    'status-code-103-end': (res) => {
+      res.statusCode = 103;
+      res.end();
+    },
+    'status-code-103-write': (res) => {
+      res.statusCode = 103;
+      res.write('x');
+    },
+    'status-code-100-flush': (res) => {
+      res.statusCode = 100;
+      res.flushHeaders();
+    },
+    'write-header-103': (res) => (res as unknown as { writeHeader: (...a: unknown[]) => void }).writeHeader(103, hint),
+    'write-head-600': (res) => res.writeHead(600),
+    'write-head-string': (res) => (res.writeHead as (...a: unknown[]) => ServerResponse)('200'),
+    'write-head-fraction': (res) => res.writeHead(200.5),
+    trailers: (res) => res.addTrailers({ 'Access-Control-Allow-Origin': '*' }),
+  };
+  const codes: string[] = [];
+  const dev = {
+    middleware: (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        variants[(req.url ?? '').slice(1)]?.(res);
+      } catch (error) {
+        codes.push((error as { code?: string }).code ?? '');
+        throw error;
+      }
+      res.end('never');
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('exit-status');
+  const logs: string[] = [];
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+  try {
+    for (const name of Object.keys(variants)) {
+      const res = await sendRaw(server.port, `GET /${name} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: close\r\n\r\n`);
+      assert.equal(/HTTP\/1\.1 1\d\d /.test(res.raw), false, name);
+      assert.equal(rawHead(res.raw).statusLines, 1, name);
+      assert.equal(res.status, 500, name);
+      assert.equal(res.raw.includes('example.invalid'), false, name);
+      assert.equal(rawHead(res.raw).fields.get('cache-control'), 'no-store', name);
+    }
+    assert.deepEqual(
+      [...new Set(codes)].sort(),
+      ['ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN', 'ERR_KL_TRAILERS_FORBIDDEN'],
+    );
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+  // APIの処理が返す1xxの状態も書かず、500にする。
+  const calls: string[] = [];
+  const api: ApiRoute[] = [
+    { method: 'GET', path: '/api/test/s101', handle: () => (calls.push('101'), { status: 101 }) },
+    { method: 'GET', path: '/api/test/s103', handle: () => (calls.push('103'), { status: 103 }) },
+  ];
+  await withServer({ api }, async ({ server: s, logs: apiLogs }) => {
+    const cookie = await exchange(s);
+    for (const path of ['/api/test/s101', '/api/test/s103']) {
+      const res = await sendRaw(s.port, `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${s.port}\r\nCookie: ${cookie}\r\nKurashi-Ledger-Launch-Id: ${s.launchId}\r\nConnection: close\r\n\r\n`);
+      assert.equal(/HTTP\/1\.1 1\d\d /.test(res.raw), false, path);
+      assert.equal(res.status, 500, path);
+    }
+    assert.ok(apiLogs.includes('internal-error ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN'), apiLogs.join('\n'));
+  });
+  assert.deepEqual(calls, ['101', '103']);
+});
+
+test('Hostのない要求とHostが2つの要求には、Node.jsの既定の400ではなく、必須のヘッダと理由を付けた403を返す（F3）', async () => {
+  await withServer({}, async ({ server, logs }) => {
+    for (const [name, head] of [
+      ['none', ''],
+      ['two', `Host: 127.0.0.1:${server.port}\r\nHost: 127.0.0.1:${server.port}\r\n`],
+    ] as const) {
+      const res = await sendRaw(server.port, `GET / HTTP/1.1\r\n${head}Connection: close\r\n\r\n`);
+      const { fields } = rawHead(res.raw);
+      assert.equal(res.status, 403, name);
+      assert.equal(fields.get('x-kurashi-ledger-reason'), 'host-mismatch', name);
+      for (const [header, value] of requiredResponseHeaders(PRODUCTION_CSP)) assert.equal(fields.get(header.toLowerCase()), value, `${name} ${header}`);
+    }
+    assert.ok(logs.includes('GET / 403 host-mismatch'), logs.join('\n'));
+  });
+});
+
+test('本文を読み切らずに拒否した応答は接続を閉じ、残りの本文の解析の誤りに2つ目の応答を書かない（F9）', async () => {
+  await withServer({}, async ({ server, logs }) => {
+    let sent = false;
+    const res = await exchangeRaw(
+      server.port,
+      `POST /api/test/mutate HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n`,
+      (socket) => {
+        if (sent) return;
+        sent = true;
+        socket.write('ZZ\r\n');
+      },
+    );
+    assert.equal(rawHead(res.raw).statusLines, 1, res.raw);
+    assert.match(res.raw, /^HTTP\/1\.1 403 /);
+    assert.equal(rawHead(res.raw).fields.get('connection'), 'close');
+    assert.equal(res.closed, true);
+    assert.equal(logs.some((l) => l.startsWith('CLIENT-ERROR ') && !l.endsWith('closed-without-response')), false, logs.join('\n'));
+  });
+});
+
+test('応答・upgradeとCONNECTのソケット・serverの誤りはプロセスへ抜けず、許可した符号だけを記録する（F4・F5・F6）', async () => {
+  const dev = {
+    middleware: (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => {
+      if (req.url === '/late') {
+        next();
+        res.end('late');
+        return;
+      }
+      res.end('ok');
+    },
+    upgrade: (_req: IncomingMessage, socket: import('node:stream').Duplex) => {
+      socket.emit('error', Object.assign(new Error('synthetic reset'), { code: 'ECONNRESET' }));
+      socket.destroy();
+    },
+  };
+  const tmp = ownerOnlyTempDirectory('error-entries');
+  const logs: string[] = [];
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev, log: (l) => logs.push(l) });
+  try {
+    // 応答を終えたあとの書込み（F5）。
+    assert.equal((await send(server.port, { path: '/late' })).status, 404);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(logs.some((l) => /^response-error ERR_STREAM_(WRITE_AFTER_END|ALREADY_FINISHED)$/.test(l)), logs.join('\n'));
+
+    // 拒否するupgradeのソケットに誤り（F4）: 処理の最初に付けたlistenerが受ける。
+    const httpServer = await captureServer(server.port);
+    assert.equal(httpServer.maxConnections, MAX_CONNECTIONS);
+    const injector = (_req: IncomingMessage, socket: import('node:stream').Duplex): void => {
+      process.nextTick(() => socket.emit('error', Object.assign(new Error('synthetic'), { code: 'ECONNRESET' })));
+    };
+    httpServer.prependListener('upgrade', injector);
+    await sendRaw(server.port, `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`).catch(() => undefined);
+    httpServer.off('upgrade', injector);
+    // 受け付けたupgradeの開発時の口の中の誤り（F4）。
+    const cookie = await exchange(server);
+    await sendRaw(
+      server.port,
+      `GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nOrigin: ${server.origin}\r\nCookie: ${cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+    ).catch(() => undefined);
+    // 拒否の応答を書く途中のRST（タイミングに依存するので繰り返す）。
+    for (let i = 0; i < 20; i++) {
+      const socket = connect({ host: '127.0.0.1', port: server.port });
+      socket.on('error', () => {});
+      await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+      socket.write(`GET /hmr HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+      socket.resetAndDestroy();
+    }
+    // CONNECTは応答を書かずに閉じる。
+    const connectResult = await exchangeRaw(server.port, `CONNECT 127.0.0.1:1 HTTP/1.1\r\nHost: 127.0.0.1:1\r\n\r\n`);
+    assert.equal(connectResult.raw, '');
+    assert.equal(connectResult.closed, true);
+    // 待受を始めたあとのserverの誤り（F6）。
+    httpServer.emit('error', Object.assign(new Error('synthetic accept failure'), { code: 'EMFILE' }));
+    httpServer.emit('error', Object.assign(new Error('synthetic'), { code: 'tok_SYNTHETICSECRET123' }));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await send(server.port, { path: '/ok' })).status, 200);
+    const text = logs.join('\n');
+    assert.ok(logs.includes('SOCKET-ERROR upgrade ECONNRESET'), text);
+    assert.ok(logs.includes('CONNECT 127.0.0.1:1 closed-without-response'), text);
+    assert.ok(logs.includes('SERVER-ERROR EMFILE'), text);
+    assert.ok(logs.includes('SERVER-ERROR other'), text);
+    assert.equal(text.includes('SYNTHETICSECRET') || text.includes('synthetic'), false, text);
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+});
+
+test('接続したまま最初の要求を送らないソケットは、時間切れで閉じる（F6）', async () => {
+  await withServer({ firstRequestTimeoutMs: 200 }, async ({ server, logs }) => {
+    const idle = await exchangeRaw(server.port, '', undefined, 5000);
+    assert.equal(idle.closed, true);
+    assert.equal(idle.raw, '');
+    assert.ok(logs.some((l) => l.startsWith('first-request-timeout')), logs.join('\n'));
+    // 要求を送った接続は、時間切れの対象にならない。
+    assert.equal((await send(server.port, { path: '/' })).status, 200);
+  });
+});
+
+test('確かめた結果（VerifiedDirectory）は、verifyTokenDirectoryが返したものだけを受け付ける（F12）', async () => {
+  const tmp = ownerOnlyTempDirectory('forged-directory');
+  try {
+    const real = verifyTokenDirectory(tmp.path);
+    for (const forged of [{ path: tmp.path, chain: [] }, { path: real.path, chain: [...real.chain] }, { ...real }, { path: join(tmp.path, 'x'), chain: real.chain }]) {
+      await assert.rejects(startLocalServer({ port: 0, tokenDirectory: forged }), /verifyTokenDirectory/);
+    }
+    assert.equal(Object.isFrozen(real) && Object.isFrozen(real.chain), true);
+    assert.equal(readdirSync(tmp.path).length, 0);
+    const server = await startLocalServer({ port: 0, tokenDirectory: real });
+    await server.close();
+  } finally {
+    tmp.cleanup();
+  }
 });

@@ -6,6 +6,7 @@
 // - 終了のシグナルで、待受を止め、一時ファイルを消して0で終わる。POSIXはSIGINT（Ctrl+C）・SIGTERM・SIGHUP、
 //   WindowsはSIGINT（Ctrl+C）・SIGBREAK（Ctrl+Break）・SIGHUP（コンソールを閉じたとき）を受ける。
 //   一時ファイルを消せなかった・置き換わっていたときは、消したと言わずに対処を示して1で終わる。
+// - 受けていない例外・rejectは、許可した符号だけを出し、後始末を試みて1で終わる（installFatalErrorHandlers）。
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -154,6 +155,44 @@ export function describeClose(result: CloseResult): { readonly lines: readonly s
   }
 }
 
+// 受けていない例外・rejectの受け（ADR-0009の5「ログ」）。Node.jsの既定はmessageとstackを出すので、許可した符号だけを
+// 出し、後始末（cleanup。待受の停止と一時ファイルの削除）を上限時間つきで試みてから1で終える。後始末の途中で
+// もう一度起きたら、待たずに1で終える。
+export type FatalErrorTarget = { on(event: 'uncaughtException' | 'unhandledRejection', listener: (error: unknown) => void): unknown };
+
+export const FATAL_CLEANUP_TIMEOUT_MS = 5000;
+
+export function installFatalErrorHandlers(
+  target: FatalErrorTarget,
+  handlers: {
+    readonly err: (line: string) => void;
+    readonly cleanup: () => Promise<unknown>;
+    readonly exit: (code: number) => void;
+    readonly timeoutMs?: number;
+  },
+): void {
+  let handling = false;
+  const onFatal = (error: unknown): void => {
+    handlers.err(`予期しない例外で終了する（${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}）。`);
+    if (handling) {
+      handlers.exit(1);
+      return;
+    }
+    handling = true;
+    const timer = setTimeout(() => handlers.exit(1), handlers.timeoutMs ?? FATAL_CLEANUP_TIMEOUT_MS);
+    timer.unref();
+    void Promise.resolve()
+      .then(() => handlers.cleanup())
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timer);
+        handlers.exit(1);
+      });
+  };
+  target.on('uncaughtException', onFatal);
+  target.on('unhandledRejection', onFatal);
+}
+
 // OSの既定の処理で起動用のファイルを開く。引数はファイルのパスだけで、トークンはコマンドラインに出ない。
 export function openWithSystem(filePath: string, err: (line: string) => void): void {
   let command: string;
@@ -174,7 +213,16 @@ if (import.meta.main) {
     openInBrowser: (filePath) => openWithSystem(filePath, (line) => process.stderr.write(`${line}\n`)),
     repositoryRoot,
   };
+  let running: RunningApp | undefined;
+  installFatalErrorHandlers(process, {
+    err: io.err,
+    cleanup: async () => {
+      if (running !== undefined) await running.server.close();
+    },
+    exit: (code) => process.exit(code),
+  });
   const result = await startApp(process.argv.slice(2), io);
+  if (result.kind === 'running') running = result.app;
   if (result.kind === 'exit') {
     process.exitCode = result.code;
   } else {

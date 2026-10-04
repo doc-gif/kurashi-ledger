@@ -96,7 +96,7 @@ function linkFile(t: TestContext, target: string, path: string): boolean {
   }
 }
 
-test('ディスクの読み出し元は、配信ルートの実体パスの配下の通常のファイルだけを返し、外を指すリンクとディレクトリを返さない', async (t) => {
+test('ディスクの読み出し元は、配信ルートの実体パスの配下の通常のファイルだけを返し、リンク（外・中を指すもの）とディレクトリを返さない', async (t) => {
   const tmp = ownerOnlyTempDirectory('static');
   try {
     const root = join(tmp.path, 'root');
@@ -115,8 +115,8 @@ test('ディスクの読み出し元は、配信ルートの実体パスの配�
     const index = await source.read(['index.html']);
     assert.equal(index?.contentType, 'text/html; charset=utf-8');
     assert.equal((await source.read(['assets', 'app.js']))?.contentType, 'text/javascript; charset=utf-8');
-    // 配信ルートの中を指すリンクは、実体が配下にあるので返す。
-    assert.equal((await source.read(['inside', 'app.js']))?.body.toString(), 'console.log("synthetic");');
+    // 配信ルートの中を指すリンクも、実体パスのセグメントが要求と違うので返さない（8.3の短縮名等の別名と同じ規則。F11）。
+    assert.equal(await source.read(['inside', 'app.js']), undefined);
     assert.equal(await source.read(['escape', 'secret.txt']), undefined);
     if (fileLink) assert.equal(await source.read(['secret-link.txt']), undefined);
     assert.equal(await source.read(['assets']), undefined);
@@ -204,10 +204,62 @@ test('コメントの終わりはブラウザと同じに読み（<!-->・<!--->
   for (const head of [`<!-->${meta}<!-- -->`, `<!--->${meta}<!-- -->`, `<!-- a --!>${meta}<!-- -->`, `<!-- a --!>${meta}`]) {
     assert.equal(injectLaunchId(Buffer.from(page(head)), id), undefined, head);
   }
-  // 閉じていないコメントは配信しない。
-  assert.equal(injectLaunchId(Buffer.from(page(`<!-- ${meta}`)), id), undefined);
+  // <head>より後の閉じていないコメントは、補助の検査が読めないだけなので配信を止めない（注入したmetaが最初）。
+  const unclosed = injectLaunchId(Buffer.from(page(`<!-- ${meta}`)), id)?.toString();
+  assert.equal(unclosed?.startsWith(`<!doctype html><html><head><meta name="kurashi-ledger-launch-id" content="${id}">`), true);
+  // <head>より前の閉じていないコメントは配信しない。
+  assert.equal(injectLaunchId(Buffer.from(`<!doctype html><!-- <html><head></head></html>`), id), undefined);
   // 本当にコメントの中にあるmetaは、重複としない。
   for (const head of [`<!-- ${meta} -->`, `<!---->${'<!-- x -- y -->'}<!-- ${meta} --!>`, `<!-- <!-- ${meta} -->`]) {
     assert.notEqual(injectLaunchId(Buffer.from(page(head)), id), undefined, head);
+  }
+});
+
+test('起動の識別子は木の順で最初のmetaが正: <head>の最初の子に入れ、SVGのtitle・終わらないtitleの後ろのmetaより前になる（F10）', () => {
+  const id = 'BBBBBBBBBBBBBBBBBBBBBB';
+  const injected = `<meta name="kurashi-ledger-launch-id" content="${id}">`;
+  for (const html of [
+    '<!doctype html><html><head></head><body><svg><title><meta name="kurashi-ledger-launch-id" content="x"></title></svg></body></html>',
+    "<html><head><title>x</titlex><a b='</title><meta name=\"kurashi-ledger-launch-id\" c=' e='><i j='>'></head></html>",
+    '\uFEFF<!DOCTYPE html>\n<!-- c --><HTML lang="ja" data-x=\'>\'>\r\n\t<HEAD data-y=">">x</HEAD></HTML>',
+  ]) {
+    const out = injectLaunchId(Buffer.from(html), id)?.toString();
+    assert.notEqual(out, undefined, html);
+    const head = /<head[^>]*?(?:"[^"]*"|'[^']*'|[^>"'])*>/i.exec(out ?? '');
+    assert.ok(head !== null, html);
+    // <head>の開始タグの直後で、文書の中の同名のmetaのどれよりも前。
+    assert.equal(out?.slice(head.index + head[0].length).startsWith(injected), true, html);
+    assert.equal(out?.indexOf('kurashi-ledger-launch-id'), (out ?? '').indexOf(injected) + injected.indexOf('kurashi-ledger-launch-id'), html);
+  }
+  // scriptのdouble-escapeでブラウザが隠すmetaを、補助の検査が見つけたときは、安全側に配信しない（保証ではない）。
+  assert.equal(injectLaunchId(Buffer.from('<html><head><script><!--<script></script><meta name="kurashi-ledger-launch-id" content="x"></script></head></html>'), id), undefined);
+  // 前置きをブラウザと違う区切りで読みうる形・ほかの文字は、配信しない。
+  for (const html of [
+    "<html a=\u00a0'>'><head></head></html>",
+    '\u00a0<html><head></head></html>',
+    'x\uFEFF<html><head></head></html>',
+    '<html =a><head></head></html>',
+    '<html a"b><head></head></html>',
+    '<html a=b"c><head></head></html>',
+    '<html><html><head></head></html>',
+    '<html a/=\'>\'><head></head></html>',
+  ]) {
+    assert.equal(injectLaunchId(Buffer.from(html), id), undefined, JSON.stringify(html));
+  }
+});
+
+test('ディスクの読み出し元は、実体パスの相対のセグメントが.で始まる別名（リンク・Windowsの8.3の短縮名と同じ規則）を返さない（F11）', async () => {
+  const tmp = ownerOnlyTempDirectory('static-alias');
+  try {
+    const root = join(tmp.path, 'root');
+    mkdirSync(join(root, '.hidden'), { recursive: true });
+    writeFileSync(join(root, '.hidden', 'a.txt'), 'hidden-synthetic');
+    writeFileSync(join(root, 'Page.txt'), 'page-synthetic');
+    symlinkSync(join(root, '.hidden'), join(root, 'pub'), process.platform === 'win32' ? 'junction' : 'dir');
+    const source = await createDiskStaticSource(root);
+    assert.equal(await source.read(['pub', 'a.txt']), undefined);
+    assert.equal((await source.read(['Page.txt']))?.body.toString(), 'page-synthetic');
+  } finally {
+    tmp.cleanup();
   }
 });

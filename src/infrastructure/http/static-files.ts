@@ -4,7 +4,8 @@
 //    ..と.のセグメント・空のセグメント（ディレクトリの要求）・Windowsの予約名・末尾の.と空白を拒否する。
 //    .で始まる名前は返さない。
 // 2. 読み出し元（StaticSource）: ディスクの読み出し元は、起動時に配信ルートの実体パスを固定し、候補の実体パス
-//    （symlink・junctionを解決したもの）が配信ルートの実体パスの配下にある通常のファイルのときだけ返す。
+//    （symlink・junctionを解決したもの）が配信ルートの実体パスの配下にある通常のファイルで、配信ルートからの相対の
+//    セグメントが要求と（大文字小文字を無視して）同じで.で始まらないときだけ返す（リンク・8.3の短縮名の別名は返さない）。
 //    ディレクトリの一覧は返さない。T09は、manifestで確かめた内容をメモリから返す読み出し元に替える（ADR-0002）。
 import { constants } from 'node:fs';
 import { lstat, open, realpath, stat } from 'node:fs/promises';
@@ -78,7 +79,7 @@ export function isHtml(contentType: string): boolean {
   return (contentType.split(';')[0] ?? '').trim().toLowerCase() === 'text/html';
 }
 
-// HTMLを要素の単位で読む小さな字句解析（ADR-0009の1）。コメント・宣言（doctype等）・処理命令と、生のテキストを
+// HTMLを要素の単位で読む小さな字句解析（ADR-0009の1。同名のmetaの補助の検査だけに使い、保証には使わない）。コメント・宣言（doctype等）・処理命令と、生のテキストを
 // 中身に持つ要素（script・style・title・textarea等）の中身を、要素と区別する。属性は引用符を考えて読む。
 type HtmlToken =
   | { readonly kind: 'start'; readonly name: string; readonly attrs: ReadonlyMap<string, DecodedAttribute>; readonly end: number }
@@ -225,25 +226,65 @@ function tokenizeHtml(text: string): HtmlToken[] | undefined {
   return tokens;
 }
 
-// 配信するHTMLに、起動の識別子の<meta>を入れる（ADR-0003の14、ADR-0009の1）。注入の契約:
-// - doctype・コメント・空白・<html>の開始タグのあとの、最初の要素が<head>の開始タグであること。その直後に入れる。
-// - 文書のどこにも、name属性が同じ名前（大文字小文字を区別しない）の実際の<meta>要素がないこと。
-// 契約を満たさないHTML（<head>がない、<head>より前にほかの要素や文字がある、読めない形、すでに同じ<meta>がある）は、
-// 識別子があいまいになるので配信しない（undefined）。コメントやscript・titleの中の文字列は要素として扱わない。
+// <head>の開始タグまでの前置きを読み、<head>の開始タグの終わりの位置を返す（ADR-0009の1）。読めるのは、先頭のBOM、
+// コメント（HTMLの仕様の終わり方）、宣言・処理命令（最初の>まで。doctypeを含む）、ASCIIの空白（タブ・LF・FF・CR・空白）、
+// <html>の開始タグ、<head>の開始タグだけ。タグの名前と属性はASCIIの空白で区切り、属性の値は引用符を考えて読む。
+// ブラウザと区切りが食い違いうる形（=で始まる名前、名前の中の引用符、引用符のない値の中の引用符等）は読まずにundefined。
+// ほかの要素・文字が<head>より前にあれば、undefined。
+const PREFIX_TAG = /^<([A-Za-z][^\t\n\f\r />]*)/;
+const PREFIX_ATTR = /[\t\n\f\r ]*([^\t\n\f\r "'>/=]+)(?:[\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"|'[^']*'|[^\t\n\f\r "'=<>`]+))?|[\t\n\f\r ]*\/|[\t\n\f\r ]+/y;
+
+function headStartEnd(text: string): number | undefined {
+  let pos = text.startsWith('\uFEFF') ? 1 : 0;
+  let sawHtml = false;
+  while (pos < text.length) {
+    const ws = /^[\t\n\f\r ]+/.exec(text.slice(pos, pos + 4096));
+    if (ws !== null) {
+      pos += ws[0].length;
+      continue;
+    }
+    if (text.startsWith('<!--', pos)) {
+      const end = commentEnd(text, pos + 4);
+      if (end === undefined) return undefined;
+      pos = end;
+      continue;
+    }
+    if (text.startsWith('<!', pos) || text.startsWith('<?', pos)) {
+      const close = text.indexOf('>', pos);
+      if (close < 0) return undefined;
+      pos = close + 1;
+      continue;
+    }
+    const tag = PREFIX_TAG.exec(text.slice(pos, pos + 1024));
+    if (tag === null) return undefined;
+    const name = (tag[1] ?? '').toLowerCase();
+    if (name !== 'head' && (name !== 'html' || sawHtml)) return undefined;
+    let at = pos + tag[0].length;
+    for (;;) {
+      if (at >= text.length) return undefined;
+      if (text[at] === '>') break;
+      PREFIX_ATTR.lastIndex = at;
+      const m = PREFIX_ATTR.exec(text);
+      if (m === null || m[0].length === 0) return undefined;
+      at += m[0].length;
+    }
+    pos = at + 1;
+    if (name === 'head') return pos;
+    sawHtml = true;
+  }
+  return undefined;
+}
+
+// 配信するHTMLに、起動の識別子の<meta>を入れる（ADR-0003の14、ADR-0009の1）。契約（2026-10-03の所有者の決定）:
+// 文書の木の順で最初の<meta name="kurashi-ledger-launch-id">が正。<head>の開始タグの直後（<head>の最初の子）に入れるので、
+// 注入したものが最初になる（UIはquerySelectorで最初のものを読む）。<head>の開始タグまでの前置きを読めないHTMLは配信しない
+// （undefined）。文書全体の同名のmetaの走査は保証ではなく補助の検査で、見つけたときだけ配信しない（読めない形は止めない）。
 export function injectLaunchId(html: Buffer, launchId: string): Buffer | undefined {
   const text = html.toString('utf8');
-  const tokens = tokenizeHtml(text);
-  if (tokens === undefined) return undefined;
-  let insertAt: number | undefined;
-  for (const token of tokens) {
-    if (token.kind === 'comment' || token.kind === 'declaration') continue;
-    if (token.kind === 'text' && token.text.trim() === '') continue;
-    if (token.kind === 'start' && token.name === 'html') continue;
-    if (token.kind === 'start' && token.name === 'head') insertAt = token.end;
-    break;
-  }
+  const insertAt = headStartEnd(text);
   if (insertAt === undefined) return undefined;
-  // 同名の実際のmetaがあるか、ブラウザでの値を確かめられない（解けない文字参照が残る）metaのnameがあれば、重複とみなす。
+  // 補助の検査: 同名の実際のmetaか、ブラウザでの値を確かめられない（解けない文字参照が残る）metaのnameを見つけたら止める。
+  const tokens = tokenizeHtml(text) ?? [];
   const duplicate = tokens.some((t) => {
     if (t.kind !== 'start' || t.name !== 'meta') return false;
     const name = t.attrs.get('name');
@@ -251,6 +292,11 @@ export function injectLaunchId(html: Buffer, launchId: string): Buffer | undefin
   });
   if (duplicate) return undefined;
   return Buffer.from(`${text.slice(0, insertAt)}<meta name="${LAUNCH_ID_META_NAME}" content="${launchId}">${text.slice(insertAt)}`, 'utf8');
+}
+
+function sameSegments(real: readonly string[], requested: readonly string[]): boolean {
+  if (real.length !== requested.length) return false;
+  return real.every((segment, i) => !segment.startsWith('.') && segment.toLowerCase() === (requested[i] ?? '').toLowerCase());
 }
 
 export type StaticFile = { readonly body: Buffer; readonly contentType: string };
@@ -310,6 +356,9 @@ export async function createDiskStaticSource(root: string, onResolved?: (real: s
         if (!again.startsWith(prefix)) return undefined;
         const current = await lstat(again, { bigint: true }).catch(() => undefined);
         if (current === undefined || !current.isFile() || current.dev !== info.dev || current.ino !== info.ino) return undefined;
+        // 実体パスの配信ルートからの相対のセグメントが、要求したものと（大文字小文字を無視して）同じで、.で始まらないこと。
+        // Windowsの8.3の短縮名（ENV~1→.env）・大文字小文字の別名・配信ルートの中のリンクを経由したものは返さない。
+        if (!sameSegments(again.slice(prefix.length).split(sep), segments)) return undefined;
         if (info.size > BigInt(MAX_FILE_BYTES)) throw new Error('配信するファイルが大きすぎる。');
         const body = await handle.readFile();
         return { body, contentType: contentTypeFor(segments.at(-1) ?? '') };

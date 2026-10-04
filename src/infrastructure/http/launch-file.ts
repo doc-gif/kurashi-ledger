@@ -20,6 +20,7 @@ import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:p
 import { checkOwnerOnly, checkWalkNotReplaceable, ownerOnlyDirectoryHint, restrictOpenFileToOwner, type WalkEntry } from './owner-only.ts';
 
 // 確かめたディレクトリ。実体パスと、確かめたときの経路の各要素（末端からルートまで）のdev・ino。
+// verifyTokenDirectoryが返して凍結したものだけが有効（同じ形のオブジェクトを作っても受け付けない。isVerifiedDirectory）。
 export type VerifiedDirectory = {
   readonly path: string;
   readonly chain: ReadonlyArray<{ readonly path: string; readonly dev: bigint; readonly ino: bigint }>;
@@ -38,6 +39,15 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined;
 }
 
+const verifiedDirectories = new WeakSet<object>();
+
+// verifyTokenDirectoryが返したものか。chainが空のもの、chainの最初がpathでないものも拒否する。
+export function isVerifiedDirectory(value: unknown): value is VerifiedDirectory {
+  if (typeof value !== 'object' || value === null || !verifiedDirectories.has(value)) return false;
+  const directory = value as VerifiedDirectory;
+  return directory.chain.length > 0 && directory.chain[0]?.path === directory.path;
+}
+
 function chainOf(path: string): string[] {
   const chain = [path];
   for (let parent = dirname(path); parent !== chain.at(-1); parent = dirname(parent)) chain.push(parent);
@@ -48,6 +58,7 @@ function chainOf(path: string): string[] {
 // 作成・権限変更・削除の直前に呼ぶ（ほかのユーザーには差し替えられないことを確かめてあるので、これは同じユーザーの
 // 差し替えに対する追加の防御）。
 export function confirmDirectoryUnchanged(directory: VerifiedDirectory): void {
+  if (!isVerifiedDirectory(directory)) throw new TokenDirectoryError('一時ファイルを置くディレクトリが、verifyTokenDirectoryで確かめたものでない。');
   for (const element of directory.chain) {
     let st;
     try {
@@ -99,14 +110,18 @@ export function verifyTokenDirectory(directory: string, options: VerifyOptions =
   if (second.real !== first.real || !sameWalk(first.entries, second.entries)) {
     throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリ ${path} の経路が、確かめている間に変わった（何も作らない）。`);
   }
-  return {
+  const verified: VerifiedDirectory = Object.freeze({
     path: first.real,
-    chain: chainOf(first.real).map((element) => {
-      const entry = second.entries.find((e) => e.kind === 'dir' && e.path === element);
-      if (entry === undefined) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリの経路 ${element} を確かめていない。`);
-      return { path: element, dev: entry.dev, ino: entry.ino };
-    }),
-  };
+    chain: Object.freeze(
+      chainOf(first.real).map((element) => {
+        const entry = second.entries.find((e) => e.kind === 'dir' && e.path === element);
+        if (entry === undefined) throw new TokenDirectoryError(`トークンの一時ファイルを置くディレクトリの経路 ${element} を確かめていない。`);
+        return Object.freeze({ path: element, dev: entry.dev, ino: entry.ino });
+      }),
+    ),
+  });
+  verifiedDirectories.add(verified);
+  return verified;
 }
 
 function isInsidePath(child: string, parent: string): boolean {

@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { ownerOnlyTempDirectory, sameOriginHeaders, send } from '../tests/support/http.ts';
-import { describeClose, startApp, type StartIo } from './start.ts';
+import { EventEmitter } from 'node:events';
+import { describeClose, installFatalErrorHandlers, startApp, type StartIo } from './start.ts';
 
 const START = fileURLToPath(new URL('./start.ts', import.meta.url));
 const REPOSITORY_ROOT = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
@@ -238,4 +239,40 @@ test('終了の表示と終了コード: 一時ファイルが残った（置き
   } finally {
     tmp.cleanup();
   }
+});
+
+test('受けていない例外・rejectは、messageと許可にない符号を出さず、後始末を試みてから1で終える（F7）', async () => {
+  const target = new EventEmitter();
+  const errs: string[] = [];
+  const exits: number[] = [];
+  let cleanups = 0;
+  let release: () => void = () => {};
+  installFatalErrorHandlers(target, {
+    err: (line) => errs.push(line),
+    cleanup: () => {
+      cleanups += 1;
+      return new Promise<void>((resolve) => (release = resolve));
+    },
+    exit: (code) => exits.push(code),
+  });
+  target.emit('uncaughtException', Object.assign(new Error('message tok_SYNTHETICSECRET1'), { code: 'tok_SYNTHETICSECRET2' }));
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(exits, []);
+  assert.equal(cleanups, 1);
+  // 後始末の途中にもう一度起きたら、待たずに1で終える。
+  target.emit('unhandledRejection', Object.assign(new Error('second'), { code: 'EACCES' }));
+  assert.deepEqual(exits, [1]);
+  release();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(exits, [1, 1]);
+  assert.equal(cleanups, 1);
+  assert.deepEqual(errs, ['予期しない例外で終了する（other）。', '予期しない例外で終了する（EACCES）。']);
+
+  // 後始末が終わらなくても、上限時間で1で終える。
+  const stuck = new EventEmitter();
+  const stuckExits: number[] = [];
+  installFatalErrorHandlers(stuck, { err: () => {}, cleanup: () => new Promise(() => {}), exit: (code) => stuckExits.push(code), timeoutMs: 20 });
+  stuck.emit('unhandledRejection', 'not an error');
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(stuckExits, [1]);
 });

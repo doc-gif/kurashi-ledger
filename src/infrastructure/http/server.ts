@@ -16,7 +16,9 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import {
+  TokenDirectoryError,
   createLaunchFile,
+  isVerifiedDirectory,
   randomLaunchFileName,
   removeLaunchFile,
   verifyTokenDirectory,
@@ -42,7 +44,18 @@ import {
   type BodyType,
   type Rejection,
 } from './request-checks.ts';
-import { PRODUCTION_CSP, developmentCsp, enforceResponseHeaders, requiredResponseHeaders } from './response-headers.ts';
+import {
+  INFORMATIONAL_FORBIDDEN_CODE,
+  PRODUCTION_CSP,
+  REASON_HEADER,
+  TRAILERS_FORBIDDEN_CODE,
+  assertFinalStatus,
+  developmentCsp,
+  enforceResponseHeaders,
+  requiredResponseHeaders,
+  responseReason,
+  setResponseReason,
+} from './response-headers.ts';
 import { createLaunchSession, type LaunchSession } from './session.ts';
 import {
   createDiskStaticSource,
@@ -114,6 +127,8 @@ export type LocalServerOptions = {
   readonly log?: (line: string) => void;
   // 一時ファイルを消す処理。試験で削除の失敗を注入するためだけに使う（既定はunlink）。
   readonly removeFile?: (path: string) => void;
+  // 接続してから最初の要求が届くまでの上限（ミリ秒）。試験で短くするためだけに使う（既定はFIRST_REQUEST_TIMEOUT_MS）。
+  readonly firstRequestTimeoutMs?: number;
 };
 
 // 一時ファイルの後始末の結果。replaced（作ったものと違うものに置き換わっていた）とfailed（消せなかった）は、
@@ -150,6 +165,10 @@ const DEFAULT_JSON_MAX_BYTES = 64 * 1024;
 // upgradeの拒否の応答を書き切るのを待つ上限（そのあとはソケットを壊す）。
 const REFUSAL_FLUSH_MS = 2000;
 const EXCHANGE_MAX_BYTES = 1024;
+// 同時に受け付ける接続の上限（超えた接続は、Node.jsが何も書かずに閉じる）。ローカルの1人の利用には十分。
+export const MAX_CONNECTIONS = 128;
+// 接続したまま最初の要求を送らないソケットを閉じるまでの時間（Node.jsのheadersTimeoutは、要求が始まるまで数えない）。
+export const FIRST_REQUEST_TIMEOUT_MS = 30_000;
 
 function validateRoutes(routes: readonly ApiRoute[]): void {
   const seen = new Set<string>();
@@ -183,7 +202,24 @@ function safePath(rawUrl: string | undefined): string {
 // （文字種や長さの制限だけでは、英数字の秘密の値を防げないため）。
 export const LOGGABLE_ERROR_CODES = {
   // APIの処理・開発時のmiddleware・upgradeの処理・一時ファイルの操作で起きうる、Node.jsのファイル・ストリームの誤り。
-  handler: ['ENOENT', 'EACCES', 'EPERM', 'EBUSY', 'EISDIR', 'ENOTDIR', 'ENOTEMPTY', 'EMFILE', 'ENFILE', 'EROFS', 'ERR_STREAM_DESTROYED', 'ERR_HTTP_HEADERS_SENT', 'ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN'],
+  handler: [
+    'ENOENT',
+    'EACCES',
+    'EPERM',
+    'EBUSY',
+    'EISDIR',
+    'ENOTDIR',
+    'ENOTEMPTY',
+    'EMFILE',
+    'ENFILE',
+    'EROFS',
+    'ERR_STREAM_DESTROYED',
+    'ERR_STREAM_WRITE_AFTER_END',
+    'ERR_STREAM_ALREADY_FINISHED',
+    'ERR_HTTP_HEADERS_SENT',
+    INFORMATIONAL_FORBIDDEN_CODE,
+    TRAILERS_FORBIDDEN_CODE,
+  ],
   // HTTPの解析器（llhttp）と接続の誤り。
   client: [
     'ECONNRESET',
@@ -202,12 +238,68 @@ export const LOGGABLE_ERROR_CODES = {
     'HPE_LF_EXPECTED',
     'HPE_CR_EXPECTED',
     'HPE_INVALID_EOF_STATE',
+    'EPIPE',
+    'ETIMEDOUT',
   ],
+  // 待受のソケット（accept）の誤り。
+  server: ['EMFILE', 'ENFILE', 'ECONNABORTED', 'ENOBUFS', 'ENOMEM'],
 } as const;
 
 export function loggableErrorCode(error: unknown, allowed: readonly string[]): string {
   const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: unknown }).code : undefined;
   return typeof code === 'string' && allowed.includes(code) ? code : 'other';
+}
+
+// ログの出来事。ログはformatLogLineの1か所だけで行にする（ADR-0009の5「ログ」）。方法は英大文字だけ、パスはsafePath、
+// 理由はサーバーが決めた符号（setResponseReason）、例外の符号は入口ごとの許可リストを通したものだけを出す。
+export type LogEvent =
+  | { readonly kind: 'request'; readonly method: string | undefined; readonly path: string; readonly status: number; readonly reason: string | undefined }
+  | { readonly kind: 'internal-error'; readonly code: string }
+  | { readonly kind: 'response-error'; readonly code: string }
+  | { readonly kind: 'client-error'; readonly code: string; readonly status?: number; readonly reason?: string }
+  | { readonly kind: 'upgrade'; readonly path: string; readonly outcome: 'accepted' | { readonly status: number; readonly reason: string } }
+  | { readonly kind: 'upgrade-handler-error'; readonly path: string; readonly code: string }
+  | { readonly kind: 'socket-error'; readonly scope: 'upgrade' | 'connect'; readonly code: string }
+  | { readonly kind: 'connect'; readonly path: string }
+  | { readonly kind: 'server-error'; readonly code: string }
+  | { readonly kind: 'connection-dropped' }
+  | { readonly kind: 'first-request-timeout' }
+  | { readonly kind: 'launch-file-replaced' }
+  | { readonly kind: 'launch-file-remove-failed'; readonly code: string };
+
+function logMethod(method: string | undefined): string {
+  return method !== undefined && /^[A-Z]{1,20}$/.test(method) ? method : '?';
+}
+
+export function formatLogLine(event: LogEvent): string {
+  switch (event.kind) {
+    case 'request':
+      return `${logMethod(event.method)} ${event.path} ${event.status}${event.reason === undefined ? '' : ` ${event.reason}`}`;
+    case 'internal-error':
+      return `internal-error ${event.code}`;
+    case 'response-error':
+      return `response-error ${event.code}`;
+    case 'client-error':
+      return event.status === undefined ? `CLIENT-ERROR ${event.code} closed-without-response` : `CLIENT-ERROR ${event.code} ${event.status} ${event.reason ?? ''}`;
+    case 'upgrade':
+      return event.outcome === 'accepted' ? `UPGRADE ${event.path} accepted` : `UPGRADE ${event.path} ${event.outcome.status} ${event.outcome.reason}`;
+    case 'upgrade-handler-error':
+      return `UPGRADE ${event.path} upgrade-handler-error ${event.code}`;
+    case 'socket-error':
+      return `SOCKET-ERROR ${event.scope} ${event.code}`;
+    case 'connect':
+      return `CONNECT ${event.path} closed-without-response`;
+    case 'server-error':
+      return `SERVER-ERROR ${event.code}`;
+    case 'connection-dropped':
+      return 'connection-dropped（同時の接続の上限）';
+    case 'first-request-timeout':
+      return 'first-request-timeout（要求のないまま時間切れ）';
+    case 'launch-file-replaced':
+      return 'launch-file-replaced（作ったファイルと違うものになっていたので消さなかった）';
+    case 'launch-file-remove-failed':
+      return `launch-file-remove-failed ${event.code}`;
+  }
 }
 
 function errorCodeOf(error: unknown): string | undefined {
@@ -331,7 +423,7 @@ export function runDevMiddleware(
 // 通常の出口と同じ定義の必須のヘッダ（requiredResponseHeaders）と、データを含まない理由の符号を付け、接続を閉じる。
 // 書き切ってから壊す（相手が書込み側を閉じなくても残さない）。書き切れない相手に備え、少しあとにも壊す。
 function writeRawRefusal(socket: Duplex, rejection: Rejection): void {
-  const headers = [...requiredResponseHeaders(PRODUCTION_CSP), ['X-Kurashi-Ledger-Reason', rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
+  const headers = [...requiredResponseHeaders(PRODUCTION_CSP), [REASON_HEADER, rejection.code], ['Connection', 'close'], ['Content-Length', '0']];
   socket.end(`HTTP/1.1 ${rejection.status} ${STATUS_CODES[rejection.status] ?? ''}\r\n${headers.map(([n, v]) => `${n}: ${v}\r\n`).join('')}\r\n`, () => socket.destroy());
   setTimeout(() => socket.destroy(), REFUSAL_FLUSH_MS).unref();
 }
@@ -350,9 +442,12 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   if (uiSources > 1) throw new Error('配信ルート（staticRoot）・読み出し元（staticSource）・開発時の口（dev）は、同時に使えない。');
   const routes = options.api ?? [];
   validateRoutes(routes);
-  const log = options.log ?? (() => {});
+  const writeLog = options.log ?? (() => {});
+  const log = (event: LogEvent): void => writeLog(formatLogLine(event));
   // 起動の前に、渡されたディレクトリと配信ルートを確かめる（どちらも、作らない・変えない）。
   const tokenDirectory = typeof options.tokenDirectory === 'string' ? verifyTokenDirectory(options.tokenDirectory) : options.tokenDirectory;
+  // 確かめた結果を渡すときは、verifyTokenDirectoryが返したものだけを受け付ける（同じ形のオブジェクトでは検査を迂回できない）。
+  if (!isVerifiedDirectory(tokenDirectory)) throw new TokenDirectoryError('tokenDirectoryは、パスか、verifyTokenDirectoryが返したものを渡す。');
   const staticSource: StaticSource | undefined =
     options.staticSource ?? (options.staticRoot === undefined ? undefined : await createDiskStaticSource(options.staticRoot));
 
@@ -370,25 +465,38 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (launchFileState === 'removed' || launchFileState === 'missing') return launchFileState;
     try {
       launchFileState = removeLaunchFile(launchFile, options.removeFile);
-      if (launchFileState === 'replaced') log('launch-file-replaced（作ったファイルと違うものになっていたので消さなかった）');
+      if (launchFileState === 'replaced') log({ kind: 'launch-file-replaced' });
     } catch (error) {
       launchFileState = 'failed';
-      log(`launch-file-remove-failed ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
+      log({ kind: 'launch-file-remove-failed', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler) });
     }
     return launchFileState;
   };
 
   // closeが所有するもの: 実行中の要求の処理、upgrade済みのソケット、中止の合図。
   const inflight = new Set<Promise<void>>();
+  const firstRequestTimers = new WeakMap<Duplex, NodeJS.Timeout>();
+  const clearFirstRequestTimer = (socket: Duplex): void => {
+    const timer = firstRequestTimers.get(socket);
+    if (timer !== undefined) clearTimeout(timer);
+    firstRequestTimers.delete(socket);
+  };
   const upgradedSockets = new Set<Duplex>();
   // 拒否の応答を書いている途中のupgradeのソケット（書き切ってから自分で壊すので、終了の手順では待つ）。
   const refusing = new WeakSet<Duplex>();
   const shutdown = new AbortController();
 
+  // 拒否の応答。処理やmiddlewareが付けたヘッダは外し（Connectionだけ残す）、理由はサーバーが記録する。本文のある要求を
+  // 読み切らずに拒否したときは、接続を閉じる（残りの本文の解析の誤りに、同じ接続で2つ目の応答を書かないため）。
   const reject = (res: ServerResponse, rejection: Rejection, api: boolean): void => {
+    for (const name of res.getHeaderNames()) if (name !== 'connection') res.removeHeader(name);
     res.statusCode = rejection.status;
     if (rejection.status === 405 && !api) res.setHeader('Allow', 'GET, HEAD');
-    res.setHeader('X-Kurashi-Ledger-Reason', rejection.code);
+    setResponseReason(res, rejection.code);
+    const req = res.req as IncomingMessage | undefined;
+    if (req !== undefined && !req.complete && (req.headers['transfer-encoding'] !== undefined || (req.headers['content-length'] ?? '0') !== '0')) {
+      res.setHeader('Connection', 'close');
+    }
     if (api) {
       const body = Buffer.from(JSON.stringify({ error: rejection.code }), 'utf8');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -403,6 +511,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   };
 
   const sendJson = (res: ServerResponse, response: ApiResponse): void => {
+    // APIの処理が返す状態も、200〜599の整数だけ（1xx等は例外になり、500で答える）。
+    assertFinalStatus(response.status);
     res.statusCode = response.status;
     if (response.status === 204 || response.status === 304) {
       res.end();
@@ -509,7 +619,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     sendFile(res, file.body, file.contentType, current.launchId);
   };
 
-  const server: Server = createServer((req, res) => {
+  // Node.jsに自分で応答を書かせない（ADR-0009の5）: Hostのない要求も、checkHostの403へ流す。
+  const server: Server = createServer({ requireHostHeader: false }, (req, res) => {
     const current = session;
     const rawUrl = req.url ?? '';
     // 振り分けには、クエリだけを除いた生のパスを使う。safePath（置き換え・切り詰め）はログにだけ使う。
@@ -525,10 +636,9 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
       devContexts.set(req, { launchId: current.launchId, nonce, signal: shutdown.signal });
     }
     enforceResponseHeaders(res, csp);
-    res.on('finish', () => {
-      const reason = res.getHeader('X-Kurashi-Ledger-Reason');
-      log(`${req.method ?? '?'} ${logPath} ${res.statusCode}${reason === undefined ? '' : ` ${String(reason)}`}`);
-    });
+    // 応答の誤り（終えたあとの書込み等）を、プロセスへ抜けさせない。
+    res.on('error', (error: unknown) => log({ kind: 'response-error', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler) }));
+    res.on('finish', () => log({ kind: 'request', method: req.method, path: logPath, status: res.statusCode, reason: responseReason(res) }));
     if (current === undefined) return reject(res, { status: 503, code: 'starting' }, api);
     // 終了中は、すでにある接続に届いた要求も受け付けない。
     if (shutdown.signal.aborted) {
@@ -540,7 +650,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const target = checkRequestTarget(req.url);
     if (target !== undefined) return reject(res, target, api);
     const work = (api ? handleApi(req, res, current, path) : handleUi(req, res, current, path)).catch((error: unknown) => {
-      log(`internal-error ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
+      log({ kind: 'internal-error', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler) });
       if (!res.headersSent) reject(res, { status: 500, code: 'internal-error' }, api);
       else res.destroy();
     });
@@ -558,7 +668,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const rejection: Rejection = shutdown.signal.aborted
       ? { status: 503, code: 'closing' }
       : (checkRequestTarget(req.url) ?? { status: 417, code: 'expectation-not-supported' });
-    res.on('finish', () => log(`${req.method ?? '?'} ${path} ${rejection.status} ${rejection.code}`));
+    res.on('error', (error: unknown) => log({ kind: 'response-error', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler) }));
+    res.on('finish', () => log({ kind: 'request', method: req.method, path, status: res.statusCode, reason: responseReason(res) }));
     res.setHeader('Connection', 'close');
     reject(res, rejection, api);
   };
@@ -575,23 +686,27 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     const inFlight = (socket as unknown as { _httpMessage?: { headersSent?: boolean } | null })._httpMessage;
     // 同じ接続で、前の要求の応答がまだ終わっていない（書き始めた・これから書く）ときも、応答が2つ混ざらないよう書かない。
     if (rawCode === 'ECONNRESET' || !socket.writable || (inFlight !== undefined && inFlight !== null)) {
-      log(`CLIENT-ERROR ${code} closed-without-response`);
+      log({ kind: 'client-error', code });
       socket.destroy();
       return;
     }
     const rejection = parserRejection(rawCode);
-    log(`CLIENT-ERROR ${code} ${rejection.status} ${rejection.code}`);
+    log({ kind: 'client-error', code, status: rejection.status, reason: rejection.code });
     writeRawRefusal(socket, rejection);
   });
 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    // Node.jsは'upgrade'を出す前にソケットの誤りの処理を外すので、最初に付ける（拒否の応答を書く途中のRST等で、
+    // プロセスが落ちないように）。受け付けた経路でも、開発時の口へ渡す前から付いている。
+    socket.on('error', (error: unknown) => log({ kind: 'socket-error', scope: 'upgrade', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.client) }));
+    clearFirstRequestTimer(socket);
     const path = safePath(req.url);
     // 受け付けるか拒否するかを決める前に、すべてのupgradeのソケットを追跡する（closeAllConnectionsはupgradeの
     // ソケットを閉じない。拒否してend()したソケットも、相手が書込み側を閉じなければ残るので、closeで壊す）。
     upgradedSockets.add(socket);
     socket.once('close', () => upgradedSockets.delete(socket));
     const refuse = (rejection: Rejection): void => {
-      log(`UPGRADE ${path} ${rejection.status} ${rejection.code}`);
+      log({ kind: 'upgrade', path, outcome: { status: rejection.status, reason: rejection.code } });
       refusing.add(socket);
       writeRawRefusal(socket, rejection);
     };
@@ -609,16 +724,43 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     if (!current.isValidSession(cookieValues(req, current.cookieName))) return refuse({ status: 401, code: 'session-required' });
     const upgrade = options.dev?.upgrade;
     if (upgrade === undefined) return refuse({ status: 404, code: 'no-websocket' });
-    log(`UPGRADE ${path} accepted`);
+    log({ kind: 'upgrade', path, outcome: 'accepted' });
     // 開発時の口の処理が同期で例外を投げても、プロセスへ抜けさせない。理由の符号だけを記録し、ソケットを壊す。
     try {
       upgrade(req, socket, head);
     } catch (error) {
-      log(`UPGRADE ${path} upgrade-handler-error ${loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler)}`);
+      log({ kind: 'upgrade-handler-error', path, code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.handler) });
       upgradedSockets.delete(socket);
       socket.destroy();
     }
   });
+
+  // CONNECT: 応答を書かずに閉じる（処理を常設し、ソケットの誤りも受ける）。
+  server.on('connect', (req: IncomingMessage, socket: Duplex) => {
+    socket.on('error', (error: unknown) => log({ kind: 'socket-error', scope: 'connect', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.client) }));
+    clearFirstRequestTimer(socket);
+    log({ kind: 'connect', path: safePath(req.url) });
+    socket.destroy();
+  });
+
+  // 接続の数の上限と、最初の要求までの時間切れ（接続したまま何も送らないソケットでfdを使い切られないように）。
+  server.maxConnections = MAX_CONNECTIONS;
+  server.on('drop', () => log({ kind: 'connection-dropped' }));
+  const firstRequestTimeoutMs = options.firstRequestTimeoutMs ?? FIRST_REQUEST_TIMEOUT_MS;
+  server.on('connection', (socket: Duplex) => {
+    const timer = setTimeout(() => {
+      log({ kind: 'first-request-timeout' });
+      socket.destroy();
+    }, firstRequestTimeoutMs);
+    timer.unref();
+    firstRequestTimers.set(socket, timer);
+    socket.once('close', () => clearFirstRequestTimer(socket));
+  });
+  // 要求の解析が始まった（または誤りになった）接続は、Node.jsのheadersTimeout・requestTimeoutとkeepAliveTimeoutに任せる。
+  server.on('request', (req: IncomingMessage) => clearFirstRequestTimer(req.socket));
+  server.on('checkContinue', (req: IncomingMessage) => clearFirstRequestTimer(req.socket));
+  server.on('checkExpectation', (req: IncomingMessage) => clearFirstRequestTimer(req.socket));
+  server.on('clientError', (_error: Error, socket: Duplex) => clearFirstRequestTimer(socket));
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: unknown): void => {
@@ -628,6 +770,8 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
     };
     const onListening = (): void => {
       server.off('error', onError);
+      // 待受を始めたあとの誤り（acceptのEMFILE等）は、記録するだけでプロセスへ抜けさせない。
+      server.on('error', (error: unknown) => log({ kind: 'server-error', code: loggableErrorCode(error, LOGGABLE_ERROR_CODES.server) }));
       resolve();
     };
     server.once('error', onError);
