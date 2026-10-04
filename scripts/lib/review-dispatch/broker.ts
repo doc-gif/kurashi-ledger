@@ -25,7 +25,9 @@ import {
 // as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
 export class ResultContentError extends Error {}
 
-export function parseResult(raw: string, j: Job): WorkerResult {
+// `records`: the whole-record IDs (record-<comment|review>-<id>) of this job's materials (store.runMaterials).
+// A red team may re-check such a record as a whole; any other record ID is refused (red team round 5).
+export function parseResult(raw: string, j: Job, records: readonly string[] = []): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
     throw new Error("Worker result too large");
   let r: WorkerResult;
@@ -120,7 +122,7 @@ export function parseResult(raw: string, j: Job): WorkerResult {
       !v ||
       Object.keys(v).sort().join() !== "id,reason,status" ||
       typeof v.id !== "string" ||
-      !/^RT-[1-9][0-9]{0,2}$/.test(v.id) ||
+      !(/^RT-[1-9][0-9]{0,2}$/.test(v.id) || (/^record-(?:comment|review)-[0-9]{1,20}$/.test(v.id) && records.includes(v.id))) ||
       !["解消", "対応不要", "未解消"].includes(v.status) ||
       !cell(v.reason)
     )
@@ -239,7 +241,7 @@ export class ReviewBroker {
       origin.resultHash !== hash(raw)
     )
       throw new Error("Untrusted run provenance");
-    const result = parseResult(raw, j);
+    const result = parseResult(raw, j, recordIds(this.store.runMaterials(j.run)));
     // W4 row 8 / PR #56 red team P2: an edit/delete/dismiss delivery for this PR that no reconcile has processed
     // yet. Keep the result and reconcile again (fetchFresh reconciles and clears processed marks); if a mark is
     // still there after three tries, defer: the job keeps its result and lease and the next cycle posts it.
@@ -418,6 +420,8 @@ export function render(
   );
 }
 
+export const recordIds = (meta: { previousRts?: string[] } | null): string[] =>
+  (meta?.previousRts ?? []).filter((id) => id.startsWith("record-"));
 // What stays open after a red-team record: its RTs, earlier RTs it found still open, ledger causes without a
 // judgement (the scope is every cause_key; pr-review-loop.md#提出前の粗探し), and a needs-owner decision.
 // `previousRts`: RT IDs of the earlier red-team records that registered participants posted on this PR (the

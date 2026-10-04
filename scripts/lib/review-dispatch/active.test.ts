@@ -158,6 +158,8 @@ function materialsTransport(files: Record<string, unknown>[], contents: Record<s
         { id: 74, user: { id: 40 }, body: "<!--kurashi-ledger:red-team:v1-->\n| RT-4 | 該当 | 表の中 |\n[RT-5][P2] 角括弧の形\n本文の中のRT-3も数える" },
         { id: 75, user: { id: 10 }, body: "<!-- kurashi-ledger:red-team:v1 -->\n## 指摘\n- [P1] 番号のない指摘" },
         { id: 76, user: { id: 30 }, body: "<!-- kurashi-ledger:red-team:v1 -->\n## 指摘\nなし" },
+        // Round 5: a comment that only quotes the marker (not on its first line) is not a record.
+        { id: 77, user: { id: 30 }, body: "前の記録の引用:\n> <!-- kurashi-ledger:red-team:v1 -->\n> [P1] 引用した指摘 RT-8" },
         // A forged record by an unregistered account: neither material nor evidence.
         { id: 73, user: { id: 999 }, body: "<!-- kurashi-ledger:red-team:v1 -->\nRT-9: 偽の記録" },
       ];
@@ -234,7 +236,8 @@ test("W4 materials: neutral names, others' blockers, earlier red-team records, t
       changesRequested: [{ actor: 40, review: "9" }],
       findings: [{ actor: 10, ids: ["review:5"] }],
     });
-    assert.match(read("pr/previous-redteam.md"), /## comment 71[\s\S]*RT-1: 合成の指摘/);
+    assert.match(read("pr/previous-redteam.md"), /## record-comment-71[\s\S]*RT-1: 合成の指摘/);
+    assert.doesNotMatch(read("pr/previous-redteam.md"), /## record-comment-77/);
     assert.doesNotMatch(read("pr/previous-redteam.md"), /ほかのコメント|偽の記録/);
     assert.equal(read("context/guard-check.json"), '{"result":"metadata-complete"}\n');
     assert.equal(guarded[0]!["base"], BASE);
@@ -867,6 +870,13 @@ test("Codex PR56-R004: an unconfirmed required cause or an earlier RT left unche
     ["earlier RT re-checked", { previous: [{ id: "RT-2", status: "解消" as const, reason: "直った" }] }, ["RT-2"], []],
     // An earlier record whose findings carry no RT ID can never be ticked off by ID: it stays unresolved.
     ["unnumbered record", { previous: [{ id: "RT-2", status: "解消" as const, reason: "直った" }] }, ["RT-2", "record-comment-75"], ["unchecked:record-comment-75"]],
+    // Round 5: such a record is re-checked as a whole through its record ID.
+    [
+      "unnumbered record re-checked",
+      { previous: [{ id: "RT-2", status: "解消" as const, reason: "直った" }, { id: "record-comment-75", status: "対応不要" as const, reason: "記録全体を確かめた" }] },
+      ["RT-2", "record-comment-75"],
+      [],
+    ],
   ] as const) {
     const x = stepSetup(extra as Partial<WorkerResult>, {}, [...previousRts]);
     try {
@@ -972,3 +982,19 @@ test("Round 4 RT-4: a plan whose trusted guard check is missing or failed keeps 
 function measurementJobFor(): Job {
   return { id: "j-rt4", key: "1:1", generation: 1, actor: 30, kind: "review", run: "00000000-0000-4000-8000-0000000000b4", pair: { head: HEAD, base: BASE }, policy: "p1" };
 }
+
+
+test("Round 5: a record ID in previous is accepted only when it is one of this job's materials", async () => {
+  const { parseResult } = await import("./broker.ts");
+  const j = { id: "j5", key: "1:1", generation: 1, actor: 30, kind: "faultfinding" as const, run: "00000000-0000-4000-8000-0000000000c5", pair: { head: HEAD, base: BASE }, policy: "p1" };
+  const result = (id: string) =>
+    JSON.stringify({ ...fixtureResult(j), unverified: [], previous: [{ id, status: "解消", reason: "記録全体を確かめた" }] });
+  assert.ok(parseResult(result("record-comment-75"), j, ["record-comment-75"]));
+  for (const [id, known] of [
+    ["record-comment-76", ["record-comment-75"]], // not in the materials
+    ["record-comment-75", []],
+    ["record-issue-75", ["record-issue-75"]], // only comment or review records exist
+    ["record-comment-x", ["record-comment-x"]],
+  ] as const)
+    assert.throws(() => parseResult(result(id), j, [...known]), /Invalid earlier RT/, id);
+});

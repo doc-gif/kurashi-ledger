@@ -10,6 +10,7 @@ import {
 import { Store } from "./store.ts";
 import {
   parseResult,
+  recordIds,
   ResultContentError,
   ReviewBroker,
   type Provenance,
@@ -203,7 +204,7 @@ export class Dispatcher {
       }
       let parsed: WorkerResult;
       try {
-        parsed = parseResult(value.result, j);
+        parsed = parseResult(value.result, j, recordIds(this.store.runMaterials(j.run)));
       } catch (error) {
         // Content rejection (secret shape, format characters, look-alikes, links): blocked, like the check below.
         if (error instanceof ResultContentError)

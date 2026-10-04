@@ -283,7 +283,7 @@ export function jobText(j: Job): string {
       ? [
           "Task: pre-review red team of this pull request, following context/review-loop.md (section on the pre-review red team).",
           "Judge every cause of context/findings.json as invariant_id/cause_key in causes (該当, 該当なし or 確認できない, with the places checked), use context/guard-check.json (causes_not_analyzed first), and check the plan's boundaries and variant analysis against the diff.",
-          "For every RT of the earlier red-team records in pr/previous-redteam.md, set previous to 解消, 対応不要 or 未解消 with the reason.",
+          "For every RT of the earlier red-team records in pr/previous-redteam.md, set previous to 解消, 対応不要 or 未解消 with the reason. A record whose findings have no RT ID (headed ## record-comment-<id> or ## record-review-<id>) is re-checked as a whole: use that heading as the previous id.",
           "Report each new defect as a finding with ID RT-1, RT-2, ... Decision: accepted only when there is no finding and no earlier RT is 未解消, changes-requested otherwise, needs-owner when an owner decision is required. Do not use table separators (|) in any field.",
         ]
       : [

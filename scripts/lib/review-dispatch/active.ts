@@ -208,8 +208,9 @@ export type GuardCheck = (input: {
   catalog: string;
   ledger: string;
 }) => { available: boolean; output: string };
-// The marker in any spacing, so a record is not skipped for its formatting.
-const RED_TEAM_MARK = /<!--\s*kurashi-ledger:red-team:v1\s*-->/;
+// A red-team record starts with its marker (any spacing) on the first non-empty line. A comment that only
+// quotes or mentions the marker further down is not a record (red team round 5).
+const RED_TEAM_MARK = /^\s*<!--\s*kurashi-ledger:red-team:v1\s*-->[ \t]*(?:\r?\n|$)/;
 // Every RT ID anywhere in a record (bullets, tables, "[RT-1][P2]", prose), not only "RT-1:" at a line start.
 const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
 // A record that lists findings without RT IDs (for example "[P1]" items) cannot be re-checked by ID.
@@ -311,7 +312,7 @@ export async function buildMaterials(
         !registered.includes(Number(user))
       )
         continue;
-      earlier.push(`## ${kind} ${String(o["id"])}\n\n${o["body"]}\n`);
+      earlier.push(`## record-${kind}-${String(o["id"])}\n\n${o["body"]}\n`);
       const body = o["body"].normalize("NFKC");
       const ids = [...body.matchAll(RT_ID)].map((m) => `RT-${m[1]}`);
       for (const id of ids) previousRts.add(id);

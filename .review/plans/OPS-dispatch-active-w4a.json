@@ -77,6 +77,11 @@
       "description": "粗探し4回目（issuecomment-5979479197、RT-1〜RT-4）: 延期した投稿の復旧がcapabilityの照合の後にある、前のRTの取り出しが書式に頼る、doctor・measureの二重読み、guardが動かなくてもclear",
       "state": "resolved",
       "resolution": "RT-1: deferredがあれば、capability・cli.sb・実行ファイルに触れる前に、起動しない投稿専用のrunnerで復旧する（投稿は署名済みの結果をBrokerが検証するので起動の証明が要らない）。RT-2: 登録した参加者の記録の本文の`RT-<番号>`をどこでも数え、印の空白の違いも受け入れる。番号のない指摘（`[P1]`等）だけの記録は`record-<種類>-<ID>`として未解消に残す。RT-3: doctor・measureもcli.sbを1回だけ読み、そのbytesからhashを作る。試験のあとに取り直して違えばunverifiedで何も記録しない。RT-4: 計画があるのにguardが動かない・出力がない、または計画が複数ならguard-unavailableを未解消に入れる。guardの判定はstdoutとstderrの両方を資料に残す。自分の掃き出し: 入口の早い戻り（cycle・active・nextKind・activeStep）、部分的な証明（子孫・inspect・ack・capability・doctor）、二重読み（active・doctor・measure・supervisorの最後の照合は意図どおり）、書式に頼る取り出し（red-teamの印・RTのID・Claudeの結果）を確かめた"
+    },
+    {
+      "description": "粗探し5回目（RT-1）: 番号のない記録や印を引用しただけのコメントが`unchecked:record-…`を作り、workerが解消できず永久に止まる",
+      "state": "resolved",
+      "resolution": "`previous[].id`に`record-(comment|review)-<ID>`を受け付ける。受け付けるのはその回の資料（store.runMaterialsのpreviousRts）にある記録IDだけで、ほかは拒否する（runtimeとBrokerの両方のparseResult）。jobTextで記録全体の再確認を指示する。印が最初の空でない行にある本文だけを粗探しの記録として読む"
     }
   ],
   "owner_decisions": [
