@@ -60,7 +60,7 @@ print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} p
 
 ## 2. 専用の場所と信頼した写しを作る
 
-mainをcloneし、#56を含むことを確かめて、repoの外へ取り出す。PRのcheckoutは使わない。
+[信頼した写し](github-apps.md#信頼した写しprのcheckoutから実行しない)と同じ規則で、木全体をrepoの外へ取り出す。
 
 ```zsh
 (
@@ -94,11 +94,11 @@ claude setup-token
 (
   umask 077
   IFS= read -rs 'tok?トークンを貼り付けてEnter: ' || exit 1
-  print -r -- "$tok" > "$token_file" && echo && ls -l "$token_file"
+  print -r -- "$tok" > "$token_file" && echo && ls -le "$token_file"
 )
 ```
 
-期待: `-rw-------`の1行。⌘Kで画面のトークンを消す。期限が切れたら、この手順をやり直す。
+期待: `-rw-------`の1行で、ACLの行がない。⌘Kで画面のトークンを消す。期限が切れたら、この手順をやり直す。
 
 ## 4. policyを作る（shadow）
 
@@ -137,10 +137,7 @@ EOF
 
 期待: `-rw-------`の1行。
 
-所有者への注意:
-
-- `person`が同じ参加者は、実装担当と同じ人として扱い、その指摘を数えない。所有者をCodexと同じ`person`にすると、所有者の指摘が落ちる。
-- 実装担当以外の登録した参加者（reviewerでない所有者を含む）の行コメントと編集は、その人が今のheadをAPPROVEするまで未解消のまま。そのあいだ自動のAPPROVEは`needs-owner`のCOMMENTになる（[規則](review-dispatch-implementation.md#未解消の指摘pr48-r007)）。
+注意（[指摘の規則](review-dispatch-implementation.md#未解消の指摘pr48-r007)）: `person`を実装担当と同じにした人の指摘は数えない（取り違えると指摘が落ちる）。登録した人の行コメントと編集は、その人が今のheadをAPPROVEするまで未解消で、自動のAPPROVEを`needs-owner`のCOMMENTにする。
 
 ## 5. install記録を作る
 
@@ -214,24 +211,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 "${dispatch[@]}" measure --root "$root" --policy "$policy" --install "$install" --out "$etc/measurement-$(date +%Y%m%d%H%M%S).json"
 ```
 
-期待: `測定:`の1行で、次の12項目がすべて期待どおり。
-
-| 項目 | 閉じ込めたClaudeに試させること | 期待 |
-| --- | --- | --- |
-| `deny-keys` | 合成のApp鍵・setup-tokenを読む | `denied` |
-| `deny-gh-auth` | 合成のghの認証を読む | `denied` |
-| `deny-other-ai-auth` | 合成の別AIの認証を読む | `denied` |
-| `deny-keychain` | keychainのファイル・`/usr/bin/security`・App鍵の形の項目 | `denied` |
-| `deny-db` | 合成のDBへ書く | `denied` |
-| `deny-policy-write` | 合成のpolicyへ書く | `denied` |
-| `deny-network` | 127.0.0.1へ接続する | `denied` |
-| `deny-supervisor` | supervisorの代わりのsocketへ接続する | `denied` |
-| `deny-hooks-mcp` | 資料の`.claude/`・`.mcp.json`のhookとMCPを読み込ませる | `denied` |
-| `tool-child-confined` | 上の全項目（子process経由を含む） | `denied` |
-| `schema` | 無害なJobの結果が決めた形か | `true` |
-| `descendantLock` | 子processがrun lockを継承し、終了を証明できたか | `true` |
-
-`allowed`があれば止める。cli.sbを手で変えず、出力をIssue #50に記録する。
+期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantLock=true`。`allowed`なら止める。`inconclusive`・`false`なら原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
 
 ## 9. 否定試験（doctor）
 
@@ -249,13 +229,14 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 
 | 理由 | 行うこと |
 | --- | --- |
-| `measurement-missing`・`-stale`・`-invalid` | 8をやり直す（Claude Code・写し・cli.sbを変えたあとも） |
-| `control-failed:process-env` | `/usr/bin/cc`を入れる（1） |
-| `auth-not-setup-token`・`auth-config-dir-mismatch` | 3をやり直す |
+| 理由なしのunverified、`measurement-missing`・`-stale`・`-invalid` | 8をやり直す（`schema`・`descendantLock`がfalseの測定も含む） |
+| `control-failed:…`・`explicit-deny-unproven:…` | 合成のprobeが比較のための許可の実行で失敗した。`process-env`なら1のCommand Line Toolsを入れる。ほかは記録して止める |
+| `auth-status-missing`・`auth-not-setup-token`・`auth-config-dir-mismatch` | 3をやり直す |
 | `config-dir:…` | `$config`から、理由に出たファイルを除く |
 | `managed-settings-present` | Claude Codeの管理設定を外す。外せなければ止める |
 | `bound-file-changed` | 試験中にcli.sbか実行ファイルが変わった。やり直す |
-| `probe-allowed:…`・`measured-allowed:…`・`profile:…` | 隔離が効いていない。止めてIssue #50に記録する |
+| `plan:…`・`argv-hash-mismatch`・`no-launch-plan` | install記録が起動器の検査に通らない。5を見直す |
+| `probe-allowed:…`・`measured-allowed:…`・`profile:…`・`sandbox-unavailable` | 隔離が効いていない。止めてIssue #50に記録する |
 
 ## 10. 公開HTTPSの経路を選ぶ
 
@@ -314,18 +295,18 @@ EOF
 (
   umask 077
   test -e "$secret_file" && { echo "作成済み"; exit 1; }
-  openssl rand -hex 32 > "$secret_file" && tr -d '\n' < "$secret_file" | pbcopy && ls -l "$secret_file"
+  openssl rand -hex 32 > "$secret_file" && tr -d '\n' < "$secret_file" | pbcopy && ls -le "$secret_file"
 )
 ```
 
-期待: `-rw-------`の1行。
+期待: `-rw-------`の1行で、ACLの行がない。
 
 GitHubの画面で、CodexのAppの設定を開く（Settings → Developer settings → GitHub Apps）。
 
 1. General → Webhook: Activeに印、Webhook URLに10のURL、Webhook secretに⌘V。Save changes。
 2. Permissions & events → Subscribe to events: Pull request、Pull request review、Pull request review comment、Issue comment、Issues、Check run、Check suite、Workflow run、Push。Save changes。
 
-期待: 保存できる。ClaudeのAppにはWebhookを設定しない。
+期待: 保存できる。ClaudeのAppにはWebhookを設定しない。保存したら`pbcopy < /dev/null`でクリップボードを空にする。
 
 ## 12. launchdに登録する
 
@@ -353,24 +334,28 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 13. 最初のshadow
 
+前提: W4c（PR番号は後で）がマージ済み（R013・R016、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）。写しがそれより古ければ「[更新したとき](#更新したとき)」の写しの行を行う。
+
 1. CodexのAppの設定 → Advanced → Recent Deliveriesで、`ping`をRedeliverする。期待: 応答`400`（秘密は一致し、`ping`は受け付けない種類）。`401`なら秘密が違う。
 2. cycleを1回動かす。
 
    ```zsh
-   launchctl kickstart "$gui/${label}.cycle"; sleep 60; tail -n 5 "$logs/cycle.log" "$logs/cycle.err"
+   launchctl kickstart "$gui/${label}.cycle"; sleep 60; grep -c -e 'トークンを発行できなかった' -e 'コマンドを実行できなかった' -e '保留しました' "$logs/cycle.err"
    ```
 
-   期待: `cycle.err`に`保留しました`がない（launchdからkeychainのApp鍵を読めた）。
+   期待: `0`（launchdからkeychainのApp鍵を読み、照合が終わった）。1以上なら`tail "$logs/cycle.err"`で読む。
 3. 状態を見る（[15](#15-statusの読み方)）。
 
    ```zsh
    "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy"
    ```
 
-   期待: `PR #…`の行に`世代`がある。Jobの行がない（shadowはAIを起動しない）。`capability(claude): 記録あり`。
+   期待: `PR #…`の行が`未観測`でない。Jobの行がない（shadowはAIを起動しない）。`capability(claude): 記録あり`。
 4. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめる。結果をIssue #50に記録する（PR48-R006・R011、I003の実測）。
 
 ## 14. 1件のPRをactiveにする
+
+前提: W4c（PR番号は後で）がマージ済み（R015、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）で、写しがそれを含む。
 
 [切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは2と3。
 
@@ -379,7 +364,8 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 ```zsh
 (
   cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
-  [[ ",${cur}," == *",${target_pr},"* ]] && { echo "既にある: ${cur}"; exit 0; }
+  list=",${${cur//$'\n'/,}// /},"
+  [[ $list == *",${target_pr},"* ]] && { echo "既にある: ${cur}"; exit 0; }
   [[ $cur == none ]] && new="${target_pr}" || new="${cur},${target_pr}"
   gh variable set OWNER_MERGE_ONLY --repo "$repo_slug" --body "$new" && gh variable get OWNER_MERGE_ONLY --repo "$repo_slug"
 )
@@ -387,10 +373,15 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 期待: 対象のPR番号を含む一覧。
 
-3のpolicy:
+3のpolicy。変数とcapabilityを確かめてから切り替える。
 
 ```zsh
-kl_mode active && launchctl kickstart -k "$gui/${label}.serve"
+(
+  cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
+  [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
+  "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
+  kl_mode active && launchctl kickstart -k "$gui/${label}.serve"
+)
 ```
 
 期待: `active start-small-…`。6の実装担当のReadyのあと、数分で粗探しのCOMMENT、次のcycleでレビューが`kurashi-ledger-claude[bot]`から出る。
@@ -445,7 +436,7 @@ PRを戻す（受付は照合だけを続ける）:
 kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"
 ```
 
-期待: `shadow start-small-…`。
+期待: `shadow start-small-…`。続けて15のstatusで、Jobの行に`launching`・`running`・`result-ready`・`uncertain`がなく、`不明な投稿: 0件`。残れば16。
 
 全体を止める（serveはoffで起動しないので、先に外す）:
 
@@ -457,12 +448,11 @@ for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/nu
 
 ## 18. 広げる前に測る
 
-対象のPRで、受付が起動した回数、同じhead/baseでの重複起動、Readyから結果までの時間を測る。
+対象のPRで、受付が起動した回数、同じhead/baseでの重複起動、Readyから結果までの時間を測る。粗探しもReviewのCOMMENTで出るので、Reviewを1回取得して本文の印で分ける。
 
 ```zsh
 gh api --paginate "repos/${repo_slug}/issues/${target_pr}/timeline" --jq '.[] | select(.event == "ready_for_review") | "ready\t\(.created_at)"'
-gh api --paginate "repos/${repo_slug}/issues/${target_pr}/comments" --jq '.[] | select(.user.login == "kurashi-ledger-claude[bot]" and (.body | startswith("<!-- kurashi-ledger:red-team:v1 -->"))) | "red-team\t\(.created_at)\t\(.body | capture("head_sha: (?<h>[0-9a-f]{7})").h)"'
-gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | select(.user.login == "kurashi-ledger-claude[bot]") | "review\t\(.submitted_at)\t\(.commit_id[0:7])\t\(.state)"'
+gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | select(.user.login == "kurashi-ledger-claude[bot]") | "\(if (.body | contains("<!-- kurashi-ledger:red-team:v1 -->")) then "red-team" else "review" end)\t\(.submitted_at)\t\(.commit_id[0:7])\t\(.state)"'
 ```
 
 期待: 時刻順に読む。起動回数は`red-team`と`review`の行数（投稿のない起動は15のJobの行で数える）。同じ種類で同じheadの行が2つあれば重複起動。各`ready`から次の`red-team`・`review`までが待ち時間。値と旧巡回との比較をIssue #50に記録し、所有者が広げるかを決める。
@@ -471,7 +461,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 
 | 変えたもの | やり直す手順 |
 | --- | --- |
-| Claude Code | `rm "$install"`のあと5、8、9。cycleは版・実行ファイルのhashが違えば起動しない |
-| 写し（新しいmain） | 2、0、`rm "$install"`のあと5、8、9。`for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done`のあと12 |
+| Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
+| 写し（新しいmain） | 17の「全体を止める」の1行目、2、0、`rm "$install"`のあと5、8、9、12 |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`か手で変え、revisionを上げ、`launchctl kickstart -k "$gui/${label}.serve"`で受け口を再起動する。Readyのやり直しが要る |

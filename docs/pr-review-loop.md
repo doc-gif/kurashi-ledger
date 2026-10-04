@@ -180,14 +180,14 @@ required_reviewers: <login/App IDの一覧>
 
 1. ownerが、そのPRの旧担当（レビュー担当・粗探し・T23の巡回）を止め、終了を確かめる。
 2. ownerが、巡回の設定でそのPRを飛ばし、`OWNER_MERGE_ONLY`に加える。
-3. ownerがpolicyへそのPRを加える（新しいrevision、切替時刻の`readyAfter`）。
+3. ownerがpolicyでそのPRを`targets`に置き、modeをactiveにする（新しいrevision、切替時刻の`readyAfter`）。
 4. 調整係が受領記録を、受付が通知を出す。ownerは、実装担当のReadyの前にどちらかが出ていることを確かめる（周知のため）。
 5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は使わない。
 6. 実装担当が新しくDraft→Readyにする。
 
 ### rollback（PRごと、または全体）
 
-1. ownerがpolicyからそのPRを外す（全体ならmodeを`shadow`か`off`）。
+1. ownerがpolicyからそのPRを外すか、modeを`shadow`か`off`にする。
 2. 受付のJobの終了（process tree）を確かめる。uncertainのOutboxは、GitHub上の投稿を確かめて解消してから戻す。
 3. ownerが巡回の設定を戻す。`OWNER_MERGE_ONLY`には残す。
 4. 実装担当が完了報告を出し直し、上の1〜5節でレビューを続ける。

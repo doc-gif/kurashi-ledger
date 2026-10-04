@@ -65,17 +65,17 @@ Brokerの身元と隔離の規則は[受付設計](review-dispatch-design.md)の
 
 GitHubのREST APIにはスレッドの解決状態がなく、書込み権限のある人（実装AIのAppやownerを含む）はReviewのdismissやコメントの編集・削除ができる。そのため、入力を1つの規則にまとめて安全側に倒す。実装は[findings.ts](../scripts/lib/review-dispatch/findings.ts)。
 
-- **挙げられる人:** policyに登録した参加者（ownerと、割り当てたreviewer以外も含む。そのPRの実装担当と同じ`person`の人は除く。[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。全員が同じ規則で挙げ、だれもほかの人の指摘を解消できない。登録していない第三者のコメントは参考で、判定を変えない。`accepted()`、APPROVEの前の確認、Webhookの印は、この同じ範囲を使う。
+- **挙げられる人:** policyに登録した参加者（ownerと、割り当てたreviewer以外も含む。そのPRの実装担当と同じ`person`の人は除く。[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。全員が同じ規則で挙げ（ownerのCOMMENTのReview・行コメント・会話コメントも数える）、だれもほかの人の指摘を解消できない。登録していない第三者のコメントは参考で、判定を変えない。`accepted()`、APPROVEの前の確認、Webhookの印は、この同じ範囲を使う。
 - **Review本文:** 行頭の`PR<N>-R<3桁以上>`（このPRの番号だけ。`> `の引用行と文中の言及は除く）。IDのないCHANGES_REQUESTEDとDISMISSEDは`review:<ID>`。
 - **行コメント:** すべて指摘（IDがなければ`comment:<ID>`）。編集されたものは、更新時刻に`comment:<ID>`も挙げる。
 - **会話コメント（PRのconversation）:** 行頭ID。IDがなく、`decision:`の行の値が`accepted`以外なら`issue:<ID>`。編集されたものは`issue:<ID>`も挙げる。
-- **観測の記録:** 項目ごとに、最初に観測した本文のhashと指摘IDを専用DBへ不変の記録として残す（重複排除に直前のhashを含め、前の内容へ戻した編集も見つける）。後で消えた項目は`deleted:<項目>`、本文が変わった項目は`edited:<項目>`を、その観測の時刻（行コメント・会話コメントは更新時刻）で挙げる。照合の`observedAt`は応答のDateの最大値。最初の観測より前の削除は照合では見えず、Webhookの印で補う。
+- **観測の記録:** 項目ごとに、最初に観測した本文のhashと指摘IDを専用DBへ不変の記録として残す（重複排除に直前のhashを含め、前の内容へ戻した編集も見つける）。後で消えた項目は`deleted:<項目>`、本文が変わった項目は`edited:<項目>`を、その観測の時刻（行コメント・会話コメントは更新時刻）で挙げる。Review本文の編集はREST APIでは時刻が分からないので、この比較だけで見つける。照合の`observedAt`は応答のDateの最大値。最初の観測より前の削除は照合では見えず、Webhookの印で補う。
 - **解消:** 同じ人の、より後の、**現在のheadのcommitへの**APPROVEDだけ。本文の「解消」、別の人、古いcommitへの承認、dismissは解消しない。同時刻や、承認したReview自身の指摘は解消しない。
-- 未解消の指摘は`accepted`を止める。shadowの観測にはIDだけを記録する。
+- 未解消の指摘は、割り当てたreviewerの最新のReviewに付き（ほかの参加者とownerの指摘は全員のReviewに付く）、`accepted`を止める。shadowの観測にはIDだけを記録する。
 
 ## workflowの信頼（PR48-R008）
 
-範囲は所有者の決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)、`.npmrc`は[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）で、CIの判定を決めるファイル: `.github/`の全体、`.npmrc`、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`。必須ジョブは`.github/workflows/ci.yml`のrunだけから数える（判定は固定11ジョブ。commit status・check runは補助）。
+範囲は所有者の決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)、`.npmrc`は[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）で、CIの判定を決めるファイル: `.github/`の全体、`.npmrc`、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。必須ジョブは`.github/workflows/ci.yml`のrunだけから数える（判定は固定11ジョブ。commit status・check runは補助）。
 
 1. 範囲のファイルを変えるPRは、CIが成功してもunknown（`unknown-evidence`）で止まる。
 2. ownerは差分の独立レビューを確かめ、mainとPRのheadで要約を求める。信頼した写しの`tools/review_dispatch/ci-trust-digest.sh`を使う（`git -c core.quotePath=false ls-tree -r -z`の行を範囲で絞り、パスのバイト順に並べたSHA-256。合成repoで`ciTrustDigest`と一致することを試験している）。`${copy}`は信頼した写し、`${repo}`はmainとPRのheadを取得したcheckout、`${base}`はmainの先端、`${head}`はPRのhead。
@@ -113,7 +113,7 @@ launch/POST不明は`uncertain`に残し、期限切れで再起動・再送し�
 
 `supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しない。lockが取れるだけ、PIDが存在しないだけではleaseを解放しない。途中のmanifest・起動境界は不明として保持する。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明する（setsidで抜けた子孫はrun lockの継承で見つける）。`measure`は子を作るrunで継承を実測し、観測した子のすべてで確かめられたときだけ`descendantLock`をtrueにする。1つでも未検査・失敗・処理中の子があるか、groupの列挙に1回でも失敗したか、子を観測できなければfalse。
 
-DBはWAL/FULL同期、schema 4（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足した）。`PRAGMA secure_delete`とcheckpointでWAL・空きページの旧値を消す。schema 1〜3からの暗黙の変換はせず、未知schemaは書き込まず停止する。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしない。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しない。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用rootで確認してownerが切り替える。以前のDBを消さず、古い配送ID・quota・投稿hashを保つ。
+DBはWAL/FULL同期、schema 4（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足した）。`PRAGMA secure_delete`とcheckpointでWAL・空きページの旧値を消す。schema 1〜3からの暗黙の変換はせず（停止状態のbackupと独立レビューを受けた移行が要る）、未知schemaは書き込まず停止する。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしない。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しない。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用rootで確認してownerが切り替える。以前のDBを消さず、古い配送ID・quota・投稿hashを保つ。
 
 ## 検証の読み方
 
@@ -133,9 +133,11 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 
 | 項目 | 状態 |
 | --- | --- |
-| 実機の測定（I001/I008/O2のdoctor・measure、I003/I004/O1の配送と遅延、I009の子孫、PR48-R006の配送のbase.shaとtimeline、PR48-R011の配送の大きさ・トンネル経由で5秒以内か・本文が変わるか） | ownerが[導入手順](review-dispatch-runbook.md)の8・9・13で行い、Issue #50に記録する。結合できない値はunknownのまま |
+| 実機の測定（I001/I008/O2のdoctor・measure、I003/I004/O1の配送と遅延、I009の子孫、PR48-R011の配送の大きさ・トンネル経由で5秒以内か・本文が変わるか） | ownerが[導入手順](review-dispatch-runbook.md)の8・9・13で行い、Issue #50に記録する |
+| PR48-R006 / I003 | 実Webhookの前に、配送のbase.shaとtimeline・updated_atの実際の値を測る（導入手順の13）。結合できなければunknownを保ち、結合の規則を独立レビューで直す |
 | I010 | App作成PRのCopilotの応答は任意の補助情報。起動・マージの条件に戻さない |
 | I011 | 共有された従来アカウントの身元移行。結合と照合のコードはある。実repoの`identity`の設定は未検証 |
-| [PR #48のレビュー](https://github.com/doc-gif/kurashi-ledger/pull/48)のR013〜R016（R013: 不完全な照合でも配送を処理済みにする、R014の残り: 人の手動の粗探しの記録、R015: quota解除の時計の混在、R016: 観測の記録の保持期限） | 未実装（W3・W4aの計画で後回し）。start-smallは受付が投稿した粗探しだけを使う。R013・R016は「実ホストでのshadow前」とされた |
+| [PR #48のレビュー](https://github.com/doc-gif/kurashi-ledger/pull/48)のR013・R015・R016（不完全な照合でも配送を処理済みにする、quota解除の時計の混在、観測の記録の保持期限） | W4c（PR番号は後で）で直す。R013・R016は実機のshadowの前、R015はactiveの前（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)） |
+| PR48-R014の残り（人の手動の粗探しの記録と、acceptedの比較） | 対象を広げる前（「正本移行/active前」とされた）。start-smallは受付が投稿した粗探しだけを使う |
 | 通知Broker（Codex AppのPRコメント） | 作っていない。start-smallの周知は調整係の受領記録と受付のログで行う（[切替](pr-review-loop.md#切替prごと)の4はどちらかでよい）。作るときは同じ公開検査を掛ける |
 | Codexの自動起動、auto-fix、旧workerとの自動の交代 | 無効（[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)）。受付はマージしない |
