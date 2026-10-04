@@ -23,6 +23,16 @@
       "resolution": "所有者決定O2-token（Issue #50 5977365862）に従う。setup-tokenを所有者専用ファイルから読み、CLAUDE_CODE_OAUTH_TOKENで渡す。cli.sbはkeychainを全面拒否する。"
     },
     {
+      "description": "PR51の粗探し（5977292218、5977423642）: cwd・設定・MCPの穴、Readの範囲、認証の確かめ方。",
+      "state": "resolved",
+      "resolution": "--restricted・--safe-mode・--strict-mcp-config・--disallowedTools mcp__*・disableAllHooksを必須にする。欠ければcheckPlanが拒否する。範囲の規則はRead()だけにする（公式文書では、範囲の規則を参照するのはRead/Editだけで、Read規則はGrep・Globにも効く）。config dirにはdenyを置く。auth statusでoauth_tokenを確かめる。"
+    },
+    {
+      "description": "所有者決定keychain（5977365862）: Appの鍵と同じACLの項目が読めるなら、鍵を移すまで自動起動しない。",
+      "state": "resolved",
+      "resolution": "doctorは、合成のApp鍵形の項目が、cli.sbから読めないことを示す。読めればdisabledにする。"
+    },
+    {
       "description": "macOSは、隔離済みのプロセスにより厳しいprofileを重ねられない（実測: exit 71）。CLIの子に別のprofileを掛けられない。",
       "state": "resolved",
       "resolution": "tool.sbを作らない。tool-child-confinedは、cli.sbの孫で同じprobeが拒否されるかの継承の検査にする。"
@@ -46,6 +56,11 @@
       "description": "CIでmacOSの実Seatbeltを使う。skipの表はmacOSとLinuxを区別しない。",
       "state": "resolved",
       "resolution": "skipしない。macOSでは実sandbox-execで合成probeを確かめる。ほかのOSではdoctorがdisabledを返すことを確かめる。"
+    },
+    {
+      "description": "PR53の粗探し: workerがsupervisorのメモリや制御pipeへ届かないことが必要。",
+      "state": "resolved",
+      "resolution": "deny-supervisorを必須probeにする。signal・制御socket・別プロセスのenvの合成probeとlintで確かめる。"
     }
   ],
   "assessments": [
@@ -54,8 +69,16 @@
       "disposition": "not-applicable",
       "reason": "launcherとdoctorはlockを取らず、外さない。descendant-lockの証拠はsupervisorの責務のまま。",
       "checks": [
-        {"id": "identity", "method": "差分にlock・store.tsの変更がないことを読む。", "expected": "lockの規則は変わらない。"},
-        {"id": "recovery", "method": "runtime.tsの差分が必須probeの追加だけであることを読み、D03の試験を通す。", "expected": "uncertainとleaseの保持は変わらない。"}
+        {
+          "id": "identity",
+          "method": "差分にlock・store.tsの変更がないことを読む。",
+          "expected": "lockの規則は変わらない。"
+        },
+        {
+          "id": "recovery",
+          "method": "runtime.tsの差分が必須probeの追加だけであることを読み、D03の試験を通す。",
+          "expected": "uncertainとleaseの保持は変わらない。"
+        }
       ]
     },
     {
@@ -63,7 +86,11 @@
       "disposition": "preserve",
       "reason": "workerのenvはallowlistだけで作る。cli.sbは資格情報・policy・DB・keychainを拒否する。試験は合成値だけを使う。診断は閉じた列挙とIDだけを出す（PR37-R001）。",
       "checks": [
-        {"id": "public", "method": "stageを明示して check-public --staged を実行する。親のenvに合成の秘密を入れ、計画とエラー文に出ないことを試験する。", "expected": "終了コード0。秘密・トークン・個人のパスが差分と出力にない。"}
+        {
+          "id": "public",
+          "method": "stageを明示して check-public --staged を実行する。親のenvに合成の秘密を入れ、計画とエラー文に出ないことを試験する。",
+          "expected": "終了コード0。秘密・トークン・個人のパスが差分と出力にない。"
+        }
       ]
     },
     {
@@ -71,8 +98,16 @@
       "disposition": "preserve",
       "reason": "測定記録はCLIの版・実行ファイル・profile・argvのhashに結び付ける。help表示を隔離の証拠にしない（PR12-R103）。",
       "checks": [
-        {"id": "update", "method": "bindingが違う測定記録を与える。既存のCIを3 OSで通す。", "expected": "古い測定ではverifiedにならない。"},
-        {"id": "artifact", "method": "起動器はレビュー済みprofileの絶対パスを要求する。macOSの試験で実profileを実sandbox-execへ渡す。", "expected": "別のprofileや改変はhashの不一致で無効になる。"}
+        {
+          "id": "update",
+          "method": "bindingが違う測定記録を与える。既存のCIを3 OSで通す。",
+          "expected": "古い測定ではverifiedにならない。"
+        },
+        {
+          "id": "artifact",
+          "method": "起動器はレビュー済みprofileの絶対パスを要求する。macOSの試験で実profileを実sandbox-execへ渡す。",
+          "expected": "別のprofileや改変はhashの不一致で無効になる。"
+        }
       ]
     },
     {
@@ -80,8 +115,16 @@
       "disposition": "preserve",
       "reason": "run・install・トークンの場所は正規化した絶対パスで、保護ルートと重ならないことを要求する（PR12-R104）。",
       "checks": [
-        {"id": "first-use", "method": "資料にCLIの設定ファイルがある場合や、存在しない場所を与える。", "expected": "起動計画を作らない。既存データを上書きしない。"},
-        {"id": "aliases", "method": "相対・..・末尾/・保護ルートの祖先や子孫を与える。資料の名前の大小・NFDとlinkを試験する。", "expected": "別名や重なりで保護領域へ届かない。"}
+        {
+          "id": "first-use",
+          "method": "資料にCLIの設定ファイルがある場合や、存在しない場所を与える。",
+          "expected": "起動計画を作らない。既存データを上書きしない。"
+        },
+        {
+          "id": "aliases",
+          "method": "相対・..・末尾/・保護ルートの祖先や子孫を与える。資料の名前の大小・NFDとlinkを試験する。",
+          "expected": "別名や重なりで保護領域へ届かない。"
+        }
       ]
     },
     {
@@ -89,24 +132,129 @@
       "disposition": "not-applicable",
       "reason": "SQLite・schema・backupを変えない。DBのprobeは合成の一時ファイルだけを使う。",
       "checks": [
-        {"id": "rollback", "method": "store.tsに差分がないことを読む。", "expected": "DBの形式は変わらない。"},
-        {"id": "restore", "method": "doctorのfixtureが一時dirだけに作られ、終了時に消えることを試験する。", "expected": "受付のDBに触れない。"},
-        {"id": "manifest", "method": "測定記録のschemaとbindingを厳密に検査する。", "expected": "不完全な記録で起動可能にならない。"}
+        {
+          "id": "rollback",
+          "method": "store.tsに差分がないことを読む。",
+          "expected": "DBの形式は変わらない。"
+        },
+        {
+          "id": "restore",
+          "method": "doctorのfixtureが一時dirだけに作られ、終了時に消えることを試験する。",
+          "expected": "受付のDBに触れない。"
+        },
+        {
+          "id": "manifest",
+          "method": "測定記録のschemaとbindingを厳密に検査する。",
+          "expected": "不完全な記録で起動可能にならない。"
+        }
       ]
     }
   ],
   "boundaries": [
-    {"id": "B1", "direction": "entry", "location": "launcher.ts buildLaunch() の install と run", "data": "実行ファイル・profile・設定dir・資料・HOME/TMP・保護ルート・トークンファイルの場所と固定版", "trust": "partially-trusted", "control": "正規化した絶対パスだけ。保護ルートとの重なりを拒否。macOS以外は拒否。policyからargv・envを足す口はない。"},
-    {"id": "B2", "direction": "entry", "location": "launcher.ts の資料ディレクトリ（scanTree）", "data": "PRから取った資料", "trust": "untrusted", "control": "CLIの設定ファイル名をNFC・小文字で拒否。通常のファイル（link 1）とdir以外を拒否。jobはstdinだけで渡す。"},
-    {"id": "B3", "direction": "exit", "location": "launcher.ts の起動計画（shellなし）", "data": "CLIのargv・env・Seatbeltのparam", "trust": "trusted", "control": "checkPlanが正規の形との完全一致を求める。Claudeは文書にあるflagだけでcli.sbで包む。Codexは包まない。"},
-    {"id": "B4", "direction": "entry", "location": "doctor.ts のprobe子の出力", "data": "1行のJSON", "trust": "untrusted", "control": "閉じた形以外はinconclusive。EPERMだけをdenied。対照が成功しなければinconclusive。"},
-    {"id": "B5", "direction": "entry", "location": "doctor.ts に渡す測定記録", "data": "backend・版・hash・probeごとの結果", "trust": "partially-trusted", "control": "厳密なschemaとbindingの一致。不一致はunverified、allowedはdisabled。"},
-    {"id": "B6", "direction": "exit", "location": "doctor.ts の結果", "data": "capabilityと状態・理由", "trust": "trusted", "control": "全probeがdeniedのときだけtrue。理由はIDだけで、パス・OSの文・トークンを含めない。"},
-    {"id": "B7", "direction": "exit", "location": "doctor の合成fixture（一時dir、loopbackのport、unix socket、使い捨てkeychain file、合成のenv読取り器）", "data": "SYNTHETICの値だけ", "trust": "trusted", "control": "mkdtempの場所に作り、終了時に消す。keychainは検索リストに加えない。外部ネットワーク・実keychainを使わない。"},
-    {"id": "B8", "direction": "exit", "location": "公開のリポジトリとPR", "data": "コード・profile・試験・計画", "trust": "untrusted", "control": "stageを明示し check-public --staged を確かめる。"},
-    {"id": "B9", "direction": "exit", "location": "doctor.ts measureCli()（所有者が実機で実行。CIはfake）", "data": "罠の資料、config dirの一時の罠、合成の秘密、stdinの試行の依頼", "trust": "partially-trusted", "control": "新しいrootとnonceだけを使う。罠のhookはmarkerをtouchするだけ。config dirの罠は実行後に消す。"},
-    {"id": "B10", "direction": "entry", "location": "launcher.ts readTokenFile()", "data": "Claudeのsetup-token", "trust": "partially-trusted", "control": "通常のファイル・所有者一致・mode 600/400・link 1・親dirは他者書込み不可。O_NOFOLLOWで開きfstatで再検査。エラーは固定文。"},
-    {"id": "B11", "direction": "entry", "location": "doctor.ts parseEvents()（実CLIのイベント）", "data": "init・tool_use・permission_denials・コマンドの項目", "trust": "untrusted", "control": "JSON行だけを読み、知らない形は無視。対象を名指す試行の証跡がなければinconclusive。"}
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "launcher.ts buildLaunch() の install と run",
+      "data": "実行ファイル・profile・設定dir・資料・HOME/TMP・保護ルート・トークンファイルの場所と固定版",
+      "trust": "partially-trusted",
+      "control": "正規化した絶対パスだけ。保護ルートとの重なりを拒否。macOS以外は拒否。policyからargv・envを足す口はない。"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "launcher.ts のjob本文（stdin）",
+      "data": "jobの文字列",
+      "trust": "untrusted",
+      "control": "argvに入れず、stdinだけで渡す。argvの問い合わせ文は固定。サイズ上限を超えるものとNULを含むものは拒否。"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "launcher.ts の起動計画（shellなし）",
+      "data": "CLIのargv・env・Seatbeltのparam",
+      "trust": "trusted",
+      "control": "checkPlanが正規の形との完全一致を求める。envはallowlistだけで作る。Claudeは文書にあるflagだけを使い、cli.sbで包む。Codexは包まない。"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "doctor.ts のprobe子の出力",
+      "data": "1行のJSON",
+      "trust": "untrusted",
+      "control": "閉じた形以外はinconclusive。EPERMだけをdenied。対照が成功しなければinconclusive。"
+    },
+    {
+      "id": "B5",
+      "direction": "entry",
+      "location": "doctor.ts に渡す測定記録",
+      "data": "backend・版・hash・probeごとの結果",
+      "trust": "partially-trusted",
+      "control": "厳密なschemaとbindingの一致。不一致はunverified、allowedはdisabled。"
+    },
+    {
+      "id": "B6",
+      "direction": "exit",
+      "location": "doctor.ts の結果",
+      "data": "capabilityと状態・理由",
+      "trust": "trusted",
+      "control": "全probeがdeniedのときだけtrue。理由はIDだけで、パス・OSの文・トークンを含めない。"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "doctor の合成fixture（一時dir、loopbackのport）",
+      "data": "SYNTHETICの値だけ",
+      "trust": "trusted",
+      "control": "mkdtempの場所に作り、終了時に消す。外部ネットワーク・実keychain・実CLIを使わない。"
+    },
+    {
+      "id": "B8",
+      "direction": "exit",
+      "location": "公開のリポジトリとPR",
+      "data": "コード・profile・試験・計画",
+      "trust": "untrusted",
+      "control": "stageを明示し check-public --staged を確かめる。"
+    },
+    {
+      "id": "B9",
+      "direction": "exit",
+      "location": "doctor.ts measureCli()（所有者が実機で実行。CIはfake）",
+      "data": "罠の資料、config dirの一時の罠、合成の秘密、stdinの試行の依頼",
+      "trust": "partially-trusted",
+      "control": "新しいrootとnonceだけを使う。罠のhookはmarkerをtouchするだけ。config dirの罠は実行後に消す。実鍵・実keychain項目を使わない。"
+    },
+    {
+      "id": "B10",
+      "direction": "entry",
+      "location": "launcher.ts readTokenFile()",
+      "data": "Claudeのsetup-token",
+      "trust": "partially-trusted",
+      "control": "通常のファイル・所有者一致・mode 600/400・link 1・親dirは他者書込み不可。O_NOFOLLOWで開き、fstatで再検査する。作業領域と重ならない。エラーは固定文。"
+    },
+    {
+      "id": "B11",
+      "direction": "exit",
+      "location": "doctor の使い捨てkeychain file、supervisorの代役socket、合成のenv読取り器",
+      "data": "合成の項目・doctor自身のpid・一時socket・合成のnonce",
+      "trust": "trusted",
+      "control": "fixtureの一時dirに作る。keychainは検索リストに加えない（実機で確認）。終了時にdelete-keychainとrmで消す。"
+    },
+    {
+      "id": "B12",
+      "direction": "entry",
+      "location": "doctor.ts parseEvents()（実CLIのstream-json・--jsonの出力）",
+      "data": "CLIのイベント",
+      "trust": "untrusted",
+      "control": "1行ずつJSONとして読み、知らない形は無視する。試行の証跡は、測定側が出した対象の文字列を含むtool呼出し・拒否・コマンドの項目だけ。証跡がなければinconclusive。値は判定にだけ使い、記録に写さない。"
+    },
+    {
+      "id": "B13",
+      "direction": "entry",
+      "location": "launcher.ts の資料ディレクトリ（scanTree）",
+      "data": "PRから取った資料",
+      "trust": "untrusted",
+      "control": "CLIの設定ファイル名を、NFCに正規化した小文字で比べて拒否する。通常のファイル（link 1）とdir以外も拒否する。"
+    }
   ],
   "variant_analysis": [
     {
@@ -114,11 +262,26 @@
       "cause_key": "token-scope-fail-open",
       "pattern": "隔離を確かめられないのに起動へ進む。証拠の欠落を拒否とみなす。",
       "places": [
-        {"location": "doctor.ts runDoctor()", "result": "不明・測定なしはunverified、allowedはdisabled。Codexは常にdisabled。"},
-        {"location": "doctor.ts measureCli()", "result": "試行の証跡がなければinconclusive。"},
-        {"location": "doctor.ts seatbeltHost()", "result": "対照と、規則を外した変種での成功が揃って初めてdenied。"},
-        {"location": "runtime.ts capabilityReady()", "result": "必須probeを足すだけ。"},
-        {"location": "launcher.ts readTokenFile()・checkPlan()", "result": "トークンや計画の不備は起動拒否。"}
+        {
+          "location": "doctor.ts runDoctor()",
+          "result": "不明・測定なしはunverified、allowedはdisabled。Codexは常にdisabled。"
+        },
+        {
+          "location": "doctor.ts measureCli()",
+          "result": "試行の証跡がなければinconclusive。"
+        },
+        {
+          "location": "doctor.ts seatbeltHost()",
+          "result": "対照と、規則を外した変種での成功が揃って初めてdenied。"
+        },
+        {
+          "location": "runtime.ts capabilityReady()",
+          "result": "必須probeを足すだけ。"
+        },
+        {
+          "location": "launcher.ts readTokenFile()・checkPlan()",
+          "result": "トークンや計画の不備は起動拒否。"
+        }
       ]
     },
     {
@@ -126,8 +289,14 @@
       "cause_key": "credential-tool-from-untrusted-checkout",
       "pattern": "資格情報に届く道具をPRのcheckoutから実行する。",
       "places": [
-        {"location": "launcher.ts のprofile・実行ファイル", "result": "所有者管理のinstall設定の絶対パスだけ。"},
-        {"location": "doctor.test.ts", "result": "合成のprobeだけを拘束し、実CLI・実鍵を使わない。"}
+        {
+          "location": "launcher.ts のprofile・実行ファイル",
+          "result": "所有者管理のinstall設定の絶対パスだけ。"
+        },
+        {
+          "location": "doctor.test.ts",
+          "result": "合成のprobeだけを拘束し、実CLI・実鍵を使わない。"
+        }
       ]
     },
     {
@@ -135,9 +304,18 @@
       "cause_key": "logged-value-carries-data",
       "pattern": "診断・記録にパス・OSの文・トークンを写す。",
       "places": [
-        {"location": "doctor.ts の結果", "result": "probe IDと閉じた列挙だけ。"},
-        {"location": "argvTemplateHash()・measurementRecord()", "result": "トークンは<token>に置き換える。"},
-        {"location": "launcher.ts の例外文", "result": "固定文だけ。"}
+        {
+          "location": "doctor.ts の結果",
+          "result": "probe IDと閉じた列挙だけ。"
+        },
+        {
+          "location": "argvTemplateHash()・measurementRecord()",
+          "result": "トークンは<token>に置き換える。"
+        },
+        {
+          "location": "launcher.ts の例外文",
+          "result": "固定文だけ。"
+        }
       ]
     },
     {
@@ -145,7 +323,10 @@
       "cause_key": "public-path-exception-scope",
       "pattern": "公開検査の例外を広げる。",
       "places": [
-        {"location": "check-public・public-policy", "result": "変更しない。"}
+        {
+          "location": "check-public・public-policy",
+          "result": "変更しない。"
+        }
       ]
     },
     {
@@ -153,7 +334,10 @@
       "cause_key": "verification-on-target-runtime",
       "pattern": "未実行・別OSの検査を合格と扱う。",
       "places": [
-        {"location": "doctor.test.ts のSeatbelt試験", "result": "macOSで実sandbox-exec、ほかのOSでdisabledを確かめる。skipしない。"}
+        {
+          "location": "doctor.test.ts のSeatbelt試験",
+          "result": "macOSで実sandbox-exec、ほかのOSでdisabledを確かめる。skipしない。"
+        }
       ]
     },
     {
@@ -161,7 +345,10 @@
       "cause_key": "artifact-release-coherence",
       "pattern": "版やprofileが変わっても古い証拠で起動する。",
       "places": [
-        {"location": "doctor.ts の測定記録", "result": "版・hashのどれかが違えばunverified。"}
+        {
+          "location": "doctor.ts の測定記録",
+          "result": "版・hashのどれかが違えばunverified。"
+        }
       ]
     },
     {
@@ -169,7 +356,10 @@
       "cause_key": "install-record-verification-scope",
       "pattern": "検査が保証する範囲より狭く確かめる。",
       "places": [
-        {"location": "doctor のprobe", "result": "合成の拒否と実CLIの測定を別に扱い、合成だけで実CLIを合格にしない。"}
+        {
+          "location": "doctor のprobe",
+          "result": "合成の拒否と実CLIの測定を別に扱い、合成だけで実CLIを合格にしない。"
+        }
       ]
     },
     {
@@ -177,21 +367,30 @@
       "cause_key": "destructive-op-follows-link",
       "pattern": "別名・linkで保護領域へ届く。",
       "places": [
-        {"location": "launcher.ts のパスと資料の検査", "result": "正規化・重なりの拒否。資料のlinkと特殊ファイルを拒否。"}
+        {
+          "location": "launcher.ts のパスと資料の検査",
+          "result": "正規化・重なりの拒否。資料のlinkと特殊ファイルを拒否。"
+        }
       ]
     },
     {
       "invariant_id": "INV-LOCK",
       "pattern": "launcher・doctorがlockを取る・外す。",
       "places": [
-        {"location": "launcher.ts・doctor.ts", "result": "lockを扱わない。"}
+        {
+          "location": "launcher.ts・doctor.ts",
+          "result": "lockを扱わない。"
+        }
       ]
     },
     {
       "invariant_id": "INV-STORAGE",
       "pattern": "doctorが受付のDBを開く。",
       "places": [
-        {"location": "doctor.ts のdeny-db probe", "result": "一時の合成ファイルだけを使う。"}
+        {
+          "location": "doctor.ts のdeny-db probe",
+          "result": "一時の合成ファイルだけを使う。"
+        }
       ]
     }
   ]
