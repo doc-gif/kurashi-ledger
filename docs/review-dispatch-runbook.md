@@ -438,13 +438,19 @@ kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"
 
 期待: `shadow start-small-…`。続けて15のstatusで、Jobの行に`launching`・`running`・`result-ready`・`uncertain`がなく、`不明な投稿: 0件`。残れば16。
 
-全体を止める（serveはoffで起動しないので、先に外す）:
+全体を止める。まずlaunchdから外す（serveはoffで起動しないので、先に外す）:
 
 ```zsh
-for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done; kl_mode off
+for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
 ```
 
-期待: `off start-small-…`。CodexのAppのWebhookのActiveを外す。
+期待: 表示なし。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
+
+```zsh
+kl_mode off
+```
+
+期待: `off start-small-…`。15のstatusで、Jobの行に`launching`・`running`がなく、`不明な投稿: 0件`。残れば16。CodexのAppのWebhookのActiveを外す。
 
 ## 18. 広げる前に測る
 
@@ -462,6 +468,6 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17の「全体を止める」の1行目、2、0、`rm "$install"`のあと5、8、9、12 |
+| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"`、activeなら14の3 |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`か手で変え、revisionを上げ、`launchctl kickstart -k "$gui/${label}.serve"`で受け口を再起動する。Readyのやり直しが要る |
