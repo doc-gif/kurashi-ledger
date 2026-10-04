@@ -55,12 +55,12 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "PR48-R003の(a)を実装する。runごとの鍵はsupervisorのメモリだけに置き、ディスク・環境変数・workerへ渡すfdに出さない。受付・Brokerは公開側の値（約束値）で検証だけを行い、署名の関数を持たない。Claude AppのBrokerは信頼した写しのtoken wrapperを`--agent claude --purpose review`に固定して呼び、tokenは中継子プロセスの環境にだけ置く。Codexの鍵・Codex Appの経路には触れない。試験は合成の値・fake gh・fake wrapperだけを使う。",
+      "reason": "PR48-R003の(a)を実装する。runごとの鍵はsupervisorのメモリだけに置き、ディスク・環境変数・workerへ渡すfdに出さない。受付・Brokerは公開側の値（約束値）で検証だけを行い、署名の関数を持たない。Claude AppのBrokerは信頼した写しのtoken wrapperを`--agent claude --purpose review`に固定して呼び、tokenは中継子プロセスの環境にだけ置く。Codexの鍵・Codex Appの経路には触れない。試験は合成の値・fake gh・fake wrapperだけを使う。 PR51の粗探し（P1）に従い、Brokerは投稿直前の本文にcheck-public相当の検査（鍵・token・ローカルの絶対パスを含む）を行い、当たれば投稿しない。",
       "checks": [
         {
           "id": "public",
-          "method": "commit前に`node scripts/check-public.ts --staged`の終了コードを確かめ、stageした差分を読む。署名済みrunのあと、root配下の全ファイル・workerの環境・workerの開いたfdに、署名が公開した秘密の断片（seedから導出した値）が現れないことを実プロセスで試験する。Claude Brokerの起動argv・環境のallowlist（GH_TOKEN・KL_*・NODE_OPTIONS・Codexの名前がない）、中継の応答にtokenが出ないことを試験する。",
-          "expected": "終了コード0。実データ・個人のパス・トークン・鍵がない。workerから秘密鍵の断片を読めない。BrokerのargvはClaude/reviewに固定され、Codexの鍵のserviceを含まない。"
+          "method": "commit前に`node scripts/check-public.ts --staged`の終了コードを確かめ、stageした差分を読む。署名済みrunのあと、root配下の全ファイル・workerの環境・workerの開いたfdに、署名が公開した秘密の断片（seedから導出した値）が現れないことを実プロセスで試験する。Claude Brokerの起動argv・環境のallowlist（GH_TOKEN・KL_*・NODE_OPTIONS・Codexの名前がない）、中継の応答にtokenが出ないことを試験する。 PR51のP1: 実行時に組み立てた合成の秘密（AWS鍵の形、sk-ant、stateless ghs、JWT、Bearer、api_key=、ホーム配下・privateやetc等のsystem配下・チルダ・ドライブ文字・fileスキームのパス、メール、秘密鍵の見出し）を本文に入れ、Claude Broker経由でPOST 0件・wrapper起動0件・owner通知1件・受付のlease保持を試験する。通常のv1本文は通ることも試験する。",
+          "expected": "終了コード0。実データ・個人のパス・トークン・鍵がない。workerから秘密鍵の断片を読めない。BrokerのargvはClaude/reviewに固定され、Codexの鍵のserviceを含まない。 秘密やローカルパスを含むReview本文は投稿されない（blocked、needs-owner）。"
         }
       ]
     },
@@ -244,6 +244,14 @@
       "data": "合成の値と試験ベクトル",
       "trust": "untrusted",
       "control": "合成のseed・ID・SHAだけ。stageを明示し、check-public --stagedを確かめる"
+    },
+    {
+      "id": "B10",
+      "direction": "exit",
+      "location": "ReviewBroker.submit: 投稿直前のReview本文（全Broker共通、Claude Brokerを含む）",
+      "data": "workerの結果から作る公開のReview本文（注入された指示で秘密を読ませた結果を含みうる）",
+      "trust": "untrusted",
+      "control": "PR51の粗探し（P1）への対応。public-policyのtextFindings（check-publicと同じ規則）に加え、鍵・tokenの形と長い不透明な文字列（commit SHAとrun UUIDを除く）、ローカルの絶対パスを拒否する。当たればPOSTせずOutboxも作らず、ownerへの通知を1回記録してblockedを返し、受付はleaseを保持する（needs-owner、再起動なし）"
     }
   ],
   "variant_analysis": [
@@ -428,6 +436,24 @@
         {
           "location": "docs/review-dispatch-implementation.md PR48-R003",
           "result": "実装した範囲と、W4・実Mac測定の残りを書く"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開物への書込み経路のうち、一部にだけ公開検査を掛ける",
+      "places": [
+        {
+          "location": "ReviewBroker.submit（Review本文）",
+          "result": "投稿前にpublicationFindingsで検査。blockedならPOST・Outboxなし"
+        },
+        {
+          "location": "通知Broker（Codex App、PRコメント）",
+          "result": "このPRの範囲外（W4/Codex側）。同じ関数を使うよう報告で引き継ぐ"
+        },
+        {
+          "location": "parseResult（結果の受入れ）",
+          "result": "既存の検査（gh token・秘密鍵・macOSのホームのパス）は維持。公開検査は最終本文で行う"
         }
       ]
     }
