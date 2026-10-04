@@ -669,10 +669,15 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     assert.equal(untrusted.observation.workflow, "untrusted");
     assert.equal(untrusted.snapshot.complete, false);
     assert.equal(assess(p, untrusted.snapshot, null).reason, "unknown-evidence");
-    p.trustedCiDigests = [ciTrustDigest(listing())];
-    const other = (await reconcile(f.reader(), p, d.store))[0]!;
-    assert.equal(other.observation.workflow, "untrusted");
-    p.trustedCiDigests = [ciTrustDigest(listing(change))];
+    const main = ciTrustDigest(listing()),
+      head = ciTrustDigest(listing(change));
+    // Bound to main (owner decision 5978676604): the right head digest recorded against another main is not trusted.
+    for (const record of [{ main: head, head: main }, { main: "f".repeat(64), head }]) {
+      p.trustedCi = [record];
+      const other = (await reconcile(f.reader(), p, d.store))[0]!;
+      assert.equal(other.observation.workflow, "untrusted", JSON.stringify(record));
+    }
+    p.trustedCi = [{ main, head }];
     const trusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(trusted.observation.workflow, "trusted");
     assert.equal(trusted.snapshot.complete, true);
@@ -692,7 +697,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     g.state.ready = true;
     g.state.now = 5;
     g.state.headFiles = change;
-    q.trustedCiDigests = [ciTrustDigest(listing(change))];
+    q.trustedCi = [{ main: ciTrustDigest(listing()), head: ciTrustDigest(listing(change)) }];
     e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
     const r = (await reconcile(g.reader(), q, e.store))[0]!;
     assert.equal(r.observation.workflow, "trusted");

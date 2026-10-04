@@ -79,6 +79,8 @@ type RunOutcome = {
   uncertain: boolean;
   // The worker was proven never started (materials or plan refused before the supervisor ran it).
   neverStarted?: boolean;
+  // Why it never started (a fixed reason ID, for the owner notice).
+  reason?: string;
   // From the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
   origin: Provenance | null;
 };
@@ -192,8 +194,8 @@ export class Dispatcher {
       if (value.neverStarted === true) {
         // Nothing ran: release the lease, keep the job (no relaunch for this generation) and tell the owner once.
         this.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
-        this.store.notice(`${j.key}:not-started:${j.run}`);
-        return "not-started";
+        this.store.notice(`${j.key}:not-started:${value.reason ?? "unknown"}:${j.run}`);
+        return `not-started:${/^[a-z-]{1,40}$/.test(value.reason ?? "") ? value.reason : "unknown"}`;
       }
       if (value.uncertain || !value.treeEnded) {
         this.store.uncertain(j);
@@ -213,22 +215,56 @@ export class Dispatcher {
       }
       if (resultFindings(parsed, j, s, this.policy.repo).length)
         return await this.#block(j, runner, value.result, now);
-      this.store.result(j, value.result);
+      this.store.result(j, value.result, value.origin);
       // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
-      const outcome = await broker.submit(
-        this.policy,
-        j,
-        value.result,
-        value.origin,
-        fetchFresh,
-      );
+      return await this.#post(j, runner, value.result, value.origin, broker, fetchFresh, now);
+    } catch {
+      this.store.uncertain(j);
+      return "uncertain";
+    }
+  }
+  // A job whose post was deferred (an unprocessed edit/delete mark) is posted by a later cycle from its stored
+  // result and provenance; the Broker verifies the signature again. Nothing is relaunched.
+  async resumeDeferred(
+    s: Snapshot,
+    runner: Runner,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string | null> {
+    this.observe(s);
+    const d = this.store.deferred(`${this.policy.repoId}:${s.pr}`);
+    if (!d || this.policy.mode !== "active") return null;
+    try {
+      return await this.#post(d.job, runner, d.result, d.origin as Provenance, broker, fetchFresh, now);
+    } catch {
+      this.store.uncertain(d.job);
+      return "uncertain";
+    }
+  }
+  async #post(
+    j: Job,
+    runner: Runner,
+    raw: string,
+    origin: Provenance | null,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string> {
+    {
+      const outcome = await broker.submit(this.policy, j, raw, origin, fetchFresh);
+      if (outcome === "deferred") {
+        // The result and the lease stay; one owner notice per run (PR #56 red team P2).
+        this.store.notice(`${j.key}:deferred:${j.run}`);
+        return outcome;
+      }
       if (outcome === "uncertain" || outcome === "blocked") {
         // blocked: the publication check refused the body. Hold the lease for the owner (needs-owner),
         // and keep the durable per-PR blocked state (W4 row 1).
         this.store.uncertain(j);
         if (outcome === "blocked") {
           this.store.block(j, "publication", now);
-          await this.#redact(j, runner, value.result);
+          await this.#redact(j, runner, raw);
         }
         return outcome;
       }
@@ -239,16 +275,13 @@ export class Dispatcher {
         uncertain: false,
       });
       return outcome;
-    } catch {
-      this.store.uncertain(j);
-      return "uncertain";
     }
   }
   // blocked = persistent needs-owner: DB keeps only the hash, one owner notice, lease held, envelope redacted,
   // and the durable per-PR blocked row (store.block, W4 row 1) that only the owner's unpause clears.
   async #block(j: Job, runner: Runner, raw: string, now: number): Promise<"blocked"> {
     this.store.result(j, redactedResult(raw));
-    this.store.checkpoint();
+    if (!this.store.checkpoint()) this.store.notice(`${j.key}:checkpoint-busy:${j.run}`);
     this.store.notice(blockedNotice(j));
     this.store.block(j, "publication", now);
     await this.#redact(j, runner, raw);
@@ -276,5 +309,7 @@ export function fixtureResult(j: Job): WorkerResult {
     findings: [],
     evidence: [],
     unverified: ["実AI・本導入は未検証"],
+    causes: [],
+    previous: [],
   };
 }

@@ -539,3 +539,27 @@ test("W4 capability records are replaced or removed, and faultfinding evidence i
     d.cleanup();
   }
 });
+
+test("W4 a checkpoint kept busy by another reader is retried and then reported once", () => {
+  const d = database();
+  const marker = "SYNTHETIC-BUSY-" + "r".repeat(30);
+  try {
+    const j = claim(d.store);
+    d.store.running(j);
+    d.store.result(j, marker);
+    const reader = new DatabaseSync(join(d.root, "dispatch.sqlite"), { readOnly: true });
+    try {
+      reader.exec("BEGIN");
+      reader.prepare("SELECT count(*) FROM jobs").get();
+      assert.equal(d.store.checkpoint(), false);
+      assert.equal(d.store.redactResult(j, marker, "hash-only"), true);
+      assert.equal(d.store.notice(`${j.key}:checkpoint-busy:${j.run}`), false); // already reported
+      reader.exec("COMMIT");
+    } finally {
+      reader.close();
+    }
+    assert.equal(d.store.checkpoint(), true);
+  } finally {
+    d.cleanup();
+  }
+});

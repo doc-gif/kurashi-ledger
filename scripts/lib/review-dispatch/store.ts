@@ -93,7 +93,7 @@ export class Store {
         CREATE TABLE targets(key TEXT PRIMARY KEY, value TEXT NOT NULL, pending TEXT);
         CREATE TABLE inbox(app INTEGER, delivery TEXT, event TEXT, received INTEGER, payload TEXT, processed INTEGER DEFAULT 0, PRIMARY KEY(app,delivery));
         CREATE TABLE consumed(id TEXT PRIMARY KEY);
-        CREATE TABLE jobs(id TEXT PRIMARY KEY,key TEXT,generation INTEGER,actor INTEGER,kind TEXT,executor TEXT,run TEXT UNIQUE,value TEXT,status TEXT,started INTEGER,result TEXT, UNIQUE(key,generation,actor,kind));
+        CREATE TABLE jobs(id TEXT PRIMARY KEY,key TEXT,generation INTEGER,actor INTEGER,kind TEXT,executor TEXT,run TEXT UNIQUE,value TEXT,status TEXT,started INTEGER,result TEXT,origin TEXT, UNIQUE(key,generation,actor,kind));
         CREATE TABLE leases(key TEXT PRIMARY KEY,job TEXT UNIQUE REFERENCES jobs(id),cancel INTEGER DEFAULT 0);
         CREATE TABLE outbox(id TEXT PRIMARY KEY,job TEXT,kind TEXT,value TEXT,state TEXT,github TEXT, UNIQUE(job,kind));
         CREATE TABLE notices(id TEXT PRIMARY KEY);
@@ -106,6 +106,7 @@ export class Store {
         CREATE TABLE run_keys(run TEXT PRIMARY KEY,job TEXT NOT NULL UNIQUE REFERENCES jobs(id),binding TEXT NOT NULL,key TEXT NOT NULL UNIQUE,at INTEGER NOT NULL);
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
+        CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
         PRAGMA user_version=3; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
@@ -549,7 +550,9 @@ export class Store {
         }
       : null;
   }
-  result(j: Job, result: string): void {
+  // `origin` is the run's verified provenance (signature): kept so a deferred post can be retried by a later
+  // cycle and verified again by the Broker (PR #56 red team P2).
+  result(j: Job, result: string, origin: unknown = null): void {
     this.atomic(() => {
       const current = this.job(j.id);
       if (
@@ -560,8 +563,8 @@ export class Store {
       )
         throw new Error("Stale or unowned result");
       this.db
-        .prepare("UPDATE jobs SET status='result-ready',result=? WHERE id=?")
-        .run(result, j.id);
+        .prepare("UPDATE jobs SET status='result-ready',result=?,origin=? WHERE id=?")
+        .run(result, origin === null ? null : JSON.stringify(origin), j.id);
     });
   }
   running(j: Job): void {
@@ -685,18 +688,47 @@ export class Store {
   }
   // W4 row 7: replaces a stored plaintext result with its hash-only form (publication.ts redactedResult),
   // then truncates the WAL so the old value is not left in the journal either. Exact job and value only.
+  // A checkpoint that another connection keeps busy is retried; if it still fails the owner is told once.
   redactResult(j: Job, raw: string, redacted: string): boolean {
     const changed =
       Number(
         this.db
-          .prepare("UPDATE jobs SET result=? WHERE id=? AND run=? AND result=?")
+          .prepare("UPDATE jobs SET result=?,origin=NULL WHERE id=? AND run=? AND result=?")
           .run(redacted, j.id, j.run, raw).changes,
       ) === 1;
-    this.checkpoint();
+    if (!this.checkpoint()) this.notice(`${j.key}:checkpoint-busy:${j.run}`);
     return changed;
   }
-  checkpoint(): void {
-    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  checkpoint(): boolean {
+    for (let n = 0; n < 5; n++) {
+      const r = this.db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as Row | undefined;
+      if (r && Number(r["busy"]) === 0) return true;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+    return false;
+  }
+  // The dispatcher's own record of a run's materials (plan path, ledger causes); written once by the runner.
+  saveRunMaterials(run: string, value: { planPath: string | null; ledger: string[] }): void {
+    this.db.prepare("INSERT INTO run_materials VALUES(?,?)").run(run, JSON.stringify(value));
+  }
+  runMaterials(run: string): { planPath: string | null; ledger: string[] } | null {
+    const r = this.db.prepare("SELECT value FROM run_materials WHERE run=?").get(run) as Row | undefined;
+    return r ? (JSON.parse(String(r["value"])) as { planPath: string | null; ledger: string[] }) : null;
+  }
+  // A leased job whose result waits for its post (Broker "deferred"): the next cycle retries the same job.
+  deferred(key: string): { job: Job; result: string; origin: unknown } | null {
+    const r = this.db
+      .prepare(
+        "SELECT j.value,j.result,j.origin FROM leases l JOIN jobs j ON j.id=l.job WHERE l.key=? AND l.cancel=0 AND j.status='result-ready' AND j.result IS NOT NULL AND j.origin IS NOT NULL",
+      )
+      .get(key) as Row | undefined;
+    return r
+      ? {
+          job: JSON.parse(String(r["value"])) as Job,
+          result: String(r["result"]),
+          origin: JSON.parse(String(r["origin"])) as unknown,
+        }
+      : null;
   }
   // W4 row 2: the public commitment the supervisor announced before the worker started. Persisted before
   // the supervisor is allowed to start the worker, so a restarted dispatcher can still verify the run.

@@ -324,7 +324,8 @@ class SigningTests(unittest.TestCase):
             self.assertNotIn(part.hex().encode('ascii'), visible)
         manifest = json.loads((self.root / 'run-isolated.json').read_text())
         self.assertEqual(set(manifest) - {'schema', 'run', 'state', 'backend', 'supervisor', 'start', 'treeEnded',
-                                          'binding', 'key', 'signed', 'worker', 'workerStart', 'exit', 'resultHash'},
+                                          'binding', 'key', 'signed', 'worker', 'workerStart', 'exit', 'resultHash',
+                                          'strays'},
                          set())
 
     def test_worker_output_cannot_forge_a_control_line(self):
@@ -428,21 +429,32 @@ class WorkerTests(unittest.TestCase):
         self.area = base / 'runs' / 'r1'
         for d in ('materials', 'home', 'tmp'):
             (self.area / d).mkdir(parents=True, mode=0o700)
+        # A permissive synthetic profile: these tests check the supervisor, not the Seatbelt rules (doctor does).
+        self.profile = base / 'cli.sb'
+        self.profile.write_text('(version 1)\n(allow default)\n')
+        self.exe = os.path.realpath(sys.executable)
+        self.expect = {'profile': str(self.profile), 'profileSha256': supervisor.file_sha256(str(self.profile)),
+                       'executable': self.exe, 'executableSha256': supervisor.file_sha256(self.exe)}
 
     def tearDown(self):
         self.temp.cleanup()
 
     def plan(self, code, **over):
-        value = {'file': sys.executable, 'args': ['-c', code], 'cwd': str(self.area / 'materials'),
+        value = {'file': supervisor.SANDBOX_EXEC,
+                 'args': ['-f', str(self.profile), '-D', 'RUN_HOME=' + str(self.area / 'home'), self.exe, '-c', code],
+                 'cwd': str(self.area / 'materials'),
                  'env': {'HOME': str(self.area / 'home'), 'TMPDIR': str(self.area / 'tmp'), 'PATH': '/usr/bin:/bin',
                          'LANG': 'C.UTF-8', 'CLAUDE_CODE_OAUTH_TOKEN': 'synthetic-token-value-0123456789'},
                  'stdin': 'Job kind: review\n'}
         value.update(over)
         return (json.dumps(value) + '\n').encode('utf-8')
 
-    def worker(self, run, plan, ack=True):
+    def worker(self, run, plan, ack=True, extra=(), expect=None):
+        e = expect or self.expect
         cmd = [sys.executable, str(SCRIPT), 'run-worker', '--root', str(self.root), '--run', run,
-               '--binding', BINDING, '--extract', 'claude-json', '--timeout', '60']
+               '--binding', BINDING, '--extract', 'claude-json', '--timeout', '60',
+               '--profile', e['profile'], '--profile-sha256', e['profileSha256'],
+               '--executable', e['executable'], '--executable-sha256', e['executableSha256'], *extra]
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
             p.stdin.write(plan)
@@ -495,7 +507,14 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 supervisor.read_plan(io.BytesIO(good), self.root)
             return
-        self.assertEqual(supervisor.read_plan(io.BytesIO(good), self.root)['file'], sys.executable)
+        self.assertEqual(supervisor.read_plan(io.BytesIO(good), self.root, self.expect)['file'], supervisor.SANDBOX_EXEC)
+        # The shape is pinned: sandbox-exec, the bound profile, -D parameters, then the bound executable.
+        for name, over in [('not sandboxed', {'file': self.exe, 'args': ['-c', 'pass']}),
+                           ('other profile', {'args': ['-f', '/tmp/other.sb', self.exe]}),
+                           ('other executable', {'args': ['-f', str(self.profile), '/usr/bin/python3x']}),
+                           ('flag before executable', {'args': ['-f', str(self.profile), '-p', '(allow default)', self.exe]})]:
+            with self.assertRaises(RuntimeError, msg=name):
+                supervisor.read_plan(io.BytesIO(self.plan('pass', **over)), self.root, self.expect)
         link = self.area / 'link'
         os.symlink(self.root, link)
         bad_env = json.loads(good)
@@ -515,7 +534,7 @@ class WorkerTests(unittest.TestCase):
             ('no newline', good.rstrip(b'\n')),
         ]:
             with self.assertRaises((RuntimeError, ValueError), msg=name):
-                supervisor.read_plan(io.BytesIO(raw), self.root)
+                supervisor.read_plan(io.BytesIO(raw), self.root, self.expect)
 
     def test_only_a_successful_structured_claude_result_is_extracted(self):
         ok = {'type': 'result', 'subtype': 'success', 'is_error': False, 'result': 'text',
@@ -578,6 +597,35 @@ class WorkerTests(unittest.TestCase):
         state = supervisor.inspect(self.root, 'acked')
         self.assertTrue(state['treeEnded'] and state['signed'])
 
+    def test_a_changed_cli_or_profile_never_starts(self):
+        if sys.platform != 'darwin':
+            self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
+            return
+        marker = self.area / 'tmp' / 'started'
+        code = 'open(%r, "w").write("x")' % str(marker)
+        for name, change in [('profile', 'profileSha256'), ('executable', 'executableSha256')]:
+            status, first, rest = self.worker('changed-' + name, self.plan(code), expect={**self.expect, change: '0' * 64})
+            self.assertEqual(status, 2, name)
+            self.assertFalse(marker.exists(), name)
+            self.assertTrue(supervisor.inspect(self.root, 'changed-' + name)['neverStarted'], name)
+
+    def test_descendant_probe_measures_whether_children_hold_the_run_lock(self):
+        if sys.platform != 'darwin':
+            self.assertEqual(self.worker('no-mac', self.plan('pass'), extra=['--probe-descendants'])[0], 2)
+            return
+        result = ("print(json.dumps({'type':'result','subtype':'success','is_error':False,"
+                  "'structured_output':{'schema':1}}))")
+        # A child that inherits every descriptor (close_fds=False) and one that closes them (the default).
+        for run, close in [('inherits', False), ('closes', True)]:
+            code = ("import json,subprocess,sys\n"
+                    "subprocess.run([sys.executable,'-c','import time; time.sleep(1.5)'],close_fds=%s)\n" % close) + result
+            status, _first, _rest = self.worker(run, self.plan(code), extra=['--probe-descendants'])
+            self.assertEqual(status, 0, run)
+            d = supervisor.inspect(self.root, run)['descendants']
+            self.assertGreaterEqual(d['seen'], 1, run)
+            self.assertGreaterEqual(d['checked'], 1, run)
+            self.assertEqual(d['holding'] == d['checked'], not close, (run, d))
+
     def test_a_failed_or_unstructured_claude_run_is_never_signed(self):
         if sys.platform != 'darwin':
             self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
@@ -588,3 +636,66 @@ class WorkerTests(unittest.TestCase):
             self.assertNotEqual(status, 0, run)
             self.assertEqual(rest, b'', run)
             self.assertFalse((self.root / ('run-' + run + '-result.json')).exists(), run)
+
+
+class TreeEndTests(unittest.TestCase):
+    """PR #56 red team P1: a normal exit proves nothing while the process group still has members."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_a_stray_group_member_is_stopped_before_the_tree_is_called_ended(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        pidfile = self.root.parent / (self.root.name + '-stray.pid')
+        # The worker leaves a child in its own process group that closed the run lock (close_fds) and lives on.
+        code = ("import subprocess,sys\n"
+                "c=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],stdout=subprocess.DEVNULL)\n"
+                "open(%r,'w').write(str(c.pid))\n"
+                "print('{}')") % str(pidfile)
+        cmd = [sys.executable, str(SCRIPT), 'run-fixture', '--root', str(self.root), '--run', 'stray',
+               '--binding', BINDING, '--', sys.executable, '-c', code]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=30)
+            self.assertEqual(r.returncode, 0)
+            manifest = json.loads((self.root / 'run-stray.json').read_text())
+            self.assertTrue(manifest['strays'])
+            self.assertTrue(manifest['treeEnded'])
+            stray = int(pidfile.read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(stray, 0)
+        finally:
+            if pidfile.exists():
+                try:
+                    os.kill(int(pidfile.read_text()), signal.SIGKILL)
+                except (ProcessLookupError, ValueError):
+                    pass
+                pidfile.unlink()
+
+    def test_a_clean_run_has_no_strays(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        cmd = [sys.executable, str(SCRIPT), 'run-fixture', '--root', str(self.root), '--run', 'clean',
+               '--binding', BINDING, '--', sys.executable, '-c', "print('{}')"]
+        self.assertEqual(subprocess.run(cmd, capture_output=True, timeout=30).returncode, 0)
+        manifest = json.loads((self.root / 'run-clean.json').read_text())
+        self.assertEqual(manifest['strays'], False)
+
+    def test_no_manifest_and_a_free_lock_is_never_started(self):
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        state = supervisor.inspect(self.root, 'absent')
+        self.assertEqual((state['neverStarted'], state['treeEnded'], state['uncertain']), (True, False, False))
+        held = supervisor.lock(self.root / 'run-busy.lock')
+        try:
+            state = supervisor.inspect(self.root, 'busy')
+            self.assertEqual((state['neverStarted'], state['uncertain']), (False, True))
+        finally:
+            os.close(held)

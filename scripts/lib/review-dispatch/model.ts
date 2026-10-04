@@ -32,8 +32,11 @@ export type Policy = {
   }[];
   maxConcurrent: number;
   executorLimits: Record<string, number>;
-  // PR48-R008: CI trust digests (github.ts ciTrustDigest) the owner recorded after an independent review.
-  trustedCiDigests?: string[];
+  // PR48-R008: CI trust records the owner made after an independent review (github.ts ciTrustDigest).
+  // Each record is bound to main (owner decision, Issue #50 issuecomment-5978676604): the digest of main's
+  // CI-deciding files and the trusted head digest. When main's digest changes, the owner records again, so a
+  // PR returning to an earlier trusted setting is not trusted automatically.
+  trustedCi?: { main: string; head: string }[];
 };
 export type HistoryEvent = {
   id: string;
@@ -75,6 +78,8 @@ export type Snapshot = {
   faultfinding: { actor: number; pair: Pair; unresolved: string[] } | null;
   // Every commit SHA of the PR (pulls/<n>/commits, all pages). Absent in older fixtures.
   commits?: string[];
+  // PR48-R007 unresolved finding IDs by the actor who raised them (assigned reviewers and owners).
+  openFindings?: { actor: number; ids: string[] }[];
 };
 export type Target = {
   key: string;
@@ -113,6 +118,10 @@ export type WorkerResult = {
   }[];
   evidence: string[];
   unverified: string[];
+  // Faultfinding only (empty for a review): the judgement per ledger cause or invariant, and what became
+  // of each earlier RT (pr-review-loop.md#提出前の粗探し).
+  causes: { cause: string; judgement: "該当" | "該当なし" | "確認できない"; where: string }[];
+  previous: { id: string; status: "解消" | "対応不要" | "未解消"; reason: string }[];
 };
 export const samePair = (a: Pair, b: Pair): boolean =>
   a.head === b.head && a.base === b.base;
@@ -190,13 +199,22 @@ export function validatePolicy(value: unknown): Policy {
     )
   )
     throw new Error("Invalid role assignment");
+  const hex = (t: unknown) => typeof t === "string" && /^[a-f0-9]{64}$/.test(t);
   if (
-    p.trustedCiDigests !== undefined &&
-    (!Array.isArray(p.trustedCiDigests) ||
-      p.trustedCiDigests.some(
-        (t) => typeof t !== "string" || !/^[a-f0-9]{64}$/.test(t),
-      ) ||
-      new Set(p.trustedCiDigests).size !== p.trustedCiDigests.length)
+    // The unbound form (W3) is refused, not ignored, so the owner re-records against main.
+    "trustedCiDigests" in (p as object) ||
+    (p.trustedCi !== undefined &&
+      (!Array.isArray(p.trustedCi) ||
+        p.trustedCi.some(
+          (t) =>
+            !t ||
+            typeof t !== "object" ||
+            Object.keys(t).sort().join() !== "head,main" ||
+            !hex(t.main) ||
+            !hex(t.head) ||
+            t.main === t.head,
+        ) ||
+        new Set(p.trustedCi.map((t) => `${t.main}:${t.head}`)).size !== p.trustedCi.length))
   )
     throw new Error("Invalid workflow trust");
   for (const a of p.actors)

@@ -571,6 +571,8 @@ test("publication check flags every synthetic leak and red-team evasion (mitigat
     findings: [{ id: "PR1-R001", location: "scripts/lib/review-dispatch/broker.ts render()", impact: "誤投稿", completion: "試験を足す" }],
     evidence,
     unverified: ["実Macの測定"],
+    causes: [],
+    previous: [],
   };
   assert.deepEqual(parseResult(JSON.stringify(result), VJOB), result);
   const body = render(result, `kurashi-ledger:dispatch-run:v1:${VJOB.run}`, { role: "claude-reviewer", agent: "claude" }, VJOB.run);

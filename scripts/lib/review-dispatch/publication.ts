@@ -30,8 +30,38 @@ const LOCAL_PATHS: readonly RegExp[] = [
   /\\\\[A-Za-z0-9._-]+\\/, // UNC
 ];
 const FORMAT_CHARACTER = /\p{Cf}/u;
-const GITHUB_URL = /https:\/\/github\.com\/[^\s<>()"'`]*/g;
 const ANY_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi;
+// Owner decision (Issue #50 issuecomment-5978676604): links to github.com and to a short fixed list of official
+// documentation hosts. The list is the hosts that the past public v1 bodies blocked before W4 actually cite
+// (Claude Code, GitHub, Playwright, Vite, Codex docs, the National Tax Agency, the Ministry of Internal Affairs
+// and Communications) plus nodejs.org. Exact host names over https, no user info, no port. Everything else stops.
+export const LINK_HOSTS: readonly string[] = [
+  "github.com",
+  "docs.github.com",
+  "code.claude.com",
+  "nodejs.org",
+  "learn.chatgpt.com",
+  "playwright.dev",
+  "vite.dev",
+  "www.nta.go.jp",
+  "www.soumu.go.jp",
+];
+export function allowedLink(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    u.protocol === "https:" &&
+    u.username === "" &&
+    u.password === "" &&
+    u.port === "" &&
+    LINK_HOSTS.includes(u.hostname) &&
+    url.toLowerCase().startsWith(`https://${u.hostname}/`)
+  );
+}
 
 // The only long identifiers allowed in public text: values the dispatcher/Broker verified itself in its own
 // fresh snapshot (pair, final pair, head/base recorded in the GitHub timeline, every commit of the PR) and the
@@ -78,12 +108,14 @@ export function publicationFindings(text: string, allowed: Allowed): string[] {
   }
   if (LOCAL_PATHS.some((re) => re.test(n))) findings.add("local absolute path");
   for (const url of n.match(ANY_URL) ?? [])
-    if (!/^https:\/\/github\.com\//.test(url)) findings.add("non-GitHub link");
-  if (/\bwww\./i.test(n)) findings.add("non-GitHub link");
+    if (!allowedLink(url)) findings.add("link not allowed");
+  // A bare host name (www.example.org) outside an allowed link is a link too.
+  if (/\bwww\./i.test(n.replace(ANY_URL, (url) => (allowedLink(url) ? " " : url))))
+    findings.add("link not allowed");
   if (/(?:%[0-9A-Fa-f]{2}){3,}/.test(n)) findings.add("percent-encoded data");
   // Opaque runs (keys, hex chunks, base64 with "/"). GitHub links are split into their segments first, so a
   // secret in a path or query is still seen; then this job's own IDs are removed.
-  let scan = n.replace(GITHUB_URL, (url) => url.split(/[/#?=&]/).join(" "));
+  let scan = n.replace(ANY_URL, (url) => (allowedLink(url) ? url.split(/[/#?=&.]/).join(" ") : url));
   for (const id of allowed) scan = scan.split(id).join(" ");
   for (const run of scan.match(/[A-Za-z0-9+/=_-]{32,}/g) ?? [])
     if (/[0-9]/.test(run) && /[A-Za-z]/.test(run) && !wordLike(run))

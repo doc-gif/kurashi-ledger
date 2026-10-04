@@ -218,22 +218,27 @@ test("W4 row 8: edit/delete/dismiss deliveries mark their PR in the same transac
         100,
       );
     };
+    // Policy target PR 1: reviewer 30, owner 10. Only their items mark; other PRs and third parties do not.
+    const by = (id: number) => ({ user: { id } });
     const cases: [string, Record<string, unknown>, string | null][] = [
-      ["pull_request_review", { action: "edited", pull_request: { number: 1 } }, "1:1"],
-      ["pull_request_review", { action: "dismissed", pull_request: { number: 2 } }, "1:2"],
-      ["pull_request_review", { action: "submitted", pull_request: { number: 3 } }, null],
-      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 4 } }, "1:4"],
-      ["pull_request_review_comment", { action: "created", pull_request: { number: 5 } }, null],
-      ["issue_comment", { action: "edited", issue: { number: 6, pull_request: {} } }, "1:6"],
-      ["issue_comment", { action: "deleted", issue: { number: 7 } }, null], // a plain issue
-      ["pull_request", { action: "edited", pull_request: { number: 8 } }, null],
+      ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(30) }, "1:1"],
+      ["pull_request_review", { action: "dismissed", pull_request: { number: 1 }, review: by(10) }, "1:1"],
+      ["pull_request_review", { action: "edited", pull_request: { number: 1 }, review: by(999) }, null],
+      ["pull_request_review", { action: "submitted", pull_request: { number: 1 }, review: by(30) }, null],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(30) }, "1:1"],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 1 }, comment: by(20) }, null],
+      ["pull_request_review_comment", { action: "created", pull_request: { number: 1 }, comment: by(30) }, null],
+      ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: by(30) }, "1:1"],
+      ["issue_comment", { action: "edited", issue: { number: 1, pull_request: {} }, comment: {} }, "1:1"], // unreadable author
+      ["issue_comment", { action: "deleted", issue: { number: 1 }, comment: by(30) }, null], // a plain issue
+      ["issue_comment", { action: "deleted", issue: { number: 9, pull_request: {} }, comment: by(30) }, null], // not a target
+      ["pull_request", { action: "edited", pull_request: { number: 1 } }, null],
     ];
     cases.forEach(([event, payload, mark], i) => {
       assert.equal(send(event, payload, `signal-${i}`), 202, event);
-      if (mark) assert.equal(d.store.marked(mark), true, `${event} ${String(payload["action"])}`);
+      const marked = d.store.db.prepare("SELECT key FROM marks WHERE delivery=?").get(`signal-${i}`);
+      assert.equal(marked?.["key"] ?? null, mark, `${i} ${event} ${String(payload["action"])}`);
     });
-    const marks = d.store.db.prepare("SELECT key FROM marks ORDER BY key").all().map((r) => r["key"]);
-    assert.deepEqual(marks, ["1:1", "1:2", "1:4", "1:6"]);
   } finally {
     d.cleanup();
   }

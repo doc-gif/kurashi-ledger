@@ -294,3 +294,49 @@ test("W4 #51 rule: any actor's latest CHANGES_REQUESTED blocks accepted, not onl
   s.reviews = [approve, { id: "r4", actor: 999, state: "COMMENTED", pair: null, findings: [] }];
   assert.equal(accepted(p, s, t), true);
 });
+
+test("W4 trust records are bound to main; the unbound W3 form is refused so the owner re-records", () => {
+  const p = policy() as ReturnType<typeof policy> & Record<string, unknown>;
+  const a = "a".repeat(64),
+    b = "b".repeat(64);
+  validatePolicy({ ...p, trustedCi: [{ main: a, head: b }] });
+  for (const bad of [
+    { trustedCiDigests: [b] },
+    { trustedCi: [{ main: a }] },
+    { trustedCi: [{ main: a, head: a }] },
+    { trustedCi: [{ main: a, head: b, extra: 1 }] },
+    { trustedCi: [{ main: a, head: b }, { main: a, head: b }] },
+  ])
+    assert.throws(() => validatePolicy({ ...p, ...bad }), /workflow trust/, JSON.stringify(bad));
+});
+
+test("W4 a later COMMENTED review does not undo a change request; approval blockers exclude only the approver", async () => {
+  const { approvalBlockers } = await import("./reducer.ts");
+  const p = policy(),
+    s = snapshot(),
+    t = assess(p, s, null);
+  s.reviews = [
+    { id: "r1", actor: 30, state: "APPROVED", pair: s.pair, findings: [] },
+    { id: "r2", actor: 10, state: "CHANGES_REQUESTED", pair: null, findings: [] },
+    { id: "r3", actor: 10, state: "COMMENTED", pair: null, findings: [] },
+  ];
+  assert.equal(accepted(p, s, t), false);
+  // A reviewer's later COMMENTED review does not undo its approval either.
+  s.reviews = [
+    { id: "r1", actor: 30, state: "APPROVED", pair: s.pair, findings: [] },
+    { id: "r4", actor: 30, state: "COMMENTED", pair: null, findings: [] },
+  ];
+  assert.equal(accepted(p, s, t), true);
+  s.reviews = [
+    { id: "r5", actor: 30, state: "CHANGES_REQUESTED", pair: null, findings: [] },
+    { id: "r6", actor: 10, state: "CHANGES_REQUESTED", pair: null, findings: [] },
+  ];
+  s.openFindings = [
+    { actor: 30, ids: ["PR1-R001"] },
+    { actor: 10, ids: ["review:9"] },
+  ];
+  assert.deepEqual(approvalBlockers(s, 30), ["changes-requested:10", "review:9"]);
+  s.reviews = [{ id: "r5", actor: 30, state: "CHANGES_REQUESTED", pair: null, findings: [] }];
+  s.openFindings = [{ actor: 30, ids: ["PR1-R001"] }];
+  assert.deepEqual(approvalBlockers(s, 30), []);
+});

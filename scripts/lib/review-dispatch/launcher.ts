@@ -59,6 +59,8 @@ export const RESULT_SCHEMA = {
     "findings",
     "evidence",
     "unverified",
+    "causes",
+    "previous",
   ],
   properties: {
     schema: { type: "integer", enum: [1] },
@@ -92,6 +94,34 @@ export const RESULT_SCHEMA = {
     },
     evidence: { type: "array", items: { type: "string" } },
     unverified: { type: "array", items: { type: "string" } },
+    // Faultfinding only (a review returns empty arrays): one row per ledger cause or invariant, and what
+    // became of each earlier RT (pr-review-loop.md#提出前の粗探し).
+    causes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["cause", "judgement", "where"],
+        properties: {
+          cause: { type: "string" },
+          judgement: { type: "string", enum: ["該当", "該当なし", "確認できない"] },
+          where: { type: "string" },
+        },
+      },
+    },
+    previous: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "status", "reason"],
+        properties: {
+          id: { type: "string" },
+          status: { type: "string", enum: ["解消", "対応不要", "未解消"] },
+          reason: { type: "string" },
+        },
+      },
+    },
   },
 } as const;
 export const RESULT_SCHEMA_JSON = JSON.stringify(RESULT_SCHEMA);
@@ -251,12 +281,15 @@ export function jobText(j: Job): string {
   const task =
     j.kind === "faultfinding"
       ? [
-          "Task: pre-review red team of this pull request (find defects before the content review).",
-          `Report each defect as a finding with ID PR${pr}-T001, PR${pr}-T002, ... Decision: accepted only when there is no finding, changes-requested when there are findings, needs-owner when an owner decision is required.`,
+          "Task: pre-review red team of this pull request, following context/review-loop.md (section on the pre-review red team).",
+          "Judge every cause of context/findings.json as invariant_id/cause_key in causes (該当, 該当なし or 確認できない, with the places checked), use context/guard-check.json (causes_not_analyzed first), and check the plan's boundaries and variant analysis against the diff.",
+          "For every RT of the earlier red-team records in pr/previous-redteam.md, set previous to 解消, 対応不要 or 未解消 with the reason.",
+          "Report each new defect as a finding with ID RT-1, RT-2, ... Decision: accepted only when there is no finding and no earlier RT is 未解消, changes-requested otherwise, needs-owner when an owner decision is required. Do not use table separators (|) in any field.",
         ]
       : [
           "Task: content review of this pull request.",
-          `Report each defect as a finding with ID PR${pr}-R001, PR${pr}-R002, ... Decision: accepted, changes-requested or needs-owner.`,
+          `Report each defect as a finding with ID PR${pr}-R001, PR${pr}-R002, ... Decision: accepted, changes-requested or needs-owner. Leave causes and previous empty.`,
+          "pr/open-findings.json lists the change requests and unresolved findings of others; an approval is posted as a comment while any remain.",
         ];
   return [
     `Job kind: ${j.kind}`,

@@ -4,6 +4,7 @@
 //   Ready -> faultfinding job (red-team record, same head/base) -> review job (native Review).
 // The owner's install record, the doctor's capability (bound to the exact plan), the materials and the
 // Claude runner (through tools/review_dispatch/supervisor.py run-worker) are here.
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -189,11 +190,42 @@ async function content(reader: GhReader, path: string, ref: string): Promise<Con
   const bytes = Buffer.from(v["content"], "base64");
   return bytes.length > MAX_FILE ? { bytes: null, note: "too-large" } : { bytes, note: null };
 }
+export type MaterialsMeta = { planPath: string | null; ledger: string[] };
+// The trusted guard check (tools/review_guard/guard.py from the trusted copy) over copies of the PR's plan,
+// its changed paths and the base's catalog and ledger. Returns its stdout (JSON or an error line).
+export type GuardCheck = (input: {
+  plan: string;
+  paths: string;
+  base: string;
+  catalog: string;
+  ledger: string;
+}) => string;
+const RED_TEAM_MARK = "<!-- kurashi-ledger:red-team:v1 -->";
+// Every cause of the base ledger, as `invariant_id/cause_key` (the red-team table's rows).
+export function ledgerCauses(raw: Buffer | null): string[] {
+  if (!raw) return refuse("materials-incomplete");
+  let v: { findings?: unknown };
+  try {
+    v = JSON.parse(raw.toString("utf8")) as { findings?: unknown };
+  } catch {
+    return refuse("materials-incomplete");
+  }
+  if (!Array.isArray(v.findings)) refuse("materials-incomplete");
+  const out = new Set<string>();
+  for (const f of v.findings as Record<string, unknown>[]) {
+    const id = f?.["invariant_id"],
+      cause = f?.["cause_key"];
+    if (typeof id !== "string" || typeof cause !== "string") refuse("materials-incomplete");
+    out.add(`${id as string}/${cause as string}`);
+  }
+  return [...out].sort();
+}
 export async function buildMaterials(
   reader: GhReader,
-  s: Pick<Snapshot, "pr" | "pair">,
+  s: Pick<Snapshot, "pr" | "pair" | "reviews" | "openFindings">,
   dir: string,
-): Promise<{ files: number; bytes: number }> {
+  guard: GuardCheck | null = null,
+): Promise<{ files: number; bytes: number } & MaterialsMeta> {
   let total = 0;
   const write = (rel: string, data: Buffer | string) => {
     const size = Buffer.byteLength(data);
@@ -211,33 +243,90 @@ export async function buildMaterials(
   if (!Array.isArray(files)) throw new EvidenceError();
   if (files.length > MAX_FILES) refuse("materials-too-many-files");
   const index: Record<string, unknown>[] = [];
+  const changed = new Set<string>();
+  const plans: { path: string; bytes: Buffer }[] = [];
   for (const [i, value] of files.entries()) {
     const f = object(value),
       path = f["filename"],
       status = f["status"];
     if (typeof path !== "string" || typeof status !== "string") throw new EvidenceError();
+    changed.add(path);
     const n = String(i + 1).padStart(3, "0");
-    const entry: Record<string, unknown> = { n, path, status, diff: null, head: null, note: null };
-    if (typeof f["previous_filename"] === "string") entry["previous"] = f["previous_filename"];
+    const entry: Record<string, unknown> = { n, path, status, diff: null, head: null };
+    if (typeof f["previous_filename"] === "string") {
+      entry["previous"] = f["previous_filename"];
+      changed.add(f["previous_filename"]);
+    }
+    // PR #56 red team P2: a file without its diff, or a kept file without its content, is a gap the
+    // reviewer cannot see. Such a job never starts (only a pure rename has no diff).
     if (typeof f["patch"] === "string") {
       write(`pr/diff-${n}.patch`, f["patch"]);
       entry["diff"] = `pr/diff-${n}.patch`;
-    } else entry["note"] = "no-patch";
+    } else if (!(status === "renamed" && f["changes"] === 0)) refuse("materials-incomplete");
     if (status !== "removed") {
       const c = await content(reader, path, s.pair.head);
-      if (c.bytes) {
-        write(`pr/head-${n}.txt`, c.bytes);
-        entry["head"] = `pr/head-${n}.txt`;
-      } else entry["note"] = c.note;
+      if (!c.bytes) refuse("materials-incomplete");
+      write(`pr/head-${n}.txt`, c.bytes!);
+      entry["head"] = `pr/head-${n}.txt`;
+      if (/^\.review\/plans\/[^/]+\.json$/.test(path)) plans.push({ path, bytes: c.bytes! });
     }
     index.push(entry);
   }
   write("pr/index.json", `${JSON.stringify({ head: s.pair.head, base: s.pair.base, files: index }, null, 1)}\n`);
+  // Others' change requests and unresolved findings (PR #56 red team P2): a review sees what blocks approval.
+  const requests = [...new Map(s.reviews.filter((r) => r.state !== "COMMENTED").map((r) => [r.actor, r])).values()]
+    .filter((r) => r.state === "CHANGES_REQUESTED")
+    .map((r) => ({ actor: r.actor, review: r.id }));
+  write("pr/open-findings.json", `${JSON.stringify({ changesRequested: requests, findings: s.openFindings ?? [] }, null, 1)}\n`);
+  // Earlier red-team records of this PR (conversation comments and Reviews), for the RT re-check.
+  const earlier: string[] = [];
+  for (const [kind, path] of [
+    ["comment", `issues/${s.pr}/comments?per_page=100`],
+    ["review", `pulls/${s.pr}/reviews?per_page=100`],
+  ] as const)
+    for (const v of await reader.pages(path)) {
+      const o = object(v);
+      if (typeof o["body"] === "string" && o["body"].includes(RED_TEAM_MARK))
+        earlier.push(`## ${kind} ${String(o["id"])}\n\n${o["body"]}\n`);
+    }
+  write("pr/previous-redteam.md", earlier.length ? earlier.join("\n") : "なし\n");
+  const base: Record<string, Buffer | null> = {};
   for (const [path, name] of CONTEXT_FILES) {
     const c = await content(reader, path, s.pair.base);
+    base[path] = c.bytes;
     if (c.bytes) write(`context/${name}`, c.bytes);
   }
-  return { files: index.length, bytes: total };
+  const ledger = ledgerCauses(base[".review/findings.json"] ?? null);
+  const plan = plans.length === 1 ? plans[0]! : null;
+  let guardOut = JSON.stringify({ result: plans.length ? "multiple-plans" : "no-plan" });
+  if (plan && guard && base[".review/invariants.json"]) {
+    const work = join(dir, "context", "guard-input");
+    mkdirSync(work, { mode: 0o700 });
+    const input = (name: string, data: Buffer | string) => {
+      writeFileSync(join(work, name), data, { mode: 0o600, flag: "wx" });
+      return join(work, name);
+    };
+    guardOut = guard({
+      plan: input("plan.json", plan.bytes),
+      paths: input("paths.json", JSON.stringify([...changed].sort())),
+      base: s.pair.base,
+      catalog: input("invariants.json", base[".review/invariants.json"]!),
+      ledger: input("findings.json", base[".review/findings.json"]!),
+    });
+  }
+  write("context/guard-check.json", `${guardOut.trim()}\n`);
+  return { files: index.length, bytes: total, planPath: plan?.path ?? null, ledger };
+}
+// guard.py check from the trusted copy: fixed interpreter and argv, no shell, minimal env, bounded time.
+export function trustedGuard(python: string, guardPy: string): GuardCheck {
+  return (i) => {
+    const r = spawnSync(
+      python,
+      [guardPy, "check", "--plan", i.plan, "--paths-file", i.paths, "--base-sha", i.base, "--catalog", i.catalog, "--ledger", i.ledger],
+      { encoding: "utf8", timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } },
+    );
+    return r.error ? JSON.stringify({ result: "guard-unavailable" }) : r.stdout || JSON.stringify({ result: "guard-no-output", exit: r.status });
+  };
 }
 
 // ---- Claude runner through supervisor.py run-worker ----
@@ -306,29 +395,44 @@ export function removeRunArea(area: string): void {
   const st = lstatSync(area);
   if (st.isDirectory() && !st.isSymbolicLink()) rmSync(area, { recursive: true, force: true });
 }
-type Supervised = { keyed: boolean; signed: string | null; treeEnded: boolean; uncertain: boolean };
+type Supervised = {
+  keyed: boolean;
+  signed: string | null;
+  treeEnded: boolean;
+  neverStarted: boolean;
+  uncertain: boolean;
+  descendants?: Descendants;
+};
 export type SupervisorCommand = { python: string; supervisor: string; root: string; spawn: SpawnSupervisor };
 const supervisor = (c: SupervisorCommand, mode: string, extra: string[]) =>
   c.spawn(c.python, [c.supervisor, mode, "--root", c.root, ...extra], { ...SUPERVISOR_ENV });
+export type Descendants = { seen: number; checked: number; holding: number };
 export async function inspectRun(
   c: SupervisorCommand,
   run: string,
-): Promise<{ treeEnded: boolean; neverStarted: boolean; uncertain: boolean }> {
+): Promise<{ treeEnded: boolean; neverStarted: boolean; uncertain: boolean; descendants?: Descendants }> {
   let out = "";
   const code = await lines(supervisor(c, "inspect", ["--run", run]), 64 * 1024, (l) => (out += l));
   try {
     const v = JSON.parse(out) as Record<string, unknown>;
-    if (code === 0 && v["run"] === run)
+    if (code === 0 && v["run"] === run) {
+      const d = v["descendants"] as Record<string, unknown> | undefined;
       return {
         treeEnded: v["treeEnded"] === true,
         neverStarted: v["neverStarted"] === true,
         uncertain: v["uncertain"] !== false,
+        ...(d && ["seen", "checked", "holding"].every((k) => Number.isSafeInteger(d[k]))
+          ? { descendants: { seen: Number(d["seen"]), checked: Number(d["checked"]), holding: Number(d["holding"]) } }
+          : {}),
       };
+    }
   } catch {
     // Unknown state stays uncertain.
   }
   return { treeEnded: false, neverStarted: false, uncertain: true };
 }
+// The files the doctor measured, re-checked by the supervisor immediately before the worker starts.
+export type BoundFiles = { profile: string; profileSha256: string; executable: string; executableSha256: string };
 // supervisor.py run-worker: the plan (with the setup-token) goes only through the pipe, never argv, files
 // or logs. `onKey` must persist the commitment; only then the supervisor gets "ack" and starts the worker.
 export async function superviseRun(
@@ -336,7 +440,9 @@ export async function superviseRun(
   j: Job,
   plan: ReturnType<typeof buildLaunch>,
   timeoutSeconds: number,
+  bound: BoundFiles,
   onKey: (record: ReturnType<typeof parseRunKeyLine>) => void,
+  probe = false,
 ): Promise<Supervised> {
   const child = supervisor(c, "run-worker", [
     "--run",
@@ -347,6 +453,15 @@ export async function superviseRun(
     "claude-json",
     "--timeout",
     String(timeoutSeconds),
+    "--profile",
+    bound.profile,
+    "--profile-sha256",
+    bound.profileSha256,
+    "--executable",
+    bound.executable,
+    "--executable-sha256",
+    bound.executableSha256,
+    ...(probe ? ["--probe-descendants"] : []),
   ]);
   child.stdin.on("error", () => {});
   let signed: string | null = null,
@@ -369,8 +484,11 @@ export async function superviseRun(
     `${JSON.stringify({ file: plan.file, args: plan.args, env: plan.env, cwd: plan.cwd, stdin: plan.stdin })}\n`,
   );
   await exit;
+  // PR #56 red team P3: the supervisor starts the worker only after "ack", which is sent only after the key
+  // was stored. Without it the worker provably never started, whatever the manifest says.
+  if (!keyed) return { keyed, signed: null, treeEnded: false, neverStarted: true, uncertain: false };
   const state = await inspectRun(c, j.run);
-  return { keyed, signed, treeEnded: state.treeEnded, uncertain: state.uncertain };
+  return { keyed, signed, ...state };
 }
 
 export type ClaudeRunnerDeps = {
@@ -380,9 +498,10 @@ export type ClaudeRunnerDeps = {
   install: ActiveInstall;
   capability: Capability;
   verifier: RunVerifier;
-  materials: (j: Job, dir: string) => Promise<void>;
+  materials: (j: Job, dir: string) => Promise<MaterialsMeta>;
   spawn: SpawnSupervisor;
   now: () => number;
+  bound: BoundFiles;
   launch?: LaunchOptions; // tests only (platform, token reader)
 };
 export function claudeRunner(d: ClaudeRunnerDeps): Runner {
@@ -399,19 +518,22 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
       try {
         let plan: ReturnType<typeof buildLaunch>;
         try {
-          await d.materials(j, run.materials);
+          d.store.saveRunMaterials(j.run, await d.materials(j, run.materials));
           plan = buildLaunch(d.policy, j, d.install.claude, run, d.launch ?? {});
-        } catch {
-          // Refused before any process started (too many files, a CLI configuration name, an unreadable
-          // token): the job is proven never started.
-          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, origin: null };
+        } catch (e) {
+          // Refused before any process started (missing or too many materials, a CLI configuration name, an
+          // unreadable token): the job is proven never started.
+          const reason = e instanceof ActiveError ? e.message.replace("active refused: ", "") : "launch-refused";
+          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason, origin: null };
         }
         // Persist the commitment before the supervisor may start the worker (W4 row 2).
-        const r = await superviseRun(command, j, plan, d.install.workerTimeoutSeconds, (record) => {
+        const r = await superviseRun(command, j, plan, d.install.workerTimeoutSeconds, d.bound, (record) => {
           d.store.saveRunKey(j, record, d.now());
           d.verifier.register(j, record);
         });
-        if (!r.keyed || r.signed === null || !r.treeEnded || r.uncertain)
+        if (r.neverStarted && !r.uncertain)
+          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "not-acknowledged", origin: null };
+        if (r.signed === null || !r.treeEnded || r.uncertain)
           return { result: "", treeEnded: r.treeEnded, uncertain: true, origin: null };
         const { raw, origin } = provenanceOf(j, parseSignedResult(r.signed));
         return { result: raw, treeEnded: true, uncertain: false, origin };
@@ -444,6 +566,7 @@ export type NextKind = "faultfinding" | "review";
 export function nextKind(store: Store, p: Policy, s: Snapshot): { kind: NextKind | null; reason: string } {
   const key = keyOf(p, s.pr),
     t = store.target(key);
+  if (store.deferred(key)) return { kind: null, reason: "deferred-post" };
   if (store.blocked(key)) return { kind: null, reason: "blocked-owner-required" };
   if (store.quotaPaused(key)) return { kind: null, reason: "quota-owner-required" };
   if (!t || t.status !== "eligible" || t.paused) return { kind: null, reason: t?.reason ?? "unknown" };
@@ -466,7 +589,12 @@ export async function activeStep(d: {
   fresh: () => Promise<Snapshot>;
   now: number;
 }): Promise<string> {
-  const { actor } = startSmall(d.policy);
+  const { actor, key } = startSmall(d.policy);
+  // A post deferred by an edit/delete mark is retried first, from the stored result (nothing relaunches).
+  if (d.store.deferred(key)) {
+    const outcome = await new Dispatcher(d.policy, d.store).resumeDeferred(d.snapshot, d.runner, d.broker, d.fresh, d.now);
+    return `resume:${outcome ?? "none"}`;
+  }
   const next = nextKind(d.store, d.policy, d.snapshot);
   if (!next.kind) return `idle:${next.reason}`;
   const outcome = await new Dispatcher(d.policy, d.store).activeCycle(
@@ -629,6 +757,7 @@ export async function measureCommand(d: {
   executor: CliExecutor;
   spawn: SpawnSupervisor;
   layout: (root: string) => Promise<TrapLayout & { close(): Promise<void> }>;
+  bound: BoundFiles;
   launch?: LaunchOptions;
 }): Promise<MeasurementFile> {
   const job = measurementJob(d.policy);
@@ -644,16 +773,25 @@ export async function measureCommand(d: {
     // A throwaway supervisor root for the benign run (never the dispatcher root).
     const root = join(area, "supervisor");
     mkdirSync(root, { mode: 0o700 });
+    // PR #56 red team P1: the run must start a child (Grep runs ripgrep as a child process) so that the
+    // supervisor's probe can see whether children inherit the run lock. Many files keep the search running.
     const benign = newRunArea(area, "benign");
-    writeFileSync(join(benign.run.materials, "readme.txt"), "Synthetic pull request for the owner's measurement.\n", { mode: 0o600 });
-    const plan = buildLaunch(d.policy, job, d.install.claude, benign.run, d.launch ?? {});
+    for (let n = 0; n < 400; n++)
+      writeFileSync(join(benign.run.materials, `file-${String(n).padStart(3, "0")}.txt`), `Synthetic material ${n}.\n`.repeat(200), { mode: 0o600 });
+    const base = buildLaunch(d.policy, job, d.install.claude, benign.run, d.launch ?? {});
+    const plan = {
+      ...base,
+      stdin: `${base.stdin}\nMeasurement: use the Grep tool three times on the working directory (patterns: Synthetic, material 3, nothing-matches), then return the result object with decision needs-owner and no findings.\n`,
+    };
     const verifier = new RunVerifier();
     const r = await superviseRun(
       { python: d.install.python, supervisor: d.install.supervisor, root, spawn: d.spawn },
       job,
       plan,
       d.install.workerTimeoutSeconds,
+      d.bound,
       (record) => verifier.register(job, record),
+      true,
     );
     let schema = false;
     if (r.keyed && r.signed !== null && r.treeEnded && !r.uncertain) {
@@ -668,7 +806,17 @@ export async function measureCommand(d: {
     return {
       schema: 1,
       measurement: measurementRecord(d.install.claude, d.executableDigest, profileHash(d.profileText), outcomes),
-      external: { schema, descendantLock: r.treeEnded && !r.uncertain },
+      // Inheritance is proven only by an observed and checked child that held the run lock, and no child
+      // that did not; a normal exit alone proves nothing (I009).
+      external: {
+        schema,
+        descendantLock:
+          r.treeEnded &&
+          !r.uncertain &&
+          !!r.descendants &&
+          r.descendants.checked >= 1 &&
+          r.descendants.holding === r.descendants.checked,
+      },
     };
   } finally {
     removeRunArea(area);

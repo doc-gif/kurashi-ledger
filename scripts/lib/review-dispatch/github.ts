@@ -335,13 +335,13 @@ export async function collect(
     testedParents: string[] = [],
     testedTree = "";
   // PR48-R008: any change in CI_TRUST_PATHS keeps CI unknown until the owner records the reviewed
-  // digest in the policy. A policy revision change then needs a new Ready.
+  // (main digest -> head digest) pair in the policy. A policy revision change then needs a new Ready.
   const baseTrust = await ciTrust(reader, current.base),
     headTrust = await ciTrust(reader, current.head);
   const workflow: Collection["workflow"] =
     baseTrust === headTrust
       ? "unchanged"
-      : (p.trustedCiDigests ?? []).includes(headTrust)
+      : (p.trustedCi ?? []).some((t) => t.main === baseTrust && t.head === headTrust)
         ? "trusted"
         : "untrusted";
   const workflowTrusted = workflow !== "untrusted";
@@ -494,6 +494,9 @@ export async function collect(
     items: options.findingItems ?? [],
     changes: options.findingChanges ?? [],
   });
+  snapshot.openFindings = [...found.open]
+    .map(([actor, ids]) => ({ actor, ids: [...ids] }))
+    .sort((a, b) => a.actor - b.actor);
   const ownerFindings = [...found.open]
     .filter(([actor]) => !assignment.reviewers.includes(actor))
     .flatMap(([, ids]) => ids);

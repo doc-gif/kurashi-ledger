@@ -37,6 +37,7 @@ import {
   parseInstall,
   startSmall,
   trapLayout,
+  trustedGuard,
   type ActiveInstall,
   type SpawnSupervisor,
   type SupervisorChild,
@@ -86,6 +87,9 @@ export type Deps = {
   readText?: (path: string) => string;
   platform?: NodeJS.Platform;
 };
+// A file of the trusted copy the supervisor runs from (install.supervisor ends in tools/review_dispatch/supervisor.py).
+const trustedCopyFile = (install: ActiveInstall, rel: string): string =>
+  `${install.supervisor.slice(0, -"/tools/review_dispatch/supervisor.py".length)}/${rel}`;
 const realSpawn: SpawnSupervisor = (file, args, env) =>
   spawn(file, args, { env, shell: false, stdio: ["pipe", "pipe", "ignore"] }) as unknown as SupervisorChild;
 export const lockPath = (root: string, kind: "daemon" | "receiver"): string =>
@@ -224,11 +228,13 @@ async function active(
   if (!current) return 0;
   // Nothing to launch (not eligible, waiting for RTs, already reviewed): the status command shows why.
   if (!nextKind(store, policy, current.snapshot).kind) return 0;
+  const digest = deps.digest ?? fileDigest;
+  const executableSha256 = digest(install.claude.executable);
   const bound = boundCapability(
     store.capability("claude"),
     install.claude,
     (deps.readText ?? ((p) => readFileSync(p, "utf8")))(install.claude.cliProfile ?? ""),
-    (deps.digest ?? fileDigest)(install.claude.executable),
+    executableSha256,
   );
   if (!bound.capability) {
     log(`PR #${target.pr}: 起動しません（${bound.reason}）。doctorを実行してください。`);
@@ -242,11 +248,22 @@ async function active(
     install,
     capability: bound.capability,
     verifier,
-    materials: async (j, dir) => {
-      await buildMaterials(new GhReader(policy.repo, transport, Date.now, 180000), { pr: target.pr, pair: j.pair }, dir);
-    },
+    materials: (j, dir) =>
+      buildMaterials(
+        new GhReader(policy.repo, transport, Date.now, 180000),
+        { ...current.snapshot, pair: j.pair },
+        dir,
+        trustedGuard(install.python, trustedCopyFile(install, "tools/review_guard/guard.py")),
+      ),
     spawn: deps.spawn ?? realSpawn,
     now: clock,
+    // Re-checked by the supervisor immediately before the worker starts (PR #56 red team P3).
+    bound: {
+      profile: install.claude.cliProfile ?? "",
+      profileSha256: digest(install.claude.cliProfile ?? ""),
+      executable: install.claude.executable,
+      executableSha256,
+    },
   });
   const broker = createClaudeReviewBroker(policy, install.broker, store, verifier, {
     platform: deps.platform ?? process.platform,
@@ -380,10 +397,17 @@ async function measure(
   log: (s: string) => void,
   deps: Deps,
 ): Promise<number> {
+  const digest = deps.digest ?? fileDigest;
   const record = await measureCommand({
     policy,
     install,
-    executableDigest: (deps.digest ?? fileDigest)(install.claude.executable),
+    bound: {
+      profile: install.claude.cliProfile ?? "",
+      profileSha256: digest(install.claude.cliProfile ?? ""),
+      executable: install.claude.executable,
+      executableSha256: digest(install.claude.executable),
+    },
+    executableDigest: digest(install.claude.executable),
     profileText: (deps.readText ?? ((p: string) => readFileSync(p, "utf8")))(install.claude.cliProfile ?? ""),
     executor: spawnExecutor(),
     spawn: deps.spawn ?? realSpawn,

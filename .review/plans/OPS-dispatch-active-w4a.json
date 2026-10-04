@@ -9,6 +9,8 @@
     "scripts/lib/review-dispatch/active.ts",
     "scripts/lib/review-dispatch/broker.test.ts",
     "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/claude-broker.test.ts",
+    "scripts/lib/review-dispatch/claude-broker.ts",
     "scripts/lib/review-dispatch/doctor.test.ts",
     "scripts/lib/review-dispatch/doctor.ts",
     "scripts/lib/review-dispatch/evidence.test.ts",
@@ -32,6 +34,7 @@
     "scripts/review-dispatch.test.ts",
     "scripts/review-dispatch.ts",
     "tests/fixtures/review-dispatch-github.ts",
+    "tests/fixtures/review-dispatch-run-signature.json",
     "tests/fixtures/review-dispatch-run-signer.ts",
     "tests/fixtures/review-dispatch-v1-bodies.json",
     "tools/review_dispatch/ci-trust-digest.sh",
@@ -242,7 +245,7 @@
       "location": "active.ts → supervisor.py run-worker の標準入力",
       "data": "起動計画（setup-tokenを含むenv）",
       "trust": "trusted",
-      "control": "argvではなくパイプで1行だけ渡す。supervisorは計画のcwd・HOME・TMPDIR・config dirがrootと重ならないこと、envのkeyが許可リストの中にあることを確かめる。macOS以外は拒否"
+      "control": "argvではなくパイプで1行だけ渡す。supervisorは計画のcwd・HOME・TMPDIR・config dirがrootと重ならないこと、envのkeyが許可リストの中にあることを確かめる。macOS以外は拒否。計画の形（sandbox-exec、結び付けたcli.sb、-Dの引数、結び付けた実行ファイル）も固定し、workerの起動の直前にcli.sbと実行ファイルのsha256をdoctorが測った値と照合する"
     },
     {
       "id": "B4",
@@ -321,7 +324,7 @@
     {
       "invariant_id": "INV-LOCK",
       "cause_key": "restore-lock-identity",
-      "pattern": "別の種類のlockや別のrunのlockを同じ排他として受け付ける",
+      "pattern": "別の種類のlockや別のrunのlockを同じ排他として受け付ける。子孫が残ったままleaseを外す・終了を証明する",
       "places": [
         {
           "location": "review-dispatch.ts serve/cycle/doctor/status/release",
@@ -330,6 +333,22 @@
         {
           "location": "supervisor.py receiver・run-worker",
           "result": "daemon・run-fixtureと同じlock関数。パスだけが違う"
+        },
+        {
+          "location": "supervisor.py runの正常終了",
+          "result": "process groupが空でなければgroupごと止め、空を確かめてから証明。run lockの取り直しも続ける"
+        },
+        {
+          "location": "supervisor.py runの取消",
+          "result": "SIGKILLのあとにgroupの空を確かめる"
+        },
+        {
+          "location": "measure",
+          "result": "子を作るrunで継承を実測"
+        },
+        {
+          "location": "supervisor.py inspect",
+          "result": "manifestがなくlockが空いていればneverStarted"
         }
       ]
     },
@@ -418,7 +437,7 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "一部の人の指摘・変更だけを見て合否を決める",
+      "pattern": "一部の人の指摘・変更だけを見て合否を決める。他者の未解消の判断があるのに承認の形で投稿する",
       "places": [
         {
           "location": "reducer.ts accepted",
@@ -435,6 +454,18 @@
         {
           "location": "active.ts",
           "result": "粗探しの未解消RTがあればレビューを起動しない"
+        },
+        {
+          "location": "broker.ts（APPROVE）",
+          "result": "accepted()と同じ止め方。当たればCOMMENT"
+        },
+        {
+          "location": "reducer.ts accepted",
+          "result": "決定的な状態の最新で数える"
+        },
+        {
+          "location": "active.ts資料",
+          "result": "未解消の指摘IDを入れる"
         }
       ]
     },
@@ -500,47 +531,6 @@
         {
           "location": "docs/review-dispatch-implementation.mdのW4の表",
           "result": "行ごとに済み・残すと理由を書く。W4bで全体を整理する"
-        }
-      ]
-    },
-    {
-      "invariant_id": "INV-LOCK",
-      "cause_key": "restore-lock-identity",
-      "pattern": "子孫が残ったままleaseを外す・終了を証明する",
-      "places": [
-        {
-          "location": "supervisor.py runの正常終了",
-          "result": "process groupが空でなければgroupごと止め、空を確かめてから証明。run lockの取り直しも続ける"
-        },
-        {
-          "location": "supervisor.py runの取消",
-          "result": "SIGKILLのあとにgroupの空を確かめる"
-        },
-        {
-          "location": "measure",
-          "result": "子を作るrunで継承を実測"
-        },
-        {
-          "location": "supervisor.py inspect",
-          "result": "manifestがなくlockが空いていればneverStarted"
-        }
-      ]
-    },
-    {
-      "invariant_id": "INV-REVIEW",
-      "pattern": "他者の未解消の判断があるのに承認の形で投稿する",
-      "places": [
-        {
-          "location": "broker.ts（APPROVE）",
-          "result": "accepted()と同じ止め方。当たればCOMMENT"
-        },
-        {
-          "location": "reducer.ts accepted",
-          "result": "決定的な状態の最新で数える"
-        },
-        {
-          "location": "active.ts資料",
-          "result": "未解消の指摘IDを入れる"
         }
       ]
     }

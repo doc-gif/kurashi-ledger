@@ -423,7 +423,7 @@ export type ClaudeReviewBroker = {
     raw: string,
     origin: Provenance | null,
     fetchFresh: () => Promise<Snapshot>,
-  ): Promise<"posted" | "uncertain" | "stale" | "blocked">;
+  ): Promise<"posted" | "uncertain" | "stale" | "blocked" | "deferred">;
 };
 export function createClaudeReviewBroker(
   policy: Policy,

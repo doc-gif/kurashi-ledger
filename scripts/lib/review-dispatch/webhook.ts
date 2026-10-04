@@ -37,7 +37,20 @@ export function signalKey(
   // An issue_comment marks only a pull request conversation, never a plain issue.
   if (event === "issue_comment" && !h["pull_request"]) return null;
   const pr = h["number"];
-  return Number.isSafeInteger(pr) && Number(pr) > 0 ? `${p.repoId}:${pr}` : null;
+  if (!Number.isSafeInteger(pr) || Number(pr) < 1) return null;
+  // Only items written by the PR's assigned reviewers or an owner can hide or change a finding
+  // (findings.ts); a third party's edit is reference only and marks nothing (PR #56 red team P2).
+  const item = payload[event === "pull_request_review" ? "review" : "comment"];
+  const user =
+    item && typeof item === "object" ? (item as Record<string, unknown>)["user"] : null;
+  const author =
+    user && typeof user === "object" ? (user as Record<string, unknown>)["id"] : null;
+  const target = p.targets.find((t) => t.pr === pr);
+  if (!target) return null;
+  // An unreadable author is treated as relevant (safe side).
+  if (Number.isSafeInteger(author) && !target.reviewers.includes(Number(author)) && !p.owners.includes(Number(author)))
+    return null;
+  return `${p.repoId}:${pr}`;
 }
 export function ingest(
   p: Policy,
