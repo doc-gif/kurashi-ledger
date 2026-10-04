@@ -49,6 +49,11 @@
       "description": "RT5 (5977666664): P2 setting location/format/bootstrap undefined; P2 per-environment copies can diverge. Owner receipt 5977666899: OWNER_MERGE_ONLY repository variable, condition added to all PRs. Coordinator: also shorten this PR's added text (google-technical-writing).",
       "state": "resolved",
       "resolution": "One source: repository variable OWNER_MERGE_ONLY (owner writes; AI Apps lack Variables permission). Format: PR numbers separated by commas or newlines; `none` means no PR; anything else is unreadable. Read: GET /repos/{owner}/{repo}/actions/variables/{name} needs collaborator access (classic: repo scope; App: Variables read, which the AI Apps lack), so workers read with the doc-gif gh login, read only; a Variables:read purpose is a separate App-procedure PR. 404/error/bad format = no merge. Bootstrap: owner creates the variable, then #51 merges. Merge-conditions text records the owner-added condition. Active list is no longer a worker input: patrols use their owner-managed run setting; implementers pick the order from guidance, which cannot enable a merge. R004 wording fixed. Text shortened without changing decisions."
+    },
+    {
+      "description": "RT6 (5977715032): P2 doc-gif read conflicts with the App rule; P2 owner head check dropped. Owner receipt 5977715281: AIs read OWNER_MERGE_ONLY only with their App (merge-check purpose, W5); until then nothing merges.",
+      "state": "resolved",
+      "resolution": "Read via the App merge-check purpose (W5 PR); until W5 merges and the owner adds Variables: Read-only, AIs treat the variable as unreadable and merge nothing. Restore residual risk (doc-gif can rewrite the variable) and the owner's UI head check (head equals the APPROVE commit_id). Bootstrap: variable (none) and App permission, then W5, then #51."
     }
   ],
   "assessments": [
