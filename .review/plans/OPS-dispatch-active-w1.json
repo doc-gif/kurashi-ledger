@@ -9,398 +9,189 @@
     "scripts/lib/review-dispatch/launcher.ts",
     "scripts/lib/review-dispatch/runtime.test.ts",
     "scripts/lib/review-dispatch/runtime.ts",
-    "tools/review_dispatch/seatbelt/cli.sb",
-    "tools/review_dispatch/seatbelt/tool.sb"
+    "tools/review_dispatch/seatbelt/cli.sb"
   ],
   "conflicts": [
     {
-      "description": "Issue #50のW1（起動器・Seatbelt・doctor）。W0が設計§7/§10を所有者決定O1〜O3へ書き換え、W4がactive CLIと導入手順を所有する。W1が設計文書や手順書を直すと、W0/W4と同じ箇所を同時に編集する",
+      "description": "W0が設計文書、W4がCLI・手順書を持つ。W1が文書を直すと同じ箇所を編集する。",
       "state": "resolved",
-      "resolution": "W1は新しいlauncher/doctor/seatbeltと、runtime.tsのCapabilityの必須probeの追加（加算だけ）に限る。設計・手順の文書は変えず、所有者の実機測定の手順はPR本文に置き、W4がdocsへ移す。runtime.test.tsの合成capabilityには追加したprobe名を足す（判定は弱めない）"
+      "resolution": "W1はlauncher・doctor・cli.sbだけを足す。runtime.tsは必須probeの追加だけ。所有者の測定手順はPR本文に置き、W4が文書へ移す。"
     },
     {
-      "description": "O2は「専用CLAUDE_CONFIG_DIRで1回ログイン」を前提にするが、公式のenv-vars文書は「macOSでは購読の資格情報はシステムのキーチェーンに保存され、CLAUDE_CONFIG_DIRの影響を受けない」と書く。CLI全体のprofileでキーチェーンを拒否すると購読認証が動かず、許すとCLIの子孫もキーチェーンへ届く",
+      "description": "macOSでは、Claudeの購読の資格情報はkeychainにあり、CLAUDE_CONFIG_DIRで分けられない（公式env-vars）。",
       "state": "resolved",
-      "resolution": "O2は再検討しない。CLI profileはclaudeのときだけキーチェーン（/usr/bin/securityとsecurityd）を許し、codexでは許さない。tool子profileは常に拒否。実CLIの道具経路でのキーチェーン拒否は所有者の測定が揃うまでunverified。この事実と残余リスクを報告・PR本文に書く"
+      "resolution": "所有者決定O2-token（Issue #50 5977365862）に従う。setup-tokenを所有者専用ファイルから読み、CLAUDE_CODE_OAUTH_TOKENで渡す。cli.sbはkeychainを全面拒否する。"
     },
     {
-      "description": "設計§7はCLI全体のprofileとtool子processのprofileを分けて両方の適用を証明することを求める。macOSは、sandbox-execで隔離したプロセスの中でのsandbox_applyを拒否する（手元のmacOS 26.5で、外側(allow default)の中のsandbox-execが『Operation not permitted』exit 71）。CLIが自分の子へtool profileを重ねられず、Codexの--sandbox read-onlyのSeatbeltも外側のprofileの中では起動できない",
+      "description": "macOSは、隔離済みのプロセスにより厳しいprofileを重ねられない（実測: exit 71）。CLIの子に別のprofileを掛けられない。",
       "state": "resolved",
-      "resolution": "入れ子にできたと偽らない。tool profileはdoctorの合成子プロセスと、受付側が直接起動する道具にだけ適用し、実CLIのtool子の拘束（tool-child-confined）は所有者の測定記録が揃うまでunverified。入れ子の拒否はdoctorが実測して理由に残す。Codexは外側profileの中で自分のSeatbeltを起動できないので、測定がない限り起動不可のまま。代案（モデル通信だけを通すlocal proxy、Claudeの道具をRead/Grep/Globに限ることをtool子の境界として受け入れるか）は所有者の判断として報告する"
+      "resolution": "tool.sbを作らない。tool-child-confinedは、cli.sbの孫で同じprobeが拒否されるかの継承の検査にする。"
     },
     {
-      "description": "doctorの否定試験に実際のSeatbeltを使うと、CIのmacOS runnerでsandbox-execが使えない可能性がある。docs/development.mdのskipの表はmacOSとLinuxを区別しない",
+      "description": "Codexの--sandbox read-onlyは外側のSeatbeltの中で動かず、ディスク全体を読める。",
       "state": "resolved",
-      "resolution": "skipしない。macOSでは実際のsandbox-execで合成子プロセス（Node.jsの固定probe、実AI・資格情報なし）を拘束して全probeの拒否と、拘束なしの対照の成功を確かめる。macOS以外では同じ試験がdoctorのdisabled（機構なし）を確かめる。CIのmacOS runnerで失敗すれば、所有者の測定へ移す判断を報告する（黙ってskipしない）"
+      "resolution": "所有者決定（5977365862、5977523656）に従う。Codexは包まずに起動する計画を作るが、今回は自動起動を見送る。doctorは常にcodex-deferredでdisabledにする。測定ハーネスは残す。"
     },
     {
-      "description": "PR51の粗探し（記録5977292218）のP1・P2・P3と、調整係の指示（2026-10-04）: cwd・設定・MCPの穴、Read/Grep/Globの範囲、購読認証の確認、Appの鍵と同じACLのキーチェーン項目。起動器が満たすべき条件で、固定版にflagがなければ起動不可にする",
+      "description": "cli.sbはモデル通信のためTCP 443を許す。CLIの子も443へ出られる。",
       "state": "resolved",
-      "resolution": "--restricted・--safe-mode・--strict-mcp-config（空の--mcp-config）・--disallowedTools mcp__*・disableAllHooksを必須とし、checkPlanが欠落をdisabledにする。固定版がv2.1.259未満なら起動を拒否。資料の木の全体（再帰）に.claude・.mcp.json・CLAUDE.md・AGENTS.md・.codex・.gitやsymlinkがあれば拒否。Read規則を資料に限り（文書上GrepとGlobにも適用）、config・runtime・run HOME/TMPへのdeny規則とblockReadsOutsideWorkingDirectoriesを置く。Grep/Globのpath規則は文書上参照されないので書かない（報告に理由）。`claude auth status`のauthMethod claude.aiとconfigDirectoryをdoctorが要求。envからANTHROPIC_*等を明示的に拒否、settingsのapiKeyHelperを拒否。キーチェーンのprobeはCLI profileでも実行し、claudeでsecurityへ届けばdisabled（所有者の代替の決定まで）。実CLIでの合成PR・注入の否定試験は測定ハーネス（実行器を注入）として実装し、CIはfakeで試験する"
+      "resolution": "所有者が残余として受け入れた（5977523656）。loopbackは443でも拒否する。Claudeの道具はRead/Grep/Globのまま。"
     },
     {
-      "description": "所有者の決定（Issue #50 受領記録5977365862: O2-token、keychain、Codex）と、PR51第3回・PR53の粗探しの追加（2026-10-04、調整係経由）。前回のPR54は、Claudeのキーチェーン利用（disabled）とtool.sbの入れ子（不可）を未決として残した",
+      "description": "PR54の粗探し（5977515767）: 証拠の欠落を拒否とみなす箇所と、禁止リストで残りを許す箇所があった。",
       "state": "resolved",
-      "resolution": "Claudeは`claude setup-token`の長期トークンを、所有者だけが読める専用ファイル（repo・作業領域の外、mode 600/400、所有者一致、親dirは他者書込み不可、symlink・hard link拒否）から起動器が読み、文書にあるCLAUDE_CODE_OAUTH_TOKENだけで渡す。値はargv・stdin・hash・記録・エラー文に出さない。cli.sbはキーチェーンを一切拒否（securitydのmach-lookup、/usr/bin/security、keychainファイルを末尾の明示denyで上書き）。doctorは使い捨てのkeychain fileにAppの鍵と同じACL（-T /usr/bin/security）の合成項目を作り、cli.sbから読めないことを実機で確かめる（exec denyだけを外した派生profileで、mach/fileのdenyが効くことを示す）。auth statusはauthMethod oauth_token（文書の値）とconfigDirectoryを要求。envはallowlistだけで、ANTHROPIC_*（BASE_URL含む）・CLAUDE_CODE_USE_*（Bedrock/Vertex/Foundry）等を明示拒否、--settingsは決まったkeyだけ（env・apiKeyHelper・gateway系なし）。専用config dirのenv・apiKeyHelper・enabledPlugins・mcpServers等と、managed settingsの有無をdoctorが検査。入れ子は不可なのでtool.sbを削除し、tool-child-confinedはcli.sbの継承の検査（cli.sbの中の子が起動した孫で同じprobeが拒否される）に置き換える。Codexは外側のSeatbeltなしで--sandbox read-onlyだけ。合成probeは適用しない。実機の測定（秘密の代役・DB/policyの読取りと書込み・トークンの代役・合成keychain項目・network・supervisorのsocket・PRのAGENTS.md/.codex設定）がすべてdeniedになるまでunverified/disabled。中立なcwdの規則はCodexにも同じく適用。deny-supervisorを必須probeに追加: supervisorの代役（doctor自身）へのsignalとunixの制御socketを、cli.sbとその孫から拒否し、cli.sbの静的lintがprocess-info・mach-task・signal・keychainのallowを拒む"
+      "resolution": "証拠を必須にし、許可リストにする。測定は項目ごとにCLIのイベントの試行の証跡を要する（なければinconclusive）。合成probeは、その規則だけを外した変種で成功することも示す。sysctl・資料の名前・計画は許可リストか完全一致にする。"
     },
     {
-      "description": "PR54の粗探し（記録5977515767、head a1e8857）: P1 1件・P2 4件・P3。所有者決定（Issue #50 受領記録5977523656）: Codexの自動起動は今回見送り、443は残余として受け入れ（loopbackは塞ぐ、道具はRead/Grep/Globのまま）",
+      "description": "CIでmacOSの実Seatbeltを使う。skipの表はmacOSとLinuxを区別しない。",
       "state": "resolved",
-      "resolution": "全体の方針: 指摘はすべて『証拠の欠落を拒否の証拠として扱う』か『禁止リストで残りを許す』という同じ原因の変種なので、両方を全体で反転する。(1) 証拠必須: 実CLIの測定は、試行の依頼を測定側の信頼できるstdinで出し（資料には置かない）、項目ごとにCLI自身のイベントの試行の証跡（Claudeはstream-jsonのtool_useかpermission_denials、Codexは--jsonのコマンドの項目）がなければinconclusive。Claudeだけ、Read/Grep/Glob以外の道具が要る項目は、そのセッションのinitイベントが道具をRead/Grep/Globだけ・MCPなしと示すときの構造上の証拠で拒否とする。従順なだけのfakeはinconclusive。合成のprobeも、明示のdenyで止まったこと（その規則だけを外した変種では成功する）を示す（app-key-item、process-env）。(2) 許可リスト: cli.sbのsysctlを名前の許可リストにする。手元の実測で、他プロセスのargv/env（KERN_PROCARGS2）はdeny-defaultでもsysctlの制限でも止まらず、process-infoの制御だったので、自分以外のprocess-infoを拒否する（CLIのenvにトークンがあるため子にも読ませない）。loopbackへの出力を443の許可の後で拒否する。資料の名前はNFC・小文字で比べ、通常のファイル（nlink 1）とdir以外を拒否。checkPlanは正規のargv/env/cwdとの完全一致（run固有の場所を代入、トークンは形式検査の後に計画の値を使う）。doctorのhashと計画の結び付けはW4。(3) P3: 版の下限2.1.268、合成keychainはRUN_HOMEの中、/dev/ttyを外す、トークンファイルのエラーを固定文にしfstat後に再検査、CODEX_HOMEの検査。lintの漏れは後回し。(4) 所有者決定: Codexは今回の版では測定の結果にかかわらずcapabilityをreadyにしない（doctorが常にcodex-deferredでdisabled）。測定ハーネスは残す。443は残余として受け入れ、loopbackを塞ぐ。設計文書はW4が更新する"
+      "resolution": "skipしない。macOSでは実sandbox-execで合成probeを確かめる。ほかのOSではdoctorがdisabledを返すことを確かめる。"
     }
   ],
   "assessments": [
     {
       "id": "INV-LOCK",
       "disposition": "not-applicable",
-      "reason": "起動器・doctorは保存先の排他を作らず、supervisorのrun lock・PR leaseも変えない。doctorの合成fixtureは毎回新しい一時ディレクトリだけを使い、製品・受付のDB/lockに触れない。descendant-lockの証拠は既存のsupervisorの責務のまま（Capabilityの既存probe）",
+      "reason": "launcherとdoctorはlockを取らず、外さない。descendant-lockの証拠はsupervisorの責務のまま。",
       "checks": [
-        {
-          "id": "identity",
-          "method": "差分でlock・flock・store.tsへの変更がないことを読む。doctorのfixtureがmkdtempの新しい場所だけに書くことを試験で確かめる",
-          "expected": "lockの同一性・取得の規則は不変。doctorは既存のlockを取得・解放しない"
-        },
-        {
-          "id": "recovery",
-          "method": "runtime.tsの変更が必須probe名の追加だけであることを差分で確かめ、既存のD03（uncertainの保持）試験を変えずに通す",
-          "expected": "uncertain・lease保持の動作は不変"
-        }
+        {"id": "identity", "method": "差分にlock・store.tsの変更がないことを読む。", "expected": "lockの規則は変わらない。"},
+        {"id": "recovery", "method": "runtime.tsの差分が必須probeの追加だけであることを読み、D03の試験を通す。", "expected": "uncertainとleaseの保持は変わらない。"}
       ]
     },
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "起動器はworkerへ渡す環境をallowlistから作り直し、GH_TOKEN・KL_*・ANTHROPIC_API_KEY・CLAUDE_CODE_OAUTH_TOKEN・OPENAI_API_KEY等を渡さない（PR42-R001の縮小の失敗をfail closed）。Seatbeltは資格情報・policy・DBの領域を拒否する。doctorの否定試験は合成の『鍵』ファイル（SYNTHETIC文字列）だけを使い、実キーチェーン・実CLI・実鍵を読まない。診断の出力は閉じた列挙（probe ID・denied/allowed/inconclusive・理由ID）だけにし、OSのエラー文・パス・子の出力を写さない（PR37-R001）",
+      "reason": "workerのenvはallowlistだけで作る。cli.sbは資格情報・policy・DB・keychainを拒否する。試験は合成値だけを使う。診断は閉じた列挙とIDだけを出す（PR37-R001）。",
       "checks": [
-        {
-          "id": "public",
-          "method": "stageを明示して`node scripts/check-public.ts --staged`。launcherの試験で、親の環境に偽の秘密（合成値）を入れても結果のenvに出ないこと、余分なenv・相対パス・改行・NUL・保護領域と重なる場所・cwdのCLAUDE.md/AGENTS.md/.claude/.mcp.json/.codexを拒否することを確かめる。doctorの試験で、結果のJSONに合成の秘密の値・fixtureのパスが出ないことを確かめる",
-          "expected": "終了コード0。差分・試験の出力に実在の秘密・個人のパスがない。拒否できない設定・合成の秘密が見えるprobeではcapabilityがverifiedにならない"
-        }
+        {"id": "public", "method": "stageを明示して check-public --staged を実行する。親のenvに合成の秘密を入れ、計画とエラー文に出ないことを試験する。", "expected": "終了コード0。秘密・トークン・個人のパスが差分と出力にない。"}
       ]
     },
     {
       "id": "INV-RELEASE",
       "disposition": "preserve",
-      "reason": "実CLIの版・実行ファイルhash・profileのhash・argvのhashを測定記録と結び、どれかが変われば測定は無効（unverified）。help・版表示を隔離の証拠にしない。CIは固定したNode.jsの版で3 OSの既存の検査を通す（PR12-R103）",
+      "reason": "測定記録はCLIの版・実行ファイル・profile・argvのhashに結び付ける。help表示を隔離の証拠にしない（PR12-R103）。",
       "checks": [
-        {
-          "id": "update",
-          "method": "doctorの試験で、版・codeHash・profileHash・argvHashのどれかが違う測定記録を与え、unverifiedになることを確かめる。npm test・typecheck・check:test-skipsを既存のCIで3 OSに通す",
-          "expected": "古い測定・別の版でverifiedにならない。未検証のCLIはdisabled/unverifiedのまま"
-        },
-        {
-          "id": "artifact",
-          "method": "profileは固定ファイル（tools/review_dispatch/seatbelt/）で、起動器はレビュー済みの写しの絶対パスと、そのhashを要求する。macOSの試験でprofileの実ファイルを実際のsandbox-execへ渡す",
-          "expected": "PRのcheckoutや別のprofileで起動しない。profileの改変はhashの不一致で測定を無効にする"
-        }
+        {"id": "update", "method": "bindingが違う測定記録を与える。既存のCIを3 OSで通す。", "expected": "古い測定ではverifiedにならない。"},
+        {"id": "artifact", "method": "起動器はレビュー済みprofileの絶対パスを要求する。macOSの試験で実profileを実sandbox-execへ渡す。", "expected": "別のprofileや改変はhashの不一致で無効になる。"}
       ]
     },
     {
       "id": "INV-ROOT",
       "disposition": "preserve",
-      "reason": "起動器は資料・設定・run用HOME/TMPの各ルートが、正規化した絶対パスで、policy・DB・repo等の保護ルートと重ならない（等しい・祖先・子孫でない）ことを要求する。別名（symlink）はdoctor側でrealpathしてからSeatbeltへ渡す（PR12-R104）",
+      "reason": "run・install・トークンの場所は正規化した絶対パスで、保護ルートと重ならないことを要求する（PR12-R104）。",
       "checks": [
-        {
-          "id": "first-use",
-          "method": "launcherの試験で、空でない・未知のcwd内容（CLAUDE.md等）や存在しない場所を拒否する。doctorは毎回新しい一時ルートを作る",
-          "expected": "既存の受付ルート・製品データを作成・上書きしない"
-        },
-        {
-          "id": "aliases",
-          "method": "`..`・末尾の/・相対・重複する区切りを含むパス、保護ルートの祖先・子孫を与えた試験。macOSの試験はrealpath後のパスでprofileを適用する",
-          "expected": "別名や重なりで保護ルートへ届く起動計画を作らない"
-        }
+        {"id": "first-use", "method": "資料にCLIの設定ファイルがある場合や、存在しない場所を与える。", "expected": "起動計画を作らない。既存データを上書きしない。"},
+        {"id": "aliases", "method": "相対・..・末尾/・保護ルートの祖先や子孫を与える。資料の名前の大小・NFDとlinkを試験する。", "expected": "別名や重なりで保護領域へ届かない。"}
       ]
     },
     {
       "id": "INV-STORAGE",
       "disposition": "not-applicable",
-      "reason": "SQLite・schema・migration・backupを変えない。doctorの『DB書込み』probeは合成の一時ファイルへの書込みが拒否されるかだけを見て、受付のDBを開かない",
+      "reason": "SQLite・schema・backupを変えない。DBのprobeは合成の一時ファイルだけを使う。",
       "checks": [
-        {
-          "id": "rollback",
-          "method": "store.tsに差分がないことを確かめる",
-          "expected": "DBの形式・transactionは不変"
-        },
-        {
-          "id": "restore",
-          "method": "doctorのfixtureが一時ディレクトリだけに作られ、終了時に消えることを試験で確かめる",
-          "expected": "受付のDB・backupに触れない"
-        },
-        {
-          "id": "manifest",
-          "method": "doctorの測定記録は形式・bindingを厳密に検査し、不明・不正ならunverified",
-          "expected": "不完全な記録で起動可能にならない"
-        }
+        {"id": "rollback", "method": "store.tsに差分がないことを読む。", "expected": "DBの形式は変わらない。"},
+        {"id": "restore", "method": "doctorのfixtureが一時dirだけに作られ、終了時に消えることを試験する。", "expected": "受付のDBに触れない。"},
+        {"id": "manifest", "method": "測定記録のschemaとbindingを厳密に検査する。", "expected": "不完全な記録で起動可能にならない。"}
       ]
     }
   ],
   "boundaries": [
-    {
-      "id": "B1",
-      "direction": "entry",
-      "location": "launcher.ts buildLaunch()の引数（所有者管理のinstall設定とrunの場所）",
-      "data": "実行ファイル・profile・設定ディレクトリ・資料・HOME/TMP・保護ルートの絶対パス、固定版",
-      "trust": "partially-trusted",
-      "control": "正規化済み絶対パス・許可文字だけ、保護ルートとの重なりを拒否、platformがdarwin以外・sandbox-execの固定パス以外は拒否。policyからargvやenvを任意に足す口を設けない"
-    },
-    {
-      "id": "B2",
-      "direction": "entry",
-      "location": "launcher.ts buildLaunch()のjob本文（stdinへ渡すプロンプト）",
-      "data": "PRの差分・本文を含みうるjobの文字列",
-      "trust": "untrusted",
-      "control": "argvへ入れずstdinだけで渡す（フラグとして解釈させない）。argvの問い合わせ文は固定の定数。サイズ上限とNULの拒否"
-    },
-    {
-      "id": "B3",
-      "direction": "exit",
-      "location": "launcher.tsの起動計画（Claude: /usr/bin/sandbox-exec + cli.sb、Codex: codex本体を直接。shellなし）",
-      "data": "CLIのフラグ・Seatbeltのparam・allowlistのenv",
-      "trust": "trusted",
-      "control": "shell:false、envはallowlistから作り直し親の環境を展開しない。Claudeは公式文書にあるフラグだけ（--restricted・--safe-mode・--tools・--allowedTools・--disallowedTools・--permission-mode dontAsk・--permission-prompts none・--settings・--mcp-config・--strict-mcp-config・--no-session-persistence・--disable-slash-commands・--output-format json・--json-schema）、--bareとAPI鍵は使わない。Codexはcodex exec --json --sandbox read-only等の文書化されたフラグだけ。checkPlan()が計画を独立に再検査する。Codexは外側のSeatbeltで包まない（checkPlanがcodex-wrappedとして拒否）。Claudeのenvはallowlistだけで、setup-tokenはCLAUDE_CODE_OAUTH_TOKENだけで渡す"
-    },
-    {
-      "id": "B4",
-      "direction": "entry",
-      "location": "doctor.tsのprobe子プロセスの出力（Seatbeltで拘束したNode.jsの固定probe）",
-      "data": "probeの結果（1行のJSON）",
-      "trust": "untrusted",
-      "control": "サイズ上限、厳密なJSONの形（outcomeとcodeの閉じた列挙）以外はinconclusive。EPERMだけをdenied、成功だけをallowed、それ以外はinconclusive。拘束なしの対照が成功しなければinconclusive"
-    },
-    {
-      "id": "B5",
-      "direction": "entry",
-      "location": "doctor.tsに渡す所有者の測定記録（実CLIの道具経路の否定試験の結果）",
-      "data": "backend・版・codeHash・profileHash・argvHash・probeごとの結果",
-      "trust": "partially-trusted",
-      "control": "厳密なschema、現在の値とのbinding一致、未知のキーの拒否。不一致・欠落はunverified。allowedが1つでもあればdisabled"
-    },
-    {
-      "id": "B6",
-      "direction": "exit",
-      "location": "doctor.tsの結果（Capabilityと状態verified/unverified/disabledと理由ID）",
-      "data": "runtime.tsのcapabilityReadyへ渡すprobeの真偽と診断",
-      "trust": "trusted",
-      "control": "全probeがdeniedのときだけtrue。理由は閉じた列挙のIDだけで、OSのエラー文・パス・子の出力を含めない"
-    },
-    {
-      "id": "B7",
-      "direction": "exit",
-      "location": "doctorの合成fixture（一時ディレクトリの合成の鍵・policy・DB・設定）と、loopbackの一時TCPサーバー",
-      "data": "SYNTHETICの文字列だけのファイル、127.0.0.1の一時ポート",
-      "trust": "trusted",
-      "control": "mkdtempの新しい場所だけに作り、終了時に消す。外部ネットワーク・実キーチェーン・実CLIを使わない"
-    },
-    {
-      "id": "B8",
-      "direction": "exit",
-      "location": "公開のリポジトリ（コード・profile・試験・計画・PR本文）",
-      "data": "合成の値と手順",
-      "trust": "untrusted",
-      "control": "stageを明示し`check-public --staged`を確かめる。実在のパス・鍵・アカウントを書かない"
-    },
-    {
-      "id": "B9",
-      "direction": "exit",
-      "location": "doctor.ts measureCli()（所有者が実機で実行。CIはfakeの実行器）",
-      "data": "罠の資料（.claude/settings.jsonのhooks・.mcp.json・CLAUDE.md・AGENTS.md・注入の指示）、config dirへの一時の罠ファイル、合成の秘密ファイル、Seatbeltなしのflag層だけの実行",
-      "trust": "partially-trusted",
-      "control": "所有者の新しい空のrootとnonceだけを使い、罠のhookはmarkerをtouchするだけ。config dirの罠は実行後に消す。判定はmarkerとnonceだけで、CONTROLのnonceが出なければinconclusive。実鍵・実キーチェーン項目を使わない"
-    },
-    {
-      "id": "B10",
-      "direction": "entry",
-      "location": "launcher.ts readTokenFile()（所有者が置くsetup-tokenのファイル）",
-      "data": "Claudeの購読の長期トークン",
-      "trust": "partially-trusted",
-      "control": "正規化した絶対パス、作業領域と重ならない、lstatで通常ファイル・所有者一致・mode 600/400・nlink 1、親dirは所有者一致で他者書込み不可、O_NOFOLLOWで開いてfstatで同一性を確認、サイズと文字種を検査。エラー文に値を含めない。cli.sbのdenyで子からは読めない（doctorのtoken-file probe）"
-    },
-    {
-      "id": "B11",
-      "direction": "exit",
-      "location": "doctor.ts seatbeltHost()の合成keychain file（security create-keychain）とsupervisorの代役socket",
-      "data": "合成の項目（SYNTHETIC値）、doctor自身のpid、一時のunix socket",
-      "trust": "trusted",
-      "control": "fixtureの一時dirに作り、利用者の検索リストに加えない（実機で確認）。終了時にdelete-keychainとrmで消す。実キーチェーン・実項目に触れない"
-    },
-    {
-      "id": "B12",
-      "direction": "entry",
-      "location": "doctor.ts parseEvents()（実CLIのstream-json・--jsonの出力）",
-      "data": "CLIのイベント（init、tool_use、permission_denials、command_execution等）",
-      "trust": "untrusted",
-      "control": "1行ずつJSONとして読み、知らない形は無視する。試行の証跡は、測定側が出した対象の文字列を含むtool呼出し・拒否・コマンドの項目だけ。証跡がなければinconclusive。出力の値は判定にだけ使い、記録に写さない"
-    }
+    {"id": "B1", "direction": "entry", "location": "launcher.ts buildLaunch() の install と run", "data": "実行ファイル・profile・設定dir・資料・HOME/TMP・保護ルート・トークンファイルの場所と固定版", "trust": "partially-trusted", "control": "正規化した絶対パスだけ。保護ルートとの重なりを拒否。macOS以外は拒否。policyからargv・envを足す口はない。"},
+    {"id": "B2", "direction": "entry", "location": "launcher.ts の資料ディレクトリ（scanTree）", "data": "PRから取った資料", "trust": "untrusted", "control": "CLIの設定ファイル名をNFC・小文字で拒否。通常のファイル（link 1）とdir以外を拒否。jobはstdinだけで渡す。"},
+    {"id": "B3", "direction": "exit", "location": "launcher.ts の起動計画（shellなし）", "data": "CLIのargv・env・Seatbeltのparam", "trust": "trusted", "control": "checkPlanが正規の形との完全一致を求める。Claudeは文書にあるflagだけでcli.sbで包む。Codexは包まない。"},
+    {"id": "B4", "direction": "entry", "location": "doctor.ts のprobe子の出力", "data": "1行のJSON", "trust": "untrusted", "control": "閉じた形以外はinconclusive。EPERMだけをdenied。対照が成功しなければinconclusive。"},
+    {"id": "B5", "direction": "entry", "location": "doctor.ts に渡す測定記録", "data": "backend・版・hash・probeごとの結果", "trust": "partially-trusted", "control": "厳密なschemaとbindingの一致。不一致はunverified、allowedはdisabled。"},
+    {"id": "B6", "direction": "exit", "location": "doctor.ts の結果", "data": "capabilityと状態・理由", "trust": "trusted", "control": "全probeがdeniedのときだけtrue。理由はIDだけで、パス・OSの文・トークンを含めない。"},
+    {"id": "B7", "direction": "exit", "location": "doctor の合成fixture（一時dir、loopbackのport、unix socket、使い捨てkeychain file、合成のenv読取り器）", "data": "SYNTHETICの値だけ", "trust": "trusted", "control": "mkdtempの場所に作り、終了時に消す。keychainは検索リストに加えない。外部ネットワーク・実keychainを使わない。"},
+    {"id": "B8", "direction": "exit", "location": "公開のリポジトリとPR", "data": "コード・profile・試験・計画", "trust": "untrusted", "control": "stageを明示し check-public --staged を確かめる。"},
+    {"id": "B9", "direction": "exit", "location": "doctor.ts measureCli()（所有者が実機で実行。CIはfake）", "data": "罠の資料、config dirの一時の罠、合成の秘密、stdinの試行の依頼", "trust": "partially-trusted", "control": "新しいrootとnonceだけを使う。罠のhookはmarkerをtouchするだけ。config dirの罠は実行後に消す。"},
+    {"id": "B10", "direction": "entry", "location": "launcher.ts readTokenFile()", "data": "Claudeのsetup-token", "trust": "partially-trusted", "control": "通常のファイル・所有者一致・mode 600/400・link 1・親dirは他者書込み不可。O_NOFOLLOWで開きfstatで再検査。エラーは固定文。"},
+    {"id": "B11", "direction": "entry", "location": "doctor.ts parseEvents()（実CLIのイベント）", "data": "init・tool_use・permission_denials・コマンドの項目", "trust": "untrusted", "control": "JSON行だけを読み、知らない形は無視。対象を名指す試行の証跡がなければinconclusive。"}
   ],
   "variant_analysis": [
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "token-scope-fail-open",
-      "pattern": "縮小・隔離を確かめられないのに起動・使用へ進む（fail open）。PR54粗探しの共通原因（証拠の欠落を拒否の証拠として扱う、禁止リストで残りを許す）も含む",
+      "pattern": "隔離を確かめられないのに起動へ進む。証拠の欠落を拒否とみなす。",
       "places": [
-        {
-          "location": "doctor.ts evaluate()",
-          "result": "対照の失敗・probeの不明・測定の欠落はunverified、allowedはdisabled。verifiedは全probeのdeniedだけ"
-        },
-        {
-          "location": "runtime.ts capabilityReady()",
-          "result": "必須probeを増やすだけで、既存の判定を緩めない"
-        },
-        {
-          "location": "launcher.ts buildLaunch()",
-          "result": "darwin以外・sandbox-execでない・保護ルートと重なる計画は例外で止め、計画を返さない"
-        },
-        {
-          "location": "doctor.ts runDoctor()の認証",
-          "result": "auth statusがない・claude.ai以外・configDirectoryの不一致はunverified/disabled"
-        },
-        {
-          "location": "launcher.ts readTokenFile()・checkPlan()",
-          "result": "トークンファイルの所有者・mode・リンク・内容の不備は起動拒否。Claudeの計画にトークンがなければno-subscription-token、Codexにあればcredential-env"
-        },
-        {
-          "location": "doctor.ts runDoctor()（Codex）",
-          "result": "外側のSeatbeltがないので合成probeは使わず、実機の測定がすべてdeniedになるまでunverified、allowedならdisabled"
-        },
-        {
-          "location": "doctor.ts injectionRun()・trapPrRun()",
-          "result": "試行の証跡（イベント）がなければinconclusive。従順なだけの出力はinconclusive"
-        },
-        {
-          "location": "doctor.ts seatbeltHost() app-key-item・process-env",
-          "result": "対照と、その規則だけを外した変種での成功が揃って初めてdenied"
-        },
-        {
-          "location": "cli.sb sysctl・process-info・network",
-          "result": "sysctlは名前の許可リスト、process-infoは自分だけ、loopbackは443でも拒否"
-        },
-        {
-          "location": "launcher.ts validate()・checkPlan()",
-          "result": "資料はNFC・小文字で比較し通常のファイルとdirだけ。計画は正規の形との完全一致"
-        }
+        {"location": "doctor.ts runDoctor()", "result": "不明・測定なしはunverified、allowedはdisabled。Codexは常にdisabled。"},
+        {"location": "doctor.ts measureCli()", "result": "試行の証跡がなければinconclusive。"},
+        {"location": "doctor.ts seatbeltHost()", "result": "対照と、規則を外した変種での成功が揃って初めてdenied。"},
+        {"location": "runtime.ts capabilityReady()", "result": "必須probeを足すだけ。"},
+        {"location": "launcher.ts readTokenFile()・checkPlan()", "result": "トークンや計画の不備は起動拒否。"}
       ]
     },
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "credential-tool-from-untrusted-checkout",
-      "pattern": "資格情報に届く道具（CLI・profile）をPRのcheckoutから実行する",
+      "pattern": "資格情報に届く道具をPRのcheckoutから実行する。",
       "places": [
-        {
-          "location": "launcher.tsのprofile・実行ファイルのパス",
-          "result": "所有者管理のinstall設定の絶対パスだけ。試験はfixtureの一時パスとfakeで、実CLIを起動しない"
-        },
-        {
-          "location": "doctor.tsの実Seatbelt試験",
-          "result": "合成のNode.js probeだけを拘束する。実AI CLI・実鍵を使わない"
-        }
+        {"location": "launcher.ts のprofile・実行ファイル", "result": "所有者管理のinstall設定の絶対パスだけ。"},
+        {"location": "doctor.test.ts", "result": "合成のprobeだけを拘束し、実CLI・実鍵を使わない。"}
       ]
     },
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "logged-value-carries-data",
-      "pattern": "診断・結果にOSのエラー文・パス・子の出力・秘密の値を写す",
+      "pattern": "診断・記録にパス・OSの文・トークンを写す。",
       "places": [
-        {
-          "location": "doctor.tsの結果と理由",
-          "result": "probe ID・閉じた列挙のoutcome・理由IDだけ。子の出力は解析後に捨てる"
-        },
-        {
-          "location": "launcher.tsの例外文",
-          "result": "固定の文だけで、渡された値（パス・プロンプト）を含めない"
-        },
-        {
-          "location": "argvTemplateHash()・measurementRecord()",
-          "result": "トークンの値は<token>に置き換え、hash・記録・診断に入らない"
-        }
+        {"location": "doctor.ts の結果", "result": "probe IDと閉じた列挙だけ。"},
+        {"location": "argvTemplateHash()・measurementRecord()", "result": "トークンは<token>に置き換える。"},
+        {"location": "launcher.ts の例外文", "result": "固定文だけ。"}
       ]
     },
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "public-path-exception-scope",
-      "pattern": "公開検査の例外を広げる",
+      "pattern": "公開検査の例外を広げる。",
       "places": [
-        {
-          "location": "scripts/check-public.ts・public-policy",
-          "result": "変更しない。新しいファイルは通常の検査を通す"
-        }
+        {"location": "check-public・public-policy", "result": "変更しない。"}
       ]
     },
     {
       "invariant_id": "INV-RELEASE",
       "cause_key": "verification-on-target-runtime",
-      "pattern": "未実行・別OS・継承した環境の検査を合格と扱う",
+      "pattern": "未実行・別OSの検査を合格と扱う。",
       "places": [
-        {
-          "location": "doctor.testのSeatbelt試験",
-          "result": "macOSでは実sandbox-execで拒否と対照の両方を確かめ、それ以外のOSではdisabledを確かめる。skipしない"
-        },
-        {
-          "location": "launcher.tsのenv",
-          "result": "親の環境を継承しないので、継承した変数で検査が素通りしない"
-        }
+        {"location": "doctor.test.ts のSeatbelt試験", "result": "macOSで実sandbox-exec、ほかのOSでdisabledを確かめる。skipしない。"}
       ]
     },
     {
       "invariant_id": "INV-RELEASE",
       "cause_key": "artifact-release-coherence",
-      "pattern": "版やprofileが変わっても古い証拠で起動する",
+      "pattern": "版やprofileが変わっても古い証拠で起動する。",
       "places": [
-        {
-          "location": "doctor.tsの測定記録のbinding",
-          "result": "版・codeHash・profileHash・argvHashのどれかの違いでunverified"
-        }
+        {"location": "doctor.ts の測定記録", "result": "版・hashのどれかが違えばunverified。"}
       ]
     },
     {
       "invariant_id": "INV-RELEASE",
       "cause_key": "install-record-verification-scope",
-      "pattern": "検査が保証すると述べる範囲より狭い範囲しか確かめない",
+      "pattern": "検査が保証する範囲より狭く確かめる。",
       "places": [
-        {
-          "location": "doctorのprobe一覧",
-          "result": "合成子のOS拒否と、実CLIの道具経路（所有者の測定）を別のprobeとして扱い、合成子の結果だけで実CLIを合格にしない。入れ子にできないtool profileはunverifiedとして明示"
-        },
-        {
-          "location": "doctor.ts measureCli()",
-          "result": "道具経路で試せない項目（keychain・DB/policy書込み・network・tool-child-confined）はinconclusiveのまま返し、記録をdeniedにしない"
-        }
+        {"location": "doctor のprobe", "result": "合成の拒否と実CLIの測定を別に扱い、合成だけで実CLIを合格にしない。"}
       ]
     },
     {
       "invariant_id": "INV-ROOT",
       "cause_key": "destructive-op-follows-link",
-      "pattern": "別名・symlinkで保護領域へ届く",
+      "pattern": "別名・linkで保護領域へ届く。",
       "places": [
-        {
-          "location": "launcher.tsのパス検査",
-          "result": "正規化した絶対パスと保護ルートの重なりの拒否。symlinkの解決は呼び出し側（doctor・W4）でrealpathしてから渡す"
-        },
-        {
-          "location": "doctor.tsのfixture",
-          "result": "realpathした一時ルートをSeatbeltのparamに使う"
-        }
+        {"location": "launcher.ts のパスと資料の検査", "result": "正規化・重なりの拒否。資料のlinkと特殊ファイルを拒否。"}
       ]
     },
     {
       "invariant_id": "INV-LOCK",
-      "pattern": "doctor・起動器が既存のlockを取る・外す",
+      "pattern": "launcher・doctorがlockを取る・外す。",
       "places": [
-        {
-          "location": "launcher.ts・doctor.ts",
-          "result": "lockを扱わない"
-        }
+        {"location": "launcher.ts・doctor.ts", "result": "lockを扱わない。"}
       ]
     },
     {
       "invariant_id": "INV-STORAGE",
-      "pattern": "doctorが受付のDBを開く・書く",
+      "pattern": "doctorが受付のDBを開く。",
       "places": [
-        {
-          "location": "doctor.tsのdeny-db probe",
-          "result": "一時の合成ファイルへの書込みだけを試す"
-        }
+        {"location": "doctor.ts のdeny-db probe", "result": "一時の合成ファイルだけを使う。"}
       ]
     }
   ]
