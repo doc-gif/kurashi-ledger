@@ -318,7 +318,7 @@ Knip（6.39.0、ISC）は、未使用のファイル・export・依存まで見�
 
 #### 4.5 Dependabot（採用。このPRで`.github/dependabot.yml`を加える）
 
-**背景:** 依存（TypeScript、`@types/node`、Playwright）とGitHub Actions（SHAで固定）は、固定したまま放っておくと、脆弱性の修正を取り込み損ね、まとめて上げるときに大きな差分になる。actionをSHAで固定しているので、新しい版は人が探さないと見つからない。一方、2026-10-02の所有者の決定（[開発環境](../development.md)の「所有者の決定」の3）では、自動のPRがlockfile（共有資源）を変え、割当の外で作業が生まれることを理由に、Dependabotを入れなかった。2026-10-03に所有者がDependabotを含めることを承認したので、その懸念に次の設計で答える。
+**背景:** 依存（TypeScript、`@types/node`、Playwright）とGitHub Actions（SHAで固定）は、固定したまま放っておくと、脆弱性の修正を取り込み損ね、まとめて上げるときに大きな差分になる。actionをSHAで固定しているので、新しい版は人が探さないと見つからない。一方、2026-10-02の所有者の決定（[開発環境](../development.md)の「所有者の決定」の3）では、自動のPRがlockfile（共有資源）を変え、割当の外で作業が生まれることを理由に、Dependabotを入れなかった。2026-10-03に所有者がDependabotを含めることを承認した（[所有者本人の直接確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804)）ので、その懸念に次の設計で答える。
 
 **設定（`.github/dependabot.yml`）:**
 
