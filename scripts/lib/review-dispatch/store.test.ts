@@ -2,9 +2,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
-import { Store, canonicalRoot } from "./store.ts";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import {
+  Store,
+  canonicalRoot,
+  ClockRollbackError,
+  CLOCK_SKEW_MS,
+} from "./store.ts";
 import { assess } from "./reducer.ts";
+import { checkDispatchRoot, HostCheckError } from "./host.ts";
 import {
   database,
   claim,
@@ -112,7 +125,8 @@ test("D09 ten global leases and executor limit enforced atomically", () => {
   }
 });
 test("D08 six starts per PR persists across generations and restarts, no clock reset", () => {
-  const d = database();
+  const d = database(),
+    T0 = 10_000_000;
   try {
     const p = policy();
     for (let n = 1; n <= 7; n++) {
@@ -124,7 +138,7 @@ test("D08 six starts per PR persists across generations and restarts, no clock r
       s.history[1]!.pair = s.pair;
       const prior = d.store.target("1:1");
       d.store.observe(assess(p, s, prior));
-      const j = d.store.claim(p, s, 30, "review", n + 100);
+      const j = d.store.claim(p, s, 30, "review", T0 + n);
       if (n <= 6) {
         assert.ok(j);
         d.store.release(j, {
@@ -135,7 +149,13 @@ test("D08 six starts per PR persists across generations and restarts, no clock r
         });
       } else assert.equal(j, null);
     }
-    assert.throws(() => d.store.claim(p, snapshot(), 30, "review", 1));
+    // A rollback beyond the tolerance refuses; one within it keeps the stored time. Neither resets quota.
+    assert.throws(
+      () => d.store.claim(p, snapshot(), 30, "review", 1),
+      ClockRollbackError,
+    );
+    assert.equal(d.store.claim(p, snapshot(), 30, "review", T0 + 7 - CLOCK_SKEW_MS), null);
+    assert.equal(d.store.clockBehind(T0), 7);
   } finally {
     d.cleanup();
   }
@@ -302,6 +322,82 @@ test("R002 quota pause survives the rolling window, generation changes and reope
     } finally {
       resumed.close();
     }
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("R009 clock rollback beyond tolerance refuses inbox/claim/retain atomically; stored clock never moves back", () => {
+  const d = database(),
+    T0 = 50_000_000;
+  try {
+    assert.equal(d.store.tick(T0), T0);
+    // Within tolerance: the stored (later) time is used and kept.
+    assert.equal(d.store.tick(T0 - CLOCK_SKEW_MS), T0);
+    assert.equal(d.store.inbox(3, "inside", "pull_request", "synthetic", T0 - 1), true);
+    assert.equal(
+      d.store.db.prepare("SELECT received FROM inbox WHERE delivery='inside'").get()!["received"],
+      T0,
+    );
+    // Beyond tolerance: refused, nothing written, the stored clock is unchanged.
+    const behind = T0 - CLOCK_SKEW_MS - 1;
+    assert.throws(() => d.store.tick(behind), ClockRollbackError);
+    assert.throws(() => d.store.inbox(3, "behind", "pull_request", "synthetic", behind), ClockRollbackError);
+    assert.throws(() => d.store.oversized(3, "behind-big", "pull_request", behind), ClockRollbackError);
+    assert.throws(() => d.store.retain(behind), ClockRollbackError);
+    assert.throws(() => claim(d.store, policy(), snapshot(), behind), ClockRollbackError);
+    assert.equal(d.store.db.prepare("SELECT count(*) AS n FROM inbox").get()!["n"], 1);
+    assert.equal(d.store.db.prepare("SELECT count(*) AS n FROM jobs").get()!["n"], 0);
+    assert.equal(d.store.clockBehind(behind), CLOCK_SKEW_MS + 1);
+    assert.equal(d.store.db.prepare("SELECT now FROM clock").get()!["now"], T0);
+    // After the OS clock catches up, work resumes; no API moves the stored clock back.
+    assert.ok(claim(d.store, policy(), snapshot(), T0 + 1));
+    assert.equal(d.store.clockBehind(T0 + 1), 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("R010 Store refuses a root/DB/WAL/SHM with wrong permissions or links and never fixes them silently", () => {
+  if (process.platform === "win32") {
+    // The dispatcher is Mac-only: host checks refuse on Windows instead of passing silently.
+    assert.throws(() => checkDispatchRoot("C:\\synthetic"), HostCheckError);
+    return;
+  }
+  const d = database();
+  try {
+    const file = join(d.root, "dispatch.sqlite");
+    for (const path of [file, file + "-wal", file + "-shm"])
+      assert.equal(lstatSync(path).mode & 0o077, 0, path);
+    assert.equal(lstatSync(d.root).mode & 0o077, 0);
+    for (const path of [d.root, file, file + "-wal", file + "-shm"]) {
+      const mode = lstatSync(path).mode & 0o7777;
+      chmodSync(path, mode | 0o040);
+      assert.throws(() => new Store(d.root), HostCheckError);
+      assert.equal(lstatSync(path).mode & 0o7777, mode | 0o040, "not chmod-ed back");
+      chmodSync(path, mode);
+    }
+    const second = new Store(d.root);
+    second.close();
+    // A dangling symlink as a journal is refused instead of being followed by SQLite.
+    d.store.close();
+    for (const suffix of ["-wal", "-shm"]) rmSync(file + suffix, { force: true });
+    symlinkSync(join(d.root, "elsewhere"), file + "-wal");
+    assert.throws(() => new Store(d.root), HostCheckError);
+    assert.equal(existsSync(join(d.root, "elsewhere")), false);
+  } finally {
+    d.cleanup();
+  }
+});
+test("R011 a signed oversized delivery leaves only a marker that binds nothing and is reported once", () => {
+  const d = database();
+  try {
+    assert.equal(d.store.oversized(3, "big", "pull_request", 10), true);
+    assert.equal(d.store.oversized(3, "big", "pull_request", 11), false);
+    assert.equal(d.store.pendingInbox().length, 0);
+    d.store.retain(8 * 86400000);
+    assert.deepEqual(d.store.drainOversized(), ["pull_request"]);
+    assert.deepEqual(d.store.drainOversized(), []);
+    assert.equal(d.store.oversized(3, "big", "pull_request", 8 * 86400000), false);
   } finally {
     d.cleanup();
   }

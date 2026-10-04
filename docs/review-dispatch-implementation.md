@@ -47,6 +47,7 @@ DBはWAL/FULL同期、schema 2です。schema 1からの暗黙の変換はせず
 | D05/D07/I003/I004 | fake ghの全ページ/ETag/rate limit/部分失敗、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
 | D06/D07/D10 | run/身元/pair/結果hashの照合と**fixture用**HMAC整合検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
 | I007 | `dispatch-read`の正確なread-only grant、追加write/missing grantではgh起動0 |
+| PR48-R007〜R011 | 未解消の指摘の規則（会話コメント・owner・第三者・dismiss・編集/削除の観測記録・古いcommitの承認・同時刻）、CIの判定を決める範囲の要約とowner信頼・範囲の内外・ci.yml以外のrun、時計の後退、policy/root/DB/WAL/SHM/lockの所有者・権限・リンク、過大な配送の印、本文の正規形とhash不一致のuncertain |
 
 TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`を既存CIで実行します。秘密・実AI・実Appをfixtureへ渡しません。実AIのRead/Grep/Glob/shellでの否定試験を、環境変数の単体試験で「合格」とは扱いません。
 
@@ -67,8 +68,50 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 | 指摘 | 必須の時期・確認 |
 | --- | --- |
 | PR48-R006 / I003 | 実Webhook接続前: payloadのbase.shaとtimeline/updated_atの実際の値を配送で測る。結合不能ならunknownを維持し、binding規則を独立レビューで直す |
-| PR48-R007 | active前: 許可されたreviewerのCOMMENT・行スレッドの未解消指摘を構造化して判定へ接続する。現collectorの空findingsで受入を完了させない |
-| PR48-R008 | active前: commit status/check runは補助取得、現判定は固定11ジョブ。workflow差分は意図的にunknownで停止し、独立レビュー済みworkflow信頼の移行手順を用意する |
-| PR48-R009 | 実host shadow前: 時計の後退で503/claim拒否になる。workerを増やさず時計・記録を確認し、保存時刻へ追いついてから再開する。DB時刻を戻して回避しない |
-| PR48-R010 / I008 | 実host shadow前: policyがrepo/worktree外でownerだけが書けること、専用root/DB/WAL/SHMの所有者・権限を検査し、不適切なら起動を拒否するhost検査を追加・試験する |
-| PR48-R011 / I003 | 公開配送前: 256KiB上限を超えるイベントの扱いとGitHub本文の正規化を実測する。hash一致しないPOSTはuncertainに保持し、再送しない |
+| PR48-R007 | 実装済み（Issue #50 W3、[findings.ts](../scripts/lib/review-dispatch/findings.ts)）。下の「未解消の指摘」の規則で判定へ接続した。残り: 粗探しと人の証跡の取得元はR014。WebhookのReview・コメントの編集/削除の配送を安全側の印にするのはW4 |
+| PR48-R008 | 実装済み（W3）。CIの判定を決めるファイル（下の「workflowの信頼」の範囲）がbaseと違うPRは、ownerが独立レビュー後にpolicyの`trustedCiDigests`へその要約を記録するまでunknownのまま止まる。範囲の外（試験の中身、製品コード等）は独立した内容レビューに頼る。必須ジョブは`.github/workflows/ci.yml`のrunだけから数える。commit status/check runは補助取得のままで、判定は固定11ジョブ。信頼の記録をbase/PRへ結び付けるかはW4で決める |
+| PR48-R009 | 実装済み（W3、許容幅は所有者決定の5秒）。5秒以内の後退は保存時刻を使い続け、DBの時刻は戻さない。それを超えると受信は503、claim・retainは拒否、shadowのCLIは待つ秒数を表示して終了コード3。workerを増やさず、時計を確認して保存時刻へ追いつくのを待つ。時計の先への飛びは下の「所有者の確認手順（host）」 |
+| PR48-R010 / I008 | 実装済み（W3、[host.ts](../scripts/lib/review-dispatch/host.ts)）。POSIXで、policyはrepo/worktreeと信頼した写しの外・実行ユーザーの所有・group/otherが書けない・symlink/ハードリンクなしの場合だけ、検査したfdから読む。専用rootは実行ユーザーの所有で0700相当、DB/WAL/SHMと寿命lockは実行ユーザーの所有で0600相当、祖先は本人かrootの所有で他人が書けるならsticky。違えば権限を直さずに起動を拒否する。macOSのACLは見ないので、下の手順で確かめる |
+| PR48-R011 / I003 | 一部実装済み（W3）。256KiBを超える署名付き配送は本文を保持せず、HMACを流しながら確かめてdelivery IDとeventだけを残し、413を返す。照合のあとCLIがevent名と件数を一度だけ知らせる。Brokerは改行・行末空白・NFCを整えた本文だけを投稿し、同じmarkerでhashが違う投稿があればuncertainに保持して再送しない。残り（公開配送前の実測）: 実際の配送の大きさ、トンネル経由で5秒以内に受けきれるか、GitHubが本文を変えるか |
+
+### 未解消の指摘（PR48-R007）
+
+GitHubのREST APIにはスレッドの解決状態がなく、書込み権限のある人（実装AIのAppやownerを含む）はReviewのdismissやコメントの編集・削除ができる。そのため、入力を1つの規則にまとめて安全側に倒す。
+
+- **挙げられる人:** policyでそのPRに割り当てたreviewer。ownerはCHANGES_REQUESTED/DISMISSEDのReviewだけで挙げられ、ほかの人の指摘は解消できない。第三者・PR作者のコメントは参考で、判定を変えない。
+- **Review本文:** 行頭の`PR<N>-R<3桁以上>`（このPRの番号だけ。`> `の引用行と文中の言及は除く）。IDのないCHANGES_REQUESTEDとDISMISSEDは`review:<ID>`。
+- **行コメント:** すべて指摘（IDがなければ`comment:<ID>`）。編集されたものは、更新時刻に`comment:<ID>`も挙げる。
+- **会話コメント（PRのconversation）:** 行頭ID。IDがなく、`decision:`の行の値が`accepted`以外なら`issue:<ID>`。編集されたものは`issue:<ID>`も挙げる。
+- **観測の記録:** 上の項目ごとに、最初に観測した本文のhashと指摘IDを専用DBへ不変の記録として残す。後で消えた項目は`deleted:<項目>`、本文が変わった項目は`edited:<項目>`を、その観測の時刻（行コメント・会話コメントは更新時刻）で挙げる。Review本文の編集はREST APIでは時刻が分からないので、この比較だけで見つける。最初の観測より前の削除は見えない（W4のWebhookで補う）。
+- **解消:** 同じ人の、より後の、**現在のheadのcommitへの**APPROVEDだけ。本文の「解消」、別の人、古いcommitへの承認、dismissは解消しない。同時刻や、承認したReview自身の指摘は解消しない。
+- 未解消の指摘は、割り当てたreviewerの最新のReviewに付き（ownerの指摘は全員のReviewに付く）、`accepted`を止める。shadowの観測にはIDだけを記録する。
+
+### workflowの信頼（PR48-R008）
+
+範囲は所有者の決定（[Issue #50の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)）で、CIの判定を決めるファイル: `.github/`の全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。
+
+1. 範囲のファイルを変えるPRは、CIが成功してもunknown（`unknown-evidence`）で止まる。
+2. ownerは差分の独立レビューを確かめ、PRのheadで次の要約を求める（`git ls-tree`の行を範囲で絞り、パスのバイト順に並べたSHA-256）。
+
+   ```sh
+   git ls-tree -r --full-tree <head> \
+     | grep -E $'\t(\\.github/|package\\.json$|tools/review_guard/|scripts/check-test-skips\\.ts$|scripts/lib/test-skips\\.ts$|docs/development\\.md$)' \
+     | grep -Ev $'\t(.*/)?tests/|\\.test\\.[cm]?[jt]s$|\t(.*/)?test_[^/]*\\.py$' \
+     | LC_ALL=C sort -t $'\t' -k2,2 | shasum -a 256
+   ```
+
+3. owner管理のpolicyの`trustedCiDigests`へその要約を加え、`revision`を上げる。revisionが変わるので、**開いているすべてのPR**で新しいDraft→Readyが要る。信頼を記録する前に届いたReadyも、後から結び付けない。
+4. 同じ内容の範囲だけが信頼される。mainの取り込み等で範囲のファイルが変われば、もう一度確かめる。不要になった要約はpolicyから外す。
+
+### 所有者の確認手順（host）
+
+- **ACL:** host検査はPOSIXの所有者と権限だけを見て、macOSのACLは見ない。導入時と変更時に`ls -le <policy> <専用root> <専用root>/dispatch.sqlite*`と、寿命lock（専用rootの親の`.kurashi-dispatch-*.lock`）を確かめ、ほかの人へ書込みを許すACL（`allow write`等）がないことを確認する。
+- **時計の後退:** CLIが終了コード3と待つ秒数を出したら、workerを増やさず、時計（NTP）を確かめて保存時刻へ追いつくのを待つ。DBの時刻を戻さない。許容幅は所有者決定の5秒。
+- **時計の先への飛び:** 時計が大きく先へ飛ぶと、その時刻が保存され、時計を戻した後は保存時刻へ追いつくまで受付が止まる。24時間の起動上限の窓も先へ進む（数え方が緩む）。誤った時刻で動いたと分かったら受付を止めて記録を確かめ、待つ時間が許容できない場合は、停止状態のbackupと独立レビューした手順で切り替える。DBの時刻を手で戻さない。
+- **信頼の記録とReady:** 上の手順3のとおり、policyの更新は開いているPRすべてのReadyのやり直しを伴う。
+
+### W4へ送る項目
+
+- Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`（edited・deleted）、`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする（今は照合の観測比較だけ）。
+- PR #53（W2）の公開検査とbroker.tsの統合は、`canonicalBody → publicationFindings → hash → POST`の順に固定する。正規化で鍵の形がつながりうるので、検査は正規化後の本文に掛ける（github.test.tsに否定試験）。
+- 信頼した要約をbase・PRへ結び付けるか（粗探しのP3）。

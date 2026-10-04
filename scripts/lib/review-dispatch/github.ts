@@ -3,12 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  hash,
   samePair,
   type HistoryEvent,
   type Pair,
   type Policy,
   type Snapshot,
 } from "./model.ts";
+import {
+  unresolvedFindings,
+  type ChangeRecord,
+  type ItemRecord,
+} from "./findings.ts";
 
 export const REQUIRED_JOBS = [
   "Quality gate",
@@ -189,7 +195,72 @@ export type Collection = {
   headRef: string;
   headRepoId: number | null;
   creation: { id: string; actor: number; at: number } | null;
+  // PR48-R008: CI-deciding files unchanged, owner-trusted change, or untrusted change (stays unknown).
+  workflow: "unchanged" | "trusted" | "untrusted";
+  // PR48-R007: new immutable observation records of finding items, for the caller to persist.
+  findingItems: ItemRecord[];
+  findingChanges: ChangeRecord[];
 };
+// PR48-R008: the files that decide the CI judgement. Owner decision (Issue #50, 2026-10-04,
+// issuecomment-5977404200): all of .github, package.json, tools/review_guard/, scripts/check-test-skips.ts
+// and what it reads (scripts/lib/test-skips.ts and the skip table in docs/development.md). Test
+// contents are excluded and rely on independent content review. A path
+// ending in "/" is a directory prefix; any other path is one file. Widen or narrow the unit only here.
+export const CI_TRUST_PATHS: readonly string[] = [
+  ".github/",
+  "package.json",
+  "tools/review_guard/",
+  "scripts/check-test-skips.ts",
+  "scripts/lib/test-skips.ts",
+  "docs/development.md", // the skip table check-test-skips reads (same receipt: "その読む部品")
+];
+// Test contents inside the trust paths (e.g. tools/review_guard/tests/, *.test.ts, test_*.py).
+export const CI_TRUST_EXCLUDED: readonly RegExp[] = [
+  /(?:^|\/)tests\//,
+  /\.test\.[cm]?[jt]s$/,
+  /(?:^|\/)test_[^/]*\.py$/,
+];
+export const inCiTrust = (path: string): boolean =>
+  CI_TRUST_PATHS.some((p) => (p.endsWith("/") ? path.startsWith(p) : path === p)) &&
+  !CI_TRUST_EXCLUDED.some((re) => re.test(path));
+// SHA-256 of the `git ls-tree -r --full-tree <commit>` lines of the trusted files, sorted by path
+// in byte order, each ending in "\n". The owner reproduces it with the command in the docs.
+export function ciTrustDigest(
+  entries: readonly { path: string; mode: string; type: string; sha: string }[],
+): string {
+  const lines = entries
+    .filter((e) => e.type !== "tree" && inCiTrust(e.path))
+    .sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)))
+    .map((e) => `${e.mode} ${e.type} ${e.sha}\t${e.path}\n`);
+  return hash(lines.join(""));
+}
+async function ciTrust(reader: GhReader, commit: string): Promise<string> {
+  const c = await reader.object(`git/commits/${commit}`);
+  const t = await reader.object(
+    `git/trees/${sha(object(c["tree"])["sha"])}?recursive=1`,
+  );
+  if (t["truncated"] !== false || !Array.isArray(t["tree"]))
+    throw new EvidenceError();
+  return ciTrustDigest(
+    t["tree"].map((value) => {
+      const e = object(value);
+      if (
+        typeof e["path"] !== "string" ||
+        /[\u0000-\u001f\u007f]/.test(e["path"]) ||
+        typeof e["mode"] !== "string" ||
+        !/^[0-7]{6}$/.test(e["mode"]) ||
+        !["blob", "tree", "commit"].includes(String(e["type"]))
+      )
+        throw new EvidenceError();
+      return {
+        path: e["path"],
+        mode: e["mode"],
+        type: String(e["type"]),
+        sha: sha(e["sha"]),
+      };
+    }),
+  );
+}
 // Inputs below are trusted persisted observations, never PR prose. Missing identity/history stays unknown.
 export async function collect(
   reader: GhReader,
@@ -203,6 +274,8 @@ export async function collect(
     historyComplete: boolean;
     faultfinding: Snapshot["faultfinding"];
     unresolvedDesign: string[];
+    findingItems?: ItemRecord[];
+    findingChanges?: ChangeRecord[];
   },
 ): Promise<Collection> {
   if (!p.targets.some((t) => t.pr === prNumber)) throw new EvidenceError();
@@ -244,21 +317,29 @@ export async function collect(
       "workflow_runs",
     )
   ).map(object);
+  // Only the reviewed workflow file may produce the required jobs; another file named "CI" cannot.
   const candidate = runs
-    .filter((r) => r["name"] === "CI" && r["head_sha"] === current.head)
+    .filter(
+      (r) =>
+        r["name"] === "CI" &&
+        r["path"] === ".github/workflows/ci.yml" &&
+        r["head_sha"] === current.head,
+    )
     .sort((a, b) => Number(b["id"]) - Number(a["id"]))[0];
   let jobs: Record<string, unknown>[] = [],
     testedParents: string[] = [],
     testedTree = "";
-  const baseWorkflow = await reader.object(
-      `contents/.github/workflows/ci.yml?ref=${current.base}`,
-    ),
-    headWorkflow = await reader.object(
-      `contents/.github/workflows/ci.yml?ref=${current.head}`,
-    );
-  const workflowTrusted =
-    baseWorkflow["sha"] === headWorkflow["sha"] &&
-    typeof baseWorkflow["sha"] === "string";
+  // PR48-R008: any change in CI_TRUST_PATHS keeps CI unknown until the owner records the reviewed
+  // digest in the policy. A policy revision change then needs a new Ready.
+  const baseTrust = await ciTrust(reader, current.base),
+    headTrust = await ciTrust(reader, current.head);
+  const workflow: Collection["workflow"] =
+    baseTrust === headTrust
+      ? "unchanged"
+      : (p.trustedCiDigests ?? []).includes(headTrust)
+        ? "trusted"
+        : "untrusted";
+  const workflowTrusted = workflow !== "untrusted";
   const head = await reader.object(`git/commits/${current.head}`);
   const headTree = sha(object(head["tree"])["sha"]);
   if (candidate) {
@@ -367,7 +448,7 @@ export async function collect(
     })),
     history,
     // Native human approvals need a persisted establishment pair; unknown base is never filled from today.
-    reviews: reviews.map((r) => {
+    reviews: reviews.map((r): Snapshot["reviews"][number] => {
       const actor = id(object(r["user"])),
         reviewId = String(id(r));
       const binding = options.acceptances?.find(
@@ -389,6 +470,43 @@ export async function collect(
     unresolvedDesign: options.unresolvedDesign,
     faultfinding: options.faultfinding,
   };
+  // PR48-R007: unresolved findings block acceptance through the assigned reviewers' latest reviews.
+  // An owner's finding is attached to every assigned reviewer (owners raise, never resolve others).
+  const assignment = p.targets.find((t) => t.pr === prNumber)!;
+  const observedAt = Date.parse(
+    reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ?? "",
+  );
+  const found = unresolvedFindings({
+    pr: prNumber,
+    head: current.head,
+    reviewers: assignment.reviewers,
+    owners: p.owners,
+    reviews,
+    comments: comments.map(object),
+    conversation: handoffs,
+    observedAt,
+    items: options.findingItems ?? [],
+    changes: options.findingChanges ?? [],
+  });
+  const ownerFindings = [...found.open]
+    .filter(([actor]) => !assignment.reviewers.includes(actor))
+    .flatMap(([, ids]) => ids);
+  for (const actor of assignment.reviewers) {
+    const ids = [
+      ...new Set([...(found.open.get(actor) ?? []), ...ownerFindings]),
+    ].sort();
+    if (!ids.length) continue;
+    const latest = snapshot.reviews.findLast((r) => r.actor === actor);
+    if (latest) latest.findings = ids;
+    else
+      snapshot.reviews.push({
+        id: `findings:${actor}`,
+        actor,
+        state: "COMMENTED",
+        pair: null,
+        findings: ids,
+      });
+  }
   const meta = (v: Record<string, unknown>) =>
     JSON.stringify([
       v["state"],
@@ -412,13 +530,13 @@ export async function collect(
     commits,
     handoffs,
     activity,
-    observedAt: Date.parse(
-      reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ??
-        "",
-    ),
+    observedAt,
     headRef: "refs/heads/" + ref,
     headRepoId:
       (objectOrNull(object(pr["head"])["repo"])?.["id"] as number) ?? null,
+    workflow,
+    findingItems: found.items,
+    findingChanges: found.changes,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>
@@ -536,6 +654,18 @@ export function ghTransport(token: string, ghPath: string): Transport {
   };
 }
 
+// PR48-R011: the only body form the Broker posts. LF line ends, no trailing blanks, NFC, no other
+// control characters. Recovery compares hashes exactly; a body GitHub changed stays uncertain.
+export function canonicalBody(body: string): string {
+  return body
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n")
+    .trimEnd();
+}
 // Instantiate only inside the fixed-identity reviewed App wrapper. No key/App selector is exposed to worker output.
 export function ghReviewTransport(
   token: string,
@@ -561,7 +691,8 @@ export function ghReviewTransport(
         pr < 1 ||
         !["APPROVE", "REQUEST_CHANGES", "COMMENT"].includes(event) ||
         !/^[a-f0-9]{40}$/.test(head) ||
-        body.length > 32768
+        body.length > 32768 ||
+        body !== canonicalBody(body)
       )
         throw new EvidenceError();
       const home = mkdtempSync(join(tmpdir(), "dispatch-broker-"));
