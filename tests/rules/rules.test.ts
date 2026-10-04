@@ -573,6 +573,26 @@ function range(v: unknown, name: string, ok: (n: number) => boolean): Judged {
   return ok(v) ? MET : UNMET;
 }
 
+// 本人の合計所得金額の範囲（検証の責務(c)）。給与等の収入金額が分からなければundefined。所得金額調整控除は、収入金額がrevenueOver以下なら0、
+// 対象かがtrueなら実際の額（1円未満切上げ。整数で計算）、falseなら0。分からないときだけ、0と実際の額の両方を範囲の端にする。
+function taxpayerTotalRange(data: Obj, ci: Obj): { lo: number; hi: number } | undefined {
+  const salary = ci["salaryRevenue"];
+  if (!isInt(salary) || salary < 0) return undefined;
+  const adj = obj(data["incomeAdjustmentDeduction"]);
+  const e = decToNumber(employmentIncomeOf(data, "", new Problems())?.(salary));
+  const rate = parseDec(adj["rate"]);
+  const over = Number(adj["revenueOver"]);
+  const cap = Number(adj["revenueCap"]);
+  if (!Number.isFinite(e) || rate === undefined) return undefined;
+  const unit = 10n ** BigInt(rate.s);
+  const raw = BigInt(Math.max(0, Math.min(salary, cap) - over)) * rate.n;
+  const amount = salary > over ? Number((raw + unit - 1n) / unit) : 0;
+  const eligible = ci["incomeAdjustmentEligible"];
+  const lo = amount === 0 || eligible === false ? e : e - amount;
+  const hi = amount === 0 || eligible === true ? lo : e;
+  return { lo, hi };
+}
+
 function familyCheck(data: Obj, ci: Obj): FamilyCheck {
   const out: FamilyCheck = { missingKeys: [], invalid: [], unknown: [] };
   const dep = obj(data["dependentDeduction"]);
@@ -610,24 +630,12 @@ function familyCheck(data: Obj, ci: Obj): FamilyCheck {
   // 本人の合計所得金額（配偶者の控除の候補の判定。PR29-R006の残り、Copilot 4173206297）。検証の責務(c): 既知の値は正確に使う。
   // 所得金額調整控除は、給与等の収入金額がrevenueOver以下なら0、対象かが分かればtrueで実際の額（1円未満切上げ）・falseで0。
   // 対象かが分からないときだけ、0と実際の額の両方を範囲として控えめに判定する（範囲が上限をまたげば未決）。
-  const salary = ci["salaryRevenue"];
-  const adj = obj(data["incomeAdjustmentDeduction"]);
   const taxpayerForSpouse = ((): Judged => {
-    if (!isInt(salary) || salary < 0) return { state: "unknown", unknown: ["salaryRevenue"] };
-    const e = decToNumber(employmentIncomeOf(data, "", new Problems())?.(salary));
-    const rate = parseDec(adj["rate"]);
-    const over = Number(adj["revenueOver"]);
-    const cap = Number(adj["revenueCap"]);
-    if (!Number.isFinite(e) || rate === undefined) return { state: "unknown", unknown: ["salaryRevenue"] };
-    const unit = 10n ** BigInt(rate.s);
-    const raw = BigInt(Math.max(0, Math.min(salary, cap) - over)) * rate.n;
-    const amount = salary > over ? Number((raw + unit - 1n) / unit) : 0;
-    const eligible = ci["incomeAdjustmentEligible"];
-    const lo = amount === 0 || eligible === false ? e : e - amount;
-    const hi = amount === 0 || eligible === true ? lo : e;
+    const range = taxpayerTotalRange(data, ci);
+    if (range === undefined) return { state: "unknown", unknown: ["salaryRevenue"] };
     const max = Math.max(...arr(obj(data["spouseSpecialDeduction"])["taxpayerTotalIncomeMax"]).map(Number));
-    if (lo > max) return UNMET;
-    if (hi <= max) return MET;
+    if (range.lo > max) return UNMET;
+    if (range.hi <= max) return MET;
     return { state: "unknown", unknown: ["incomeAdjustmentEligible"] };
   })();
   const ageOf = (p: Obj): number | undefined => (isLocalDate(p["birthDate"]) ? ageOn(p["birthDate"], ref) : undefined);
@@ -749,6 +757,38 @@ function missingRequired(rs: Obj, input: unknown, procedure: unknown): string[] 
   return out;
 }
 
+// 結果の項目を入力から確定できるか（検証の責務(c)。値は計算しない。値の正しさは独立の導き方とレビューで確かめる）。
+// 適用対象が分からない（unsupportedInputsの値がunknown）ならどれも確定できない。給与所得控除後の金額は給与等の収入金額が分かれば、
+// 所得金額調整控除は850万円以下・対象でない・対象で収入が分かれば、基礎控除は本人の合計所得金額の範囲の両端で同じ行なら、
+// 配偶者の控除は配偶者がいないか、家族の判定で不足がなく範囲の両端で同じ列（本人の上限を超える側を含む）なら、扶養控除・特定親族特別控除は
+// 親族がいないか不足がなければ、課税される所得金額以降は前の項目と社会保険料控除・ほかの控除（確定申告では確定申告だけの控除も）が
+// 分かれば、過不足額・申告納税額はさらに源泉徴収税額が分かれば確定できる。
+function knowableResults(data: Obj, ci: Obj, procedure: string, fc: FamilyCheck, applicabilityUnknown: boolean): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  const yen = (v: unknown): boolean => isInt(v) && v >= 0;
+  const salary = ci["salaryRevenue"];
+  const range = taxpayerTotalRange(data, ci);
+  const adj = obj(data["incomeAdjustmentDeduction"]);
+  const undecided = new Set(fc.unknown.map((u) => /（([A-Za-z]+)の判定）$/.exec(u)?.[1]).filter((x) => x !== undefined));
+  const rowOf = (rows: unknown, capKey: string, t: number): number => arr(rows).map(obj).findIndex((r) => r[capKey] === null || t <= Number(r[capKey]));
+  const sameRow = (rows: unknown, capKey: string): boolean => range !== undefined && rowOf(rows, capKey, range.lo) === rowOf(rows, capKey, range.hi);
+  const spouse = ci["spouse"];
+  const relatives = arr(ci["relatives"]);
+  const spouseKnown = (key: string): boolean => spouse === null || (!undecided.has(key) && sameRow(obj(data["spouseDeduction"])["byTaxpayerTotalIncome"], "taxpayerTotalIncomeMax"));
+  out.set("employment-income", yen(salary));
+  out.set("income-adjustment-deduction", ci["incomeAdjustmentEligible"] === false || (isInt(salary) && salary >= 0 && (salary <= Number(adj["revenueOver"]) || ci["incomeAdjustmentEligible"] === true)));
+  out.set("basic-deduction", sameRow(obj(data["basicDeduction"])["brackets"], "totalIncomeMax"));
+  out.set("spouse-deduction", spouseKnown("spouseDeduction"));
+  out.set("spouse-special-deduction", spouseKnown("spouseSpecialDeduction"));
+  out.set("dependent-deduction", relatives.length === 0 || !undecided.has("dependentDeduction"));
+  out.set("specific-relative-deduction", relatives.length === 0 || !undecided.has("specificRelativeDeduction"));
+  const deductionsKnown = INCOME_TAX_RESULTS_COMMON.slice(0, 7).every((k) => out.get(k) === true) && yen(ci["socialInsuranceDeduction"]) && yen(ci["otherIncomeDeductions"]) && (procedure !== "tax-return" || yen(ci["returnOnlyDeductions"]));
+  for (const k of ["taxable-income", "computed-income-tax", "annual-tax", "reconstruction-tax", "income-tax-total"]) out.set(k, deductionsKnown);
+  for (const k of ["year-end-balance", "filing-tax-balance"]) out.set(k, deductionsKnown && yen(ci["withheldTax"]));
+  if (applicabilityUnknown) for (const k of out.keys()) out.set(k, false);
+  return out;
+}
+
 // 存在する入力の形（検証の責務(b)。Copilot 5400605738・4173206315、PR29-R010）。requiredInputs・optionalInputsの型を、手続やケースの状態に
 // かかわらず、値があれば確かめる: yenは0以上の整数、booleanは真偽値、enumはvaluesの列挙、dateは日付、objectはobject（nullableならnullも）、
 // arrayは並び。「unknown」は不足として(c)で別に数えるので、ここでは型を問わない。宣言にない入力の名前も拒否する
@@ -808,6 +848,23 @@ function invalidAnnualValues(input: Obj): string[] {
     if (o["adopted"] !== true && o["adopted"] !== false && o["adopted"] !== "adoption-needed") out.push(`${w}.adopted（真偽値かadoption-needed）`);
   });
   const docs = list.map(obj);
+  // 採用した資料の範囲（PR29-R002、Copilot 4173508058）: 採用した資料は範囲（includedOtherPayers）が確定し、採用した資料どうしで
+  // 同じ支払者を2回数えない（自分の支払者と、範囲に含む前職等の支払者）。採用しない資料は、どれかの採用した資料の範囲に含まれる
+  // （含まれなければ、その分を落としている）。支払者の名前は、payerとincludedOtherPayersのpayerで同じ語にする。
+  if (out.length === 0) {
+    const covered = new Map<string, string>();
+    for (const d of docs.filter((x) => x["adopted"] === true)) {
+      if (!Array.isArray(d["includedOtherPayers"])) {
+        out.push(`annualValues（${String(d["id"])}）: 範囲（includedOtherPayers）が確定しない資料を採用している`);
+        continue;
+      }
+      for (const payer of [d["payer"], ...d["includedOtherPayers"].map((x) => obj(x)["payer"])].map(String)) {
+        if (covered.has(payer)) out.push(`annualValues（${String(d["id"])}）: 支払者${payer}を、採用した資料${String(covered.get(payer))}と重ねて数える`);
+        else covered.set(payer, String(d["id"]));
+      }
+    }
+    if (docs.every((d) => typeof d["adopted"] === "boolean")) for (const d of docs.filter((x) => x["adopted"] === false)) if (!covered.has(String(d["payer"]))) out.push(`annualValues（${String(d["id"])}）: 採用しない資料の支払者が、採用したどの資料の範囲にも含まれない`);
+  }
   if (out.length === 0 && docs.every((d) => typeof d["adopted"] === "boolean")) {
     const adopted = docs.filter((d) => d["adopted"] === true);
     const sum = (k: string): number => adopted.reduce((a, d) => a + Number(d[k]), 0);
@@ -1123,9 +1180,19 @@ export function validateRules(input: RulesInput): string[] {
     if (unsup.violates.length > 0) problems.add(w, `入力が規則の未対応の条件に当たるのに${String(status)}: ${unsup.violates.join("・")}`);
     // (c) 分からない入力から結果を確定できるか。
     const unknownInputs = [...unsup.unknown, ...missingRequired(entry.rs, caseInput, target["procedure"])];
+    // 採用が要判断の年間資料が残れば、年間の値（給与等の収入金額等）は決まらない（PR29-R002）。
+    if (arr(obj(caseInput)["annualValues"]).some((d) => obj(d)["adopted"] === "adoption-needed")) unknownInputs.push("annualValues（採用が要判断の資料がある）");
     if (fc !== undefined) {
       for (const k of fc.missingKeys) problems.add(w, `input.${k}がない（家族の控除の適用要件と判定に使う入力。PR29-R006）`);
       unknownInputs.push(...fc.unknown);
+      // 結果の項目ごとに、入力から確定できるならknown、できないならunknown（PR29-R006の残り、Copilot 4173508041）。
+      const know = knowableResults(obj(input.dataFiles.get(String(entry.rs["data"]))), obj(caseInput), String(target["procedure"]), fc, unsup.unknown.length > 0);
+      for (const r of arr(expected["results"]).map(obj)) {
+        const k = know.get(String(r["key"]));
+        const isKnown = obj(r["value"])["state"] === "known";
+        if (k === true && !isKnown) problems.add(w, `expected.results（${String(r["key"])}）: 入力から確定できるのにunknown`);
+        if (k === false && isKnown) problems.add(w, `expected.results（${String(r["key"])}）: 入力から確定できないのにknown`);
+      }
     }
     if ((status === "computed" || status === "provisional") && unknownInputs.length > 0) problems.add(w, `分からない入力があるのに${String(status)}: ${unknownInputs.join("・")}`);
     if (status === "incomplete" && !arr(expected["results"]).some((r) => obj(obj(r)["value"])["state"] === "unknown")) problems.add(w, "incompleteなのに、unknownの結果がない");
@@ -1409,7 +1476,25 @@ test("検査の自己確認: 入力による未対応、家族の控除の適用
     ["宣言にない入力", (c) => (input(c, "REG-02")["bonusRevenue"] = 100000), "REG-02: input.bonusRevenue（manifestの"],
     ["宣言にない入れ子の入力", (c) => (obj(input(c, "REG-36")["yearEndAdjustment"])["submittedLate"] = true), "REG-36: input.yearEndAdjustment.submittedLate（manifestにない入力）"],
     ["年間資料の支払金額が文字列", (c) => (obj(arr(input(c, "REG-03")["annualValues"])[0])["paymentAmount"] = "3200000"), "REG-03: input.annualValues[0]（"],
-    ["前職分を通算した資料と前職の資料の両方を採用する", (c) => (obj(arr(input(c, "REG-17")["annualValues"])[0])["adopted"] = true), "支払金額の合計4000000がsalaryRevenueと違う"],
+    ["前職分を通算した資料と前職の資料の両方を採用する", (c) => (obj(arr(input(c, "REG-17")["annualValues"])[0])["adopted"] = true), "REG-17: input.annualValues（ann-d）: 支払者勤務先Cを、採用した資料ann-cと重ねて数える"],
+    // 年間資料の採用の範囲（PR29-R002、Copilot 4173508058）: 合計まで合わせた重複、範囲が分からない資料の採用、採用しない資料の落とし、採用が要判断のままの計算
+    [
+      "前職分を二重に数え、合計も重複に合わせる",
+      (c) => {
+        obj(arr(input(c, "REG-17")["annualValues"])[0])["adopted"] = true;
+        Object.assign(input(c, "REG-17"), { salaryRevenue: 4000000, withheldTax: 53000, socialInsuranceDeduction: 602318 });
+      },
+      "REG-17: input.annualValues（ann-d）: 支払者勤務先Cを、採用した資料ann-cと重ねて数える",
+    ],
+    ["範囲が分からない資料を採用する", (c) => arr(input(c, "REG-18")["annualValues"]).forEach((d, i) => (obj(d)["adopted"] = i === 1)), "REG-18: input.annualValues（ann-f）: 範囲（includedOtherPayers）が確定しない資料を採用している"],
+    ["採用しない資料の分を落とす", (c) => (obj(arr(input(c, "REG-03")["annualValues"])[1])["adopted"] = false), "REG-03: input.annualValues（ann-b）: 採用しない資料の支払者が、採用したどの資料の範囲にも含まれない"],
+    ["採用が要判断の資料を残して計算する", (c) => (obj(arr(input(c, "REG-17")["annualValues"])[0])["adopted"] = "adoption-needed"), "REG-17: 分からない入力があるのにcomputed: annualValues（採用が要判断の資料がある）"],
+    // 結果を確定できるか（PR29-R006の残り、Copilot 4173508041）
+    ["確定できる所得金額調整控除をunknownにする", (c) => (obj(arr(obj(caseOf(c.cases, "REG-18")["expected"])["results"])[1])["value"] = { state: "unknown" }), "REG-18: expected.results（income-adjustment-deduction）: 入力から確定できるのにunknown"],
+    ["親族がいないのに扶養控除をunknownにする", (c) => (obj(arr(obj(caseOf(c.cases, "REG-18")["expected"])["results"])[5])["value"] = { state: "unknown" }), "REG-18: expected.results（dependent-deduction）: 入力から確定できるのにunknown"],
+    ["範囲の両端で同じ基礎控除をunknownにする", (c) => (obj(arr(obj(caseOf(c.cases, "REG-48")["expected"])["results"])[2])["value"] = { state: "unknown" }), "REG-48: expected.results（basic-deduction）: 入力から確定できるのにunknown"],
+    ["決まらない扶養控除をknownにする", (c) => (obj(arr(obj(caseOf(c.cases, "REG-23")["expected"])["results"])[5])["value"] = { state: "known", value: 630000 }), "REG-23: expected.results（dependent-deduction）: 入力から確定できないのにknown"],
+    ["給与等の収入金額が分からないのに給与所得控除後の金額をknownにする", (c) => (obj(arr(obj(caseOf(c.cases, "REG-18")["expected"])["results"])[0])["value"] = { state: "known", value: 2020000 }), "REG-18: expected.results（employment-income）: 入力から確定できないのにknown"],
     ["年間資料の採用が列挙にない", (c) => (obj(arr(input(c, "REG-18")["annualValues"])[1])["adopted"] = "maybe"), "REG-18: input.annualValues[1].adopted"],
     ["結果の項目が欠ける", (c) => arr(obj(caseOf(c.cases, "REG-12")["expected"])["results"]).pop(), "REG-12: expected.resultsの項目が"],
     ["unsupportedのケースの結果の項目が欠ける", (c) => arr(obj(caseOf(c.cases, "REG-15")["expected"])["results"]).shift(), "REG-15: expected.resultsの項目が"],

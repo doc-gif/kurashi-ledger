@@ -17,7 +17,7 @@
 
 | 対象 | 正本・状態 |
 |---|---|
-| タスク | T00=#1、T01=#8、T02=#9、T03=#22、T04=#7、T05=#17は完了。T14=#27（PR #29で作業中）。Windows実機=#19。残りは割当時に対応付け、GitHub Issueを参照 |
+| タスク | T00=#1、T01=#8、T02=#9、T03=#22、T04=#7、T05=#17は完了。Windows実機=#19。残りは割当時に対応付け、GitHub Issueを参照 |
 | 設計 | [ADR](adr/README.md)、[台帳](implementation-tasks.md)、[計画](implementation-plan.md)。実行方式・UI・DB・配布・保管先・安全境界はT00で決定 |
 | Figma | T04で基礎と3部品を作成。仕様・ID対応は[design](../design/README.md)。T08が利用。非公開URLは記載しない |
 | 開発・CI | [開発環境](development.md)に版・コマンド・OS・ジョブ・証跡の読み方を集約。T02で未実施だった固定Node版と各OSの検証はT05で完了。手元の正確な版は[mise.toml](../mise.toml)、対応する範囲は`package.json`を正本とする（[#30](https://github.com/doc-gif/kurashi-ledger/issues/30)）。開発用試験の成功は製品の検証ではない |

@@ -2381,7 +2381,7 @@
         "annualValues": [
           {
             "id": "ann-c",
-            "payer": "勤務先C（前職）",
+            "payer": "勤務先C",
             "documentType": "withholding-slip",
             "paymentAmount": 1000000,
             "withholdingTax": 18000,
@@ -2391,7 +2391,7 @@
           },
           {
             "id": "ann-d",
-            "payer": "勤務先D（現職。前職分を通算して年末調整）",
+            "payer": "勤務先D",
             "documentType": "withholding-slip",
             "paymentAmount": 3000000,
             "withholdingTax": 35000,
@@ -2622,7 +2622,7 @@
         "annualValues": [
           {
             "id": "ann-e",
-            "payer": "勤務先E（前職）",
+            "payer": "勤務先E",
             "documentType": "withholding-slip",
             "paymentAmount": 1000000,
             "withholdingTax": 18000,
@@ -2632,7 +2632,7 @@
           },
           {
             "id": "ann-f",
-            "payer": "勤務先F（現職）",
+            "payer": "勤務先F",
             "documentType": "withholding-slip",
             "paymentAmount": 3000000,
             "withholdingTax": 35000,
@@ -2668,7 +2668,8 @@
             "key": "income-adjustment-deduction",
             "valueType": "yen",
             "value": {
-              "state": "unknown"
+              "state": "known",
+              "value": 0
             }
           },
           {
@@ -2682,28 +2683,32 @@
             "key": "spouse-deduction",
             "valueType": "yen",
             "value": {
-              "state": "unknown"
+              "state": "known",
+              "value": 0
             }
           },
           {
             "key": "spouse-special-deduction",
             "valueType": "yen",
             "value": {
-              "state": "unknown"
+              "state": "known",
+              "value": 0
             }
           },
           {
             "key": "dependent-deduction",
             "valueType": "yen",
             "value": {
-              "state": "unknown"
+              "state": "known",
+              "value": 0
             }
           },
           {
             "key": "specific-relative-deduction",
             "valueType": "yen",
             "value": {
-              "state": "unknown"
+              "state": "known",
+              "value": 0
             }
           },
           {
@@ -2744,8 +2749,8 @@
         ]
       },
       "derivation": {
-        "method": "導き方1（表と速算表）: 給与等の収入金額: 勤務先Fの資料のincludedOtherPayersがunknownで範囲が確定しないので、照合の規則の5で採用されず要判断（adoption-needed）。その年の年間の値の集計はincompleteで、給与等の収入金額・源泉徴収税額・社会保険料控除額は不足の入力。0や2つの資料の合計（4,000,000）で補わないので、計算runの状態はincompleteで、すべての結果はunknown。",
-        "crossCheck": "導き方2（独立の確かめ）: 範囲が確定しない資料を採用しない（記録の型の6、照合の規則の5）。不足を0で補わない（計算結果の契約の2）。",
+        "method": "導き方1（表と速算表）: 給与等の収入金額: 勤務先Fの資料のincludedOtherPayersがunknownで範囲が確定しないので、照合の規則の5で採用されず要判断（adoption-needed）。その年の年間の値の集計はincompleteで、給与等の収入金額・源泉徴収税額・社会保険料控除額は不足の入力。0や2つの資料の合計（4,000,000）で補わないので、計算runの状態はincompleteで、すべての結果はunknown。所得金額調整控除: 対象でない（incomeAdjustmentEligibleがfalse）ので、収入金額が分からなくても0。配偶者控除・配偶者特別控除: 配偶者がいない（spouseがnull）ので0。扶養控除・特定親族特別控除: 親族がいない（relativesが空の並び）ので0。給与所得控除後の金額・基礎控除・課税される所得金額以降は、給与等の収入金額（と社会保険料控除額・源泉徴収税額）が分からないのでunknown。",
+        "crossCheck": "導き方2（独立の確かめ）: 範囲が確定しない資料を採用しない（記録の型の6、照合の規則の5）。不足を0で補わない（計算結果の契約の2）。所得金額調整控除: タックスアンサーNo.1411の(1)の対象に当たらないので控除しない（収入金額によらない）。配偶者控除・配偶者特別控除: 控除の対象の配偶者がいないので、本人の所得によらず0。扶養控除・特定親族特別控除: 控除の対象の親族がいないので0。同じ（分からない値を0や資料の合計で補わない）。",
         "derivedBy": "claude-code-desktop/031fac12-f3fb-439e-b077-1fff879b2878/subagent-T14",
         "reviewedBy": "未確認",
         "independentOfImplementation": true
