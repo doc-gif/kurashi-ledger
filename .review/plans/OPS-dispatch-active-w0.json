@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "base_sha": "d64fcfa0226fcf7ebf4022973f6643c80b8b5c83",
   "task_id": "OPS-dispatch-active",
   "planned_paths": [
     "docs/external-worker.md",
