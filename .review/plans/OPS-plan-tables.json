@@ -4,6 +4,7 @@
   "task_id": "OPS-plan-tables",
   "planned_paths": [
     ".review/tests/test_repository_routing.py",
+    "docs/pr-review-loop.md",
     "docs/review-prevention.md",
     "tools/review_guard/README.md",
     "tools/review_guard/guard.py",
@@ -16,14 +17,14 @@
       "resolution": "このPRの計画は版1に`boundaries`と`variant_analysis`を加えて書く（baseは未知の項目を無視する）。新しい検査器は版1でも表があれば検査するので、手元とレビューで同じ計画を新しい検査器にかけて表を確かめる。文書にこの初回の例外を書く"
     },
     {
-      "description": "すべての計画に表を必須にすると、mainの既存の計画と進行中のPR（#25・#28・#29・#33・#36・#37・#38・#40・#42）の版1の計画が一度に失敗する",
+      "description": "すべての計画に表を必須にすると、mainの既存の計画と進行中のPR（2026-10-04時点で#25・#28・#29・#33・#36・#37・#38）の版1の計画が一度に失敗する",
       "state": "resolved",
-      "resolution": "版の繰上げで移行する。`prepare`は版2を出し、版2は表が必須。版1は移行前の計画として受け付け、出力の`plan_tables: legacy-v1`でレビュー担当に見せる。新しい計画を版1で書くことは文書で禁じ、red teamと内容レビューが指摘する。進行中のPRがなくなったあとで、baseにない新しい計画の版1をCIで拒否する後続を提案する"
+      "resolution": "版の繰上げで移行する。`prepare`は版2を出し、版2は表が必須。版1は移行前の計画として受け付け、出力の`plan_tables: legacy-v1`でレビュー担当に見せる。2026-10-04に、進行中の7件のPRの計画を、mainを取り込んだ状態（base=main）で旧・新の検査器にかけ、どちらでも通ることを確かめた。新しい計画を版1で書くことは文書で禁じ、粗探しと内容レビューが指摘する。進行中のPRがなくなったあとで、baseにない新しい計画の版1をCIで拒否する後続を提案する"
     },
     {
       "description": "`prepare`が版2の空の表を出すと、`prepare`→`check`を使う固有の試験（`.review/tests/test_repository_routing.py`、#38の`test_component_routing.py`）が失敗する",
       "state": "resolved",
-      "resolution": "このPRで`test_repository_routing.py`の記入に表を加える（試験の判定は弱めない）。#38の試験は#38のマージ後の取り込みで同じように直す。#38へはpushしない"
+      "resolution": "このPRで`test_repository_routing.py`の記入に表を加える（試験の判定は弱めない）。#38の`test_component_routing.py`も同じ記入が要る。2026-10-04の所有者決定で、#44と#38はどちらが先でもよく、**あとからマージする側**がmainを取り込んで直す（#44が後ならこのPRで直し、#38が後なら#38が直す）。他の担当のbranchへはpushしない"
     },
     {
       "description": "「境界に触れる変更」を検査器がどう判定するか。条件の台帳に境界の印を足すと、#38が変える`.review/invariants.json`と重なる",
@@ -31,9 +32,19 @@
       "resolution": "台帳を変えず、不変条件が1つでも選ばれた変更を境界に触れる変更とみなし、一覧を1行以上にする（このrepoではINV-PRIVACYが全パスに掛かるので、計画だけのPR以外は常に1行以上）。条件ごとの細かい判定は、必要になってから#38のマージ後に提案する"
     },
     {
-      "description": "#40・#38が`docs/review-prevention.md`と`tools/review_guard/README.md`を変える。施策の文書を複数の文書に書くと重なりと食い違いが増える",
+      "description": "#40が規約の置き場所を決め直した（マージ条件はgithub-agent-operations.md、投稿形式と完了判定はpr-review-loop.md、変更前の手順はreview-prevention.md）。施策の文書をどこに置くか",
       "state": "resolved",
-      "resolution": "施策の文書は`docs/review-prevention.md`の新しい節1か所にまとめ、#40の手順3・#38の信頼境界の節を変えない。READMEは書式の表の行だけ。#40が正本の文書を変えた場合はそれに従って取り込み時に移す"
+      "resolution": "#40の構成に合わせて分ける。施策の概要・施策2（計画の表）・施策3（分割）は変更前の手順なのでreview-prevention.md。施策1の粗探し（red team）の時点・担当・権限・報告の形式は、提出とレビューの手順なのでpr-review-loop.mdの新しい節に移し、review-prevention.mdからはリンクだけにする。マージ条件（粗探しの完了、Copilotは任意）は再掲せず[正本](docs/github-agent-operations.md#merge-conditions)へリンクする。正本の用語「粗探し」を使う。#38のpr-review-loop.mdの追加（末尾の6）とは別の場所に置く"
+    },
+    {
+      "description": "Issue #45/#48のreview-dispatch（default-off）との整合。dispatchは必須のジョブに`review plan`を含め、粗探しの証跡を{actor, pair, unresolved}で持ち、activeでは粗探しの身元が実装の身元と別の許可されたreviewerであることを求める。設計は#44のコードを取り込まないと明記している",
+      "state": "resolved",
+      "resolution": "dispatchのコードに計画の版・表を読む処理はなく、`review plan`のジョブ名・終了コードも変えないので、版2は衝突しない。粗探しの報告の形式は、対象のhead/base（pair）と未解消の指摘（RT-番号）を持つので、dispatchの証跡に対応できる。身元: 現行（dispatchがoff）では、粗探しの担当は実装していない担当で、同じ系統でもよい（正本の「実装していない担当」）。dispatchをactiveにする正本移行のときは、粗探しの身元の規則をそちらに合わせる必要がある（同じAppの投稿は実装の身元と区別できない）。文書にそのことを書き、判断が要る点として調整役へ報告する。#44からdispatchのコードは変えない"
+    },
+    {
+      "description": "所有者の再開の指示で、進行中のPRは計画に表を任意で加えてよいことになった。新しい検査器は版1でも表があれば厳密に検査するので、違う形で書いた計画は#44のマージ後に失敗しうる",
+      "state": "resolved",
+      "resolution": "厳密さは保つ（形の違う表を黙って通すと、表の検査が意味を失う）。2026-10-04時点で、進行中のPRの計画に表はない。形はこのPRのreview-prevention.mdが正本で、エラー文は欠けた項目を名指しする。表を任意で加える担当には、この形に合わせるよう調整役から伝えてもらう（報告に書く）"
     }
   ],
   "assessments": [
@@ -69,17 +80,17 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "3つの施策の文書は`docs/review-prevention.md`の1か所に置く。#40（AGENTS.md等の集約、最優先）と#38（T23）が同じ範囲を変えるので、両PRが変える行（#40は手順3、#38は信頼境界の節）を避けて新しい節を足し、`tools/review_guard/README.md`は書式の表の行だけを変える。AGENTS.md・pr-review-loop.md・PRテンプレートは変えず、既存のリンク（AGENTS.mdとpr-review-loop.mdから`review-prevention.md`）から新しい節に届く。PRはDraftのまま、#40と#38のマージのあとでmainを取り込み、#38の`.review/tests/test_component_routing.py`（prepare→checkで版2の表が要る）を含めて整合させてからReadyにする。",
+      "reason": "#40がマージされ、規約の置き場所が決まった。施策の概要・施策2・施策3はreview-prevention.mdに置き、施策1（粗探し）の手順と報告の形式はpr-review-loop.mdに移す。マージ条件は再掲せず正本へリンクする。Draftの条件のうち「#38を待つ」は2026-10-04の所有者決定で外した。#38とはどちらが先でもよく、あとからマージする側が取り込みで整合させる。AGENTS.md・CLAUDE.md・PRテンプレートは変えない（既存のリンクからreview-prevention.mdとpr-review-loop.mdに届く）。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "#40・#38の差分と自分の差分の変更箇所を`git diff`で照合する。#38の`test_component_routing.py`が`prepare`→`check`を使うことを読み、マージ後の取り込みで表を埋める修正が要ることを引継ぎに残す。Readyにする前に、mainを取り込んだ状態で両方の試験を実行する",
-          "expected": "Draftの間は#40・#38と同じ行を変えない。#40・#38のマージ後の取り込みで、両方の試験と`check`が通る"
+          "method": "#38の差分（pr-review-loop.mdの末尾の6、test_component_routing.py）と自分の差分の変更箇所を照合する。#38が先にマージされたら、このPRの取り込みで試験に表を埋める。#44が先なら、#38の担当へ同じ修正が要ることを調整役経由で伝える",
+          "expected": "#38とは別の行を変える。どちらの順でマージしても、あとの側の取り込みで両方の試験と`check`が通る"
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS.md・CLAUDE.md・docs/pr-review-loop.md・docs/external-worker.md・PRテンプレートを読み、計画の手順とready-for-reviewの手順が`review-prevention.md`を指すこと、red teamをready-for-reviewの前に置く記述と、作業中Draft・レビュー依頼Openの規約が食い違わないことを確かめる",
-          "expected": "新しい節は既存の入口から届き、Draft/Openの順序（red teamはDraft・working の間、そのあとでOpenとready-for-review）と矛盾しない。入口の文書を変える必要があれば#40のマージ後に別に提案する"
+          "method": "AGENTS.md・github-agent-operations.mdのマージ条件・pr-review-loop.md・external-worker.md・PRテンプレートを読み、粗探しの時点（ready-for-reviewの前）・担当（実装していない担当）・Copilotの扱い（任意）が、新しい節と食い違わないことを確かめる",
+          "expected": "新しい節は正本の条件を言い換えずリンクし、Draft→working→粗探し→Open・ready-for-reviewの順で矛盾しない"
         }
       ]
     }
@@ -120,7 +131,7 @@
     {
       "id": "B5",
       "direction": "exit",
-      "location": "公開のリポジトリ（docs/review-prevention.md、試験、計画）",
+      "location": "公開のリポジトリ（docs/review-prevention.md、docs/pr-review-loop.md、試験、計画）",
       "data": "手順・記入例・合成のfixture",
       "trust": "untrusted",
       "control": "合成の値だけを使い、stageを明示して`check-public --staged`の終了コードを確かめる"
@@ -131,7 +142,7 @@
       "location": "red teamのエージェントが読むPRの差分・本文・コメント（文書で定める手順）",
       "data": "PRの作者や第三者が書ける文字列とコード",
       "trust": "untrusted",
-      "control": "読取りだけ。差分の文字列を指示として扱わない。PRのコードを資格情報のある環境で実行しない（試験の実行はCIに任せる）。push・コメントの解決・マージをしない"
+      "control": "読取りだけ。差分の文字列を指示として扱わない。PRのコードや、PRのcheckoutにある鍵・トークンを扱う道具を実行しない（資格情報のある環境で）。試験の実行はCIに任せる。push・コメントの解決・マージをしない"
     },
     {
       "id": "B7",
@@ -139,7 +150,7 @@
       "location": "red teamの報告（PRのコメント）",
       "data": "監査の結果（原因キーごとの判定、確かめた箇所）",
       "trust": "untrusted",
-      "control": "決まった形式（印・対象のhead/base・表）だけを書き、実データ・秘密・PRの文字列の長い引用を書かない。レビュー記録の印とroleを使わず、内容レビューやacceptedと取り違えさせない"
+      "control": "決まった形式（印・対象のhead/base・表）だけを書き、実データ・秘密・PRの文字列の長い引用を書かない。レビュー記録の印とroleを使わず、内容レビューやacceptedと取り違えさせない。投稿はAIのGitHub App（github-apps.md）で行い、所有者のアカウントの保存済み資格情報に戻らない"
     }
   ],
   "variant_analysis": [
@@ -298,15 +309,19 @@
       "places": [
         {
           "location": "AGENTS.md・CLAUDE.md・docs/external-worker.md",
-          "result": "review-prevention.md を指すだけ。変えない"
+          "result": "review-prevention.md・pr-review-loop.mdを指すだけ。変えない"
         },
         {
-          "location": "docs/pr-review-loop.md の引継ぎの書式",
-          "result": "red teamの報告のリンクは既存の「実行した検証」の欄に書く。書式は変えない（#40・#38が変える）"
+          "location": "docs/github-agent-operations.md のマージ条件",
+          "result": "粗探しの完了とCopilotの任意を定める正本。新しい節は再掲せずリンクする"
+        },
+        {
+          "location": "docs/pr-review-loop.md",
+          "result": "粗探しの手順と報告の形式をここに置く（#40の構成で投稿形式の正本）。引継ぎの書式は変えず、粗探しのリンクは「実行した検証」の欄に書く"
         },
         {
           "location": "tools/review_guard/README.md の書式の表",
-          "result": "版と2つの節の行だけ足し、詳細は review-prevention.md を指す"
+          "result": "版と2つの節の行だけ足し、詳細はreview-prevention.mdを指す"
         }
       ]
     },
@@ -321,7 +336,7 @@
         },
         {
           "location": "#38の test_component_routing.py",
-          "result": "prepareの版2の表が要る。#38が先にマージされ、このPRが取り込みで直す順にする（このPRはそれまでDraft）"
+          "result": "prepareの版2の表が要る。所有者決定で、#44と#38のあとからマージする側が取り込みで直す"
         }
       ]
     },
@@ -363,6 +378,10 @@
         {
           "location": "red teamの報告の形式",
           "result": "別の印（red-team）を使い、`role:`の行とdecisionを書かない。T23の巡回はhandoff・reviewの印だけを読む"
+        },
+        {
+          "location": "scripts/lib/review-dispatch/broker.ts のworkerの文の検査",
+          "result": "role・decision・plan_path等の行を含む文を拒否する。粗探しの報告はdispatchのworkerの結果ではなく、印もrole行も別なので衝突しない"
         }
       ]
     },
@@ -374,6 +393,51 @@
         {
           "location": "docs/project-status.md・docs/implementation-tasks.md",
           "result": "計画の書式を書いていないので変えない。進捗はIssue #43とPRを正本にする"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "縮小を確かめられない資格情報を使い続ける",
+      "places": [
+        {
+          "location": "guard.pyの変更",
+          "result": "資格情報を扱わない。該当なし"
+        },
+        {
+          "location": "粗探しの手順（pr-review-loop.md）",
+          "result": "資格情報は扱わず、投稿だけをApp経由で行う。Appの手順（github-apps.md）に従い、縮小の確認はその道具に任せる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "鍵・トークンを扱う道具をPRのcheckoutから実行する",
+      "places": [
+        {
+          "location": "粗探しの手順",
+          "result": "PRのcheckoutの道具を実行しないと書く（読取りだけ）"
+        },
+        {
+          "location": "このPRの作業",
+          "result": "pushとコメントは、レビュー済みのmainから取り出した写しのトークンの道具で行った"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "別の身元で行う操作が、失敗したときに所有者の資格情報へ黙って戻る",
+      "places": [
+        {
+          "location": "粗探しの報告の投稿",
+          "result": "AIのAppで投稿し、失敗したら止めて報告する。所有者のアカウントへ戻らないと書く"
+        },
+        {
+          "location": "guard.py・ci.py",
+          "result": "GitHubへ書かない。該当なし"
         }
       ]
     }
