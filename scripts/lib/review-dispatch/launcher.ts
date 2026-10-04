@@ -1,13 +1,15 @@
-// Builds the exact process launch for a review worker (Issue #50 W1). Pure: it never
-// spawns, never reads process.env and never touches credentials. The caller (W4) runs
-// the plan with spawn(file, args, { shell: false, env, cwd }) and writes `stdin`.
+// Builds the exact process launch for a review worker (Issue #50 W1). It never spawns
+// and never reads process.env. The caller (W4) runs the plan with
+// spawn(file, args, { shell: false, env, cwd }) and writes `stdin`.
 //
-// Claude uses the subscription login (owner decision O2), never --bare and never an
-// API key. Every Claude flag below is documented at
-// https://code.claude.com/docs/en/cli-reference or /headless. Codex uses the
-// documented `codex exec` flags. The whole CLI process tree runs under the reviewed
-// Seatbelt profile tools/review_dispatch/seatbelt/cli.sb.
-import { lstatSync, readdirSync } from "node:fs";
+// Claude (owner decisions O2 and O2-token, Issue #50): subscription auth through the
+// long-lived `claude setup-token` token in CLAUDE_CODE_OAUTH_TOKEN, read from an
+// owner-only file. Never --bare, never an API key, never the keychain. Every Claude flag
+// is documented at https://code.claude.com/docs/en/cli-reference or /headless, and the
+// whole Claude process tree runs under tools/review_dispatch/seatbelt/cli.sb.
+// Codex (owner decision): only its own `codex exec --sandbox read-only`, no outer
+// Seatbelt, because macOS refuses a second, stricter sandbox inside the first.
+import { closeSync, fstatSync, lstatSync, openSync, readdirSync, readSync, constants } from "node:fs";
 import { dirname, posix } from "node:path";
 import { hash, type Job, type Policy } from "./model.ts";
 
@@ -21,9 +23,9 @@ export type LaunchInstall = {
   executable: string; // absolute path of the pinned CLI binary
   version: string; // pinned version, checked by the doctor
   runtime: string; // read-only install root of that CLI (its bundled tools live here)
-  cliProfile: string; // absolute path of the reviewed copy of cli.sb
+  cliProfile: string | null; // Claude: reviewed copy of cli.sb. Codex: null (no outer Seatbelt)
   configDir: string; // CLAUDE_CONFIG_DIR or CODEX_HOME, dedicated to the dispatcher
-  keychainDir: string | null; // Claude only: the login keychain directory
+  tokenFile: string | null; // Claude: owner-only file with the setup-token. Codex: null
   protectedRoots: string[]; // policy, dispatcher DB, repository, credential areas
 };
 // Per-run throwaway locations, created empty by the caller.
@@ -134,10 +136,13 @@ export function claudeSettings(install: LaunchInstall, run: LaunchRun) {
 export const EMPTY_MCP = '{"mcpServers":{}}';
 export const MAX_TURNS = "40";
 
-// Exact env key sets. Nothing else is ever passed (no GH_TOKEN, KL_*, API keys, OAuth tokens).
+// Exact env key sets. Nothing else is ever passed (no GH_TOKEN, KL_*, API keys).
+// CLAUDE_CODE_OAUTH_TOKEN is the documented variable for a `claude setup-token` token.
+export const TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN";
 export const ENV_KEYS: Record<Backend, readonly string[]> = {
   claude: [
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+    "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CONFIG_DIR",
     "DISABLE_AUTOUPDATER",
     "HOME",
@@ -149,8 +154,11 @@ export const ENV_KEYS: Record<Backend, readonly string[]> = {
   ],
   codex: ["CODEX_HOME", "HOME", "LANG", "NO_COLOR", "PATH", "TMPDIR"],
 };
+// Credentials that must never reach a worker. ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN would
+// replace the subscription; CLAUDE_CODE_OAUTH_TOKEN is allowed for Claude only.
+// ANTHROPIC_* covers ANTHROPIC_BASE_URL; CLAUDE_CODE_USE_* covers Bedrock/Vertex/Foundry.
 export const FORBIDDEN_ENV =
-  /^(?:ANTHROPIC_|CLAUDE_CODE_OAUTH|OPENAI_|CODEX_API|GH_|GITHUB_|KL_|AWS_|GOOGLE_|AZURE_)/;
+  /^(?:ANTHROPIC_|CLAUDE_CODE_USE_|CLAUDE_CODE_SKIP_|OPENAI_|CODEX_API|GH_|GITHUB_|KL_|AWS_|GOOGLE_|AZURE_|VERTEX_|CLOUD_ML_)/;
 // Files that make a CLI load instructions, hooks, MCP servers or settings.
 export const CWD_FORBIDDEN = [
   ".claude",
@@ -256,17 +264,14 @@ function validate(
     fail("version is not pinned");
   if (install.backend === "claude" && !claudeVersionSupported(install.version))
     fail("pinned Claude Code version predates the documented flags");
-  const fixed = [
-    install.executable,
-    install.runtime,
-    install.cliProfile,
-    install.configDir,
-  ];
+  const claude = install.backend === "claude";
+  if (claude ? install.cliProfile === null || install.tokenFile === null : install.cliProfile !== null || install.tokenFile !== null)
+    fail("profile or token file does not match backend");
+  const profile = install.cliProfile === null ? [] : [install.cliProfile];
+  const fixed = [install.executable, install.runtime, ...profile, install.configDir];
   const own = [run.materials, run.home, run.tmp];
-  const keychain = install.keychainDir;
-  if (install.backend === "claude" ? keychain === null : keychain !== null)
-    fail("keychain directory does not match backend");
-  const all = [...fixed, ...own, run.schemaFile, ...(keychain ? [keychain] : [])];
+  const token = install.tokenFile === null ? [] : [install.tokenFile];
+  const all = [...fixed, ...own, run.schemaFile, ...token];
   if (!all.every(canonicalPath)) fail("paths must be canonical and absolute");
   if (
     !Array.isArray(install.protectedRoots) ||
@@ -279,18 +284,22 @@ function validate(
   if (dirname(run.schemaFile) !== run.tmp) fail("schema file must be in tmp");
   // Nothing the worker can read or write may reach a protected root.
   for (const p of install.protectedRoots)
-    for (const r of [...fixed, ...own, ...(keychain ? [keychain] : [])])
+    for (const r of [...fixed, ...own])
       if (overlaps(p, r)) fail("run or install path overlaps a protected root");
+  // The token file stays outside everything the worker can read or write.
+  for (const t of token)
+    for (const r of [...fixed, ...own])
+      if (overlaps(t, r)) fail("token file is inside a worker area");
   // Writable and readable areas stay apart: no self-modifying CLI, no config in materials.
   const writable = [install.configDir, run.home, run.tmp];
-  const readOnly = [install.runtime, install.cliProfile, run.materials];
+  const readOnly = [install.runtime, ...profile, run.materials];
   for (let i = 0; i < writable.length; i++) {
     for (let k = i + 1; k < writable.length; k++)
       if (overlaps(writable[i]!, writable[k]!)) fail("writable areas overlap");
     for (const r of readOnly)
       if (overlaps(writable[i]!, r)) fail("writable area overlaps read-only area");
   }
-  if (overlaps(run.materials, install.runtime) || overlaps(run.materials, install.cliProfile))
+  if ([install.runtime, ...profile].some((r) => overlaps(run.materials, r)))
     fail("materials overlap the install");
   // Materials keep neutral names: no CLI configuration anywhere in the tree, no links out.
   let tree: { names: string[]; symlink: boolean };
@@ -360,7 +369,11 @@ function argsFor(install: LaunchInstall, run: LaunchRun): string[] {
   ];
 }
 
-function envFor(install: LaunchInstall, run: LaunchRun): Record<string, string> {
+function envFor(
+  install: LaunchInstall,
+  run: LaunchRun,
+  token: string,
+): Record<string, string> {
   // Built from scratch; process.env is never spread.
   const base = {
     HOME: run.home,
@@ -373,6 +386,7 @@ function envFor(install: LaunchInstall, run: LaunchRun): Record<string, string> 
     return {
       ...base,
       CLAUDE_CONFIG_DIR: install.configDir,
+      [TOKEN_ENV]: token,
       DISABLE_AUTOUPDATER: "1",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       USE_BUILTIN_RIPGREP: "1",
@@ -388,10 +402,32 @@ function profileParams(install: LaunchInstall, run: LaunchRun): string[] {
     ["CONFIG_DIR", install.configDir],
     ["RUN_HOME", run.home],
     ["RUN_TMP", run.tmp],
-    ["KEYCHAIN", install.keychainDir ? "allow" : "deny"],
   ];
-  if (install.keychainDir) params.push(["KEYCHAIN_DIR", install.keychainDir]);
   return params.flatMap(([k, v]) => ["-D", `${k}=${v}`]);
+}
+
+export type LaunchOptions = {
+  platform?: NodeJS.Platform;
+  exists?: Exists;
+  scan?: Scan;
+  readToken?: (path: string) => string;
+};
+
+function wrap(install: LaunchInstall, run: LaunchRun, cli: string[]): { file: string; args: string[] } {
+  if (install.cliProfile === null) return { file: install.executable, args: cli };
+  return {
+    file: SANDBOX_EXEC,
+    args: ["-f", install.cliProfile, ...profileParams(install, run), install.executable, ...cli],
+  };
+}
+
+function prepare(install: LaunchInstall, run: LaunchRun, options: LaunchOptions): string {
+  if ((options.platform ?? process.platform) !== "darwin")
+    fail("the dispatcher launches workers on macOS only");
+  validate(install, run, options.exists ?? lexists, options.scan ?? scanTree);
+  return install.tokenFile === null
+    ? ""
+    : (options.readToken ?? readTokenFile)(install.tokenFile);
 }
 
 export function buildLaunch(
@@ -399,77 +435,121 @@ export function buildLaunch(
   job: Job,
   install: LaunchInstall,
   run: LaunchRun,
-  options: { platform?: NodeJS.Platform; exists?: Exists; scan?: Scan } = {},
+  options: LaunchOptions = {},
 ): LaunchPlan {
-  if ((options.platform ?? process.platform) !== "darwin")
-    fail("Seatbelt is available only on macOS");
   if (backendFor(policy, job.actor) !== install.backend)
     fail("installation does not match the assigned executor");
-  validate(install, run, options.exists ?? lexists, options.scan ?? scanTree);
+  const token = prepare(install, run, options);
   const stdin = jobText(job);
   if (Buffer.byteLength(stdin) > MAX_STDIN || stdin.includes("\u0000"))
     fail("job text too large");
   const plan: LaunchPlan = {
-    file: SANDBOX_EXEC,
-    args: [
-      "-f",
-      install.cliProfile,
-      ...profileParams(install, run),
-      install.executable,
-      ...argsFor(install, run),
-    ],
-    env: envFor(install, run),
+    ...wrap(install, run, argsFor(install, run)),
+    env: envFor(install, run, token),
     cwd: run.materials,
     stdin,
     shell: false,
   };
-  const problems = checkPlan(plan, install.backend);
-  if (problems.length) fail("plan check failed");
+  if (checkPlan(plan, install.backend).length) fail("plan check failed");
   return plan;
 }
 
-// `claude auth status` under the same profile and env: the doctor requires
-// authMethod "claude.ai" and configDirectory equal to the dedicated config dir.
+// `claude auth status` under the same profile and env. With the setup-token the
+// documented authMethod is "oauth_token" (not "api_key"/"api_key_helper"); the doctor
+// also requires configDirectory to equal the dedicated config dir.
 export function buildAuthStatus(
   install: LaunchInstall,
   run: LaunchRun,
-  options: { platform?: NodeJS.Platform; exists?: Exists; scan?: Scan } = {},
+  options: LaunchOptions = {},
 ): LaunchPlan {
-  if ((options.platform ?? process.platform) !== "darwin")
-    fail("Seatbelt is available only on macOS");
   if (install.backend !== "claude") fail("auth status is a Claude check");
-  validate(install, run, options.exists ?? lexists, options.scan ?? scanTree);
+  const token = prepare(install, run, options);
   return {
-    file: SANDBOX_EXEC,
-    args: [
-      "-f",
-      install.cliProfile,
-      ...profileParams(install, run),
-      install.executable,
-      "auth",
-      "status",
-    ],
-    env: envFor(install, run),
+    ...wrap(install, run, ["auth", "status"]),
+    env: envFor(install, run, token),
     cwd: run.materials,
     stdin: "",
     shell: false,
   };
 }
 
+// Reads the owner-only setup-token file. Refuses links, other owners, group/other
+// permissions, a writable parent and malformed content. Never puts the value in an error.
+export function readTokenFile(
+  path: string,
+  deps: { uid?: number; fs?: TokenFs } = {},
+): string {
+  const uid = deps.uid ?? process.getuid?.();
+  const f = deps.fs ?? realTokenFs;
+  if (uid === undefined || !canonicalPath(path)) return fail("token file unusable");
+  const parent = f.lstat(dirname(path));
+  if (!parent.isDirectory() || parent.uid !== uid || (parent.mode & 0o022) !== 0)
+    fail("token directory must be owned by the owner and not writable by others");
+  const before = f.lstat(path);
+  if (!before.isFile() || before.uid !== uid || (before.mode & 0o077) !== 0 || before.nlink !== 1)
+    fail("token file must be a regular owner-only file (mode 600 or 400)");
+  if (before.size < 20 || before.size > 8192) fail("token file has an unexpected size");
+  const raw = f.read(path, before);
+  const token = raw.replace(/\r?\n$/, "");
+  if (!/^[A-Za-z0-9._~+/=-]{20,8192}$/.test(token)) fail("token file content is malformed");
+  return token;
+}
+export type TokenStat = {
+  isFile(): boolean;
+  isDirectory(): boolean;
+  uid: number;
+  mode: number;
+  nlink: number;
+  size: number;
+  ino: number;
+  dev: number;
+};
+export type TokenFs = {
+  lstat(path: string): TokenStat;
+  read(path: string, expected: TokenStat): string;
+};
+const realTokenFs: TokenFs = {
+  lstat: (p) => lstatSync(p),
+  read(p, expected) {
+    const fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const st = fstatSync(fd);
+      if (st.ino !== expected.ino || st.dev !== expected.dev || st.size !== expected.size)
+        fail("token file changed while reading");
+      const buf = Buffer.alloc(st.size);
+      let off = 0;
+      while (off < buf.length) {
+        const n = readSync(fd, buf, off, buf.length - off, off);
+        if (n <= 0) break;
+        off += n;
+      }
+      return buf.subarray(0, off).toString("utf8");
+    } finally {
+      closeSync(fd);
+    }
+  },
+};
+
 // Independent re-check of a plan (used by the doctor and tests). Returns problem IDs.
 export function checkPlan(plan: LaunchPlan, backend: Backend): string[] {
   const problems: string[] = [];
-  if (plan.file !== SANDBOX_EXEC || plan.shell !== false) problems.push("not-sandboxed");
-  if (plan.args[0] !== "-f" || !canonicalPath(plan.args[1]))
-    problems.push("no-profile");
+  if (plan.shell !== false) problems.push("shell");
+  if (backend === "claude") {
+    if (plan.file !== SANDBOX_EXEC) problems.push("not-sandboxed");
+    if (plan.args[0] !== "-f" || !canonicalPath(plan.args[1])) problems.push("no-profile");
+  } else if (plan.file === SANDBOX_EXEC || !canonicalPath(plan.file) || plan.args[0] !== "exec")
+    // Codex must not be wrapped: its own read-only Seatbelt cannot start inside another.
+    problems.push("codex-wrapped");
   const keys = Object.keys(plan.env).sort();
   if (keys.join() !== [...ENV_KEYS[backend]].sort().join())
     problems.push("env-not-allowlisted");
   if (Object.values(plan.env).some((v) => /[\r\n\u0000]/.test(v)))
     problems.push("env-value");
   // Explicit, even though the allowlist already excludes them (red team PR51 P3).
-  if (Object.keys(plan.env).some((k) => FORBIDDEN_ENV.test(k)))
+  if (Object.keys(plan.env).some((k) => FORBIDDEN_ENV.test(k) || (k === TOKEN_ENV && backend !== "claude")))
     problems.push("credential-env");
+  if (backend === "claude" && !/^[A-Za-z0-9._~+/=-]{20,8192}$/.test(plan.env[TOKEN_ENV] ?? ""))
+    problems.push("no-subscription-token");
   const a = plan.args;
   const has = (flag: string, value?: string): boolean => {
     const i = a.indexOf(flag);
@@ -518,6 +598,24 @@ function settingsIsolated(
   }
   const perms = v["permissions"] as Record<string, unknown> | undefined;
   const allow = perms?.["allow"];
+  // Exactly the keys the launcher writes: no env, apiKeyHelper, gateway or provider settings.
+  const expected = [
+    "autoMemoryEnabled",
+    "disableAllHooks",
+    "enableAllProjectMcpServers",
+    "enabledPlugins",
+    "forceLoginMethod",
+    "permissions",
+  ];
+  const expectedPerms = [
+    "allow",
+    "blockReadsOutsideWorkingDirectories",
+    "defaultMode",
+    "deny",
+    "disableBypassPermissionsMode",
+  ];
+  if (Object.keys(v).sort().join() !== expected.join()) return false;
+  if (!perms || Object.keys(perms).sort().join() !== expectedPerms.join()) return false;
   return (
     v["disableAllHooks"] === true &&
     !("hooks" in v) &&
@@ -544,13 +642,7 @@ export function argvTemplateHash(install: LaunchInstall): string {
     tmp: "/RUN/tmp",
     schemaFile: "/RUN/tmp/result-schema.json",
   };
-  const params = profileParams(install, run);
-  const args = [
-    "-f",
-    install.cliProfile,
-    ...params,
-    install.executable,
-    ...argsFor(install, run),
-  ];
-  return hash(JSON.stringify({ args, env: envFor(install, run) }));
+  // The token value is replaced: it never enters a hash, record or log.
+  const { file, args } = wrap(install, run, argsFor(install, run));
+  return hash(JSON.stringify({ file, args, env: envFor(install, run, "<token>") }));
 }

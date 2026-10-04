@@ -25,6 +25,7 @@ export const REQUIRED_PROBES = [
   "deny-keychain",
   "deny-db",
   "deny-policy-write",
+  "deny-supervisor",
   "deny-hooks-mcp",
   "tool-child-confined",
   "schema",

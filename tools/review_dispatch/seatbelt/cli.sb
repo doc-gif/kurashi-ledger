@@ -1,20 +1,18 @@
 ;; CLI profile for the review dispatcher (Issue #50 W1). The launcher applies it as
 ;; /usr/bin/sandbox-exec -f cli.sb -D EXECUTABLE=... -D RUNTIME=... -D MATERIALS=...
-;;   -D CONFIG_DIR=... -D RUN_HOME=... -D RUN_TMP=... -D KEYCHAIN=allow|deny
-;;   -D KEYCHAIN_DIR=... <CLI> <args>
+;;   -D CONFIG_DIR=... -D RUN_HOME=... -D RUN_TMP=... <CLI> <args>
 ;; Every parameter is required: a missing one fails to compile and nothing starts.
-;; Everything the CLI starts inherits this profile.
+;; Everything the CLI starts inherits this profile: macOS refuses a stricter profile
+;; inside an already sandboxed process, so this one profile is also the tool-child
+;; boundary (the doctor checks the inheritance with a grandchild probe).
 ;;
 ;; Allowed: read the fixed runtime and the fetched materials, read and write the
 ;; dedicated config directory and the run's own HOME/TMP, outbound TCP 443 for the
 ;; model service, DNS. Denied by default: every other path (policy, dispatcher DB,
 ;; repository, GitHub/other-AI credentials, App keys), other ports, other programs.
-;; KEYCHAIN=allow exists only for Claude: on macOS its subscription credential lives
-;; in the system keychain whatever CLAUDE_CONFIG_DIR says (Claude Code env-vars
-;; reference), so the CLI must reach securityd. Seatbelt cannot tell keychain items
-;; apart, so any item whose ACL trusts /usr/bin/security (the GitHub App keys) is then
-;; reachable too: the doctor disables Claude in that case until the owner decides.
-;; Codex uses KEYCHAIN=deny.
+;; No keychain at all (owner decision O2-token, Issue #50): the Claude login comes from
+;; the setup-token in CLAUDE_CODE_OAUTH_TOKEN, so securityd, /usr/bin/security and every
+;; keychain file stay denied, and the explicit denies at the end override any allow.
 ;; Not yet measured with a real CLI: the owner checklist in the W1 PR tunes this.
 (version 1)
 (deny default)
@@ -65,12 +63,16 @@
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))
 (allow network-outbound (remote tcp "*:443"))
 
-(if (string=? (param "KEYCHAIN") "allow")
-  (begin
-    (allow process-exec file-read* (literal "/usr/bin/security"))
-    (allow file-read* (subpath (param "KEYCHAIN_DIR")))
-    (allow mach-lookup
-      (global-name "com.apple.SecurityServer")
-      (global-name "com.apple.securityd.xpc")
-      (global-name "com.apple.security.agent")
-      (global-name "com.apple.CoreAuthentication.daemon"))))
+;; Keychain: never, whatever the rules above allow (last matching rule wins).
+(deny mach-lookup
+  (global-name "com.apple.SecurityServer")
+  (global-name "com.apple.securityd.xpc")
+  (global-name "com.apple.security.agent")
+  (global-name "com.apple.security.authhost")
+  (global-name "com.apple.CoreAuthentication.daemon")
+  (global-name "com.apple.secd")
+  (global-name "com.apple.securityd"))
+(deny process-exec (literal "/usr/bin/security"))
+(deny file-read* file-write*
+  (regex #"/Library/Keychains(/|$)")
+  (regex #"\.keychain(-db)?$"))
