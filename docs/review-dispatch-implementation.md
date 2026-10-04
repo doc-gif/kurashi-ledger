@@ -10,6 +10,32 @@ Issue #45の基盤です。**既定はoff、実AI・本番通知・修正pushは
 
 実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。このPRから実鍵を使って起動・投稿しないでください。
 
+### 結果の署名と投稿
+
+Issue #50 W2の部分です。Brokerの身元と隔離の規則は[受付設計](review-dispatch-design.md)の§6・§7が正本です。
+
+- supervisorがrunごとに一度きりの鍵（SHA-256のLamport署名）で結果に署名します。鍵はsupervisorのメモリにだけ置きます。
+- supervisorは鍵の約束値を、workerの起動前に自分の標準出力で受付へ渡します。受付はmanifestやroot内のファイルの値を使いません。
+- 受付とBrokerは`provenance.ts`の`RunVerifier`で検証だけを行います。封ができる`RunChannel`は`tests/fixtures/`だけに置きます。
+- Claude Broker（`claude-broker.ts`と中継`scripts/review-dispatch-claude-broker.ts`）は、token wrapperを`--agent claude --purpose review`に固定します。submitごとに1回起動して閉じ、POSTは1回までです。
+- Brokerは`canonicalBody` → 公開検査 → 本文hash → POSTの順に処理します。正規化で鍵の形がつながりうるので、検査は投稿する正規化後の本文に掛けます。
+
+公開前の検査（`publication.ts`）は緩和で、保証ではありません。秘密を読めないことの保証はW1の否定試験（`deny-supervisor`を含む）が担います。
+
+| 項目 | 内容 |
+| --- | --- |
+| 検査する場所 | `parseResult`、DBへの保存の前、投稿直前の本文 |
+| 拒否するもの | `check-public`の規則、鍵・tokenの形、長い不透明な文字列、ローカルの絶対パス、github.com以外のリンク、%符号化、書式文字（`\p{Cf}`）。NFKCの後に検査する |
+| 許すID | 受付・Brokerが取り直したsnapshotのhead/baseとrun IDだけ |
+| evidence | `actions/runs/<数字>`、`pull/<n>#pullrequestreview-<数字>`、PRのcommitへの`commit/<SHA>`だけ |
+
+`blocked`は持続するneeds-ownerです。
+
+- 検査に当たった結果と、`parseResult`が内容で拒否した結果が対象です。形の不正は`uncertain`のままです。
+- 受付は投稿もOutboxの行も作らず、DBには結果のhashだけを残し、ownerへ1回通知します。
+- 受付はleaseを保持し、ownerが解除するまで同じPRで起動しません。
+- 受付はRunnerの`redact`で署名済み封筒をhashと署名だけにします（形の不正でも行う）。fixture以外のRunnerでは`redact`が必須です。失敗したらownerへ通知します。
+
 ## offとshadow
 
 対応Nodeで次を実行できます。
@@ -45,7 +71,7 @@ DBはWAL/FULL同期、schema 2です。schema 1からの暗黙の変換はせず
 | D02/D03/D08/D09 | 実SQLite: tombstone、transaction、全種類PR lease、10枠/実行先枠、24時間6回とowner解除まで保持するquota pause、世代の取消、不明POST・通知の重複 |
 | D03/D09/I009 | POSIX fixture: supervisor死亡、setsid子孫の継承lock、取消、同一runへの再接続。Windowsは未対応を検査しskipしない |
 | D05/D07/I003/I004 | fake ghの全ページ/ETag/rate limit/部分失敗、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
-| D06/D07/D10 | run/身元/pair/結果hashの照合と**fixture用**HMAC整合検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
+| D06/D07/D10 | run/身元/pair/結果hashの照合、supervisor署名の相互試験ベクトルと改ざんの拒否、公開前の検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
 | I007 | `dispatch-read`の正確なread-only grant、追加write/missing grantではgh起動0 |
 | PR48-R007〜R011 | 未解消の指摘の規則（会話コメント・owner・第三者・dismiss・編集/削除の観測記録・古いcommitの承認・同時刻）、CIの判定を決める範囲の要約とowner信頼・範囲の内外・ci.yml以外のrun、時計の後退、policy/root/DB/WAL/SHM/lockの所有者・権限・リンク、過大な配送の印、本文の正規形とhash不一致のuncertain |
 
@@ -58,7 +84,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 - I009: 実AIの全子孫へのFD継承、取消・OS再起動・process tree終了の実測。未確認backendを有効にしません。
 - I010: App作成PRのCopilot依頼・応答の実測は任意の補助情報です。応答や利用枠を起動/マージの条件に戻しません。
 - I011: 共有された従来アカウントの身元移行。ownerがactivity anchorと過去push参加者を検証し、policyの同一人物対応・server境界を設定する。結合と照合のコードは今回追加済み。実repoのmigration設定は未検証。
-- PR48-R003（実runner接続前）: `RunChannel`は受付がfake runnerの返り値に付ける整合tagで、実run endpointの出所証明ではありません。実接続前にworker境界の外のsupervisorがrunごとの鍵で署名し、受付/Brokerは検証のみを行う接口と鍵の作成・保管・アクセス拒否試験を実装するまで、実backendは無効です。
+- PR48-R003: [結果の署名と投稿](#結果の署名と投稿)で実装しました。実backendは、[W4で必ず行う項目](#w4で必ず行う項目)の1・2・4、W1の`deny-supervisor`、owner導入がそろうまで無効です。
 - active、auto-fix、GitHub通知、実Broker接続、旧workerとの交代・rollbackはownerの設定と別の正本移行PR後。dispatcherはマージしません。
 
 導入待ちはIssue #45の基盤受入と分けます。基盤のCIとClaudeの独立accepted後に完了を判定し、残る担当レビューを既存の設定で再開します。
@@ -110,8 +136,24 @@ GitHubのREST APIにはスレッドの解決状態がなく、書込み権限の
 - **時計の先への飛び:** 時計が大きく先へ飛ぶと、その時刻が保存され、時計を戻した後は保存時刻へ追いつくまで受付が止まる。24時間の起動上限の窓も先へ進む（数え方が緩む）。誤った時刻で動いたと分かったら受付を止めて記録を確かめ、待つ時間が許容できない場合は、停止状態のbackupと独立レビューした手順で切り替える。DBの時刻を手で戻さない。
 - **信頼の記録とReady:** 上の手順3のとおり、policyの更新は開いているPRすべてのReadyのやり直しを伴う。
 
-### W4へ送る項目
+### W4で必ず行う項目
 
-- Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`（edited・deleted）、`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする（今は照合の観測比較だけ）。
-- PR #53（W2）の公開検査とbroker.tsの統合は、`canonicalBody → publicationFindings → hash → POST`の順に固定する。正規化で鍵の形がつながりうるので、検査は正規化後の本文に掛ける（github.test.tsに否定試験）。
-- 信頼した要約をbase・PRへ結び付けるか（粗探しのP3）。
+Issue #50 W2・W3から引き継ぐ項目です。
+
+| # | 項目 | 理由 | 時期 |
+| --- | --- | --- | --- |
+| 1 | `blocked`をPRごとの状態としてDBに持ち、ownerの解除だけで消す | 今はleaseの`uncertain`で止めるだけ | active前 |
+| 2 | 鍵の約束値をjobに永続化する | 受付の再起動後に検証できない（今は`uncertain`のまま） | 実runner接続前 |
+| 3 | 通知Broker（Codex AppのPRコメント）にも同じ公開検査を掛ける | 通知も公開repoへ書く | 通知の実装時 |
+| 4 | workerのHOME/TMPDIRをsupervisorのrootから分け、封筒と約束値をworkerから届かない場所へ移す。実backendの署名はmacOSに限る | 今のworkerはrootに書ける | 実runner接続前（W1と調整） |
+| 5 | 過去の公開v1本文で公開検査の誤検知を試験する | 正当なレビューを止めないため | active前 |
+| 6 | PRの全commitの一覧をsnapshotへ取り込む | 今はpair・timelineにないcommitのリンクで止まる | active前 |
+| 7 | SQLiteのWAL・空きページの旧値を消す（`PRAGMA secure_delete`、checkpoint） | 置き換え前の平文が残りうる | active前 |
+| 8 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする | 今は照合の観測比較だけ | Webhook接続時 |
+| 9 | 信頼した要約（`trustedCiDigests`）をbase・PRへ結び付けるか決める | 粗探しのP3 | active前 |
+| 10 | `.npmrc`を`CI_TRUST_PATHS`へ加える | 所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | active前 |
+| 11 | `accepted()`が第三者の最新のCHANGES_REQUESTEDを無視する点を、#51の規則とそろえる | 判定の規則が2つある | active前 |
+| 12 | 照合の`observedAt`に、応答のDateの最大値を使う | 観測区間の端を正しくするため | 実host shadow前 |
+| 13 | 前の内容へ戻されたReview本文の編集を見つける（重複排除に直前のhashを含める） | 今は戻した編集を見落とす | active前 |
+| 14 | ownerのコマンドを`git -c core.quotePath=false ls-tree -r -z`にし、合成repoで`ciTrustDigest`と一致する試験を足す | パスの引用で要約がずれうる | active前 |
+| 15 | 導入手順は小さく始める範囲を先に書き、backendの経緯は参照へ移す | PR #51のCodexレビューR005 | W4の導入手順を書くとき |

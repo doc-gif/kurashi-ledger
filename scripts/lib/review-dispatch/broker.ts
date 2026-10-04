@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   hash,
   samePair,
@@ -10,6 +9,20 @@ import {
 import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
 import { canonicalBody } from "./github.ts";
+import type { ResultVerifier } from "./provenance.ts";
+import {
+  EVIDENCE_SHAPE,
+  blockedNotice,
+  redactStoredResult,
+  redactedResult,
+  resultFindings,
+  allowedFor,
+  publicationFindings,
+} from "./publication.ts";
+
+// Rejected because of WHAT the result says (secret shapes, format characters, look-alikes, injection, links),
+// as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
+export class ResultContentError extends Error {}
 
 export function parseResult(raw: string, j: Job): WorkerResult {
   if (Buffer.byteLength(raw) > 32768)
@@ -20,13 +33,34 @@ export function parseResult(raw: string, j: Job): WorkerResult {
   } catch {
     throw new Error("Invalid worker result");
   }
+  // Content first, so a secret is classified as content even when the shape is also wrong.
+  // Format characters (zero-width etc.) are rejected anywhere in the decoded result, never stripped.
+  if (/\p{Cf}/u.test(JSON.stringify(r) ?? ""))
+    throw new ResultContentError("Unsafe result prose");
+  if (
+    [raw, (JSON.stringify(r) ?? "").normalize("NFKC")].some((t) =>
+      /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
+        t,
+      ),
+    )
+  )
+    throw new ResultContentError("Private material in result");
   const singleLine = (v: string): boolean =>
     !/[\r\n\u0000-\u001f\u007f]/.test(v);
-  const safeProse = (v: string): boolean =>
-    !/[<@]/.test(v) &&
-    !/(?:^|\n)\s*(?:role|agent_id|head_sha|base_sha|decision|worker_status|plan_path|plan_commit)\s*:/i.test(
-      v,
+  // Checked after NFKC so full-width look-alikes cannot slip past. Only GitHub links in prose.
+  const safeProse = (raw: string): boolean => {
+    const v = raw.normalize("NFKC");
+    return (
+      !/[<@]/.test(v) &&
+      !/(?:^|\n)\s*(?:role|agent_id|head_sha|base_sha|decision|worker_status|plan_path|plan_commit)\s*:/i.test(
+        v,
+      ) &&
+      (v.match(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi) ?? []).every((u) =>
+        /^https:\/\/github\.com\//.test(u),
+      ) &&
+      !/\bwww\./i.test(v)
     );
+  };
   const fields = [
     "schema",
     "run",
@@ -70,43 +104,38 @@ export function parseResult(raw: string, j: Job): WorkerResult {
           typeof v !== "string" ||
           !v.trim() ||
           v.length > 1200 ||
-          !singleLine(v) ||
-          !safeProse(v),
+          !singleLine(v),
       )
     )
       throw new Error("Invalid finding");
+  if (
+    r.findings.some((f) =>
+      [f.location, f.impact, f.completion].some((v) => !safeProse(v)),
+    )
+  )
+    throw new ResultContentError("Unsafe finding prose");
   if (
     new Set(r.findings.map((f) => f.id)).size !== r.findings.length ||
     (r.decision === "accepted" && r.findings.length)
   )
     throw new Error("Contradictory result");
   if (
-    r.evidence.some(
-      (x) =>
-        typeof x !== "string" ||
-        !/^https:\/\/github\.com\/[a-zA-Z0-9/_?.=#&%-]+$/.test(x),
-    ) ||
+    r.evidence.some((x) => typeof x !== "string") ||
     r.unverified.some(
       (x) =>
         typeof x !== "string" ||
         !x.trim() ||
         x.length > 1200 ||
-        !singleLine(x) ||
-        !safeProse(x),
-    )
-  )
-    throw new Error("Invalid evidence");
-  if (
-    /gh[pousr]_[A-Za-z0-9_]{16,}|-----BEGIN .*PRIVATE KEY|(?:\/Users\/|[A-Z]:\\Users\\)/.test(
-      raw,
-    )
-  )
-    throw new Error("Private material in result");
-  if (
-    !safeProse(r.summary) ||
+        !singleLine(x),
+    ) ||
     /[\u0000-\u0008\u000b-\u001f\u007f]/.test(r.summary)
   )
-    throw new Error("Unsafe result prose");
+    throw new Error("Invalid evidence");
+  // Fixed evidence shapes only (a workflow run, a review on a PR, a commit checked against the PR later).
+  if (r.evidence.some((x) => !EVIDENCE_SHAPE.test(x)))
+    throw new ResultContentError("Evidence link not allowed");
+  if (!safeProse(r.summary) || r.unverified.some((x) => !safeProse(x)))
+    throw new ResultContentError("Unsafe result prose");
   return r;
 }
 export type PostedReview = {
@@ -130,48 +159,9 @@ export type Provenance = {
   resultHash: string;
   signature: string;
 };
-// Fixture integrity helper, not an implemented real-run origin/key-isolation boundary.
-// A real runner must receive an outside-worker authenticated endpoint and verifier-only Broker first.
-export class RunChannel {
-  private readonly secret: Buffer;
-  constructor(secret: Buffer) {
-    if (secret.length < 32) throw new Error("Run channel secret missing");
-    this.secret = Buffer.from(secret);
-  }
-  seal(j: Job, raw: string): Provenance {
-    const value = { run: j.run, actor: j.actor, resultHash: hash(raw) };
-    return { ...value, signature: this.mac(j, value.resultHash) };
-  }
-  verify(j: Job, raw: string, origin: Provenance): boolean {
-    if (
-      origin.run !== j.run ||
-      origin.actor !== j.actor ||
-      origin.resultHash !== hash(raw) ||
-      !/^[a-f0-9]{64}$/.test(origin.signature)
-    )
-      return false;
-    return timingSafeEqual(
-      Buffer.from(origin.signature, "hex"),
-      Buffer.from(this.mac(j, origin.resultHash), "hex"),
-    );
-  }
-  private mac(j: Job, digest: string): string {
-    return createHmac("sha256", this.secret)
-      .update(
-        JSON.stringify([
-          j.run,
-          j.actor,
-          j.generation,
-          j.policy,
-          j.pair,
-          digest,
-        ]),
-      )
-      .digest("hex");
-  }
-}
 export class ReviewBroker {
-  readonly channel: RunChannel;
+  // Verify-only: the Broker checks the run's provenance and never seals or signs a result itself.
+  readonly verifier: ResultVerifier;
   readonly actor: number;
   readonly transport: BrokerTransport;
   readonly store: Store;
@@ -180,22 +170,23 @@ export class ReviewBroker {
     actor: number,
     transport: BrokerTransport,
     store: Store,
-    channel: RunChannel,
+    verifier: ResultVerifier,
   ) {
     this.actor = actor;
     this.transport = transport;
     this.store = store;
-    this.channel = channel;
+    this.verifier = verifier;
   }
   async submit(
     p: Policy,
     j: Job,
     raw: string,
-    origin: Provenance,
+    origin: Provenance | null,
     fetchFresh: () => Promise<Snapshot>,
-  ): Promise<"posted" | "uncertain" | "stale"> {
+  ): Promise<"posted" | "uncertain" | "stale" | "blocked"> {
     if (
-      !this.channel.verify(j, raw, origin) ||
+      !origin ||
+      !this.verifier.verify(j, raw, origin) ||
       origin.actor !== this.actor ||
       this.actor !== j.actor ||
       origin.run !== j.run ||
@@ -207,6 +198,8 @@ export class ReviewBroker {
       prior = this.store.target(j.key);
     const t = assess(p, s, prior, this.store.consumed());
     const owned = this.store.job(j.id);
+    // Already blocked and redacted (hash-only): stays blocked; never posted, never re-checked into a POST.
+    if (owned && owned.resultHash === hash(redactedResult(raw))) return "blocked";
     if (owned && owned.resultHash !== hash(raw))
       throw new Error("Stored result hash changed");
     if (
@@ -225,11 +218,24 @@ export class ReviewBroker {
       !reviewerEligible(p, s, this.actor)
     )
       return "stale";
+    // Fixed order: canonicalBody -> publication check -> hash -> POST. The check reads the exact canonical body
+    // that is hashed and posted, because canonicalisation can join a split key shape (PR #52 R011 / W2).
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
       body = canonicalBody(
         render(result, marker, identityOf(p, this.actor), j.run),
-      ),
-      digest = hash(body);
+      );
+    if (
+      resultFindings(result, j, s, p.repo).length ||
+      publicationFindings(body, allowedFor(j, s)).length
+    ) {
+      // The plaintext result must not stay in the DB either (30-day retention, backups).
+      redactStoredResult(this.store.db, j, raw);
+      // blocked = persistent needs-owner: never posted, no Outbox row, one owner notice; the caller keeps the
+      // lease so nothing relaunches until the owner clears it (publication.ts blockedNotice).
+      this.store.notice(blockedNotice(j));
+      return "blocked";
+    }
+    const digest = hash(body);
     if (
       result.decision === "accepted" &&
       (!s.faultfinding ||

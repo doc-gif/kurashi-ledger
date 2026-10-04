@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createRunner,
+  runnerAcceptable,
+  type Runner,
   Dispatcher,
   capabilityReady,
   workerEnvironment,
@@ -8,13 +11,14 @@ import {
   REQUIRED_PROBES,
   type Capability,
 } from "./runtime.ts";
-import { ReviewBroker, RunChannel } from "./broker.ts";
+import { ReviewBroker } from "./broker.ts";
+import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import {
   database,
   policy,
   snapshot,
 } from "../../../tests/fixtures/review-dispatch.ts";
-const capability: Capability = {
+const capability: Capability & { backend: "fixture" } = {
   backend: "fixture",
   version: "synthetic-1",
   codeHash: "a".repeat(64),
@@ -31,6 +35,8 @@ test("D08 complete fake-runner cycle posts once and ignores unchanged replay", a
       posts = 0;
     const rows: { id: string; actor: number; head: string; body: string }[] =
       [];
+    // The fake run endpoint seals; the dispatcher only forwards and the Broker only verifies.
+    const endpoint = new RunChannel(Buffer.alloc(32, 7));
     const broker = new ReviewBroker(
       30,
       {
@@ -41,16 +47,18 @@ test("D08 complete fake-runner cycle posts once and ignores unchanged replay", a
         list: async () => rows,
       },
       d.store,
-      new RunChannel(Buffer.alloc(32, 7)),
+      endpoint,
     );
     const runner = {
       capability,
       run: async (j: Parameters<typeof fixtureResult>[0]) => {
         launches++;
+        const result = JSON.stringify(fixtureResult(j));
         return {
-          result: JSON.stringify(fixtureResult(j)),
+          result,
           treeEnded: true,
           uncertain: false,
+          origin: endpoint.seal(j, result),
         };
       },
     };
@@ -88,6 +96,7 @@ test("D10 off/shadow and unverified real CLI start no workers or posts", async (
         {
           capability: { ...capability, backend: "claude" },
           run: async () => assert.fail("AI launch"),
+          redact: async () => assert.fail("redact"),
         },
         broker,
         async () => s,
@@ -137,6 +146,7 @@ test("D03 runner uncertainty retains lease after dispatcher restart", async () =
             result: JSON.stringify(fixtureResult(j)),
             treeEnded: false,
             uncertain: true,
+            origin: null,
           }),
         },
         broker,
@@ -156,6 +166,98 @@ test("D03 runner uncertainty retains lease after dispatcher restart", async () =
         101,
       ),
       "waiting",
+    );
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("PR48-R003 dispatcher never signs: a runner result without run provenance is not posted", async () => {
+  const variants = [
+    (): null => null,
+    // Sealed by a different endpoint key: the dispatcher cannot launder it into a valid origin.
+    (j: Parameters<typeof fixtureResult>[0], r: string) =>
+      new RunChannel(Buffer.alloc(32, 8)).seal(j, r),
+  ];
+  for (const origin of variants) {
+    const d = database();
+    try {
+      const p = policy(),
+        s = snapshot(),
+        engine = new Dispatcher(p, d.store);
+      let posts = 0;
+      const broker = new ReviewBroker(
+        30,
+        {
+          post: async () => {
+            posts++;
+          },
+          list: async () => [],
+        },
+        d.store,
+        new RunChannel(Buffer.alloc(32, 7)),
+      );
+      const result = await engine.fixtureCycle(
+        s,
+        30,
+        {
+          capability,
+          run: async (j) => {
+            const r = JSON.stringify(fixtureResult(j));
+            return {
+              result: r,
+              treeEnded: true,
+              uncertain: false,
+              origin: origin(j, r),
+            };
+          },
+        },
+        broker,
+        async () => s,
+        100,
+      );
+      assert.equal(result, "uncertain");
+      // The lease stays held for owner reconciliation; nothing relaunches.
+      assert.equal(
+        await engine.fixtureCycle(
+          s,
+          30,
+          { capability, run: async () => assert.fail("relaunch") },
+          broker,
+          async () => s,
+          101,
+        ),
+        "waiting",
+      );
+      assert.equal(posts, 0);
+    } finally {
+      d.cleanup();
+    }
+  }
+});
+
+test("PR53 round 3: a non-fixture runner without redact is refused at construction and by the dispatcher", async () => {
+  const real = {
+    capability: { ...capability, backend: "claude" as const },
+    run: async () => assert.fail("AI launch"),
+  };
+  assert.throws(() => createRunner(real as unknown as Runner), /without redact/);
+  assert.equal(runnerAcceptable(real as unknown as Runner), false);
+  assert.equal(runnerAcceptable({ ...real, redact: async () => {} }), true);
+  assert.equal(runnerAcceptable({ capability, run: real.run }), true); // fixture: no envelope to redact
+  const d = database();
+  try {
+    const p = policy(),
+      s = snapshot(),
+      broker = new ReviewBroker(
+        30,
+        { post: async () => assert.fail("POST"), list: async () => [] },
+        d.store,
+        new RunChannel(Buffer.alloc(32, 7)),
+      );
+    assert.equal(
+      await new Dispatcher(p, d.store).fixtureCycle(s, 30, real as unknown as Runner, broker, async () => s, 100),
+      "capability-disabled",
     );
   } finally {
     d.cleanup();

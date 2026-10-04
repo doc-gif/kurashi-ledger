@@ -11,7 +11,9 @@ import {
   canonicalBody,
   type Response,
 } from "./github.ts";
-import { ReviewBroker, RunChannel } from "./broker.ts";
+import { ReviewBroker } from "./broker.ts";
+import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
+import { allowedFor, publicationFindings } from "./publication.ts";
 import { fixtureResult } from "./runtime.ts";
 import {
   policy,
@@ -291,6 +293,7 @@ test("R011 a marked review whose body hash differs stays uncertain and is never 
       d.store.result(j, raw);
       let posts = 0;
       const rows: { id: string; actor: number; head: string; body: string }[] = [];
+      const channel = new RunChannel(Buffer.alloc(32, 7));
       const b = new ReviewBroker(
         30,
         {
@@ -308,9 +311,9 @@ test("R011 a marked review whose body hash differs stays uncertain and is never 
           list: async () => rows,
         },
         d.store,
-        new RunChannel(Buffer.alloc(32, 7)),
+        channel,
       );
-      const origin = b.channel.seal(j, raw);
+      const origin = channel.seal(j, raw);
       assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
       assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
       assert.equal(posts, 1);
@@ -326,11 +329,16 @@ test("R011/W4 ordering: canonicalisation can join a split key shape, so a public
   const split = "ghp_" + "A".repeat(10) + "\u0007" + "B".repeat(10);
   assert.equal(key.test(split), false);
   assert.equal(key.test(canonicalBody(split)), true);
-  // On this base the worker fields cannot carry such a character into render(); #53's
-  // publicationFindings is not on this base, so W4 must order: canonicalBody -> publication check -> hash -> POST.
+  // The publication check misses the split shape but catches it after canonicalisation. This is why the Broker
+  // runs canonicalBody -> publicationFindings -> hash -> POST and checks the exact body it posts.
   const d = database();
   try {
-    const j = claim(d.store);
+    const j = claim(d.store),
+      allowed = allowedFor(j, snapshot());
+    assert.deepEqual(publicationFindings(split, allowed), []);
+    assert.ok(publicationFindings(canonicalBody(split), allowed).includes("key/token"));
+    assert.ok(publicationFindings(canonicalBody(`前置き ${split} 後置き`), allowed).includes("key/token"));
+    // Worker fields cannot carry such a control character into render() in the first place.
     for (const field of ["summary", "unverified"] as const) {
       const r = fixtureResult(j) as unknown as Record<string, unknown>;
       r[field] = field === "summary" ? split : [split];

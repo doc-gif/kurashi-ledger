@@ -1,0 +1,450 @@
+{
+  "schema_version": 2,
+  "base_sha": "b50079b87d9dfcc3ce35565b59cb1c9c8c32de0c",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    ".review/tests/test_dispatch_supervisor.py",
+    "docs/review-dispatch-implementation.md",
+    "scripts/lib/review-dispatch/broker.test.ts",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/claude-broker.test.ts",
+    "scripts/lib/review-dispatch/claude-broker.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
+    "scripts/lib/review-dispatch/provenance.test.ts",
+    "scripts/lib/review-dispatch/provenance.ts",
+    "scripts/lib/review-dispatch/publication.ts",
+    "scripts/lib/review-dispatch/runtime.test.ts",
+    "scripts/lib/review-dispatch/runtime.ts",
+    "scripts/review-dispatch-claude-broker.ts",
+    "tests/fixtures/review-dispatch-run-channel.ts",
+    "tests/fixtures/review-dispatch-run-signature.json",
+    "tools/review_dispatch/supervisor.py"
+  ],
+  "conflicts": [
+    {
+      "description": "受付・Brokerは検証だけにしたい（PR48-R003 (a)）。HMACでは検証者も署名でき、PythonのstdlibにEd25519がない",
+      "state": "resolved",
+      "resolution": "runごとの一度きりのLamport署名（SHA-256だけ）を使う。署名はsupervisor.pyだけ、TSは検証だけ。Python署名とTS検証を固定の試験ベクトルで突き合わせる"
+    },
+    {
+      "description": "Brokerのtokenをどこに置くか（設計§3: 要求ごとにキーチェーンを読まない）",
+      "state": "resolved",
+      "resolution": "submitごとにwrapperを1回起動し、tokenは固定の中継の環境だけに置く。sessionの終了でwrapperが失効させる"
+    },
+    {
+      "description": "約束値の永続化やblockedの状態にはstore.tsの変更が要るが、W3が変更中",
+      "state": "resolved",
+      "resolution": "store.tsは変えない。永続化と持続状態はW4の必須項目として実装資料に書く。それまでは安全側（uncertainでleaseを保持）"
+    },
+    {
+      "description": "粗探し（PR #51 P1、PR #53の1〜3回目）: 公開前の検査の経路・許可の出所・平文の残り",
+      "state": "resolved",
+      "resolution": "検査はpublication.tsの1か所に集め、parseResult・保存前・投稿直前で同じ正規化と規則を使う（緩和。保証はW1の否定試験）。許すIDはsnapshotとrun IDだけ。内容で拒否した結果はblocked（DBはhashだけ、封筒はredact、redactはfixture以外で必須）。詳細は各粗探しの記録"
+    },
+    {
+      "description": "mainの取り込み（#51・#52・#54・#55）でbroker.tsと実装資料が衝突",
+      "state": "resolved",
+      "resolution": "broker.tsは両方のimportを残し、canonicalBody→公開検査→hash→POSTの順に固定した。#52のgithub.test.tsのBroker試験は試験用のRunChannelへ移し、制御文字で分けた鍵の形が正規化後に検査で捕まる否定試験を足した。実装資料のW4項目は両PRの一覧を1つの表にまとめた（統合で済んだ順序の項目は削除）"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "lockの意味は変えない。署名は子孫の終了をlockで証明できたrunだけに付ける。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "既存のsupervisor実プロセス試験を通し、同じrunの再起動と二重署名を拒否する試験を足す。",
+          "expected": "1つのrunに鍵と署名は1つ。"
+        },
+        {
+          "id": "recovery",
+          "method": "失敗・子孫の残存・取消・出力過大・不正UTF-8で署名がないことを実プロセスで試験する。Windowsは拒否を確かめる。",
+          "expected": "証明できないrunは署名されず、検証も通らない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "鍵はsupervisorのメモリだけに置く。Brokerはwrapperを`--agent claude --purpose review`に固定し、Codexの鍵に触れない。公開前の検査は緩和として3か所で行う。試験は合成の値だけ。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "check-public --stagedを通す。workerの環境・fd・root内のファイルに鍵の断片がないことを試験する。合成の秘密と回避の手口で、投稿0・hashだけの保存・redactを試験する。",
+          "expected": "差分に秘密・実データ・個人のパスがない。秘密を含む本文は投稿されない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "preserve",
+      "reason": "製品の記録・計算には触れない。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "全npm試験を通す。",
+          "expected": "製品の期待値は変わらない。"
+        },
+        {
+          "id": "history",
+          "method": "署名をjobのgeneration・pair・policy・actor・runに結び付け、別のjobへの付け替えを拒否する試験。",
+          "expected": "過去の結果を今のjobに付け替えられない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "実AI・実Brokerの接続は既定offのまま（W4と所有者の導入後）。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "既存CIを3 OSで通す。",
+          "expected": "off・shadowの動作は変わらない。"
+        },
+        {
+          "id": "artifact",
+          "method": "Brokerの設定（絶対パス、数字のID、macOSだけ）と中継の語彙を試験する。",
+          "expected": "不正な設定は起動前に拒否する。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "投稿身元はpolicyのClaudeに固定する。出所を検証できない結果は投稿しない。失敗時に別の認証へ戻らない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "POSTはsessionで1回、POST不明はOutbox照合だけで回復する試験。鍵の再利用と二重登録を拒否する試験。",
+          "expected": "重複投稿0。"
+        },
+        {
+          "id": "trust",
+          "method": "相互試験ベクトル、改ざんの拒否、RunVerifier以外の拒否、Claude以外の身元の拒否を試験する。",
+          "expected": "supervisorが署名した結果だけが投稿される。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "supervisorのrootの規則は変えない。結果ファイルはO_EXCL・O_NOFOLLOWで作る。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "結果ファイルが既にあるときの拒否を試験する。",
+          "expected": "上書きしない。"
+        },
+        {
+          "id": "aliases",
+          "method": "既存のalias試験を通す。",
+          "expected": "symlinkを辿らない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "preserve",
+      "reason": "schemaとstore.tsは変えない。検証はrootのファイルではなく起動時の記録を使う。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "既存のstore試験を通す。",
+          "expected": "DBの意味は変わらない。"
+        },
+        {
+          "id": "restore",
+          "method": "rootのファイルを書き換えた偽の結果を拒否する試験。",
+          "expected": "ファイルだけでは検証が通らない。"
+        },
+        {
+          "id": "manifest",
+          "method": "manifestに秘密を書かないことを試験する。",
+          "expected": "秘密はmanifestにない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "W2の範囲だけを行う。共有ファイル（runtime.ts、実装資料）は最小にとどめる。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "github.tsの`ghReviewTransport`は変えずに使う。",
+          "expected": "W1/W3/W4との衝突が最小。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "実装資料のPR48-R003とW4の必須項目を実装に合わせる。",
+          "expected": "文書が実装より強く主張しない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "supervisor.py: workerの標準出力",
+      "data": "workerの結果",
+      "trust": "untrusted",
+      "control": "32KiB・UTF-8・正常終了・子孫の終了を満たすときだけ署名する。結果はJSON文字列として包む"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "supervisor.py: 自分の標準出力",
+      "data": "run-key行とrun-result行",
+      "trust": "trusted",
+      "control": "workerはこのパイプを持たない。run-key行はworkerの起動前に出す"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "supervisorのrootのmanifestと署名済み封筒",
+      "data": "約束値・hash・署名（秘密鍵は書かない）",
+      "trust": "partially-trusted",
+      "control": "O_EXCL・O_NOFOLLOW・0600。検証には使わない。blockedのときredactでhashと署名だけにする"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "provenance.ts RunVerifier",
+      "data": "supervisorの行・結果・署名",
+      "trust": "untrusted",
+      "control": "形の検査、bindingの再計算、起動時の約束値との一致、一度きりの登録。署名の関数はない"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "claude-broker.ts: wrapperの起動",
+      "data": "固定のargvとallowlistの環境",
+      "trust": "trusted",
+      "control": "shellなし、絶対パス、agent/purposeは定数。GH_TOKEN・KL_*・NODE_OPTIONSを渡さない。macOSだけ"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "中継: 受付からの要求行",
+      "data": "list/postの要求",
+      "trust": "partially-trusted",
+      "control": "list/postだけ、値の上限、postは1回まで。失敗の詳細を返さない"
+    },
+    {
+      "id": "B7",
+      "direction": "exit",
+      "location": "中継→GitHubのReview API",
+      "data": "Reviewの投稿・一覧",
+      "trust": "trusted",
+      "control": "空のGH_CONFIG_DIR、review用途のtoken、投稿者が固定のClaude botであることを確認"
+    },
+    {
+      "id": "B8",
+      "direction": "entry",
+      "location": "中継→受付の応答行",
+      "data": "Reviewの一覧（第三者の本文を含む）",
+      "trust": "untrusted",
+      "control": "形を検査し、自分の投稿だけをactor・head・marker・hashで数える"
+    },
+    {
+      "id": "B9",
+      "direction": "exit",
+      "location": "公開のrepo",
+      "data": "コード・試験・fixture・文書",
+      "trust": "untrusted",
+      "control": "合成の値だけ。stageを明示し、check-publicを通す"
+    },
+    {
+      "id": "B10",
+      "direction": "exit",
+      "location": "Reviewの本文（全Broker）と保存する結果",
+      "data": "workerの散文から作る公開の本文",
+      "trust": "untrusted",
+      "control": "canonicalBody→publication.tsの検査（緩和）→hash→POST。当たればblocked: 投稿0、DBはhashだけ、封筒はredact、通知1回、leaseを保持"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-LOCK",
+      "cause_key": "restore-lock-identity",
+      "pattern": "署名がlockによる終了の証明とずれる",
+      "places": [
+        {
+          "location": "supervisor.py run",
+          "result": "lockを取り直せたときだけ署名。取消・例外・子孫の残存では署名しない"
+        },
+        {
+          "location": "supervisor.py inspect",
+          "result": "判定は変えず、署名の有無だけ足す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "資格情報の確認に失敗しても先へ進む",
+      "places": [
+        {
+          "location": "wrapper起動と中継",
+          "result": "用途はreviewに固定。tokenの形が違えば中継は要求を受けない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "資格情報の道具を信頼できない場所から起動する",
+      "places": [
+        {
+          "location": "claude-broker.ts の設定",
+          "result": "所有者が固定した絶対パスだけ"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "エラーに秘密や外部の値を出す",
+      "places": [
+        {
+          "location": "supervisor・中継・provenance",
+          "result": "固定の文だけ。中継はok:falseだけを返す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "public-path-exception-scope",
+      "pattern": "公開検査の例外",
+      "places": [
+        {
+          "location": "新しいfixture・試験",
+          "result": "例外を足さない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開物への経路の一部にだけ検査を掛ける",
+      "places": [
+        {
+          "location": "parseResult・保存前・投稿直前",
+          "result": "同じpublication.tsを使う"
+        },
+        {
+          "location": "通知Broker",
+          "result": "範囲外。W4の必須項目(4)"
+        },
+        {
+          "location": "署名済み封筒とDB",
+          "result": "blockedではhashだけにする"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "token発行の失敗で別の認証へ戻る",
+      "places": [
+        {
+          "location": "ClaudeAppTransport・中継",
+          "result": "失敗は例外で、Brokerはuncertainに止める。別の経路はない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "PRが自分の検査を変える",
+      "places": [
+        {
+          "location": ".github/workflows",
+          "result": "変更しない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "workerや受付が出所・身元・許可を選べる",
+      "places": [
+        {
+          "location": "ReviewBroker・fixtureCycle",
+          "result": "受付は署名しない。Brokerは検証だけ"
+        },
+        {
+          "location": "createClaudeReviewBroker",
+          "result": "RunVerifierとClaudeの身元以外を拒否"
+        },
+        {
+          "location": "allowedFor・evidence",
+          "result": "許可はsnapshotとrun IDだけ。evidenceは固定の形"
+        },
+        {
+          "location": "Runner.redact",
+          "result": "fixture以外では必須"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RECORDS",
+      "pattern": "別の文脈の値を今のjobへ付け替える",
+      "places": [
+        {
+          "location": "runBinding",
+          "result": "id・key・kind・actor・generation・policy・pair・runを含める"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "pattern": "実機で確かめていない動作を確認済みとする",
+      "places": [
+        {
+          "location": "wrapper・キーチェーン・中継の結合",
+          "result": "未検証として報告。fakeだけで試験"
+        },
+        {
+          "location": "supervisorのメモリへの到達",
+          "result": "W1のdeny-supervisor"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "cause_key": "destructive-op-follows-link",
+      "pattern": "symlinkを辿って書く",
+      "places": [
+        {
+          "location": "署名済み結果ファイル",
+          "result": "O_EXCL・O_NOFOLLOWで作る"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "workerが書ける場所の値で検証する",
+      "places": [
+        {
+          "location": "RunVerifier",
+          "result": "起動時の記録だけを信頼する"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "文書が実装より強く主張する",
+      "places": [
+        {
+          "location": "実装資料のPR48-R003とW4の必須項目",
+          "result": "実装した範囲と残りを表で書く"
+        }
+      ]
+    }
+  ]
+}
