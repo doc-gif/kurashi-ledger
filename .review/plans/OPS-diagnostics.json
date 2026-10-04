@@ -18,7 +18,7 @@
     {
       "description": "docs/development.mdの「所有者の決定（2026-10-02）」の3は、Dependabot（依存の自動更新）を「いまは入れない。依存の更新の運用はT25で決める」とした。このPRは.github/dependabot.ymlを加えるので、その決定と食い違う（Copilot r4173211581）。",
       "state": "resolved",
-      "resolution": "設計の上の解消: 変える場合の記録の仕方と手順を決めた。元の決定の記録は消さずに、docs/development.mdの所有者の決定の3と試作の棚卸しの行に、変更の日付・範囲（Dependabotだけ。Gitのhookは入れないまま。採用の頻度はT25）を追記した。懸念だった「自動のPRがlockfileを変え、割当の外で作業が生まれる」には、提案のPRを計画の検査で失敗のまま残し、提案ごとのIssueと計画を先に作ってから取り込む手順で答える（ADR-0010の4.5）。権限の根拠はまだ確定していない: 2026-10-03の承認は調整係の中継（Issue #35、PR #37のコメント5970070704）だけで、AIの中継は本人の確認の代わりにならない。所有者がCodexへ直接承認を伝えるのを待ち、その記録へのリンクをここに足す。それまでCodexのPR37-R002は未解消で、マージの条件を満たさない。直接の承認が得られなければ、.github/dependabot.ymlと関連の記載をこのPRから外す。（検査器はconflictsのstateがresolvedであることを求めるので、stateは設計の上の解消を表し、権限の確認待ちはこの文とPR37-R002で追う。）"
+      "resolution": "設計の上の解消: 変える場合の記録の仕方と手順を決めた。元の決定の記録は消さずに、docs/development.mdの所有者の決定の3と試作の棚卸しの行に、変更の日付・範囲（Dependabotだけ。Gitのhookは入れないまま。採用の頻度はT25）を追記した。懸念だった「自動のPRがlockfileを変え、割当の外で作業が生まれる」には、提案のPRを計画の検査で失敗のまま残し、提案ごとのIssueと計画を先に作ってから取り込む手順で答える（ADR-0010の4.5）。権限の根拠: 所有者本人の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804。2026-10-03、Codexの受領記録）で、PR #37にDependabotの設定を含めることに同意した。CodexのPR37-R002はこれで解消する。経緯: それまでは調整係の中継（Issue #35、PR #37のコメント5970070704）だけで、AIの中継は本人の確認の代わりにならないため、直接確認の記録を待っていた。"
     },
     {
       "description": "同じ原因（記録した値が実データを運べる）の指摘が、項目ごとに続いた: 整数（r4173211606）、例外のcode（r4173255445）、外部から読む版の数と区分の0・1（r4173282431）、書き換えられるError.stack（r4173282445）。項目ごとの局所修正では、まだ監査していない項目で同じ原因が再発しうる（docs/pr-review-loop.mdの5の止めどころ）。",
@@ -103,7 +103,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "Dependabotの提案のPRのために、PRの計画の検査やQuality gateに例外を作らない（`github.actor`等による除外は、workflowの変更と、なりすましの余地があるので採らない）。提案のPRは失敗のまま残り、採用は担当のbranchのPR（計画つき）で行う。マージ・auto-merge・`@dependabot merge`は使わない。このPRはworkflow・検査器・条件（.review/invariants.json）を変えない。原因台帳（.review/findings.json）には、繰り返した原因をPR37-R001として加え、出典を追記する。原因台帳の変更は、別の担当の内容レビューで確かめる対象である（Copilot r4173480754、PR11-R112）。 Dependabotの提案の採用の計画名とbranchは、提案のPR番号を入れたDEPS-pr<番号>（計画は.review/plans/DEPS-pr<番号>.json、branchはtask/deps-pr<番号>-<担当名>）にし、同じ日の複数の提案でも1提案1計画1採用PRが対応するようにする（r4173322850、PR4-R018の計画とタスクの対応）。 原因台帳のPR37-R001に、再発の証拠（r4173406961）の出典を追記する（r4173427073、docs/review-prevention.md）。Dependabotの提案の採用も、AGENTS.mdの着手の条件どおり、提案ごとに採用のIssueを作って割り当て、計画・branch・PRと対応させる（Copilotの見落とし）。 Dependabotの採用のtask_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`に統一する（Codex PR37-R003。計画のファイル名`DEPS-pr<番号>.json`とtask_idが一致する）。Dependabotを含める所有者の直接の承認（Codex PR37-R002）は所有者が確かめる事項で、実装側の中継で代えない。",
+      "reason": "Dependabotの提案のPRのために、PRの計画の検査やQuality gateに例外を作らない（`github.actor`等による除外は、workflowの変更と、なりすましの余地があるので採らない）。提案のPRは失敗のまま残り、採用は担当のbranchのPR（計画つき）で行う。マージ・auto-merge・`@dependabot merge`は使わない。このPRはworkflow・検査器・条件（.review/invariants.json）を変えない。原因台帳（.review/findings.json）には、繰り返した原因をPR37-R001として加え、出典を追記する。原因台帳の変更は、別の担当の内容レビューで確かめる対象である（Copilot r4173480754、PR11-R112）。 Dependabotの提案の採用の計画名とbranchは、提案のPR番号を入れたDEPS-pr<番号>（計画は.review/plans/DEPS-pr<番号>.json、branchはtask/deps-pr<番号>-<担当名>）にし、同じ日の複数の提案でも1提案1計画1採用PRが対応するようにする（r4173322850、PR4-R018の計画とタスクの対応）。 原因台帳のPR37-R001に、再発の証拠（r4173406961）の出典を追記する（r4173427073、docs/review-prevention.md）。Dependabotの提案の採用も、AGENTS.mdの着手の条件どおり、提案ごとに採用のIssueを作って割り当て、計画・branch・PRと対応させる（Copilotの見落とし）。 Dependabotの採用のtask_idは、Issue・計画・引継ぎのすべてで`DEPS-pr<提案のPR番号>`に統一する（Codex PR37-R003。計画のファイル名`DEPS-pr<番号>.json`とtask_idが一致する）。Dependabotを含める所有者の直接の承認（Codex PR37-R002）は、所有者本人の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）で確定した。実装側の中継では代えず、この記録を根拠にする。",
       "checks": [
         {
           "id": "duplicates",
@@ -990,6 +990,15 @@
       ],
       "open_prs_overlap": "2026-10-04時点のopen PR（#25・#28・#29・#33・#36・#38・#44）は、このPRの変更ファイルと重ならない。",
       "adr_number": "mainのdocs/adr/は0002〜0008。0009はPR #25（未マージ）が使う。0010は重ならないので、番号は変えない。"
+    },
+    "OPS-diagnostics-phase2-2026-10-04": {
+      "read": "最後のready-for-review（d8dcc98）以降の投稿を読んだ: Codexのレビュー5401245835（d8dcc98、changes-requested。PR37-R002の記録の整合だけ。PR37-R004は解消）、所有者の直接確認の記録5970111804（Codexの受領記録）、Copilot 5401235659・5403918580（利用枠で未実行）、第1段階の注記5975782484。あわせて#40の正本（github-agent-operations.mdのmerge-conditions）と、2026-10-04の所有者の全PR向けの決定（project-statusに作業中のタスクを載せない、製品の試験の始まりを主張しない、Copilotは任意）を読み直した。",
+      "strategy": [
+        "PR37-R002: 所有者の直接確認の記録（https://github.com/doc-gif/kurashi-ledger/pull/37#issuecomment-5970111804）を、計画の衝突の根拠とINV-REVIEWの評価に足し、確認待ちを解消として揃える。確認待ちだった経緯は履歴として残す。ADR-0010の4.5とdocs/development.mdの承認の記述にも同じリンクを足す。所有者へは再質問しない。",
+        "所有者の全PR向けの決定: docs/project-status.mdの行から作業中の状態（設計中、PR番号）を外し、マージで真になる事実（設計はADR-0010、実装はT29〜T32、Dependabotの取り込み手順）だけにする。製品の試験の始まりの主張はこのPRにない。",
+        "Copilotは任意（#47）: このPRの計画・文書にCopilotの利用枠を条件にする記述はない（確認済み）。READMEとproject-statusのCopilotの行はmainの文で、触らない。"
+      ],
+      "regression_check": "R002の記録の直しは、r4173211581（衝突を計画に記録する）とCodexの完了条件（直接確認のリンクで揃える）の両方を満たし、逆方向の要求はない。project-statusの直しは#40の表の形と所有者の決定に従い、内容の規則を変えない。設計の内容（ADR-0010の1〜4）は変えない。"
     }
   }
 }
