@@ -26,7 +26,7 @@ python3 tools/review_guard/guard.py prepare --paths-file planned-paths.json --ba
 
 | 項目 | 記入内容 |
 | --- | --- |
-| `schema_version` | `2`。`1`は2026-10-03より前に作った計画だけ（[移行](../../docs/review-prevention.md#いたちごっこを止める3つの施策)） |
+| `schema_version` | `2`。`1`は版2の導入前に作った計画だけ（[移行](../../docs/review-prevention.md#いたちごっこを止める3つの施策)） |
 | `task_id` | 台帳上のID（例: `T07`、`OPS-REVIEW`）。Issue番号はPR/引継ぎに記す |
 | `base_sha` | 検討した最新mainの40文字SHA |
 | `planned_paths` | このPRの予定パス（削除・rename旧名も含む）。計画自身のパスは省略可 |

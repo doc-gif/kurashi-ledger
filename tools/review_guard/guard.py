@@ -28,11 +28,16 @@ def write_json(path, value):
         stream.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
+def shown(value):
+    """Quote untrusted values for error messages: no raw newlines in public CI logs."""
+    return json.dumps(value, ensure_ascii=True)
+
+
 def read_json(path):
     def unique(pairs):
         result = {}
         for key, value in pairs:
-            require(key not in result, f"duplicate JSON key: {key}")
+            require(key not in result, f"duplicate JSON key: {shown(key)}")
             result[key] = value
         return result
     path = Path(path)
@@ -41,9 +46,8 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=unique)
 
 
-def shown(value):
-    """Quote untrusted values for error messages: no raw newlines in public CI logs."""
-    return json.dumps(value, ensure_ascii=True)
+def listed(values):
+    return ", ".join(shown(v) for v in values)
 
 
 def text(value):
@@ -80,29 +84,34 @@ def validate(catalog, ledger):
     require(version(catalog.get("schema_version"), {1}) and version(ledger.get("schema_version"), {1}),
             "unsupported schema version")
     rules = index(catalog.get("invariants"), "invariants")
+    # ci.py also validates the candidate (PR-controlled) catalog and ledger: quote every id.
     for rid, rule in rules.items():
-        require(text(rule.get("condition")), f"{rid}: missing condition")
+        label = shown(rid)
+        require(text(rule.get("condition")), f"{label}: missing condition")
         require(isinstance(rule.get("paths"), list) and rule["paths"]
-                and all(path_ok(p) for p in rule["paths"]), f"{rid}: invalid paths")
+                and all(path_ok(p) for p in rule["paths"]), f"{label}: invalid paths")
         require(isinstance(rule.get("related"), list)
-                and set(rule["related"]) <= rules.keys(), f"{rid}: unknown related invariant")
-        scenarios = index(rule.get("scenarios"), rid + " scenarios")
+                and all(isinstance(r, str) for r in rule["related"])
+                and set(rule["related"]) <= rules.keys(), f"{label}: unknown related invariant")
+        scenarios = index(rule.get("scenarios"), label + " scenarios")
         require(bool(scenarios) and all(text(s.get("question")) for s in scenarios.values()),
-                f"{rid}: missing scenario question")
+                f"{label}: missing scenario question")
     findings = index(ledger.get("findings"), "findings")
     keys = set()
     for fid, finding in findings.items():
+        label = shown(fid)
         require(re.fullmatch(r"PR[1-9][0-9]*-R[0-9]{3,}", fid) is not None
-                and int(fid.split("-R")[1]) > 0, f"{fid}: invalid shared finding id")
-        require(finding.get("invariant_id") in rules, f"{fid}: unknown invariant")
-        require(text(finding.get("cause_key")) and text(finding.get("lesson")), f"{fid}: missing cause/lesson")
-        require(finding["cause_key"] == finding["cause_key"].strip(), f"{fid}: cause_key must be trimmed")
+                and int(fid.split("-R")[1]) > 0, f"{label}: invalid shared finding id")
+        require(isinstance(finding.get("invariant_id"), str) and finding["invariant_id"] in rules,
+                f"{label}: unknown invariant")
+        require(text(finding.get("cause_key")) and text(finding.get("lesson")), f"{label}: missing cause/lesson")
+        require(finding["cause_key"] == finding["cause_key"].strip(), f"{label}: cause_key must be trimmed")
         key = (finding["invariant_id"], finding["cause_key"])
-        require(key not in keys, f"duplicate cause: {key}")
+        require(key not in keys, f"duplicate cause: {shown(list(key))}")
         keys.add(key)
         require(isinstance(finding.get("sources"), list) and finding["sources"]
                 and all(isinstance(s, str) and s.startswith("https://") for s in finding["sources"]),
-                f"{fid}: missing evidence links")
+                f"{label}: missing evidence links")
     return rules, findings
 
 
@@ -182,10 +191,11 @@ def check_boundaries(plan, ids):
     rows = plan.get("boundaries")
     require(isinstance(rows, list), "boundaries must be a list of entry/exit points")
     require(rows or not ids,
-            "boundaries: empty inventory, but this change selects invariants " + ", ".join(ids)
+            "boundaries: empty inventory, but this change selects invariants " + listed(ids)
             + "; list every entry/exit point it touches with trust and control")
     for row in index(rows, "boundaries").values():
         label = "boundaries[" + shown(row["id"]) + "]"
+        require(row["id"] == row["id"].strip(), label + ": id must be trimmed")
         require(row.get("direction") in DIRECTIONS, label + ": direction must be one of " + ", ".join(DIRECTIONS))
         require(row.get("trust") in TRUST_LEVELS, label + ": trust must be one of " + ", ".join(TRUST_LEVELS))
         for field in ("location", "data", "control"):
@@ -202,10 +212,10 @@ def check_variants(plan, rules, findings, ids):
         require(isinstance(row, dict), "variant_analysis: each entry must be an object")
         rid, cause = row.get("invariant_id"), row.get("cause_key")
         require(isinstance(rid, str) and rid in rules, "variant_analysis: unknown invariant_id " + shown(rid))
-        label = "variant_analysis[" + rid + ("/" + shown(cause) if "cause_key" in row else "") + "]"
+        label = "variant_analysis[" + shown(rid) + ("/" + shown(cause) if "cause_key" in row else "") + "]"
         if "cause_key" in row:
             require(text(cause) and cause == cause.strip(), label + ": cause_key must be trimmed non-empty text")
-            require((rid, cause) in causes, label + ": cause_key is not in the ledger for " + rid)
+            require((rid, cause) in causes, label + ": cause_key is not in the ledger for " + shown(rid))
         require((rid, cause) not in seen, label + ": duplicate entry")
         seen.add((rid, cause))
         require(text(row.get("pattern")), label + ": missing pattern (the issue class searched for)")
@@ -216,7 +226,7 @@ def check_variants(plan, rules, findings, ids):
             require(isinstance(place, dict) and text(place.get("location")) and text(place.get("result")),
                     label + ": each place needs location and result")
     missing = sorted(set(ids) - {rid for rid, _ in seen})
-    require(not missing, "variant_analysis: missing selected invariants " + ", ".join(missing)
+    require(not missing, "variant_analysis: missing selected invariants " + listed(missing)
             + "; list the places checked for each")
     return sorted(fid for key, fid in causes.items() if key[0] in ids and key not in seen)
 
@@ -234,11 +244,11 @@ def check(catalog, ledger, plan, paths, base):
         check_plan_name(plan, plans[0])
     # The single plan is review metadata, not an implementation path to be self-listed.
     actual = [p for p in actual if p not in plans]
-    require(set(actual) <= set(planned), "unplanned paths: " + ", ".join(sorted(set(actual) - set(planned))))
+    require(set(actual) <= set(planned), "unplanned paths: " + listed(sorted(set(actual) - set(planned))))
     ids = affected(rules, sorted(set(planned) | set(actual)))
     assessments = index(plan.get("assessments"), "assessments")
     require(set(assessments) <= rules.keys(), "unknown assessment id")
-    require(set(ids) <= assessments.keys(), "missing invariant assessments: " + ", ".join(sorted(set(ids) - assessments.keys())))
+    require(set(ids) <= assessments.keys(), "missing invariant assessments: " + listed(sorted(set(ids) - assessments.keys())))
     conflicts = plan.get("conflicts")
     require(isinstance(conflicts, list), "conflicts must be a list")
     for conflict in conflicts:
@@ -247,20 +257,20 @@ def check(catalog, ledger, plan, paths, base):
                 "unresolved design conflict: revise the plan before implementation")
     decisions = []
     for rid in sorted(assessments):
-        item = assessments[rid]
+        item, label = assessments[rid], shown(rid)
         require(item.get("disposition") in {"preserve", "not-applicable", "change-proposed"},
-                f"{rid}: invalid disposition")
+                f"{label}: invalid disposition")
         if item["disposition"] == "change-proposed":
             refs = item.get("decision_references")
             require(isinstance(refs, list) and refs and all(text(ref) for ref in refs),
-                    f"{rid}: change-proposed requires decision_references")
+                    f"{label}: change-proposed requires decision_references")
             decisions.append({"id": rid, "decision_references": refs})
-        require(text(item.get("reason")), f"{rid}: missing rationale")
-        checks = index(item.get("checks"), rid + " checks")
+        require(text(item.get("reason")), f"{label}: missing rationale")
+        checks = index(item.get("checks"), label + " checks")
         expected_ids = {s["id"] for s in rules[rid]["scenarios"]}
-        require(set(checks) == expected_ids, f"{rid}: scenario coverage mismatch")
+        require(set(checks) == expected_ids, f"{label}: scenario coverage mismatch")
         for sid, c in checks.items():
-            require(text(c.get("method")) and text(c.get("expected")), f"{rid}/{sid}: missing method/expected result")
+            require(text(c.get("method")) and text(c.get("expected")), f"{label}/{shown(sid)}: missing method/expected result")
     tables = plan["schema_version"] >= 2 or "boundaries" in plan or "variant_analysis" in plan
     if tables:
         require("boundaries" in plan and "variant_analysis" in plan,

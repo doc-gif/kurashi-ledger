@@ -404,7 +404,7 @@ class ReviewGuardTests(unittest.TestCase):
     def test_empty_inventory_rejected_for_a_boundary_touching_change(self):
         p = self.plan()
         p["boundaries"] = []
-        with self.assertRaisesRegex(guard.Invalid, "empty inventory.*lock, root"):
+        with self.assertRaisesRegex(guard.Invalid, 'empty inventory.*"lock", "root"'):
             guard.check(self.catalog, self.ledger, p, self.paths, self.base)
         # A plan-only change selects no invariant, so it has no boundary to list.
         p = guard.prepare(self.catalog, self.ledger, [], self.base)
@@ -443,13 +443,13 @@ class ReviewGuardTests(unittest.TestCase):
             else:
                 p["variant_analysis"][1]["places"] = places
             with self.subTest(places=places), self.assertRaisesRegex(
-                    guard.Invalid, r'variant_analysis\[lock/"identity"\]: (no places checked|each place needs)'):
+                    guard.Invalid, r'variant_analysis\["lock"/"identity"\]: (no places checked|each place needs)'):
                 guard.check(self.catalog, self.ledger, p, self.paths, self.base)
 
     def test_variant_analysis_must_cover_selected_invariants(self):
         p = self.plan()
         p["variant_analysis"] = [v for v in p["variant_analysis"] if v["invariant_id"] != "root"]
-        with self.assertRaisesRegex(guard.Invalid, "missing selected invariants root"):
+        with self.assertRaisesRegex(guard.Invalid, 'missing selected invariants "root"'):
             guard.check(self.catalog, self.ledger, p, self.paths, self.base)
         p = self.plan()
         p["variant_analysis"][0]["pattern"] = "TODO"
@@ -458,8 +458,8 @@ class ReviewGuardTests(unittest.TestCase):
 
     def test_variant_cause_keys_must_match_the_ledger_exactly_once(self):
         for row, message in [
-                ({"invariant_id": "lock", "cause_key": "other"}, "not in the ledger for lock"),
-                ({"invariant_id": "root", "cause_key": "identity"}, "not in the ledger for root"),
+                ({"invariant_id": "lock", "cause_key": "other"}, 'not in the ledger for "lock"'),
+                ({"invariant_id": "root", "cause_key": "identity"}, 'not in the ledger for "root"'),
                 ({"invariant_id": "lock", "cause_key": " identity"}, "trimmed"),
                 ({"invariant_id": "lock", "cause_key": "identity\n"}, "trimmed"),
                 ({"invariant_id": "lock", "cause_key": ""}, "trimmed"),
@@ -485,6 +485,58 @@ class ReviewGuardTests(unittest.TestCase):
         with self.assertRaises(guard.Invalid) as raised:
             guard.check(self.catalog, self.ledger, p, self.paths, self.base)
         self.assertNotIn("\n", str(raised.exception))
+
+    def test_boundary_ids_must_be_trimmed(self):
+        for value in (" B1", "B1 ", "B1\n"):
+            p = self.plan()
+            p["boundaries"][0]["id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(guard.Invalid, "id must be trimmed"):
+                guard.check(self.catalog, self.ledger, p, self.paths, self.base)
+
+    def test_catalog_ledger_and_json_key_values_cannot_forge_log_lines(self):
+        forged = "x\n::error::forged"
+        cases = []
+        for field, value in [("condition", ""), ("paths", []), ("related", [forged + "-missing"]),
+                             ("scenarios", [{"id": forged, "question": ""}])]:
+            catalog = copy.deepcopy(self.catalog)
+            catalog["invariants"][0]["id"] = forged
+            catalog["invariants"][1]["related"] = []
+            catalog["invariants"][0][field] = value
+            cases.append((catalog, self.ledger))
+        for field, value in [("id", "PR2-R007\n::error::forged"), ("invariant_id", forged),
+                             ("cause_key", " identity\n::error::forged"), ("lesson", ""), ("sources", [])]:
+            ledger = copy.deepcopy(self.ledger)
+            ledger["findings"][0]["id"] = "PR2-R007\n::error::forged"
+            if field != "id":
+                ledger["findings"][0]["id"] = "PR2-R007"
+                ledger["findings"][0][field] = value
+            cases.append((self.catalog, ledger))
+        ledger = copy.deepcopy(self.ledger)
+        ledger["findings"].append(dict(ledger["findings"][0], id="PR2-R008"))
+        for finding in ledger["findings"]:
+            finding["cause_key"] = "a ::error::forged"
+        cases.append((self.catalog, ledger))
+        for catalog, ledger in cases:
+            with self.subTest(catalog=catalog["invariants"][0], ledger=ledger["findings"]):
+                with self.assertRaises(guard.Invalid) as raised:
+                    guard.validate(catalog, ledger)
+                message = str(raised.exception)
+                self.assertNotIn("\n", message)
+                self.assertTrue(message.isascii(), message)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "dup.json"
+            path.write_text('{"a\\n::error::forged": 1, "a\\n::error::forged": 2}', encoding="utf-8")
+            with self.assertRaisesRegex(guard.Invalid, "duplicate JSON key") as raised:
+                guard.read_json(path)
+            self.assertNotIn("\n", str(raised.exception))
+
+    def test_ledger_and_catalog_versions_must_be_integers(self):
+        for value in (True, 1.0, "1", None):
+            ledger = copy.deepcopy(self.ledger)
+            ledger["schema_version"] = value
+            with self.subTest(ledger=value), self.assertRaisesRegex(guard.Invalid, "schema version"):
+                guard.validate(self.catalog, ledger)
+        guard.validate(self.catalog, self.ledger)
 
     def test_legacy_schema_1_plan_still_passes_and_is_reported(self):
         result = guard.check(self.catalog, self.ledger, self.legacy_plan(), self.paths, self.base)
