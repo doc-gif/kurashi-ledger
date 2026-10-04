@@ -102,22 +102,17 @@ jobs:
       - name: npm run setup
         id: setup
         run: npm run setup
-      # 時間切れの後始末の自己試験: 子と孫を残して止まらない処理を短い時間切れで実行し、時間切れになることと、
-      # 後始末のあとにそのユーザーのプロセス・ユーザー・プロファイルが残らないことを確かめる（PR33-R002）。
-      - name: Self-test the timeout cleanup of the standard user
+      # 後始末の自己試験（PR33-R002）: 止まらない合成の処理（親・子・孫）を時間切れにし、止める前にnodeが3つ以上
+      # 動いていて止めたあと0件になること、列挙・停止・プロファイルの削除の失敗が成功と報告されないこと、
+      # ユーザーを消したあとも残したSIDで残ったプロファイルを消せることを確かめる。失敗しても最後の後始末が動く。
+      - name: Self-test the cleanup of the standard user
         id: selftest
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
-          $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user-selftest'
-          try {
-            & $helper -Action Run -UserName $env:KL_STD_USER -OutputDir $dir -Mode hang -TimeoutSeconds 20
-            if (-not (Test-Path (Join-Path $dir 'timed-out'))) { throw 'the hanging self-test did not time out' }
-          } finally {
-            & $helper -Action Cleanup -UserName $env:KL_STD_USER
-          }
+          & $helper -Action SelfTest -UserName $env:KL_STD_USER -OutputDir (Join-Path $env:RUNNER_TEMP 'kl-standard-user-selftest') -StopTimeoutSeconds 10
       - name: Run the tests of npm test as a temporary standard user
         id: test
         if: ${{ !cancelled() && steps.selftest.outcome == 'success' }}
@@ -128,11 +123,12 @@ jobs:
           $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
           $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user'
           & $helper -Action Run -UserName $env:KL_STD_USER -OutputDir $dir -Mode tests -TimeoutSeconds 900
-          if (Test-Path (Join-Path $dir 'timed-out')) { throw 'the tests as the standard user did not finish in time' }
+          if (Test-Path (Join-Path $dir 'timed-out.json')) { throw 'the tests as the standard user did not finish in time' }
       - name: Compare the skipped tests with docs/development.md
         if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
         run: npm run check:test-skips -- "$RUNNER_TEMP/kl-standard-user/npm-test.txt"
-      # 成否にかかわらず、そのユーザーのすべてのプロセスを止めてからユーザーとプロファイルを消し、残れば失敗にする。
+      # 成否にかかわらず、そのユーザーのすべてのプロセスの終了を確かめてからユーザーとプロファイルを消す。終了を確かめ
+      # られなければ何も消さずに失敗にする。ユーザーがなくても、残したSIDで残ったプロファイルを探す。
       - name: Remove the temporary user, its processes and its profile
         if: ${{ always() }}
         shell: powershell
