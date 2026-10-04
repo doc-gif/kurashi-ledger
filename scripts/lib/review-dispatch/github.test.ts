@@ -348,3 +348,75 @@ test("R011/W4 ordering: canonicalisation can join a split key shape, so a public
     d.cleanup();
   }
 });
+
+test("W4 row 14: the owner's CI trust command (git ls-tree -z, quotePath off) equals ciTrustDigest on a synthetic repository", async (t) => {
+  const { spawnSync } = await import("node:child_process");
+  const fs = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { ciTrustDigest } = await import("./github.ts");
+  const dir = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "ci-trust-")));
+  const git = (...args: string[]) => {
+    const r = spawnSync("git", ["-C", dir, "-c", "user.name=synthetic", "-c", "user.email=synthetic@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout;
+  };
+  try {
+    git("init", "-q");
+    // Inside the unit (non-ASCII and spaces too), test contents inside it, and files outside it.
+    const files: Record<string, string> = {
+      ".github/workflows/ci.yml": "name: CI\n",
+      ".github/日本語 の説明.md": "合成\n",
+      ".npmrc": "engine-strict=true\n",
+      "package.json": "{}\n",
+      "tools/review_guard/guard.py": "print()\n",
+      "tools/review_guard/tests/test_guard.py": "pass\n",
+      "scripts/check-test-skips.ts": "export {};\n",
+      "scripts/lib/test-skips.ts": "export {};\n",
+      "scripts/lib/test-skips.test.ts": "export {};\n",
+      "docs/development.md": "# 開発\n",
+      "docs/日本語.md": "外\n",
+      "src/app.ts": "export {};\n",
+    };
+    for (const [path, body] of Object.entries(files)) {
+      fs.mkdirSync(join(dir, path, ".."), { recursive: true });
+      fs.writeFileSync(join(dir, path), body);
+    }
+    git("add", "-A");
+    git("commit", "-q", "-m", "synthetic");
+    const head = git("rev-parse", "HEAD").trim();
+    // The dispatcher's side: the same entries as the tree API gives (from git, without quoting).
+    const entries = git("-c", "core.quotePath=false", "ls-tree", "-r", "-z", "--full-tree", head)
+      .split("\0")
+      .filter(Boolean)
+      .map((line) => {
+        const [meta, path] = line.split("\t") as [string, string];
+        const [mode, type, sha] = meta.split(" ") as [string, string, string];
+        return { path, mode, type, sha };
+      });
+    assert.ok(entries.some((e) => e.path === ".github/日本語 の説明.md"));
+    const expected = ciTrustDigest(entries);
+    if (process.platform === "win32") {
+      // The owner command is POSIX sh (the dispatcher runs on macOS only); Windows checks the parse above.
+      t.diagnostic("owner command is POSIX-only; Windows compared the -z parse with ciTrustDigest only");
+      assert.match(expected, /^[a-f0-9]{64}$/);
+      return;
+    }
+    const script = join(import.meta.dirname, "..", "..", "..", "tools", "review_dispatch", "ci-trust-digest.sh");
+    const run = (commit: string) => spawnSync("sh", [script, dir, commit], { encoding: "utf8" });
+    const r = run(head);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), expected);
+    // The quoted form (core.quotePath=true, without -z) would have hashed a different path text.
+    const quoted = spawnSync("git", ["-C", dir, "-c", "core.quotePath=true", "ls-tree", "-r", "--full-tree", head], { encoding: "utf8" }).stdout;
+    assert.match(quoted, /"\.github\/\\346/);
+    // A changed trusted file changes the digest; an unknown commit fails instead of hashing nothing.
+    fs.writeFileSync(join(dir, ".npmrc"), "engine-strict=false\n");
+    git("commit", "-q", "-am", "change");
+    const next = git("rev-parse", "HEAD").trim();
+    assert.notEqual(run(next).stdout.trim(), expected);
+    assert.notEqual(run("0".repeat(40)).status, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

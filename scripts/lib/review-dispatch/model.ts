@@ -73,6 +73,8 @@ export type Snapshot = {
   reviews: Review[];
   unresolvedDesign: string[];
   faultfinding: { actor: number; pair: Pair; unresolved: string[] } | null;
+  // Every commit SHA of the PR (pulls/<n>/commits, all pages). Absent in older fixtures.
+  commits?: string[];
 };
 export type Target = {
   key: string;

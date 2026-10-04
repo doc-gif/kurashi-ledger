@@ -43,6 +43,8 @@ export class GhReader {
   readonly cache = new Map<string, Response>();
   readonly clock: () => number;
   readonly deadline: number;
+  // W4 row 12: the latest server Date seen by this reader (the end of an observation window).
+  maxDate = Number.NaN;
   constructor(
     repo: string,
     send: Transport,
@@ -75,6 +77,8 @@ export class GhReader {
       r.headers["x-ratelimit-remaining"] === "0"
     )
       throw new EvidenceError();
+    const date = Date.parse(r.headers["date"] ?? "");
+    if (Number.isFinite(date) && !(date <= this.maxDate)) this.maxDate = date;
     if (r.status === 304) {
       if (!old) throw new EvidenceError();
       const cached = {
@@ -208,6 +212,7 @@ export type Collection = {
 // ending in "/" is a directory prefix; any other path is one file. Widen or narrow the unit only here.
 export const CI_TRUST_PATHS: readonly string[] = [
   ".github/",
+  ".npmrc", // npm's settings for npm ci in CI (owner decision, issuecomment-5977523656; W4 row 10)
   "package.json",
   "tools/review_guard/",
   "scripts/check-test-skips.ts",
@@ -469,13 +474,14 @@ export async function collect(
     }),
     unresolvedDesign: options.unresolvedDesign,
     faultfinding: options.faultfinding,
+    // W4 row 6: every commit of the PR, so evidence links to them pass the publication check.
+    commits: commits.map((c) => sha(object(c)["sha"])),
   };
   // PR48-R007: unresolved findings block acceptance through the assigned reviewers' latest reviews.
   // An owner's finding is attached to every assigned reviewer (owners raise, never resolve others).
   const assignment = p.targets.find((t) => t.pr === prNumber)!;
-  const observedAt = Date.parse(
-    reader.cache.get(reader.prefix + `pulls/${prNumber}`)?.headers["date"] ?? "",
-  );
+  // W4 row 12: the latest server Date of every response so far, not only the first PR response.
+  const observedAt = reader.maxDate;
   const found = unresolvedFindings({
     pr: prNumber,
     head: current.head,

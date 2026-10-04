@@ -1,0 +1,138 @@
+{
+ "note": "W4 row 5: prose lines of past public v1 review and red-team bodies in doc-gif/kurashi-ledger that the publication check blocked before W4 (other than non-GitHub links). Each must pass now. Source: review:<PR>:<review ID> or comment:<PR>:<comment ID>.",
+ "lines": [
+  {
+   "source": "review:2:5388042664",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- 箇所: docs/adr/0006-data-location-backup-encryption.md:32,42（Copilot r4162543323）。"
+  },
+  {
+   "source": "review:2:5388471205",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- **R-006 [P1] 配信するUIとリリースの一致を確認する。** `docs/adr/0002-runtime-and-distribution.md:35,85–87`、ADR-0006の実利用条件。Gitのタグ・clean確認では、`.gitignore:2`で除外された`dist/`を検査できません。タグ切替後にbuildが失敗・省略された場合、旧UIと新APIの組合せで実データを扱えます。現在のcommit・lockfileと成果物のハッシュを検証する方式、または起動前のクリーンな再ビルドなどを定め、担当タスクと「古い／欠けた／途中生成の成果物ではDBを開く前に停止する」受入試験を追加してください。Copilot r4162988501と同一の指摘です。"
+  },
+  {
+   "source": "review:2:5388471205",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- **R-007 [P2] 異常終了後の単一起動lockの復旧を受入条件に含める。** `docs/adr/0006-data-location-backup-encryption.md:63`、`docs/implementation-tasks.md:76–78,91–94`。lockファイルと通常の二重起動試験だけでは、強制終了後に起動不能になる場合や、生存中のlockを誤って解除する場合を検出できません。T07/T09に、原子的な取得、生存不明なら奪わないこと、安全な復旧手順、および同時起動・強制終了・PID再利用／生存判定不能の試験を記載してください。具体的なライブラリやOS別手段の選定はT07で構いません。CopilotのPreviously missedと同一の指摘です。"
+  },
+  {
+   "source": "review:4:5388868564",
+   "before": [
+    "key/token"
+   ],
+   "text": "- テンプレートは`contents: read`、`persist-credentials: false`、SHAで固定したcheckout、タイムアウトを使い、SHAを環境変数で渡しています（スクリプトへの注入なし）。"
+  },
+  {
+   "source": "review:4:5388868564",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- 問題・影響: 日本語のWindowsでリダイレクトすると、出力はcp932になります（Windows PowerShell 5.1の`>`ではUTF-16）。`read_json`はUTF-8で厳密に読むので、次の`check`が文字コードの誤りで失敗します（出力は`ensure_ascii=False`で日本語を含む）。macOSの`/usr/bin/python3`は3.9で、READMEの「3.11以上」は検査されていません。"
+  },
+  {
+   "source": "review:16:5398510796",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "箇所: .review/findings.json:613–615（PR12-R104のsources）、.review/plans/OPS-LEDGER-PR10-PR12.json:37・44・48–49。"
+  },
+  {
+   "source": "review:18:5398510953",
+   "before": [
+    "key/token"
+   ],
+   "text": "境界と未検証範囲: pull_request、contents: read、persist-credentials: false、標準runner、Action SHA固定、secrets/投稿/マージ/デプロイ/artifact uploadなし、base側の計画検査器を使う配置、ブラウザの既定の安全設定を弱めていないことを差分で確認しました。CI自体をPRで変更できる限界も明記されています。Windows用の合成npm fixture修正は.binの形だけで、assertと製品コードは変えていません。READMEはコマンドとCIの入口を同じPRで更新し、詳細は正本へリンクしています。Windows実機のCtrl+C・Ctrl+Break・印を消せない場合は未実施のままで、#17を閉じず、手順と記録様式を残す扱いを確認しました。T05全体の完了や手動確認済みとは判定しません。"
+  },
+  {
+   "source": "review:29:5400493591",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "箇所: tests/rules/rules.test.ts のcomparison-mappingの処理、rules/withholding-slip-mapping/v1.json（Copilot 4172926945）。"
+  },
+  {
+   "source": "review:36:5401002488",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR36-R001 — `tests/fixtures/ledger/cases/EX-05.json:1161`、`ledger.test.ts:518`: EX-05-hは未知の拡張列挙値を違反にしない契約を引用する一方、`expectedViolations: [\"value-invalid\"]`を要求し、復元にも新規保存の検査を適用しています。契約どおりに復元を許す検査へ直すと台帳が失敗し、誤って`save-check/conflict`にする実装を誘導します。完了条件: 保存と読取・復元の検査を分け、未知区分の復元は違反なし・値を保持・候補年を狭めず・`save-check`なし、新規保存はTC-02-a/o05dで拒否することを検査してください。Copilot r4173245385に同意。r4173201047は場面追加を確認しましたが、この矛盾の解消まで未完了です。"
+  },
+  {
+   "source": "review:37:5401017076",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR37-R001 — docs/adr/0010-diagnostics-and-maintainability.md:199（監査表の71〜74行・111行、T30も同じ）: 保存ログは書き換え可能なので、読み戻した `launch`・`op`・`seq`・`t`・別名が「ロガー自身が作った値」であることは、書くときの表では証明できません。例えば正常な行の `seq` を合成の金額 `312345` に、`op` を正常なIDと同じ形式の合成トークンに替えると、形式で受け入れる方式では秘密がそのまま束に入り、閉じた集合だけで拒否する方式では正常なログの共通項目も拒否されます。完了条件: 書込み時と読込み時の出所を分け、取り込む4種類の例外値の変換／破棄と、正常なログを残せる条件をADR・計画・T30に明記し、形式に合う秘密を各例外項目へ埋めたログでも原値が束に出ない試験を受入に追加すること。"
+  },
+  {
+   "source": "review:37:5401216128",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "PR37-R004 — docs/adr/0010-diagnostics-and-maintainability.md:129,204（Copilotレビュー5401194198の「画面の問い合わせ番号と保存ログの対応付け」へ対応）: 画面の問い合わせ番号は元のopですが、共有する束ではO1等へ振り直され、利用者も調査担当もその番号から該当行を選べません。これはS3（32行）の「画面の表示とログの行の対応」を満たす手順がない問題です。完了条件: 元IDを公開束へ戻さずに、手元で問い合わせ番号を束内別名へ照合する手順を設計し、複数操作・該当なし・改ざんしたIDでも元の値が束へ出ないT30の受入条件を追加すること。精度低下の承認待ちと区別して、最低限どの調査ができるかを明記してください。"
+  },
+  {
+   "source": "review:38:5401003505",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- PR38-R002 — `.review/invariants.json:387`（[Copilot 4173219276](https://github.com/doc-gif/kurashi-ledger/pull/38#discussion_r4173219276)）: PR #25の実パス`docs/adr/0009-local-http-implementation.md`がG7のpathsにないため、その実装契約だけの変更で`INV-G7-HTTP`が選ばれません。完了条件: 既知パスを追加し、そのパスでG7の選択・assessment欠落拒否を確認すること（PR4-R009の教訓）。"
+  },
+  {
+   "source": "review:51:5404811070",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "設計§7の理由は「macOSが二重の閉じ込めを拒否する」と断定しています。手元のmacOS 26.5.1では、`sandbox-exec -p '(version 1) (allow default)'`を2段にして`/usr/bin/true`を起動すると終了0でした（PR由来のコード・鍵・AIは使用せず）。これは実Codexのprofileが入れ子で動く証明ではありませんが、OS一律の拒否という説明には反例です。固定版・外側profile・拒否された操作を区別し、未測定なら未確認と記録してください。外側を掛けない決定の再議論は不要です。"
+  },
+  {
+   "source": "comment:33:5975936338",
+   "before": [
+    "key/token"
+   ],
+   "text": "- 新しいpermissionsもsecretsもない。`pull_request_target`は使っていない。新しいジョブのactionsは、既存と同じくSHAで固定している。`persist-credentials: false`なので、workspaceを読めるようにしても、tokenは渡らない。"
+  },
+  {
+   "source": "comment:51:5977292218",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- [P2] keychainの「CLI自身のログイン以外を拒否」は、Seatbeltで項目ごとに分けられない可能性が高い / design §7のread-onlyの段落 / CLIがログインを読むために`/usr/bin/security`とsecuritydを許すと、同じlogin keychainにある、AIのGitHub Appの秘密鍵も読める（項目のACLが`security`を許していれば）。どうなるかは「ownerが実機で測る」とあるだけで、不合格のときの扱いが決まっていない / 直し方: doctorの否定試験に「実際のAppの鍵と同じACLを持つ合成の項目を、CLI用のprofileから読めない」を加える。読めたらcapabilityをdisabledにするか、Appの鍵を別のkeychainへ移すかACLを狭めるかを、このPRで決める / 設計の水準"
+  },
+  {
+   "source": "comment:53:5977705141",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- `git diff 7364f83 f4b720d` は `docs/review-dispatch-implementation.md` と計画 `.review/plans/OPS-dispatch-active-w2.json` の2ファイルだけ。コードと試験の変更はない。"
+  },
+  {
+   "source": "comment:54:5977515767",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- [P3] `/dev/tty`の読み書きを許している / W1かW4"
+  },
+  {
+   "source": "comment:54:5977608656",
+   "before": [
+    "local absolute path"
+   ],
+   "text": "- P3: 版の下限2.1.268、app-key-itemの明示deny、/dev/ttyの削除、トークンのエラーの固定文とfstat後の再検査、CODEX_HOMEの検査、lintの強化。§7との差・443は所有者が残余として受け入れた（5977523656）"
+  },
+  {
+   "source": "comment:54:5977721713",
+   "before": [
+    "opaque key-like string"
+   ],
+   "text": "- `git diff 24a0058 42962bb` は計画 `.review/plans/OPS-dispatch-active-w1.json` の1ファイルだけ（所有者の指摘4176569009に応じた短縮）。コードと試験の変更はない。"
+  }
+ ]
+}

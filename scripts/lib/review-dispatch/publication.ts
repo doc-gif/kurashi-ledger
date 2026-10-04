@@ -17,13 +17,16 @@ const TOKEN_SHAPES: readonly RegExp[] = [
   /-----BEGIN [A-Z0-9 ]*(?:PRIVATE KEY|CERTIFICATE)/,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, // JWT
   /\bBearer\s*[A-Za-z0-9._~+/=-]{16,}/i,
-  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*\S{6,}/i,
+  // Not a plain setting such as `persist-credentials: false` (W4 row 5: past public v1 bodies).
+  /\b(?:api[_-]?key|secret|token|passw(?:or)?d|private[_-]?key|credential)s?\b\s*[:=]\s*(?!(?:false|true|null|none|undefined)\b)\S{6,}/i,
   /\b(?:sk|pk|rk)[-_](?:live|test|ant|proj)[-_][A-Za-z0-9_-]{8,}/,
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}/,
 ];
+// Private locations and account files. System program locations (/usr/bin/security, /Library/Application Support,
+// /dev/tty) name no person or machine and appear in legitimate reviews (W4 row 5).
 const LOCAL_PATHS: readonly RegExp[] = [
   /(?:^|[^A-Za-z0-9_.~:/-])~\/[^\s]/,
-  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|opt|Volumes|root|usr|Library|System|Applications|mnt|srv|proc|dev|run|nix)(?:\/|\b)/,
+  /(?:^|[^A-Za-z0-9_.~:/-])\/(?:Users|home|private|var|tmp|etc|Volumes|root|mnt|srv)(?:\/|\b)/,
   /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/,
   /\\\\[A-Za-z0-9._-]+\\/, // UNC
 ];
@@ -32,17 +35,15 @@ const GITHUB_URL = /https:\/\/github\.com\/[^\s<>()"'`]*/g;
 const ANY_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]*/gi;
 
 // The only long identifiers allowed in public text: values the dispatcher/Broker verified itself in its own
-// fresh snapshot (pair, final pair, head/base recorded in the GitHub timeline) and the trusted run ID. Nothing
-// the worker wrote (evidence links included) can add to this set (PR #53 red team N1).
-// A full PR commit list is not in the snapshot yet; links to other commits stay blocked (collector: W3/W4).
+// fresh snapshot (pair, final pair, head/base recorded in the GitHub timeline, every commit of the PR) and the
+// trusted run ID. Nothing the worker wrote (evidence links included) can add to this set (PR #53 red team N1).
 export type Allowed = ReadonlySet<string>;
-export function allowedFor(
-  j: Job,
-  s: Pick<Snapshot, "pair" | "finalPair" | "history">,
-): Allowed {
+type Seen = Pick<Snapshot, "pair" | "finalPair" | "history" | "commits">;
+export function allowedFor(j: Job, s: Seen): Allowed {
   const ids = new Set<string>([j.run]);
   for (const pair of [s.pair, s.finalPair, ...s.history.map((e) => e.pair)])
     if (pair) for (const sha of [pair.head, pair.base]) if (/^[a-f0-9]{40}$/.test(sha)) ids.add(sha);
+  for (const sha of s.commits ?? []) if (/^[a-f0-9]{40}$/.test(sha)) ids.add(sha);
   return ids;
 }
 
@@ -86,18 +87,20 @@ export function publicationFindings(text: string, allowed: Allowed): string[] {
   let scan = n.replace(GITHUB_URL, (url) => url.split(/[/#?=&]/).join(" "));
   for (const id of allowed) scan = scan.split(id).join(" ");
   for (const run of scan.match(/[A-Za-z0-9+/=_-]{32,}/g) ?? [])
-    if (/[0-9]/.test(run) && /[A-Za-z]/.test(run))
+    if (/[0-9]/.test(run) && /[A-Za-z]/.test(run) && !wordLike(run))
       findings.add("opaque key-like string");
   return [...findings];
 }
+// A repository path or ID made of words (docs/adr/0002-runtime-and-distribution,
+// .review/plans/OPS-dispatch-active-w1, tests/fixtures/ledger/cases/EX-05): every piece is letters only,
+// digits only, or a short label such as PR10, w1 or R001. Keys, hex and base64 have mixed pieces.
+const wordLike = (run: string): boolean =>
+  run
+    .split(/[/+=_.-]+/)
+    .every((piece) => /^(?:[A-Za-z]*|[0-9]*|[A-Za-z]{1,4}[0-9]{1,4})$/.test(piece));
 
 // Every prose field of a parsed worker result, checked as one text (so cross-field joins are also seen).
-export function resultFindings(
-  r: WorkerResult,
-  j: Job,
-  s: Pick<Snapshot, "pair" | "finalPair" | "history">,
-  repo: string,
-): string[] {
+export function resultFindings(r: WorkerResult, j: Job, s: Seen, repo: string): string[] {
   const allowed = allowedFor(j, s),
     parts = [
       r.summary,

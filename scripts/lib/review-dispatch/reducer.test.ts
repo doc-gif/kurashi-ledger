@@ -276,3 +276,21 @@ test("D04 delayed old delivery cannot become Ready after owner policy boundary",
   p.readyAfter = 3;
   assert.equal(assess(p, s, null).reason, "new-ready-required");
 });
+
+test("W4 #51 rule: any actor's latest CHANGES_REQUESTED blocks accepted, not only assigned reviewers'", () => {
+  const p = policy(),
+    s = snapshot(),
+    t = assess(p, s, null);
+  const approve = { id: "r1", actor: 30, state: "APPROVED" as const, pair: s.pair, findings: [] };
+  // A third party (not in the policy) and the owner (not an assigned reviewer).
+  for (const actor of [999, 10]) {
+    s.reviews = [approve, { id: "r2", actor, state: "CHANGES_REQUESTED", pair: null, findings: [] }];
+    assert.equal(accepted(p, s, t), false, `actor ${actor}`);
+    // A later APPROVED or DISMISSED by the same actor is their latest review and no longer blocks.
+    s.reviews.push({ id: "r3", actor, state: "DISMISSED", pair: null, findings: [] });
+    assert.equal(accepted(p, s, t), true, `actor ${actor} dismissed`);
+  }
+  // A third party's COMMENTED review stays reference only.
+  s.reviews = [approve, { id: "r4", actor: 999, state: "COMMENTED", pair: null, findings: [] }];
+  assert.equal(accepted(p, s, t), true);
+});

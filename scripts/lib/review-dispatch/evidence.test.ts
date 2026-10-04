@@ -25,6 +25,7 @@ const BASE_TREE = "6".repeat(40);
 const FILES: Record<string, string> = {
   ".github/workflows/ci.yml": "1".repeat(40),
   ".github/PULL_REQUEST_TEMPLATE.md": "2".repeat(40),
+  ".npmrc": "a4".repeat(20),
   "package.json": "3".repeat(40),
   "tools/review_guard/guard.py": "4".repeat(40),
   "tools/review_guard/tests/test_guard.py": "5".repeat(40),
@@ -718,6 +719,10 @@ test("R008 each trust path (and only those, without test contents) makes workflo
     [{ "docs/architecture.md": "c1".repeat(20) }, "unchanged"],
     [{ "tests/unit/sample.test.ts": "c1".repeat(20) }, "unchanged"],
     [{ "package.json.bak": "c1".repeat(20) }, "unchanged"],
+    // W4 row 10 (owner decision 5977523656): npm's settings decide how CI installs.
+    [{ ".npmrc": "c1".repeat(20) }, "untrusted"],
+    [{ ".npmrc": null }, "untrusted"],
+    [{ "docs/.npmrc": "c1".repeat(20) }, "unchanged"],
   ];
   for (const [change, expected] of cases) {
     const d = database(),
@@ -737,6 +742,7 @@ test("R008 each trust path (and only those, without test contents) makes workflo
   assert.notEqual(ciTrustDigest(modes), ciTrustDigest(listing()));
   assert.deepEqual(CI_TRUST_PATHS, [
     ".github/",
+    ".npmrc",
     "package.json",
     "tools/review_guard/",
     "scripts/check-test-skips.ts",

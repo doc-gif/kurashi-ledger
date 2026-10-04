@@ -31,14 +31,26 @@ export type ItemRecord = {
   hash: string;
   ids: string[];
 };
-// Immutable record of a detected change; `hash` is the new body hash, null when deleted.
+// Immutable record of a detected change; `hash` is the new body hash, null when deleted. `previous` is
+// the hash it changed from (the latest known body), so an edit back to an earlier body is a new record
+// (W4 row 13). Records from a Webhook delivery carry "webhook" (the earlier body is not in the payload).
 export type ChangeRecord = {
   item: string;
   actor: number;
   at: number;
   change: "edited" | "deleted";
   hash: string | null;
+  previous?: string | null;
 };
+// Latest known body hash of an item: the newest change record (by time), else the first observation.
+export function latestHash(first: ItemRecord, changes: readonly ChangeRecord[]): string | null {
+  let latest: ChangeRecord | null = null;
+  for (const c of changes)
+    if (c.item === first.item && (latest === null || c.at >= latest.at)) latest = c;
+  return latest ? latest.hash : first.hash;
+}
+export const changeKey = (c: ChangeRecord): string =>
+  `${c.change}:${c.item}:${c.hash ?? "none"}:${c.previous ?? "none"}:${c.at}`;
 export type FindingInput = {
   pr: number;
   head: string;
@@ -167,16 +179,15 @@ export function unresolvedFindings(input: FindingInput): FindingResult {
     changes: ChangeRecord[] = [],
     known = new Map((input.items ?? []).map((r) => [r.item, r])),
     recorded = [...(input.changes ?? [])];
-  const has = (c: ChangeRecord) =>
-    recorded.some(
-      (r) => r.item === c.item && r.change === c.change && r.hash === c.hash,
-    );
+  const has = (c: ChangeRecord) => recorded.some((r) => changeKey(r) === changeKey(c));
   for (const [item, v] of seen)
     if (!known.has(item))
       items.push({ item, actor: v.actor, at: v.at, hash: v.hash, ids: v.ids });
   for (const [item, first] of known) {
-    const now = seen.get(item);
-    if (now && now.hash === first.hash) continue;
+    const now = seen.get(item),
+      // Compare with the latest known body, not the first one: A -> B -> A is two edits (row 13).
+      previous = latestHash(first, recorded);
+    if (now ? now.hash === previous : previous === null) continue;
     if (!Number.isFinite(input.observedAt)) throw new EvidenceError();
     const c: ChangeRecord = now
       ? {
@@ -186,8 +197,16 @@ export function unresolvedFindings(input: FindingInput): FindingResult {
           at: item.startsWith("review:") ? input.observedAt : now.at,
           change: "edited",
           hash: now.hash,
+          previous,
         }
-      : { item, actor: first.actor, at: input.observedAt, change: "deleted", hash: null };
+      : {
+          item,
+          actor: first.actor,
+          at: input.observedAt,
+          change: "deleted",
+          hash: null,
+          previous,
+        };
     if (!has(c)) {
       changes.push(c);
       recorded.push(c);

@@ -145,12 +145,14 @@ export function accepted(p: Policy, s: Snapshot, t: Target): boolean {
   const assignment = p.targets.find((x) => x.pr === s.pr);
   if (!assignment) return false;
   // Latest review per actor wins, including dismissal. A blocking review is not outvoted.
+  // Any actor's latest CHANGES_REQUESTED blocks, not only the assigned reviewers' (PR #51 rule:
+  // github-agent-operations.md#dispatch-active). Unresolved findings are attached to reviewers only.
   const latest = new Map(s.reviews.map((r) => [r.actor, r]));
   if (
     [...latest.values()].some(
       (r) =>
-        reviewerEligible(p, s, r.actor) &&
-        (r.state === "CHANGES_REQUESTED" || r.findings.length),
+        r.state === "CHANGES_REQUESTED" ||
+        (reviewerEligible(p, s, r.actor) && r.findings.length),
     )
   )
     return false;
