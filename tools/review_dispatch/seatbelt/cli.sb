@@ -1,0 +1,76 @@
+;; CLI profile for the review dispatcher (Issue #50 W1). The launcher applies it as
+;; /usr/bin/sandbox-exec -f cli.sb -D EXECUTABLE=... -D RUNTIME=... -D MATERIALS=...
+;;   -D CONFIG_DIR=... -D RUN_HOME=... -D RUN_TMP=... -D KEYCHAIN=allow|deny
+;;   -D KEYCHAIN_DIR=... <CLI> <args>
+;; Every parameter is required: a missing one fails to compile and nothing starts.
+;; Everything the CLI starts inherits this profile.
+;;
+;; Allowed: read the fixed runtime and the fetched materials, read and write the
+;; dedicated config directory and the run's own HOME/TMP, outbound TCP 443 for the
+;; model service, DNS. Denied by default: every other path (policy, dispatcher DB,
+;; repository, GitHub/other-AI credentials, App keys), other ports, other programs.
+;; KEYCHAIN=allow exists only for Claude: on macOS its subscription credential lives
+;; in the system keychain whatever CLAUDE_CONFIG_DIR says (Claude Code env-vars
+;; reference), so the CLI must reach securityd. Seatbelt cannot tell keychain items
+;; apart, so any item whose ACL trusts /usr/bin/security (the GitHub App keys) is then
+;; reachable too: the doctor disables Claude in that case until the owner decides.
+;; Codex uses KEYCHAIN=deny.
+;; Not yet measured with a real CLI: the owner checklist in the W1 PR tunes this.
+(version 1)
+(deny default)
+
+(allow process-fork)
+(allow process-exec (literal (param "EXECUTABLE")) (subpath (param "RUNTIME")))
+(allow signal (target same-sandbox))
+(allow sysctl-read)
+(allow file-read-metadata)
+(allow system-socket)
+(allow ipc-posix-shm-read-data ipc-posix-shm-write-data ipc-posix-shm-write-create)
+
+(allow file-read*
+  (literal "/")
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/System/Library")
+  (subpath "/System/Cryptexes")
+  (subpath "/Library/Apple")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/db/timezone")
+  (literal "/private/etc/hosts")
+  (literal "/private/etc/resolv.conf")
+  (literal "/private/etc/services")
+  (literal "/private/etc/protocols")
+  (subpath "/private/etc/ssl")
+  (literal "/dev/null")
+  (literal "/dev/random")
+  (literal "/dev/urandom")
+  (literal "/dev/tty"))
+(allow file-write-data (literal "/dev/null") (literal "/dev/tty"))
+
+(allow file-read* (subpath (param "RUNTIME")) (subpath (param "MATERIALS")))
+(allow file-read* file-write*
+  (subpath (param "CONFIG_DIR"))
+  (subpath (param "RUN_HOME"))
+  (subpath (param "RUN_TMP")))
+
+;; Name resolution, certificate trust and system logging for the model connection.
+(allow mach-lookup
+  (global-name "com.apple.dnssd.service")
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.trustd")
+  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.logd")
+  (global-name "com.apple.system.logger"))
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+(allow network-outbound (remote tcp "*:443"))
+
+(if (string=? (param "KEYCHAIN") "allow")
+  (begin
+    (allow process-exec file-read* (literal "/usr/bin/security"))
+    (allow file-read* (subpath (param "KEYCHAIN_DIR")))
+    (allow mach-lookup
+      (global-name "com.apple.SecurityServer")
+      (global-name "com.apple.securityd.xpc")
+      (global-name "com.apple.security.agent")
+      (global-name "com.apple.CoreAuthentication.daemon"))))

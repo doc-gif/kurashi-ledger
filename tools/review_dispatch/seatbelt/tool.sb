@@ -1,0 +1,31 @@
+;; Tool-child profile for the review dispatcher (Issue #50 W1). Applied with
+;; /usr/bin/sandbox-exec -f tool.sb -D TOOL=... -D RUNTIME=... -D MATERIALS=...
+;; Every parameter is required: a missing one fails to compile and nothing starts.
+;;
+;; A tool child may read only the fetched materials and its own runtime. It gets no
+;; network, no keychain or other credential area, no writes, no Mach services and
+;; no process other than TOOL. macOS refuses sandbox_apply inside an already
+;; sandboxed process, so a CLI cannot put its own children under this profile;
+;; the doctor applies it to its synthetic probe child (see doctor.ts).
+(version 1)
+(deny default)
+
+(allow process-fork)
+(allow process-exec (literal (param "TOOL")))
+(allow signal (target self))
+(allow sysctl-read)
+(allow file-read-metadata)
+
+;; System runtime needed by the dynamic loader. No user, keychain or /private/etc data.
+(allow file-read*
+  (literal "/")
+  (subpath "/usr/lib")
+  (subpath "/System/Library")
+  (subpath "/System/Cryptexes")
+  (subpath "/private/var/db/dyld")
+  (literal "/dev/null")
+  (literal "/dev/random")
+  (literal "/dev/urandom"))
+(allow file-write-data (literal "/dev/null"))
+
+(allow file-read* (subpath (param "RUNTIME")) (subpath (param "MATERIALS")))
