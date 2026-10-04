@@ -17,6 +17,9 @@ function isObj(v: unknown): v is Obj {
 
 class Out {
   readonly list: Violation[] = [];
+  // 読取の検査（stored）では、Factの標準の表記の知らない項目を、ないものとして飛ばす（契約版2.0の共通の型の1「読む処理が
+  // 知らない項目」、所有者の判断「新しい版のデータのときだけ読むだけ」。R28-2）。保存しようとしている改訂では違反にする。
+  ignoreUnknownFacts = false;
   add(reason: RejectionReason, path: string, message: string): void {
     this.list.push({ reason, path, message });
   }
@@ -168,7 +171,10 @@ function checkObject(fields: Readonly<Record<string, Spec>>, v: unknown, path: s
   for (const k of Object.keys(v)) {
     // 表にある項目かは、表のown keyだけで決める（「__proto__」等のキーで、表のprototypeを項目の仕様と取り違えない）。
     const s = Object.hasOwn(fields, k) ? fields[k] : undefined;
-    if (s === undefined) out.add("value-invalid", `${path}.${k}`, "表にない項目");
+    if (s === undefined) {
+      if (out.ignoreUnknownFacts && isFactNotation(v[k])) continue;
+      out.add("value-invalid", `${path}.${k}`, "表にない項目");
+    }
     else checkValue(s, v[k], `${path}.${k}`, out);
   }
 }
@@ -196,6 +202,7 @@ export interface StaticCheckOptions {
 // 改訂1件の静的な検査。違反がなければ空の並び。
 export function checkRevisionStatic(record: unknown, options: StaticCheckOptions = { stored: false }): Violation[] {
   const out = new Out();
+  out.ignoreUnknownFacts = options.stored;
   if (!isObj(record)) {
     out.add("value-invalid", "$", "改訂がobjectではない");
     return out.list;
@@ -449,6 +456,14 @@ export function checkEvidenceFileStatic(file: unknown): Violation[] {
     if (!isInstant(file["importedAt"])) out.add("value-invalid", "$.importedAt", "Instantではない");
   }
   return out.list;
+}
+
+// Factの標準の表記（4つの状態のどれかで、knownなら値を持ち、ほかは値を持たない。項目はstate・value・noteだけ）か。
+export function isFactNotation(v: unknown): boolean {
+  if (!isObj(v) || !isFactState(v["state"])) return false;
+  if (Object.keys(v).some((k) => k !== "state" && k !== "value" && k !== "note")) return false;
+  if (v["note"] !== undefined && typeof v["note"] !== "string") return false;
+  return v["state"] === "known" ? Object.hasOwn(v, "value") : !Object.hasOwn(v, "value");
 }
 
 // この版の表にない項目（bodyのobjectの、仕様にない項目）を持つか。新しい契約版で足した項目を古い版が読む場合に当たる。この版では

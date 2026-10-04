@@ -8,6 +8,7 @@ import { EVIDENCE_FILE_PREFIX, isIdWithPrefix, isMasterType, isRecordType, RECOR
 import {
   bodyOf,
   idInUse,
+  isNewerContractVersion,
   isUnchecked,
   withRequestResult,
   writeRequestIdInUse,
@@ -160,13 +161,14 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
     id = proposal["id"];
     previous = latestRevision(ledger, id);
     if (previous === undefined) return reject(ledger, one("record-not-found", "$.id", `改訂する記録がない: ${id}`));
-    // この版の表にない項目を持つ記録は、この版では読むだけにする（所有者の判断「古い版では読むだけにする」）。
-    if (hasUnknownContent(previous.recordType, previous.body)) {
+    // 読む処理より新しい契約版を名乗るデータから入り、この版の表にない項目を持つ記録は、この版では読むだけにする（所有者の判断
+    // 「新しい版のデータのときだけ読むだけ」）。名乗りのない知らない項目（壊れた取込等）は、修復の改訂で直せる。
+    if (ledger.newerVersionRecords.has(id) && hasUnknownContent(previous.recordType, previous.body)) {
       return reject(ledger, one("read-only-unknown-content", "$.body", "この版が知らない項目を持つ記録は、この版では改訂しない（読むだけ）"));
     }
-    const statics = staticCheckFor(proposal, previous, false);
-    if (statics.length > 0) return reject(ledger, statics);
     const predecessorTrusted = isHistoryValid(ledger, previous);
+    const statics = staticCheckFor(proposal, previous, false, predecessorTrusted);
+    if (statics.length > 0) return reject(ledger, statics);
     const scenario = checkAgainstPrevious(revisionsOf(ledger, id), proposal, baseRevision as number, { predecessorTrusted });
     if (scenario.length > 0) return reject(ledger, scenario);
     const future = knownOnInFuture(proposal, previous, now, predecessorTrusted);
@@ -372,8 +374,10 @@ export function saveRunStamp(ledger: Ledger, runId: string, deps: Pick<SaveDeps,
 // 保存の検査を通らずに入る改訂（古いデータの復元・取込・移行等。共通の型の9の「保存の検査をすり抜けたデータ」）を置く。
 // 改訂の共通の形の骨格（ID・種類・版・status・理由・writeRequestId）だけを確かめ、ほかは検査しない。
 // 集計等の導く判定は、このような改訂を、そのつど保存の検査と同じ条件で確かめる（aggregate.ts）。
-export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], deps: Pick<SaveDeps, "clock">): Ledger {
+// options.contractVersionは、データが名乗る契約版（出力・バックアップに書かれた版）。読む処理より新しければ、その記録を覚える。
+export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], deps: Pick<SaveDeps, "clock">, options: { readonly contractVersion?: string } = {}): Ledger {
   let cur = ledger;
+  const newer = options.contractVersion !== undefined && isNewerContractVersion(options.contractVersion);
   for (const rawRecord of records) {
     const snap = snapshotJson(rawRecord);
     if (!snap.ok) throw new Error(`復元する改訂がJSONの値ではない: ${snap.path}`);
@@ -397,6 +401,11 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
       recordedSeq: nextSeq(cur),
     });
     cur = withRevision(cur, revision, false);
+    if (newer && !cur.newerVersionRecords.has(revision.id)) {
+      const ids = new Set(cur.newerVersionRecords);
+      ids.add(revision.id);
+      cur = { ...cur, newerVersionRecords: ids };
+    }
   }
   return cur;
 }

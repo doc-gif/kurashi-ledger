@@ -775,7 +775,7 @@ test("PR28-R006: 不正な期間の端（knownでもLocalDateでない）から�
   assert.equal(b.ledger, l);
   assert.equal(b.ledger.saves.length, seq);
   // Aの端を訂正すれば、重ならない保存を受け付ける。
-  const fixed = ok(save(l, { id: "term_a", recordType: "employment-term", revision: 2, reason: "correct-input-error", body: { applicablePeriod: { start: d("2027-01-01"), end: { state: "not-applicable" } } } }, T0));
+  const fixed = ok(save(l, { id: "term_a", recordType: "employment-term", revision: 2, reason: "correct-input-error", changeNote: { state: "known", value: "修復" }, body: { applicablePeriod: { start: d("2027-01-01"), end: { state: "not-applicable" } } } }, T0));
   ok(save(fixed, term("term_b", d("2026-01-01"), d("2026-12-31")), T0));
   // unknownの端は限りなく開き、取消した雇用条件は検査を妨げない（これまでどおり）。
   let u = setup();
@@ -1046,7 +1046,9 @@ test("P1-1（所有者の判断: 正しい保存で信頼を回復）: 不正な
   l = restore(l, [deposit("dep_1", { state: "known", value: 100 }), { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "unvoid" }]);
   const beforeHeal = l.saves.length;
   assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_1@2:save-check:conflict"] });
-  l = ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void" }, T0));
+  // 修復の改訂にはメモが要る（R28-1）。
+  rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void" }, T0), "transition-not-allowed");
+  l = ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void", changeNote: { state: "known", value: "修復" }, }, T0));
   assert.deepEqual(depositOct(l), { state: "no-records", knownSum: 0, missing: [] });
   assert.deepEqual(depositOct(l, { kind: "record-seq", seq: beforeHeal }), { state: "incomplete", knownSum: 0, missing: ["dep_1@2:save-check:conflict"] });
   // 不正な版は、履歴に要確認として残る（信頼できない）。
@@ -1059,14 +1061,14 @@ test("P1-1（所有者の判断: 正しい保存で信頼を回復）: 不正な
   let m = setup();
   m = restore(m, [{ id: "emp_9", recordType: "employer", body: { displayName: "勤務先Z" } }, { id: "emp_9", recordType: "employer", revision: 2, reason: "unvoid" }]);
   assert.equal(canonicalMasterId(m, "emp_9", CURRENT), undefined);
-  m = ok(save(m, { id: "emp_9", recordType: "employer", revision: 3, reason: "void", duplicateOf: { state: "known", value: { id: "emp_1", revision: "current", line: "whole" } } }, T0));
+  m = ok(save(m, { id: "emp_9", recordType: "employer", revision: 3, reason: "void", changeNote: { state: "known", value: "修復" }, duplicateOf: { state: "known", value: { id: "emp_1", revision: "current", line: "whole" } } }, T0));
   assert.equal(canonicalMasterId(m, "emp_9", CURRENT), "emp_1");
   // 雇用条件: 不正な版のあとに保存した取消で、重なりの検査から外れる。
   const term = (id: string): Obj => ({ id, recordType: "employment-term", body: { employerId: "emp_2", applicablePeriod: { start: { state: "known", value: "2026-01-01" }, end: { state: "known", value: "2026-12-31" } } } });
   let t = setup();
   t = restore(t, [term("term_a"), { id: "term_a", recordType: "employment-term", revision: 2, reason: "unvoid" }]);
   rejected(save(t, term("term_b"), T0), "employment-term-overlap");
-  t = ok(save(t, { id: "term_a", recordType: "employment-term", revision: 3, reason: "void" }, T0));
+  t = ok(save(t, { id: "term_a", recordType: "employment-term", revision: 3, reason: "void", changeNote: { state: "known", value: "修復" }, }, T0));
   ok(save(t, term("term_b"), T0));
 });
 
@@ -1241,13 +1243,13 @@ test("信頼の規則(c)と検査の印（N-P2-2）: 未検査の改訂は直前
   m = restore(m, [deposit("dep_1", { state: "known", value: 100 }), { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "unvoid" }, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "correct-input-error", body: { amount: { state: "known", value: 120 } } }]);
   assert.deepEqual(depositOct(m), { state: "incomplete", knownSum: 0, missing: ["dep_1@3:save-check:conflict"] });
   // 検査済みの印を外す（印の欠落）と、その改訂は未検査として扱われ、回復しない。
-  m = ok(save(m, { id: "dep_1", recordType: "bank-deposit", revision: 4, reason: "correct-input-error", body: { amount: { state: "known", value: 130 } } }, T0));
+  m = ok(save(m, { id: "dep_1", recordType: "bank-deposit", revision: 4, reason: "correct-input-error", changeNote: { state: "known", value: "修復" }, body: { amount: { state: "known", value: 130 } } }, T0));
   assert.deepEqual(depositOct(m), { state: "complete", knownSum: 130, missing: [] });
   const lost: Ledger = { ...m, checked: new Set() };
   assert.deepEqual(depositOct(lost), { state: "incomplete", knownSum: 0, missing: ["dep_1@4:save-check:conflict"] });
 });
 
-test("修復の改訂（所有者の判断1）(a): 取消済みでbodyが不正な記録は、メモつきの再度の取消でbodyを直せる。ふつうの取消はbodyを確かめない", () => {
+test("修復の改訂（所有者の判断1）(a): 取消済みでbodyが不正な記録は、メモつきの再度の取消でbodyを直せる。信頼できない記録の取消はbodyを確かめる", () => {
   // 金額がnot-applicable（不正）の入金を復元し、未検査の取消を置く。
   let l = setup();
   l = restore(l, [deposit("dep_1", { state: "not-applicable" }), { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }]);
@@ -1263,14 +1265,20 @@ test("修復の改訂（所有者の判断1）(a): 取消済みでbodyが不正�
   assert.deepEqual(depositOct(l), { state: "complete", knownSum: 100, missing: [] });
   // 信頼できる記録では、再度の取消（修復）を使えない。
   rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 5, reason: "void", changeNote: { state: "known", value: "メモ" }, body: { amount: { state: "known", value: 1 } } }, T0), "body-change-on-void-or-unvoid");
-  // 有効でbodyが不正な記録（行IDがwholeの明細。PR #36のF1）は、ふつうの取消で片付けられる（bodyを確かめない）。
+  // 有効でbodyが不正な記録（行IDがwholeの明細。PR #36のF1）。直前までの履歴が信頼できないので、取消も修復の改訂になり、メモが要る
+  // （R28-1）。修復の取消はbodyも確かめる（所有者の判断2）ので、bodyを直さずには取り消せない。activeの記録の中身は修復の訂正で
+  // 直してから、ふつうに取り消す（所有者の判断3）。
   let w = setup();
-  w = restore(w, [payslip("pay_9", { grossPay: { state: "known", value: 1 }, otherEarnings: { state: "known", value: [{ lineId: "whole", label: "手当", amount: { state: "known", value: 1 } }] } })]);
-  w = ok(save(w, { id: "pay_9", recordType: "payslip", revision: 2, reason: "void" }, T0));
+  const whole = { otherEarnings: { state: "known", value: [{ lineId: "whole", label: "手当", amount: { state: "known", value: 1 } }] } };
+  w = restore(w, [payslip("pay_9", { grossPay: { state: "known", value: 1 }, ...whole })]);
+  const repairNote = { changeNote: { state: "known", value: "行IDがwholeの行を消す" } };
+  // 静的な検査が先に効くので、メモのない取消もbodyの不正で拒否する（メモのない修復の拒否は(b)(c)とP1-1で確かめる）。
+  rejectedUnchanged(w, save(w, { id: "pay_9", recordType: "payslip", revision: 2, reason: "void" }, T0), "value-invalid");
+  rejectedUnchanged(w, save(w, { id: "pay_9", recordType: "payslip", revision: 2, reason: "void", ...repairNote }, T0), "value-invalid");
+  w = ok(save(w, { id: "pay_9", recordType: "payslip", revision: 2, reason: "correct-input-error", ...repairNote, body: { otherEarnings: { state: "known", value: [] } } }, T0));
+  w = ok(save(w, { id: "pay_9", recordType: "payslip", revision: 3, reason: "void" }, T0));
   const gross = aggregateRecords(w, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
   assert.ok(gross.ok && gross.values[0].state === "no-records", JSON.stringify(gross));
-  // 取消の取り消しは、bodyを確かめるので拒否する（その記録は取消のまま）。
-  rejectedUnchanged(w, save(w, { id: "pay_9", recordType: "payslip", revision: 3, reason: "unvoid" }, T0), "value-invalid");
 });
 
 test("修復の改訂(b): 変えられない項目（importKey）の不正な値を、メモつきで直せる。古いキーの予約は保つ", () => {
@@ -1281,7 +1289,7 @@ test("修復の改訂(b): 変えられない項目（importKey）の不正な値
   assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_1@1:save-check:conflict"] });
   const fix = (source: string, extra: Obj): Obj => ({ id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", importKey: { state: "known", value: { source, key: "1行目" } }, ...extra });
   const note = { changeNote: { state: "known", value: "取込元の名前の欠落を直す" } };
-  rejectedUnchanged(l, save(l, fix("架空の口座CSV", {}), T0), "immutable-field-changed");
+  rejectedUnchanged(l, save(l, fix("架空の口座CSV", {}), T0), "transition-not-allowed");
   // 直した先のキーが別の記録に予約されていれば拒否する。
   let other = ok(save(l, imp("dep_2", "架空の口座CSV"), T0));
   rejectedUnchanged(other, save(other, fix("架空の口座CSV", note), T0), "import-key-reserved");
@@ -1290,8 +1298,9 @@ test("修復の改訂(b): 変えられない項目（importKey）の不正な値
   assert.deepEqual(depositOct(fixed), { state: "complete", knownSum: 100, missing: [] });
   // 古いキー（空のsource）も新しいキーも、この記録に予約されたまま。
   assert.equal([...fixed.importKeys.values()].filter((v) => v === "dep_1").length, 2);
-  // ふつうの取消でも片付けられる（変えられない項目を確かめない）。
-  const voided = ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0));
+  // 直前までの履歴が信頼できないので、取消も修復の取消になり、変えられない項目も確かめる（直さずには取り消せない）。
+  rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", ...note }, T0), "value-invalid");
+  const voided = ok(save(fixed, { id: "dep_1", recordType: "bank-deposit", revision: 3, reason: "void" }, T0));
   assert.deepEqual(depositOct(voided), { state: "no-records", knownSum: 0, missing: [] });
 });
 
@@ -1299,14 +1308,16 @@ test("修復の改訂(c)とN-P2-1: 不正な把握日は修復で直せ、信頼
   // 把握日がnot-stated（許さない状態）の入金。取消は把握日を引き継ぐので、そのままでは取り消せない。
   let l = setup();
   l = restore(l, [{ ...deposit("dep_1", { state: "known", value: 100 }), knownOn: { state: "not-stated" } }]);
-  rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", knownOn: { state: "not-stated" } }, T0), "fact-state-not-allowed");
   const note = { changeNote: { state: "known", value: "把握日を確かめ直した" } };
+  rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", knownOn: { state: "not-stated" } }, T0), "fact-state-not-allowed");
+  rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", knownOn: { state: "not-stated" }, ...note }, T0), "fact-state-not-allowed");
   ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", knownOn: { state: "known", value: "2026-09-01" }, ...note }, T0));
   ok(save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", knownOn: { state: "unknown" }, ...note }, T0));
   // 未来の把握日（保存のときT0=2026-10-01より後）を持つ復元した入金。引き継ぐ取消は、新しく入力したものとして拒否する。
   let f = setup();
   f = restore(f, [{ ...deposit("dep_2", { state: "known", value: 1 }), knownOn: { state: "known", value: "2026-12-31" } }]);
-  rejectedUnchanged(f, save(f, { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "void" }, T0), "known-on-in-future");
+  rejectedUnchanged(f, save(f, { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "void" }, T0), "transition-not-allowed");
+  rejectedUnchanged(f, save(f, { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "void", ...note }, T0), "known-on-in-future");
   ok(save(f, { id: "dep_2", recordType: "bank-deposit", revision: 2, reason: "void", knownOn: { state: "known", value: "2026-09-30" }, ...note }, T0));
 });
 
@@ -1319,15 +1330,74 @@ test("N-P2-3（所有者の判断3）: 未検査の二重登録の取消が指�
     { id: "dep_b", recordType: "bank-deposit", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "dep_a", revision: "current", line: "whole" } } },
   ]);
   // dep_aの取消は、その直前の時点でdep_bが有効だったので信頼する。dep_bの取消は、その直前の時点でdep_aが取消済みなので信頼しない。
-  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_b@2:save-check:conflict"] });
+  // dep_aは、残す方（dep_b）がいまは有効でない（信頼できない）ので、残す方がない二重登録（契約版2.0の台帳のTC-02-fと同じ）。
+  assert.deepEqual(depositOct(l), { state: "incomplete", knownSum: 0, missing: ["dep_a@2:orphan-duplicate:conflict", "dep_b@2:save-check:conflict"] });
 });
 
-test("古い版では読むだけ（所有者の判断2）: この版が知らない項目を持つ記録の改訂は、取消も含めて拒否する", () => {
-  let l = setup();
+test("読むだけ（所有者の判断「新しい版のデータのときだけ読むだけ」）: 新しい契約版を名乗るデータの知らない項目を持つ記録だけ、改訂を拒否する", () => {
   const r = expandRecord(deposit("dep_1", { state: "known", value: 1 }), { scenarioId: "unit", opId: "ro", previous: undefined });
-  l = restoreUnchecked(l, [{ ...r, body: { ...(r["body"] as Obj), futureField: { state: "known", value: 1 } } }], { clock: { now: () => T0 } });
+  const withUnknown: Obj = { ...r, body: { ...(r["body"] as Obj), futureField: { state: "known", value: 1 } } };
+  // 新しい契約版（2.0）を名乗るデータから入った記録は、読むだけ（取消も含めて改訂を拒否する）。読むときは知らないFactの項目を
+  // ないものとして扱う（信頼でき、数える）。
+  let l = setup();
+  l = restoreUnchecked(l, [withUnknown], { clock: { now: () => T0 } }, { contractVersion: "2.0" });
+  assert.deepEqual(depositOct(l), { state: "complete", knownSum: 1, missing: [] });
   rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0), "read-only-unknown-content");
   rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 2 } } }, T0), "read-only-unknown-content");
+  // 名乗りのない知らない項目（壊れた取込等）は、読むときはないものとして扱い、改訂できる（取消、知らない項目を外す訂正）。
+  let m = setup();
+  m = restoreUnchecked(m, [withUnknown], { clock: { now: () => T0 } }, { contractVersion: "1.0" });
+  assert.deepEqual(depositOct(m), { state: "complete", knownSum: 1, missing: [] });
+  ok(save(m, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0));
+  const { futureField: _f, ...cleanBody } = withUnknown.body as Record<string, unknown>;
+  void _f;
+  const fix = saveRevision(m, { ...withUnknown, revision: 2, reason: "correct-input-error", writeRequestId: "w-fix", body: { ...cleanBody, amount: { state: "known", value: 2 } }, baseRevision: 1 }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
+  assert.equal(fix.kind, "accepted");
+  // 新しい保存（版1）は、知らない項目を受け付けない。
+  rejected(saveRevision(setup(), (() => { const { id: _i, ...x } = withUnknown; void _i; return x; })(), { clock: { now: () => T0 }, ids: { next: () => "dep_9" } }), "value-invalid");
+  // Factの形でない知らない項目は、読むときも保存の検査をすり抜けたデータ。
+  let n = setup();
+  n = restoreUnchecked(n, [{ ...r, body: { ...(r["body"] as Obj), broken: 7 } }], { clock: { now: () => T0 } });
+  assert.deepEqual(depositOct(n), { state: "incomplete", knownSum: 0, missing: ["dep_1@1:save-check:conflict"] });
+});
+
+test("残す方がない二重登録（所有者の判断「重複はT06」）: 検査を通った二重登録の取消で、残す方があとで取り消されたら、黙って除かない", () => {
+  // 契約版2.0の台帳のTC-02-gと同じ場面。
+  let l = setup();
+  l = ok(save(l, payslip("pay_K1", { grossPay: { state: "known", value: 100 } }), T0));
+  l = ok(save(l, payslip("pay_K2", { grossPay: { state: "known", value: 100 } }), T0));
+  l = ok(save(l, { id: "pay_K2", recordType: "payslip", revision: 2, reason: "void", duplicateOf: { state: "known", value: { id: "pay_K1", revision: "current", line: "whole" } } }, T0));
+  const gross = (ledger: Ledger, view: View = CURRENT) => aggregateRecords(ledger, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } }, view);
+  const before = l.saves.length;
+  let g = gross(l);
+  assert.ok(g.ok && g.values[0].state === "complete" && g.values[0].knownSum === 100, JSON.stringify(g));
+  l = ok(save(l, { id: "pay_K1", recordType: "payslip", revision: 2, reason: "void", changeNote: { state: "known", value: "存在しない明細だった" } }, T0));
+  g = gross(l);
+  assert.ok(g.ok);
+  if (g.ok) {
+    assert.equal(g.values[0].state, "incomplete");
+    assert.equal(g.values[0].knownSum, 0);
+    assert.deepEqual(g.values[0].missing, [{ ref: { id: "pay_K2", revision: 2, line: "whole" }, field: { kind: "derived", key: "orphan-duplicate" }, state: "conflict" }]);
+  }
+  // 残す方を取り消す前の時点の見方では、これまでどおり。範囲の外の記録は挙げない。
+  const past = gross(l, { kind: "record-seq", seq: before });
+  assert.ok(past.ok && past.values[0].state === "complete" && past.values[0].knownSum === 100, JSON.stringify(past));
+  const nov = aggregateRecords(l, { key: { kind: "payslip-item", item: "grossPay" }, axis: "scheduled-pay-date", scope: { employerIds: ["emp_1"], accountIds: [], from: "2026-11-01", to: "2026-11-30" } });
+  assert.ok(nov.ok && nov.values[0].state === "no-records", JSON.stringify(nov));
+});
+
+test("修復の改訂は種類ごとの改訂規則を当てない（R28-4）。直前までの履歴が信頼できるなら、同じ改訂は規則どおり拒否する", () => {
+  const change = (rev: number) => ({ id: "pay_7", recordType: "payslip", revision: rev, reason: "new-information", changeNote: { state: "known", value: "別の資料で確かめた" }, body: { grossPay: { state: "known", value: 2 }, otherEarnings: { state: "known", value: [] } } });
+  // 信頼できる履歴では、明細に記載された値をnew-informationで変えない。
+  let t = setup();
+  t = ok(save(t, payslip("pay_7", { grossPay: { state: "known", value: 1 } }), T0));
+  rejectedUnchanged(t, save(t, change(2), T0), "transition-not-allowed");
+  // 信頼できない履歴（行IDがwholeの明細）の修復では、同じ改訂を受け付ける（静的な検査と変えられない項目の検査は当てる）。
+  let u = setup();
+  u = restore(u, [payslip("pay_7", { grossPay: { state: "known", value: 1 }, otherEarnings: { state: "known", value: [{ lineId: "whole", label: "手当", amount: { state: "known", value: 1 } }] } })]);
+  u = ok(save(u, change(2), T0));
+  const gross = aggregateRecords(u, { ...netPayOct(), key: { kind: "payslip-item", item: "grossPay" } });
+  assert.ok(gross.ok && gross.values[0].state === "complete" && gross.values[0].knownSum === 2, JSON.stringify(gross));
 });
 
 test("修復の改訂は、直前の版が信頼できない記録だけ。信頼できる記録では、メモがあっても変えられない項目・再度の取消を許さない", () => {

@@ -79,7 +79,9 @@ export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj
   const previous = history[history.length - 1];
   if (previous === undefined) return one("transition-not-allowed", "$.reason", "改訂の前の版がない");
   const reason = proposal["reason"] as RevisionReason;
-  const repair = !ctx.predecessorTrusted && hasNote(proposal);
+  // 修復の遷移は、直前までの履歴が信頼できないことだけで決まる。メモがなければ通常の遷移としても受け付けない（R28-1）。
+  const repair = !ctx.predecessorTrusted;
+  if (repair && !hasNote(proposal)) return one("transition-not-allowed", "$.changeNote", "直前までの履歴が信頼できない記録の改訂（修復の改訂）には、changeNoteに何をどう直したかを書く");
   if (proposal["recordType"] !== previous.recordType) return one("immutable-field-changed", "$.recordType", "recordTypeは改訂で変えられない");
   // 古い版での上書きを拒否する（共通の型の9）。
   if (baseRevision !== previous.revision) return one("stale-base-revision", "$.baseRevision", `基にした版${baseRevision}が現在の版${previous.revision}と違う`);
@@ -103,15 +105,18 @@ export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj
   if (reason === "correct-input-error" && !sameJson(proposal["knownOn"], previous.knownOn) && !hasNote(proposal)) {
     return one("known-on-not-inherited", "$.changeNote", "入力誤りの訂正で把握日を変えるときは、changeNoteに理由を書く");
   }
-  const typed = checkTypeTransition(previous, proposal, reason);
+  // 修復の遷移では、記録の種類ごとの値の向きの規則を当てない（直前の値が信頼できないため。R28-4）。
+  const typed = repair ? [] : checkTypeTransition(previous, proposal, reason);
   if (typed.length > 0) return typed;
   return checkLineIdReservation(history, proposal, previous);
 }
 
 // 取消の改訂の静的な検査の範囲（PR #36の共通の型の9、所有者の判断1）: 取消（void）で、bodyと変えられない項目が直前の版と
 // 同じなら、その改訂が決める項目だけを確かめる。修復の再度の取消でbody等を変えた場合は、変えた値も確かめる（全体の検査）。
-export function staticCheckFor(proposal: Obj, previous: Revision | undefined, stored: boolean): Violation[] {
+// 直前までの履歴が信頼できない記録の取消（修復の取消）は、bodyを変えなくてもbodyも確かめる（所有者の判断2。R36-1）。
+export function staticCheckFor(proposal: Obj, previous: Revision | undefined, stored: boolean, predecessorTrusted = true): Violation[] {
   const voidScope =
+    predecessorTrusted &&
     proposal["reason"] === "void" &&
     previous !== undefined &&
     sameJson(proposal["body"], previous.body) &&
@@ -282,9 +287,9 @@ export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
 
 function revisionValid(ledger: Ledger, prior: readonly Revision[], r: Revision): boolean {
   const previous = prior[prior.length - 1];
-  if (staticCheckFor(r as unknown as Obj, previous, true).length > 0) return false;
-  if (r.revision !== prior.length + 1) return false;
   const predecessorTrusted = previous === undefined || isHistoryValid(ledger, previous);
+  if (staticCheckFor(r as unknown as Obj, previous, true, predecessorTrusted).length > 0) return false;
+  if (r.revision !== prior.length + 1) return false;
   if (previous !== undefined) {
     if (r.recordedSeq <= previous.recordedSeq) return false;
     if (checkAgainstPrevious(prior, r as unknown as Obj, previous.revision, { predecessorTrusted }).length > 0) return false;

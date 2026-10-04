@@ -10,6 +10,7 @@ import { bodyOf, compareStrings, recordIds, revisionsOf, type Ledger, type Revis
 import { canonicalMasterId } from "./masters.ts";
 import { PAYSLIP_AMOUNT_ITEMS, type PayslipAmountItem } from "./schema.ts";
 import { analyzeSeries } from "./series.ts";
+import { isEffective, SeriesCache } from "./effective.ts";
 import { isHistoryValid } from "./history.ts";
 import { isInstant, isLocalDate } from "./values.ts";
 import { resolveView, selectRevision, type View } from "./views.ts";
@@ -26,7 +27,7 @@ export interface RecordAggregateRequest {
 export type MissingState = "conflict" | "adoption-needed" | "partial-scope" | "rule-pending" | "undetermined" | "not-stated" | "unknown";
 const MISSING_PRIORITY: readonly MissingState[] = ["conflict", "adoption-needed", "partial-scope", "rule-pending", "undetermined", "not-stated", "unknown"];
 
-export type FieldKey = { readonly kind: "record-item"; readonly name: string } | { readonly kind: "derived"; readonly key: "supersede-series" | "save-check" };
+export type FieldKey = { readonly kind: "record-item"; readonly name: string } | { readonly kind: "derived"; readonly key: "supersede-series" | "save-check" | "orphan-duplicate" };
 
 export interface MissingEntry {
   readonly ref: { readonly id: string; readonly revision: number; readonly line: "whole" };
@@ -138,6 +139,7 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
     scopeCanon.add(c);
   }
   const series = isDeposit ? undefined : analyzeSeries(ledger, "payslip", rv);
+  const effectiveCache = new SeriesCache(ledger, rv);
   const missing = new Map<string, { entry: MissingEntry; date: string | undefined }>();
   const addMissing = (rev: Revision, field: FieldKey, state: MissingState, date: string | undefined): void => {
     const k = `${rev.id}\u0000${fieldKeyString(field)}`;
@@ -178,7 +180,21 @@ export function aggregateRecords(ledger: Ledger, request: unknown, view: View = 
       addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", placement(rev).date);
       continue;
     }
-    if (rev.status !== "active") continue; // 取消した記録は除く（履歴の検査を満たすときだけ）。
+    if (rev.status !== "active") {
+      // 二重登録の取消で、残す方がこの見方で有効な記録でない（取消・差し替え済み・信頼できない・存在しない）ものは、残す方がない
+      // 二重登録として黙って除かない。その記録自身の値で範囲に入る集計をincompleteにし、orphan-duplicateのconflictに挙げる
+      // （所有者の判断「重複はT06、件数はT11」。契約版2.0の共通の型の9・11。R28-3）。
+      const dup = knownValue(rev.duplicateOf);
+      if (dup !== undefined) {
+        const keeper = isObj(dup) ? dup["id"] : undefined;
+        const kept = typeof keeper === "string" && isEffective(ledger, keeper, rv, effectiveCache);
+        if (!kept) {
+          const own = placement(rev);
+          if (!own.out) addMissing(rev, { kind: "derived", key: "orphan-duplicate" }, "conflict", own.date);
+        }
+      }
+      continue; // 取消した記録は除く（履歴の検査を満たすときだけ）。
+    }
     const seriesStatus = series?.status.get(id);
     if (seriesStatus === "superseded") continue; // 差し替え済みの記録は除く（系列の解析で、関わる記録の履歴を検査済み）。
     const here = placement(rev);

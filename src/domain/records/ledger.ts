@@ -71,6 +71,23 @@ export interface Ledger {
   // して扱う（印の欠落を検査済みと読まない。N-P2-2）。T07は、この区別を改訂ごとの印（契約版2.0のsaveCheck）として永続化し、
   // 読み込みで復元する（所有者の判断「正しい保存で信頼を回復」。P1-1）。
   readonly checked: ReadonlySet<string>;
+  // 読む処理（READER_CONTRACT_VERSION）より新しい契約版を名乗るデータから入った記録のID（復元・取込の入口で、データの契約版を
+  // 渡したとき）。この版では、これらの記録のうち知らない項目を持つものを読むだけにする（所有者の判断「新しい版のデータのときだけ
+  // 読むだけ」。R36-2）。
+  readonly newerVersionRecords: ReadonlySet<string>;
+}
+
+// この処理が読む契約版。
+export const READER_CONTRACT_VERSION = "1.0";
+
+// 契約版（メジャー.マイナー）の比較。形が違えば、新しい版とみなす（安全側。読むだけにする）。
+export function isNewerContractVersion(version: string): boolean {
+  const m = /^(\d+)\.(\d+)$/.exec(version);
+  if (m === null) return true;
+  const [rmaj, rmin] = READER_CONTRACT_VERSION.split(".").map(Number) as [number, number];
+  const maj = Number(m[1]);
+  const min = Number(m[2]);
+  return maj > rmaj || (maj === rmaj && min > rmin);
 }
 
 export function revisionKey(id: string, revision: number): string {
@@ -101,6 +118,7 @@ export function emptyLedger(): Ledger {
     sha256s: new Map(),
     runIds: new Set(),
     checked: new Set(),
+    newerVersionRecords: new Set(),
   };
 }
 
