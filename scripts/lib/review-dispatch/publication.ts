@@ -1,5 +1,4 @@
 import { textFindings } from "../public-policy.ts";
-import type { DatabaseSync } from "node:sqlite";
 import { hash, type Job, type Snapshot, type WorkerResult } from "./model.ts";
 
 // Publication check for text that the Broker would post to the public repository (PR #51 red team P1,
@@ -119,21 +118,8 @@ export function redactedResult(raw: string): string {
   return JSON.stringify({ redacted: "publication-check", resultHash: hash(raw) });
 }
 
-// Replaces a stored plaintext result with its hash-only form when the Broker blocks the final body. Matches the
-// exact job and stored hash so it cannot touch another row. Uses the jobs table directly because store.ts is
-// being changed by W3; moving this into the Store API is part of the W4 integration.
-export function redactStoredResult(db: DatabaseSync, j: Job, raw: string): boolean {
-  return (
-    db
-      .prepare(
-        "UPDATE jobs SET result=? WHERE id=? AND run=? AND result=?",
-      )
-      .run(redactedResult(raw), j.id, j.run, raw).changes === 1
-  );
-}
-
 // `blocked` (persistent needs-owner): never posted; the lease stays held (job status uncertain) so nothing
-// relaunches for this PR; one owner notice per run. A durable per-PR needs-owner state that survives an owner
-// releasing the uncertain lease is a REQUIRED Issue #50 W4 item (store.ts is W3's).
+// relaunches for this PR; one owner notice per run. The durable per-PR state (store.ts blocked, W4 row 1)
+// survives an owner releasing the ended run's lease and clears only by the owner's later unpause.
 export const blockedNotice = (j: Job): string =>
   `${j.key}:publication-blocked:${j.run}`;

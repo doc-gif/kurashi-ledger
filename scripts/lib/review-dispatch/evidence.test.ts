@@ -834,3 +834,68 @@ test("R007 a conversation comment after approval blocks; a deleted line finding 
     d.cleanup();
   }
 });
+
+test("W4 row 8: a signed edit/delete delivery raises a change the next reconcile could not see, and clears its mark", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await boundApproval(f, d, p);
+    // A reviewer's conversation comment written and deleted between two reconciles (never observed),
+    // a reviewer's line comment edited, and a third party's deletion (reference only).
+    const signal = (delivery: string, event: string, action: string, thing: Record<string, unknown>) =>
+      d.store.inbox(
+        3,
+        delivery,
+        event,
+        JSON.stringify({
+          repository: { id: 1 },
+          installation: { id: 2 },
+          sender: { id: 10 },
+          action,
+          ...(event === "issue_comment" ? { issue: { number: 1, pull_request: {} } } : { pull_request: { number: 1 } }),
+          ...(event === "pull_request_review" ? { review: thing } : { comment: thing }),
+        }),
+        Date.parse(t(7)),
+        "1:1",
+      );
+    signal("s1", "issue_comment", "deleted", { id: 55, user: { id: 30 }, body: "PR1-R009 hidden" });
+    signal("s2", "pull_request_review_comment", "edited", { id: 56, user: { id: 30 }, body: "changed", updated_at: t(7) });
+    signal("s3", "issue_comment", "deleted", { id: 57, user: { id: 99 }, body: "third party" });
+    signal("s4", "pull_request_review", "dismissed", { id: 9, user: { id: 30 }, body: "" });
+    assert.equal(d.store.marked("1:1"), true);
+    f.state.now = 8;
+    const r = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(r.observation.findings, ["deleted:issue:55", "edited:comment:56"]);
+    assert.equal(d.store.marked("1:1"), false);
+    // Persisted once; the next reconcile neither duplicates nor forgets them.
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+    f.state.now = 9;
+    const again = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(again.observation.findings, ["deleted:issue:55", "edited:comment:56"]);
+    assert.equal(d.store.evidence("1:1", "itemchange").length, 2);
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 faultfinding evidence in the snapshot is the dispatcher's own posted red-team record for this pair", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    const first = await boundApproval(f, d, p);
+    assert.equal(first.snapshot.faultfinding, null);
+    d.store.observe(assess(p, first.snapshot, null));
+    const j = d.store.claim(p, first.snapshot, 30, "faultfinding", Date.parse(t(6)))!;
+    assert.ok(j);
+    const id = d.store.outbox(j, "faultfinding", JSON.stringify({ actor: 30, decision: "accepted", findings: [] }));
+    d.store.sending(id);
+    d.store.posted(id, "6001");
+    f.state.now = 7;
+    const r = (await reconcile(f.reader(), p, d.store))[0]!;
+    assert.deepEqual(r.snapshot.faultfinding, { actor: 30, pair: { head: HEAD, base: BASE }, unresolved: [] });
+  } finally {
+    d.cleanup();
+  }
+});

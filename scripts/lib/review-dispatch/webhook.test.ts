@@ -200,3 +200,68 @@ test("R011 oversized marker limits: off, size bounds, event allow-list and clock
     d.cleanup();
   }
 });
+
+test("W4 row 8: edit/delete/dismiss deliveries mark their PR in the same transaction; other actions do not", () => {
+  const d = database(),
+    p = policy();
+  try {
+    const send = (event: string, payload: Record<string, unknown>, delivery: string) => {
+      const raw = Buffer.from(
+        JSON.stringify({ repository: { id: 1 }, installation: { id: 2 }, sender: { id: 40 }, ...payload }),
+      );
+      return ingest(
+        p,
+        d.store,
+        secret,
+        { ...headers(raw), "x-github-event": event, "x-github-delivery": delivery },
+        raw,
+        100,
+      );
+    };
+    const cases: [string, Record<string, unknown>, string | null][] = [
+      ["pull_request_review", { action: "edited", pull_request: { number: 1 } }, "1:1"],
+      ["pull_request_review", { action: "dismissed", pull_request: { number: 2 } }, "1:2"],
+      ["pull_request_review", { action: "submitted", pull_request: { number: 3 } }, null],
+      ["pull_request_review_comment", { action: "deleted", pull_request: { number: 4 } }, "1:4"],
+      ["pull_request_review_comment", { action: "created", pull_request: { number: 5 } }, null],
+      ["issue_comment", { action: "edited", issue: { number: 6, pull_request: {} } }, "1:6"],
+      ["issue_comment", { action: "deleted", issue: { number: 7 } }, null], // a plain issue
+      ["pull_request", { action: "edited", pull_request: { number: 8 } }, null],
+    ];
+    cases.forEach(([event, payload, mark], i) => {
+      assert.equal(send(event, payload, `signal-${i}`), 202, event);
+      if (mark) assert.equal(d.store.marked(mark), true, `${event} ${String(payload["action"])}`);
+    });
+    const marks = d.store.db.prepare("SELECT key FROM marks ORDER BY key").all().map((r) => r["key"]);
+    assert.deepEqual(marks, ["1:1", "1:2", "1:4", "1:6"]);
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("W4 receiver listens on loopback only, on a fixed port other than 443, and refuses off mode", async () => {
+  const d = database(),
+    p = policy();
+  try {
+    for (const port of [443, 80, 1023, 65536, 1.5, -1])
+      assert.throws(() => serve(p, d.store, secret, () => 100, port), /port/, String(port));
+    p.mode = "off";
+    assert.throws(() => serve(p, d.store, secret, () => 100), /off/);
+    p.mode = "active";
+    let stored = 0;
+    const server = serve(p, d.store, secret, () => 100, 0, () => stored++);
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      assert.ok(address && typeof address !== "string");
+      assert.equal(address.address, "127.0.0.1");
+      assert.equal(await post(address.port, headers(), body), 202);
+      assert.equal(await post(address.port, { ...headers(), "x-hub-signature-256": "sha256=" + "0".repeat(64) }, body), 401);
+      assert.equal(stored, 1); // only after a durable 202
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    }
+  } finally {
+    d.cleanup();
+  }
+});

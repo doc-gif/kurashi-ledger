@@ -13,7 +13,6 @@ import type { ResultVerifier } from "./provenance.ts";
 import {
   EVIDENCE_SHAPE,
   blockedNotice,
-  redactStoredResult,
   redactedResult,
   resultFindings,
   allowedFor,
@@ -98,7 +97,10 @@ export function parseResult(raw: string, j: Job): WorkerResult {
     if (
       !f ||
       Object.keys(f).sort().join() !== "completion,id,impact,location" ||
-      !new RegExp(`^PR${j.key.split(":")[1]}-[A-Z][0-9]{3}$`).test(f.id) ||
+      // Review IDs PR<N>-<letter><3 digits>; faultfinding RT IDs are PR<N>-T<3 digits> (never read as R IDs).
+      !new RegExp(
+        `^PR${j.key.split(":")[1]}-${j.kind === "faultfinding" ? "T" : "[A-Z]"}[0-9]{3}$`,
+      ).test(f.id) ||
       [f.location, f.impact, f.completion].some(
         (v) =>
           typeof v !== "string" ||
@@ -215,21 +217,26 @@ export class ReviewBroker {
       t.generation !== j.generation ||
       t.policy !== j.policy ||
       !samePair(s.pair, j.pair) ||
-      !reviewerEligible(p, s, this.actor)
+      !reviewerEligible(p, s, this.actor) ||
+      (j.kind !== "review" && j.kind !== "faultfinding")
     )
       return "stale";
     // Fixed order: canonicalBody -> publication check -> hash -> POST. The check reads the exact canonical body
     // that is hashed and posted, because canonicalisation can join a split key shape (PR #52 R011 / W2).
+    // A faultfinding job posts the red-team record (pr-review-loop.md#提出前の粗探し) as a COMMENT.
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
+      identity = identityOf(p, this.actor),
       body = canonicalBody(
-        render(result, marker, identityOf(p, this.actor), j.run),
+        j.kind === "faultfinding"
+          ? renderRedTeam(result, marker, identity, j.run, implementerOf(p, s.pr))
+          : render(result, marker, identity, j.run),
       );
     if (
       resultFindings(result, j, s, p.repo).length ||
       publicationFindings(body, allowedFor(j, s)).length
     ) {
-      // The plaintext result must not stay in the DB either (30-day retention, backups).
-      redactStoredResult(this.store.db, j, raw);
+      // The plaintext result must not stay in the DB either (30-day retention, backups, WAL).
+      this.store.redactResult(j, raw, redactedResult(raw));
       // blocked = persistent needs-owner: never posted, no Outbox row, one owner notice; the caller keeps the
       // lease so nothing relaunches until the owner clears it (publication.ts blockedNotice).
       this.store.notice(blockedNotice(j));
@@ -237,6 +244,7 @@ export class ReviewBroker {
     }
     const digest = hash(body);
     if (
+      j.kind === "review" &&
       result.decision === "accepted" &&
       (!s.faultfinding ||
         !samePair(s.faultfinding.pair, j.pair) ||
@@ -246,7 +254,7 @@ export class ReviewBroker {
       return "stale";
     const id = this.store.outbox(
       j,
-      "review",
+      j.kind,
       JSON.stringify({
         run: j.run,
         actor: j.actor,
@@ -257,6 +265,8 @@ export class ReviewBroker {
         marker,
         body,
         decision: result.decision,
+        // Finding IDs only (no prose): store.faultfinding() reads them as the unresolved RTs.
+        findings: result.findings.map((f) => f.id),
       }),
     );
     const recover = async (): Promise<"posted" | "uncertain"> => {
@@ -286,15 +296,19 @@ export class ReviewBroker {
     };
     if (this.store.outboxState(id) !== "prepared") return recover();
     if (p.mode !== "active") return "stale"; // shadow/off never writes
+    // W4 row 8: an edit/delete/dismiss delivery for this PR that no reconcile has processed yet.
+    if (this.store.marked(j.key)) return "stale";
     this.store.sending(id); // Commit uncertainty before crossing network boundary; no retry.
     try {
       await this.transport.post(
         s.pr,
-        result.decision === "accepted"
-          ? "APPROVE"
-          : result.decision === "changes-requested"
-            ? "REQUEST_CHANGES"
-            : "COMMENT",
+        j.kind === "faultfinding"
+          ? "COMMENT" // A red-team record is never an approval or a change request.
+          : result.decision === "accepted"
+            ? "APPROVE"
+            : result.decision === "changes-requested"
+              ? "REQUEST_CHANGES"
+              : "COMMENT",
         j.pair.head,
         body,
       );
@@ -303,6 +317,11 @@ export class ReviewBroker {
     }
     return recover();
   }
+}
+function implementerOf(p: Policy, pr: number): number {
+  const t = p.targets.find((x) => x.pr === pr);
+  if (!t) throw new Error("Target outside policy");
+  return t.implementer;
 }
 export type BrokerIdentity = {
   role: "codex-reviewer" | "claude-reviewer";
@@ -334,6 +353,38 @@ export function render(
       .map(
         (f) =>
           `\n- ${f.id} — ${f.location}: ${f.impact} 完了条件: ${f.completion}`,
+      )
+      .join("") +
+    (r.evidence.length ? `\n\n検証: ${r.evidence.join(" ")}\n` : "") +
+    (r.unverified.length ? `\n未検証: ${r.unverified.join(" / ")}\n` : "")
+  );
+}
+
+// Red-team record (pr-review-loop.md#提出前の粗探し) for a faultfinding job. No `role:` or `decision:` line, so it
+// is never read as a review record. The dispatcher fills the metadata; worker prose is quoted as in render().
+// Finding IDs are the job's RT IDs (PR<N>-T<3 digits>); the plan and the cause ledger were in the materials.
+export function renderRedTeam(
+  r: WorkerResult,
+  marker: string,
+  identity: BrokerIdentity,
+  run: string,
+  implementer: number,
+): string {
+  const verdict =
+    r.decision === "accepted"
+      ? "未解消のRTなし"
+      : r.decision === "changes-requested"
+        ? "未解消のRTあり"
+        : "所有者の判断が必要（needs-owner）";
+  return (
+    `<!-- kurashi-ledger:red-team:v1 -->\n<!-- ${marker} -->\nauditor_id: ${identity.agent}/${run}\nimplementer_id: github-actor/${implementer}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\nplan_path: 受付の資料（PRの差分にある計画）\nledger_causes: 受付の資料の原因台帳（件数と判定は本文）\n\n結果: ${verdict}\n\n${r.summary
+      .split(/\r?\n/)
+      .map((line) => `> ${line}`)
+      .join("\n")}\n` +
+    r.findings
+      .map(
+        (f) =>
+          `\n- ${f.id} — ${f.location}: ${f.impact} 直す条件: ${f.completion}`,
       )
       .join("") +
     (r.evidence.length ? `\n\n検証: ${r.evidence.join(" ")}\n` : "") +

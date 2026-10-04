@@ -14,6 +14,7 @@ import {
   type Target,
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
+import { runBinding, type RunKey } from "./provenance.ts";
 
 export function canonicalRoot(path: string): string {
   if (!isAbsolute(path) || resolve(path) !== path)
@@ -30,7 +31,9 @@ export function canonicalRoot(path: string): string {
   if (realpathSync(path) !== path) throw new Error("Aliased dispatcher root");
   return path;
 }
-const SCHEMA = 2;
+// Schema 3 (Issue #50 W4): blocked, run_keys, capability and marks. A schema 2 DB is not migrated
+// implicitly; it is refused like any unknown schema and the owner initializes a new root.
+const SCHEMA = 3;
 // PR48-R009: a small step back (NTP) keeps using the stored time; the stored clock never moves back.
 export const CLOCK_SKEW_MS = 5000;
 export class ClockRollbackError extends Error {
@@ -76,8 +79,9 @@ export class Store {
     try {
       // Only a file this constructor just created inside the owner-only root is narrowed here.
       if (posix && created) chmodSync(file, 0o600);
+      // W4 row 7: overwrite freed pages, so a replaced plaintext result is not left in free space.
       this.db.exec(
-        "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
       );
       if (
         (this.db.prepare("PRAGMA user_version").get() as Row)[
@@ -98,7 +102,11 @@ export class Store {
         CREATE TABLE evidence(id TEXT PRIMARY KEY,key TEXT,value TEXT NOT NULL);
         CREATE TABLE quota_pause(key TEXT PRIMARY KEY,at INTEGER NOT NULL,owner_clear TEXT);
         CREATE TABLE shadow(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-        PRAGMA user_version=2; COMMIT;
+        CREATE TABLE blocked(key TEXT PRIMARY KEY,run TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,owner_clear TEXT);
+        CREATE TABLE run_keys(run TEXT PRIMARY KEY,job TEXT NOT NULL UNIQUE REFERENCES jobs(id),binding TEXT NOT NULL,key TEXT NOT NULL UNIQUE,at INTEGER NOT NULL);
+        CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
+        CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
+        PRAGMA user_version=3; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
     } catch {
@@ -151,25 +159,36 @@ export class Store {
     const stored = this.storedClock();
     return stored === null ? 0 : Math.max(0, stored - now);
   }
+  // `mark` (W4 row 8): the target key of an edit/delete/dismiss delivery. It is stored in the same
+  // transaction and stops launches and posts for that PR until a reconcile has processed the delivery.
   inbox(
     app: number,
     delivery: string,
     event: string,
     payload: string,
     now: number,
+    mark: string | null = null,
   ): boolean {
     return this.atomic(() => {
       const at = this.time(now);
-      return (
+      const stored =
         Number(
           this.db
             .prepare(
               "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload) VALUES(?,?,?,?,?)",
             )
             .run(app, delivery, event, at, payload).changes,
-        ) === 1
-      );
+        ) === 1;
+      if (stored && mark !== null)
+        this.db
+          .prepare("INSERT OR IGNORE INTO marks(app,delivery,key) VALUES(?,?,?)")
+          .run(app, delivery, mark);
+      return stored;
     });
+  }
+  // An unprocessed edit/delete/dismiss delivery for this PR (W4 row 8).
+  marked(key: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM marks WHERE key=?").get(key);
   }
   // PR48-R011: a signed delivery too large to keep. Only its ID and event are kept (payload NULL,
   // processed 0); it never binds Ready/Review. Reconcile is the recovery path.
@@ -254,6 +273,9 @@ export class Store {
     this.db
       .prepare("UPDATE inbox SET processed=1 WHERE app=? AND delivery=?")
       .run(app, delivery);
+    this.db
+      .prepare("DELETE FROM marks WHERE app=? AND delivery=?")
+      .run(app, delivery);
   }
   consumed(): Set<string> {
     return new Set(
@@ -276,6 +298,13 @@ export class Store {
           paused: true,
           status: "waiting",
           reason: "quota-owner-required",
+        };
+      else if (this.blocked(t.key))
+        t = {
+          ...t,
+          paused: true,
+          status: "waiting",
+          reason: "blocked-owner-required",
         };
       const prior = this.target(t.key),
         lease = this.db
@@ -329,23 +358,50 @@ export class Store {
       .prepare("SELECT 1 FROM quota_pause WHERE key=? AND owner_clear IS NULL")
       .get(key);
   }
+  // Owner holds (quota pause, blocked) end only by an owner's removal of review:paused after the hold.
   clearQuota(p: Policy, s: Snapshot): void {
-    const row = this.db
-      .prepare("SELECT at FROM quota_pause WHERE key=? AND owner_clear IS NULL")
-      .get(keyOf(p, s.pr)) as Row | undefined;
-    if (!row || !s.complete || !s.historyComplete) return;
-    const event = s.history
-      .filter(
-        (e) =>
-          e.kind === "unpause" &&
-          p.owners.includes(e.actor) &&
-          e.at > Number(row["at"]),
-      )
-      .at(-1);
-    if (event)
+    for (const table of ["quota_pause", "blocked"] as const) {
+      const row = this.db
+        .prepare(`SELECT at FROM ${table} WHERE key=? AND owner_clear IS NULL`)
+        .get(keyOf(p, s.pr)) as Row | undefined;
+      if (!row || !s.complete || !s.historyComplete) continue;
+      const event = s.history
+        .filter(
+          (e) =>
+            e.kind === "unpause" &&
+            p.owners.includes(e.actor) &&
+            e.at > Number(row["at"]),
+        )
+        .at(-1);
+      if (event)
+        this.db
+          .prepare(`UPDATE ${table} SET owner_clear=? WHERE key=?`)
+          .run(event.id, keyOf(p, s.pr));
+    }
+  }
+  // W4 row 1: blocked is a durable per-PR needs-owner state. It outlives the job's lease (an owner may
+  // release the ended run) and clears only through clearQuota (an owner's later unpause).
+  blocked(key: string): { run: string; reason: string; at: number } | null {
+    const r = this.db
+      .prepare("SELECT run,reason,at FROM blocked WHERE key=? AND owner_clear IS NULL")
+      .get(key) as Row | undefined;
+    return r
+      ? { run: String(r["run"]), reason: String(r["reason"]), at: Number(r["at"]) }
+      : null;
+  }
+  block(j: Job, reason: string, now: number): void {
+    if (!/^[a-z-]{1,40}$/.test(reason)) throw new Error("Invalid block reason");
+    this.atomic(() => {
+      const at = this.time(now);
       this.db
-        .prepare("UPDATE quota_pause SET owner_clear=? WHERE key=?")
-        .run(event.id, keyOf(p, s.pr));
+        .prepare(
+          "INSERT INTO blocked VALUES(?,?,?,?,NULL) ON CONFLICT(key) DO UPDATE SET run=excluded.run,reason=excluded.reason,at=excluded.at,owner_clear=NULL",
+        )
+        .run(j.key, j.run, reason, at);
+      this.db
+        .prepare("UPDATE jobs SET status='uncertain' WHERE id=?")
+        .run(j.id);
+    });
   }
   claim(
     p: Policy,
@@ -357,7 +413,12 @@ export class Store {
     return this.atomic(() => {
       now = this.time(now);
       this.clearQuota(p, s);
-      if (this.quotaPaused(keyOf(p, s.pr))) return null;
+      if (
+        this.quotaPaused(keyOf(p, s.pr)) ||
+        this.blocked(keyOf(p, s.pr)) ||
+        this.marked(keyOf(p, s.pr))
+      )
+        return null;
       const t = this.target(keyOf(p, s.pr)),
         fresh = assess(p, s, t, this.consumed()),
         a = p.actors.find((x) => x.id === actor);
@@ -621,6 +682,149 @@ export class Store {
         )
         .run(now - 30 * 86400000);
     });
+  }
+  // W4 row 7: replaces a stored plaintext result with its hash-only form (publication.ts redactedResult),
+  // then truncates the WAL so the old value is not left in the journal either. Exact job and value only.
+  redactResult(j: Job, raw: string, redacted: string): boolean {
+    const changed =
+      Number(
+        this.db
+          .prepare("UPDATE jobs SET result=? WHERE id=? AND run=? AND result=?")
+          .run(redacted, j.id, j.run, raw).changes,
+      ) === 1;
+    this.checkpoint();
+    return changed;
+  }
+  checkpoint(): void {
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  }
+  // W4 row 2: the public commitment the supervisor announced before the worker started. Persisted before
+  // the supervisor is allowed to start the worker, so a restarted dispatcher can still verify the run.
+  // Never replaced, never moved to another job, and a key is never reused.
+  saveRunKey(j: Job, record: RunKey, now: number): void {
+    if (
+      record.run !== j.run ||
+      record.binding !== runBinding(j) ||
+      !/^[a-f0-9]{64}$/.test(record.key)
+    )
+      throw new Error("Run key rejected");
+    this.atomic(() => {
+      const at = this.time(now);
+      const owned = this.job(j.id);
+      if (!owned || JSON.stringify(owned.job) !== JSON.stringify(j))
+        throw new Error("Run key for an unknown job");
+      this.db
+        .prepare("INSERT INTO run_keys(run,job,binding,key,at) VALUES(?,?,?,?,?)")
+        .run(record.run, j.id, record.binding, record.key, at);
+    });
+  }
+  runKeys(): { job: Job; record: RunKey }[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT k.run,k.binding,k.key,j.value FROM run_keys k JOIN jobs j ON j.id=k.job ORDER BY k.at,k.run",
+        )
+        .all() as Row[]
+    ).map((r) => ({
+      job: JSON.parse(String(r["value"])) as Job,
+      record: {
+        run: String(r["run"]),
+        binding: String(r["binding"]),
+        key: String(r["key"]),
+      },
+    }));
+  }
+  // The doctor's capability record (W4: bound to the launch plan by active.ts). null removes it.
+  saveCapability(backend: string, value: unknown, now: number): void {
+    if (!/^[a-z]{1,20}$/.test(backend)) throw new Error("Invalid backend");
+    this.atomic(() => {
+      const at = this.time(now);
+      if (value === null)
+        this.db.prepare("DELETE FROM capability WHERE backend=?").run(backend);
+      else
+        this.db
+          .prepare(
+            "INSERT INTO capability VALUES(?,?,?) ON CONFLICT(backend) DO UPDATE SET value=excluded.value,at=excluded.at",
+          )
+          .run(backend, JSON.stringify(value), at);
+    });
+  }
+  capability(backend: string): unknown {
+    const r = this.db
+      .prepare("SELECT value FROM capability WHERE backend=?")
+      .get(backend) as Row | undefined;
+    return r ? (JSON.parse(String(r["value"])) as unknown) : null;
+  }
+  // Faultfinding evidence for the current pair and policy revision: the latest red-team record this
+  // dispatcher posted itself (Outbox posted = found on GitHub by marker, actor, commit and body hash).
+  faultfinding(
+    key: string,
+    pair: { head: string; base: string },
+    policy: string,
+  ): Snapshot["faultfinding"] {
+    for (const r of this.db
+      .prepare(
+        "SELECT o.value AS outbox, j.value AS job FROM outbox o JOIN jobs j ON j.id=o.job WHERE o.state='posted' AND o.kind='faultfinding' AND j.key=? ORDER BY j.started DESC, o.rowid DESC",
+      )
+      .all(key) as Row[]) {
+      const j = JSON.parse(String(r["job"])) as Job,
+        v = JSON.parse(String(r["outbox"])) as {
+          actor: number;
+          decision: string;
+          findings?: string[];
+        };
+      if (j.kind !== "faultfinding" || j.policy !== policy || !samePair(j.pair, pair))
+        continue;
+      const findings = Array.isArray(v.findings) ? v.findings.map(String) : [];
+      return {
+        actor: j.actor,
+        pair: { ...j.pair },
+        unresolved:
+          v.decision === "accepted"
+            ? findings
+            : findings.length
+              ? findings
+              : [`faultfinding:${v.decision}`],
+      };
+    }
+    return null;
+  }
+  // Read-only owner summary (status CLI): IDs and states only.
+  status(key: string): {
+    target: Target | null;
+    blocked: { run: string; reason: string; at: number } | null;
+    quota: boolean;
+    marked: boolean;
+    jobs: { kind: string; run: string; status: string; generation: number }[];
+    uncertainOutbox: number;
+  } {
+    return {
+      target: this.target(key),
+      blocked: this.blocked(key),
+      quota: this.quotaPaused(key),
+      marked: this.marked(key),
+      jobs: (
+        this.db
+          .prepare(
+            "SELECT kind,run,status,generation FROM jobs WHERE key=? ORDER BY started DESC LIMIT 20",
+          )
+          .all(key) as Row[]
+      ).map((r) => ({
+        kind: String(r["kind"]),
+        run: String(r["run"]),
+        status: String(r["status"]),
+        generation: Number(r["generation"]),
+      })),
+      uncertainOutbox: Number(
+        (
+          this.db
+            .prepare(
+              "SELECT count(*) AS n FROM outbox o JOIN jobs j ON j.id=o.job WHERE j.key=? AND o.state='uncertain'",
+            )
+            .get(key) as Row
+        )["n"],
+      ),
+    };
   }
   async backup(destination: string): Promise<void> {
     if (

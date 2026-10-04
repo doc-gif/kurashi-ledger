@@ -15,7 +15,30 @@ export const EVENTS: ReadonlySet<string> = new Set([
   "workflow_run",
   "push",
   "issues",
+  "issue_comment", // W4 row 8: conversation comment edits/deletions
 ]);
+// W4 row 8: deliveries that can hide or change a finding. They mark the PR at once (same transaction as
+// the Inbox row); launches and posts for it wait until a reconcile has processed the delivery.
+export const SIGNALS: Readonly<Record<string, readonly string[]>> = {
+  pull_request_review: ["edited", "dismissed"],
+  pull_request_review_comment: ["edited", "deleted"],
+  issue_comment: ["edited", "deleted"],
+};
+export function signalKey(
+  p: Policy,
+  event: string,
+  payload: Record<string, unknown>,
+): string | null {
+  if (!(SIGNALS[event] ?? []).includes(String(payload["action"]))) return null;
+  const holder =
+    event === "issue_comment" ? payload["issue"] : payload["pull_request"];
+  if (!holder || typeof holder !== "object") return null;
+  const h = holder as Record<string, unknown>;
+  // An issue_comment marks only a pull request conversation, never a plain issue.
+  if (event === "issue_comment" && !h["pull_request"]) return null;
+  const pr = h["number"];
+  return Number.isSafeInteger(pr) && Number(pr) > 0 ? `${p.repoId}:${pr}` : null;
+}
 export function ingest(
   p: Policy,
   store: Store,
@@ -50,7 +73,14 @@ export function ingest(
     )
       return 403;
     // Signed payload remains untrusted evidence. Only a later complete gh collection can authorize Ready.
-    store.inbox(p.receiveAppId, delivery, event, raw.toString("utf8"), now);
+    store.inbox(
+      p.receiveAppId,
+      delivery,
+      event,
+      raw.toString("utf8"),
+      now,
+      signalKey(p, event, payload),
+    );
     return 202;
   } catch {
     return 503;
@@ -96,15 +126,29 @@ export function ingestOversized(
   }
   return 413;
 }
+// Loopback only, on a fixed unprivileged port other than 443 (the confined CLI may reach TCP 443; its
+// profile also denies loopback). Port 0 (an ephemeral port) is for tests. `stored` runs after each 202
+// (the CLI touches the cycle trigger file).
+export function receiverPort(port: number): number {
+  if (
+    !Number.isInteger(port) ||
+    port === 443 ||
+    (port !== 0 && (port < 1024 || port > 65535))
+  )
+    throw new Error("Receiver port must be 1024-65535 and not 443");
+  return port;
+}
 export function serve(
   p: Policy,
   store: Store,
   secret: Buffer,
   now: () => number,
   port = 0,
+  stored: () => void = () => {},
 ): Server {
-  if (p.mode !== "shadow")
-    throw new Error("Live webhook activation is deferred");
+  if (p.mode !== "shadow" && p.mode !== "active")
+    throw new Error("Webhook receiver is off");
+  receiverPort(port);
   const server = createServer((req, res) => {
     const reply = (status: number) => {
       if (!res.writableEnded) {
@@ -146,11 +190,17 @@ export function serve(
         const v = req.headers[key];
         headers[key] = typeof v === "string" ? v : undefined;
       }
-      reply(
+      const status =
         size > MAX_BODY
           ? ingestOversized(p, store, secret, headers, mac.digest(), size, now())
-          : ingest(p, store, secret, headers, Buffer.concat(chunks), now()),
-      );
+          : ingest(p, store, secret, headers, Buffer.concat(chunks), now());
+      reply(status);
+      if (status === 202)
+        try {
+          stored();
+        } catch {
+          // The delivery is durable; the 15-minute reconcile still picks it up.
+        }
     });
     req.on("error", () => {
       clearTimeout(timer);
