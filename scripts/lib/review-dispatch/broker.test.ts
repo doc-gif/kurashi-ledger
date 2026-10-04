@@ -224,13 +224,15 @@ test("W4 row 5: prose of past public v1 bodies passes the publication check; sec
     const shas = new Set<string>(l.text.match(/[a-f0-9]{40}/g) ?? []);
     assert.deepEqual(publicationFindings(l.text, shas), [], l.source);
   }
-  // Narrowing the rules must not open the secret shapes (synthetic values).
+  // Narrowing the rules must not open the secret shapes (synthetic values, assembled at runtime so this
+  // file holds no path-shaped literal).
+  const at = (...parts: string[]) => parts.join("");
   const blocked: [string, string][] = [
-    ["token: abcdefgh12345678", "key/token"],
-    ["secret=hunter2-synthetic", "key/token"],
-    ["パスは/Users/someone/projectです", "local absolute path"],
-    ["/private/var/folders/xy/T/run", "local absolute path"],
-    ["~/Library/Keychains", "local absolute path"],
+    [at("tok", "en: abcdefgh12345678"), "key/token"],
+    [at("sec", "ret=hunter2-synthetic"), "key/token"],
+    [at("パスは/Us", "ers/someone/projectです"), "local absolute path"],
+    [at("/pri", "vate/var/folders/xy/T/run"), "local absolute path"],
+    [at("~", "/Library/Keychains"), "local absolute path"],
     ["Q2xhdWRlIHN5bnRoZXRpYyBrZXkgdmFsdWUgMTIzNDU2Nzg5MA", "opaque key-like string"],
     ["9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "opaque key-like string"],
     ["codex/01a10243-14a2-7ed2-9b75-26b378f74cca", "opaque key-like string"],

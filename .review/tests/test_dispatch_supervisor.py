@@ -447,14 +447,14 @@ class WorkerTests(unittest.TestCase):
         try:
             p.stdin.write(plan)
             p.stdin.flush()
-        except BrokenPipeError:
-            pass  # A refused request may end before reading its plan.
+        except OSError:
+            pass  # A refused request may end before reading its plan (EPIPE, or EINVAL on Windows).
         first = p.stdout.readline()
         try:
             if ack:
                 p.stdin.write(b'ack\n')
             p.stdin.close()
-        except BrokenPipeError:
+        except OSError:
             pass
         rest = p.stdout.read()
         p.stdout.close()

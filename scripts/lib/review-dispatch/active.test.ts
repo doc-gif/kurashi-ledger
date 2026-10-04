@@ -313,9 +313,10 @@ test("W4 Claude runner: the key is stored before ack, the plan goes only through
     const j = x.d.store.claim(x.p, x.s, 30, "faultfinding", 100)!;
     x.d.store.running(j);
     if (process.platform === "win32") {
-      // The dispatcher runs on macOS only; on Windows the temporary paths are not canonical POSIX paths.
-      const r = await x.runner.run(j);
-      assert.equal(r.neverStarted, true);
+      // The dispatcher runs on macOS only: on Windows the runs directory has no POSIX owner-only mode and
+      // the paths are not canonical POSIX paths, so the runner refuses before any supervisor starts.
+      await assert.rejects(x.runner.run(j), /runs-directory/);
+      assert.equal(x.calls.length, 0);
       return;
     }
     let storedAtAck = 0;
