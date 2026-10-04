@@ -169,6 +169,9 @@ const EXCHANGE_MAX_BYTES = 1024;
 export const MAX_CONNECTIONS = 128;
 // 接続したまま最初の要求を送らないソケットを閉じるまでの時間（Node.jsのheadersTimeoutは、要求が始まるまで数えない）。
 export const FIRST_REQUEST_TIMEOUT_MS = 30_000;
+// 要求の全体（ヘッダと本文）を受け取るまでの上限（Node.jsの既定は300秒）。ローカルのUIの要求は小さく、本文の上限は
+// 宣言した最大でも数MiBなので、loopbackでは60秒で十分。遅い送信で接続を長く占有されにくくする（追加の防御）。
+export const REQUEST_TIMEOUT_MS = 60_000;
 
 function validateRoutes(routes: readonly ApiRoute[]): void {
   const seen = new Set<string>();
@@ -442,6 +445,9 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   if (uiSources > 1) throw new Error('配信ルート（staticRoot）・読み出し元（staticSource）・開発時の口（dev）は、同時に使えない。');
   const routes = options.api ?? [];
   validateRoutes(routes);
+  if (options.firstRequestTimeoutMs !== undefined && (!Number.isSafeInteger(options.firstRequestTimeoutMs) || options.firstRequestTimeoutMs < 0)) {
+    throw new Error(`firstRequestTimeoutMs ${options.firstRequestTimeoutMs} は0以上の整数でない。`);
+  }
   const writeLog = options.log ?? (() => {});
   const log = (event: LogEvent): void => writeLog(formatLogLine(event));
   // 起動の前に、渡されたディレクトリと配信ルートを確かめる（どちらも、作らない・変えない）。
@@ -487,16 +493,12 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
   const shutdown = new AbortController();
 
   // 拒否の応答。処理やmiddlewareが付けたヘッダは外し（Connectionだけ残す）、理由はサーバーが記録する。本文のある要求を
-  // 読み切らずに拒否したときは、接続を閉じる（残りの本文の解析の誤りに、同じ接続で2つ目の応答を書かないため）。
+  // 読み切らずに書き出す応答の接続を閉じるのは、出口（enforceResponseHeaders）で行う。
   const reject = (res: ServerResponse, rejection: Rejection, api: boolean): void => {
     for (const name of res.getHeaderNames()) if (name !== 'connection') res.removeHeader(name);
     res.statusCode = rejection.status;
     if (rejection.status === 405 && !api) res.setHeader('Allow', 'GET, HEAD');
     setResponseReason(res, rejection.code);
-    const req = res.req as IncomingMessage | undefined;
-    if (req !== undefined && !req.complete && (req.headers['transfer-encoding'] !== undefined || (req.headers['content-length'] ?? '0') !== '0')) {
-      res.setHeader('Connection', 'close');
-    }
     if (api) {
       const body = Buffer.from(JSON.stringify({ error: rejection.code }), 'utf8');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -745,6 +747,7 @@ export async function startLocalServer(options: LocalServerOptions): Promise<Loc
 
   // 接続の数の上限と、最初の要求までの時間切れ（接続したまま何も送らないソケットでfdを使い切られないように）。
   server.maxConnections = MAX_CONNECTIONS;
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.on('drop', () => log({ kind: 'connection-dropped' }));
   const firstRequestTimeoutMs = options.firstRequestTimeoutMs ?? FIRST_REQUEST_TIMEOUT_MS;
   server.on('connection', (socket: Duplex) => {

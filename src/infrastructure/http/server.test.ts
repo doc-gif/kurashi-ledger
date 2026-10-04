@@ -16,6 +16,7 @@ import {
   LOGGABLE_ERROR_CODES,
   MAX_CONNECTIONS,
   PortInUseError,
+  REQUEST_TIMEOUT_MS,
   devRequestContext,
   loggableErrorCode,
   startLocalServer,
@@ -1684,6 +1685,7 @@ test('応答・upgradeとCONNECTのソケット・serverの誤りはプロセス
     // 拒否するupgradeのソケットに誤り（F4）: 処理の最初に付けたlistenerが受ける。
     const httpServer = await captureServer(server.port);
     assert.equal(httpServer.maxConnections, MAX_CONNECTIONS);
+    assert.equal(httpServer.requestTimeout, REQUEST_TIMEOUT_MS);
     const injector = (_req: IncomingMessage, socket: import('node:stream').Duplex): void => {
       process.nextTick(() => socket.emit('error', Object.assign(new Error('synthetic'), { code: 'ECONNRESET' })));
     };
@@ -1747,6 +1749,53 @@ test('確かめた結果（VerifiedDirectory）は、verifyTokenDirectoryが返�
     assert.equal(readdirSync(tmp.path).length, 0);
     const server = await startLocalServer({ port: 0, tokenDirectory: real });
     await server.close();
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('本文のある要求を読み切る前に書き出す成功の応答も接続を閉じ、残りの本文の誤りに2つ目の応答を書かない（N1）', async () => {
+  const dev = { middleware: (_req: IncomingMessage, res: ServerResponse) => void res.end('synthetic') };
+  const check = async (port: number, head: string, expected: number, label: string): Promise<void> => {
+    let sent = false;
+    const res = await exchangeRaw(port, head, (socket) => {
+      if (sent) return;
+      sent = true;
+      socket.write('ZZ\r\n');
+    });
+    assert.equal(rawHead(res.raw).statusLines, 1, `${label}\n${res.raw}`);
+    assert.match(res.raw, new RegExp(`^HTTP/1\\.1 ${expected} `), label);
+    assert.equal(rawHead(res.raw).fields.get('connection'), 'close', label);
+    assert.equal(res.closed, true, label);
+  };
+  const chunked = 'Transfer-Encoding: chunked\r\n\r\n';
+  await withServer({}, async ({ server, logs }) => {
+    const host = `Host: 127.0.0.1:${server.port}\r\n`;
+    await check(server.port, `GET /launch HTTP/1.1\r\n${host}${chunked}`, 200, 'launch');
+    const cookie = await exchange(server);
+    await check(server.port, `GET /api/test/state HTTP/1.1\r\n${host}Cookie: ${cookie}\r\nKurashi-Ledger-Launch-Id: ${server.launchId}\r\n${chunked}`, 200, 'api');
+    // 本文のない要求は、keep-aliveのまま。
+    const plain = await exchangeRaw(server.port, `GET /launch HTTP/1.1\r\n${host}\r\n`, undefined, 500);
+    assert.equal(rawHead(plain.raw).fields.has('connection') && rawHead(plain.raw).fields.get('connection') === 'close', false);
+    assert.equal(logs.some((l) => l.startsWith('CLIENT-ERROR ') && !l.endsWith('closed-without-response')), false, logs.join('\n'));
+  });
+  const tmp = ownerOnlyTempDirectory('n1-dev');
+  const server = await startLocalServer({ port: 0, tokenDirectory: tmp.path, dev });
+  try {
+    await check(server.port, `GET /page HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n${chunked}`, 200, 'dev');
+  } finally {
+    await server.close();
+    tmp.cleanup();
+  }
+});
+
+test('firstRequestTimeoutMsは0以上の整数だけを受け付ける', async () => {
+  const tmp = ownerOnlyTempDirectory('first-timeout-option');
+  try {
+    for (const value of [-1, Number.NaN, 1.5, Number.POSITIVE_INFINITY]) {
+      await assert.rejects(startLocalServer({ port: 0, tokenDirectory: tmp.path, firstRequestTimeoutMs: value }), /firstRequestTimeoutMs/, String(value));
+    }
+    assert.equal(readdirSync(tmp.path).length, 0);
   } finally {
     tmp.cleanup();
   }

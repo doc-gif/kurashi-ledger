@@ -3,10 +3,11 @@
 // 暗黙に呼ぶ_implicitHeaderもthis.writeHeadを呼ぶ）を、1か所の包みに置き換える。包みは、Node.js v24.21.0の
 // writeHeadと同じ規則でヘッダの引数を解いてsetHeader・appendHeaderへ移し、最後に必須のヘッダを付け直し、CORSの
 // ヘッダ（Access-Control-*）と、サーバーが決めていない理由のヘッダを外し、元の関数には状態と文字列のreasonだけを渡す。
-// 状態は200〜599の整数だけ（informational応答（1xx）は所有者の決定で禁止）。trailersも禁止する。
+// 状態は200〜599の整数だけ（informational応答（1xx）は所有者の決定で禁止）。trailersも禁止する。本文のある要求を読み切る
+// 前に書き出す応答は、接続を閉じる。
 // prototypeの直接呼出し・内部のメソッド・ソケットへの直接の書込みは公開のインスタンスのAPIではなく、組み込むコード
 // （T08のVite）の責任とする。
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // 本番の応答のCSP（ADR-0003の7の初期値）。インラインのscript・eval・外部の資源を許可しない。
 export const PRODUCTION_CSP =
@@ -127,6 +128,12 @@ export function enforceResponseHeaders(res: ServerResponse, csp: string): void {
       }
     }
     apply();
+    // 本文のある要求を読み切る前に応答を書き出すときは、接続を閉じる（成功・拒否によらない）。残りの本文の解析の誤りに、
+    // 同じ接続で2つ目の応答を書かないため（レッドチームのF9・N1）。
+    const req = res.req as IncomingMessage | undefined;
+    if (req !== undefined && !req.complete && (req.headers['transfer-encoding'] !== undefined || (req.headers['content-length'] ?? '0') !== '0')) {
+      res.setHeader('Connection', 'close');
+    }
     return typeof reason === 'string' ? original(statusCode, reason) : original(statusCode);
   };
   // 別名（writeHeader）も同じ包みにする。middleware（on-headers等）が包み直せるよう、書換えは禁じない
