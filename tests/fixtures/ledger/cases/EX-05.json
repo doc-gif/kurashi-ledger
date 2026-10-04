@@ -1232,7 +1232,7 @@
           "op": "save",
           "opId": "o2",
           "at": "2027-01-11T00:00:00.000Z",
-          "expect": {"outcome": "rejected", "reason": "newer-content-read-only"},
+          "expect": {"outcome": "rejected", "reason": "read-only-unknown-content"},
           "record": {"id": "pay_507", "recordType": "payslip", "revision": 2, "reason": "void", "changeNote": {"state": "known", "value": "取り消す"}}
         }
       ],

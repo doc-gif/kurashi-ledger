@@ -29,7 +29,7 @@
 | `unconfirmedItems` | 文そのもの（同じ文を重ねない） | 意味はない |
 | `inputs.requests` | `kind`と中身の全体（同じ要求を重ねない） | 意味はない |
 | `inputs.decisions`の各要素の`itemPremisesAtRun` | `item`（同じ項目を重ねない） | 意味はない |
-| `inputs.attributionRules` | `incomeTimingKind`（区分ごとに1つ） | 意味はない |
+| `inputs.attributionRules` | `incomeTimingKind`の値の文字列（区分ごとに1つ。拡張できる列挙をキーにする例外。[共通の型](common-types.md)の1） | 意味はない |
 
 **参照の固定:** 計算runの中のすべての`Ref`（`inputs`の各項目、`AdoptionSnapshot`の`adoptedRef`、`Assumption`・`MissingInput`の`ref`、`ResultItem`の`explanationRefs`）は、`revision`に整数を使い、`current`を使わない。後日の改訂で、過去のrunの入力や根拠の表示が変わらないようにするため。
 

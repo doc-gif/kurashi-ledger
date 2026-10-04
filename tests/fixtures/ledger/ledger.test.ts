@@ -71,7 +71,7 @@ const SCENARIO_REASONS: ReadonlySet<string> = new Set([
   "write-request-conflict",
 ]);
 const SEMANTIC_REASONS: ReadonlySet<string> = new Set([
-  "newer-content-read-only",
+  "read-only-unknown-content",
   "supersede-dimension-mismatch",
   "supersede-shape",
   "employment-term-overlap",
@@ -540,7 +540,7 @@ function replayOps(
           if (replay) problems.add(w, "同じwriteRequestIdで同じ内容の保存は、新しい記録を作らない（replayed）");
           if (importHit !== undefined) problems.add(w, `同じimportKeyの記録${importHit}がある（existing-returned）`);
           if (codes.size > 0) problems.add(w, `acceptedを期待するが、契約の保存の条件に当たる: ${[...codes].join(", ")}`);
-          if (newer) problems.add(w, "acceptedを期待するが、この版が知らない値・項目を持つ記録の改訂（newer-content-read-only）");
+          if (newer) problems.add(w, "acceptedを期待するが、この版が知らない値・項目を持つ記録の改訂（read-only-unknown-content）");
           const stored = { ...rec, __opId: opId, __seq: state.seq + 1, __at: op["at"] };
           state.records.set(id, [...(state.records.get(id) ?? []), stored]);
           if (!state.createdBy.has(id)) state.createdBy.set(id, opId);
@@ -557,8 +557,8 @@ function replayOps(
             if (!codes.has(reason)) problems.add(w, `拒否の理由${reason}を期待するが、記録にその違反がない（見つかったもの: ${[...codes].join(", ") || "なし"}）`);
           } else if (codes.size > 0) {
             problems.add(w, `意味の判定による拒否${reason}を期待するが、記録だけで判定できる違反もある（理由が一意に決まらない）: ${[...codes].join(", ")}`);
-          } else if (reason === "newer-content-read-only" && !newer) {
-            problems.add(w, "newer-content-read-onlyを期待するが、記録はこの版が知らない値・項目を持たない");
+          } else if (reason === "read-only-unknown-content" && !newer) {
+            problems.add(w, "read-only-unknown-contentを期待するが、記録はこの版が知らない値・項目を持たない");
           }
         } else if (outcome === "replayed") {
           if (!replay || seen === undefined || expect["of"] !== seen.opId) problems.add(w, "replayedを期待するが、同じwriteRequestIdで同じ内容の先の保存がない");
