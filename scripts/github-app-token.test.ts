@@ -1437,3 +1437,13 @@ test('スクリプトを実行しても、引数の誤りと鍵ファイルの�
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('dispatch-read grants exactly read-only repo/evidence scope; rejects extra/missing permissions before gh', async () => {
+  assert.deepEqual(PURPOSES['dispatch-read'], {contents:'read',pull_requests:'read',issues:'read',actions:'read',checks:'read',statuses:'read'});
+  const args=['--agent','codex','--purpose','dispatch-read',...ID_ARGS,'--','gh','api','repos/synthetic/repository'];
+  const ok=harness([{status:201,body:grantedBody('dispatch-read')},LISTED,REVOKED]);assert.equal(await run(args,ok.deps),0);assert.equal(ok.children.length,1);
+  for(const permissions of [{...PURPOSES['dispatch-read'],metadata:'read',pull_requests:'write'}, {...PURPOSES['dispatch-read'],metadata:'read',issues:undefined}]){
+    const h=harness([{status:201,body:grantedBody('dispatch-read',{permissions})},REVOKED]);
+    assert.equal(await run(args,h.deps),EXIT_OWN_FAILURE);assert.equal(h.children.length,0);
+  }
+});

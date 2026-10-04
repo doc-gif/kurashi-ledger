@@ -37,7 +37,7 @@ export const JWT_BACKDATE_SECONDS = 60;
 export const JWT_LIFETIME_SECONDS = 9 * 60;
 
 export type Agent = 'codex' | 'claude';
-export type Purpose = 'review' | 'implement' | 'implement-workflows';
+export type Purpose = 'review' | 'dispatch-read' | 'implement' | 'implement-workflows';
 export type PermissionLevel = 'read' | 'write';
 
 // AIの身元（GitHub App）ごとの設定。2つのAppは同じ権限を持ち、どちらのAIも実装とレビューを行う。
@@ -70,6 +70,7 @@ const IMPLEMENT = { contents: 'write', pull_requests: 'write', issues: 'write', 
 export const PURPOSES: Readonly<Record<Purpose, Readonly<Record<string, PermissionLevel>>>> = {
   // レビューの投稿（PRのレビューとPRへのコメント）とCIの結果の読取り。PRへのコメントはpull_requests:writeで書ける
   // ので、issues:writeは入れない（Issueへの書込みが要る作業はimplementで行う）。
+  'dispatch-read': { contents: 'read', pull_requests: 'read', issues: 'read', ...CI_READ },
   review: { pull_requests: 'write', contents: 'read', ...CI_READ },
   // branchのpush、PR・Issue・コメントの作成、マージ。.github/workflows/は変えられない。
   implement: IMPLEMENT,
@@ -119,6 +120,7 @@ PRのcheckoutから実行しない（docs/github-apps.md の「信頼した写�
 
   --agent <codex|claude>          必須。どのAIのAppか。キーチェーンのserviceと環境変数を決める
   --purpose <用途>                必須。トークンを縮小する権限
+                                    dispatch-read:       ${permissionList('dispatch-read')}
                                     review:              ${permissionList('review')}
                                     implement:           ${permissionList('implement')}
                                     implement-workflows: ${permissionList('implement-workflows')}
@@ -145,7 +147,7 @@ export function isAgent(value: string): value is Agent {
 }
 
 export function isPurpose(value: string): value is Purpose {
-  return value === 'review' || value === 'implement' || value === 'implement-workflows';
+  return value === 'dispatch-read' || value === 'review' || value === 'implement' || value === 'implement-workflows';
 }
 
 export function validateId(value: string | undefined, what: string): string {
@@ -188,8 +190,8 @@ export function parseArgs(argv: readonly string[], env: Readonly<Record<string, 
   if (agent === undefined) throw new UsageError('--agentがない（codex か claude）。');
   if (!isAgent(agent)) throw new UsageError('--agentは codex か claude。');
   const purpose = values.get('--purpose');
-  if (purpose === undefined) throw new UsageError('--purposeがない（review・implement・implement-workflows）。');
-  if (!isPurpose(purpose)) throw new UsageError('--purposeは review・implement・implement-workflows のどれか。');
+  if (purpose === undefined) throw new UsageError('--purposeがない（dispatch-read・review・implement・implement-workflows）。');
+  if (!isPurpose(purpose)) throw new UsageError('--purposeは dispatch-read・review・implement・implement-workflows のどれか。');
   const profile = AGENTS[agent];
 
   const appId = validateId(values.get('--app-id') ?? env[profile.appIdEnv], `AppのID（--app-id か ${profile.appIdEnv}）`);

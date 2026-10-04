@@ -87,6 +87,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
+  | `dispatch-read` | contents・pull_requests・issues・actions・checks・statuses:read（metadata:readは追加分） | Codex Appによる受付の取得・shadow照合。書込み・worker用認証には使わない |
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
@@ -261,3 +262,9 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 | administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
+
+## レビュー受付の読取り用途
+
+`dispatch-read`はcontents、pull_requests、issues、actions、checks、statusesをreadに限定します。metadata:readはGitHubの追加分です。書込み・Administration・workflowsは付けません。変更は権限制御として独立レビューし、承認済みmainの固定版へownerが更新してから使います。実鍵の試験をPR checkoutから行わないでください。
+
+[受付の導入手順](review-dispatch-implementation.md)は既定offです。用途追加だけでWebhook・実AI・投稿・rulesetを有効にしません。
