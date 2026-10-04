@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "task_id": "OPS-dispatch-active",
-  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "base_sha": "f0d88c9288ff31c5f48afcbf98ec3432bc6f23fa",
   "planned_paths": [
     "docs/review-dispatch-implementation.md",
     "scripts/lib/review-dispatch/broker.ts",
