@@ -14,6 +14,7 @@
   },
   "scripts": {
     "setup": "node scripts/setup.ts",
+    "start": "node src/start.ts",
     "check:install": "node scripts/check-install.ts",
     "build": "node scripts/build.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",

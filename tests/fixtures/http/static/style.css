@@ -1,0 +1,4 @@
+/* HTTPの境界の試験（T26）で使う合成の固定のスタイル。 */
+body {
+  font-family: sans-serif;
+}

@@ -13,7 +13,7 @@
 
 ## 公開済みの範囲
 
-設計文書、AI指示、PRテンプレート、レビュー運用ツールと試験、開発用スクリプトと試験、CI・ブラウザ試験基盤を共有している。**利用できるアプリ、計算エンジン、製品の試験はまだない。** ローカルの未追跡試作を自動的に公開しない。
+設計文書、AI指示、PRテンプレート、レビュー運用ツールと試験、開発用スクリプトと試験、CI・ブラウザ試験基盤を共有している。**利用できるアプリ（画面・記録）と計算エンジンはまだない。** ローカルの未追跡試作を自動的に公開しない。
 
 | 対象 | 正本・状態 |
 |---|---|
@@ -25,6 +25,7 @@
 | 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
 | Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-04の所有者決定で任意の補助レビューとした。指摘は評価・対応するが、応答・利用枠不足・未対応指摘の有無は独立したマージ条件にしない。[正本](github-agent-operations.md#merge-conditions) |
 | AIのGitHub App | 2026-10-03の所有者決定（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに1つずつ、同じ権限（Administrationなし）のApp（AIの身元）を所有者が作成し、このrepoだけにインストールした。トークンは`scripts/github-app-token.ts`が発行してコマンドを実行する（表示しない）。mainのrulesetに削除の制限と強制pushの禁止を加えた。実際の鍵での確認・移行・承認の規則は所有者の確認待ち。手順は[AIのGitHub App](github-apps.md) |
+| 製品の試験: HTTPの境界（T26） | #24。`src/infrastructure/http/`にADR-0003の境界とT08がViteを組み込む口を置き、その試験を`src/`の`*.test.ts`と`e2e/http-boundary.spec.ts`で行う。詳細は[ADR-0009](adr/0009-local-http-implementation.md)、手順は[開発環境](development.md)の「ローカルHTTPサーバー」。`npm start`は骨格だけで、画面・記録・DBはなく、データルートを開かない（つなぎ込みはT09） |
 | 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
 次の着手は計画の依存関係に従う。完了済みのT05はT26/T08が使う試験基盤を提供している。日々の作業一覧をここへ複製しない。作業中Draft、レビュー依頼Open、最新SHAの引継ぎと独立レビューは[PRループ](pr-review-loop.md)に従う。[T00開始プロンプト](first-worker-prompt.md)は歴史的記録で、新規担当への許可ではない。[worktree運用](local-worktrees.md)も確認する。

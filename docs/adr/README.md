@@ -21,14 +21,15 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | --- | --- | --- |
 | 0001 | [小さなアプリと明示的な境界](../architecture.md)（既存の`docs/architecture.md`） | 方向性として確定（T00で状態欄を更新）。言語（TypeScript）と単一アプリの方針はADR-0002で確定する |
 | [0002](0002-runtime-and-distribution.md) | 実行方式・ランタイム・配布・起動と更新の手順 | Accepted |
-| [0003](0003-local-http-boundary.md) | ローカルHTTPの安全境界 | Proposed |
+| [0003](0003-local-http-boundary.md) | ローカルHTTPの安全境界 | Accepted |
 | [0004](0004-ui-and-browsers.md) | UI構成と対応ブラウザ | Proposed |
 | [0005](0005-sqlite-driver.md) | SQLiteドライバ | Accepted |
 | [0006](0006-data-location-backup-encryption.md) | データ保管先・バックアップ・暗号化・同期の扱い | Proposed |
 | [0007](0007-shared-safety-checks.md) | 共通の安全確認（G1〜G7）と、操作ごとの適用表（修正の影響範囲の一覧） | Proposed |
 | [0008](0008-install-record.md) | 依存の導入の記録の形式と照合の方法（T02。ADR-0002で後に決めるとした部分） | Accepted |
+| [0009](0009-local-http-implementation.md) | ローカルHTTPの境界の実装の詳細（T26。ADR-0003でT26が決めるとした起動の識別子、トークンの交換、一時ファイルと本人だけの権限の基準） | Proposed |
 
-`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0009以降の番号を使う（0008はT02で使った）。
+`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0010以降の番号を使う（0008はT02、0009はT26で使った）。
 
 ## T00の決定の要約
 
