@@ -188,7 +188,10 @@ required_reviewers: <login/App IDの一覧>
 3. ownerがpolicyへそのPRを加える。新しいrevisionと、切替時刻の`readyAfter`を付ける。
 4. 調整係が所有者の指示の受領記録を投稿し、受付が通知を出す。どちらも表示だけ。
 5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は、activeの証跡にしない。
-6. 実装担当が新しくDraft→Readyにする。
+6. 実装担当のReadyの前に、ownerが、受領記録か通知がそのPRに出ていることを確かめる。
+7. 実装担当が新しくDraft→Readyにする。
+
+受領記録も通知も見えないAIは、そのPRを旧規則で扱う。ただし、ownerのrepo外の設定に並んだPRなら、旧規則でもマージしない。
 
 ### rollback（PRごと、または全体）
 
