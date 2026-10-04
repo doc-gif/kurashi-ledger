@@ -248,6 +248,34 @@ test("PR48-R016 shadow applies the retention after the reconcile: an old process
   }
 });
 
+test("PR48-R013/R015 a PR held for an hour is reported once; a hold made in the cycle is settled by one more reconcile", async () => {
+  const { heldNotices, settleNow, HELD_NOTICE_MS } = await import("./review-dispatch.ts");
+  const { database, policy, claim } = await import("../tests/fixtures/review-dispatch.ts");
+  const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
+  const d = database();
+  try {
+    const lines: string[] = [];
+    const held = [{ pr: 1, heldSince: 100 }, { pr: 2, heldSince: null }];
+    heldNotices(held, d.store, 100 + HELD_NOTICE_MS - 1, (s) => lines.push(s));
+    assert.equal(lines.length, 0);
+    for (let n = 0; n < 2; n++) heldNotices(held, d.store, 100 + HELD_NOTICE_MS, (s) => lines.push(s));
+    assert.equal(lines.length, 1);
+    assert.match(lines[0]!, /^PR #1: 照合が1時間以上不完全のままです/);
+    const p = policy();
+    const j = claim(d.store, p);
+    d.store.running(j);
+    d.store.block(j, "publication", 101);
+    const github = { ready: true, now: 9, calls: 0 };
+    await settleNow(p, d.store, fakeGitHub(github));
+    assert.equal(d.store.blocked(j.key)!.at, Date.parse("2026-01-01T00:00:09.000Z"));
+    const calls = github.calls;
+    await settleNow(p, d.store, fakeGitHub(github)); // nothing pending: no GitHub read
+    assert.equal(github.calls, calls);
+  } finally {
+    d.cleanup();
+  }
+});
+
 // Shared pieces for the CLI tests of the active path (Codex PR56-R003/R005).
 async function activeCli() {
   const fs = await import("node:fs");

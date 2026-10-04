@@ -46,6 +46,8 @@ export type Observation = {
   accepted: boolean;
   legacyAccepted: boolean;
   acceptedDiffers: boolean;
+  // PR48-R014: a human reviewer's manual red-team record (comparison only): its open IDs, or null.
+  manualFaultfinding: string[] | null;
 };
 const actorId = (v: unknown): number | null => {
   const id = object(v)["id"];
@@ -237,12 +239,16 @@ function legacyAccepted(c: Collection, p: Policy): boolean {
     );
   });
 }
-// PR48-R014: a person's manual red-team record (pr-review-loop.md 担当: 人なら同じ書式で手動). It counts only
-// from an assigned reviewer who is a human and independent (reviewerEligible), with the marker on the first
-// line and this exact head/base. Unresolved: every RT ID in any registered participant's red-team record of
-// this PR, unless the latest record has a table row whose cells are exactly that ID and `解消` or `対応不要`;
-// every ledger cause the record judges `該当` or `確認できない`. Edits are R007 findings (`issue:<ID>`).
-export function manualFaultfinding(p: Policy, c: Collection): Snapshot["faultfinding"] {
+// PR48-R014: a person's manual red-team record (pr-review-loop.md 担当: 人なら同じ書式で手動), read for the
+// shadow COMPARISON only. It never feeds the gate (snapshot.faultfinding) until its coverage matches the AI
+// side (the whole ledger, a re-check of every earlier record, readyAfter). It counts only from an assigned,
+// independent human reviewer, with the marker on the first line and this exact head/base. In its tables
+// (header rows skipped): a cause whose judgement does not start with `該当なし` is open; an RT row is resolved
+// only by `解消`, or `対応不要` with a reason. Every RT ID in any registered participant's record is open
+// unless resolved so. null: no such record.
+const RT_CELL = /^RT-[1-9][0-9]{0,2}$/,
+  TABLE_RULE = /^\|?\s*:?-{3,}/;
+export function manualFaultfinding(p: Policy, c: Collection): string[] | null {
   const s = c.snapshot;
   const all = records(c).filter(
     (r) => RED_TEAM_MARK.test(r.body) && r.actor !== null && registered(p, r.actor),
@@ -259,20 +265,26 @@ export function manualFaultfinding(p: Policy, c: Collection): Snapshot["faultfin
   if (!latest) return null;
   const resolved = new Set<string>(),
     open = new Set<string>();
-  for (const line of latest.body.normalize("NFKC").split(/\r?\n/)) {
-    const row = line.trim();
-    if (!row.startsWith("|")) continue;
+  const lines = latest.body.normalize("NFKC").split(/\r?\n/).map((x) => x.trim());
+  lines.forEach((row, n) => {
+    if (!row.startsWith("|") || TABLE_RULE.test(row) || TABLE_RULE.test(lines[n + 1] ?? "")) return;
     const cells = row.replace(/^\||\|$/g, "").split("|").map((x) => x.trim());
-    const ids = cells.filter((x) => /^RT-[1-9][0-9]{0,2}$/.test(x));
-    if (ids.length === 1 && cells.some((x) => x === "解消" || x.startsWith("対応不要")) && !row.includes("未解消"))
-      resolved.add(ids[0]!);
-    else if (!ids.length && cells.length >= 2 && ["該当", "確認できない"].includes(cells[1]!))
-      open.add(/^[A-Za-z0-9._/-]{1,120}$/.test(cells[0]!) ? `cause:${cells[0]}` : "cause:unparsed");
-  }
+    const [first = "", judgement = "", rest = ""] = cells;
+    if (RT_CELL.test(first)) {
+      if (
+        judgement === "解消" ||
+        /^対応不要[（(:：]\s*\S/.test(judgement) ||
+        (judgement === "対応不要" && rest !== "")
+      )
+        resolved.add(first);
+      else open.add(first);
+    } else if (!judgement.startsWith("該当なし"))
+      open.add(/^[A-Za-z0-9._/-]{1,120}$/.test(first) ? `cause:${first}` : "cause:unparsed");
+  });
   for (const r of all)
     for (const m of r.body.normalize("NFKC").matchAll(RT_ID))
       if (!resolved.has(`RT-${m[1]}`)) open.add(`RT-${m[1]}`);
-  return { actor: latest.actor!, pair: { ...s.pair }, unresolved: [...open].sort() };
+  return [...open].sort();
 }
 // W4 row 8: change records from signed edit/delete deliveries, so a change made and undone between two
 // reconciles, or made before the first observation, is still raised. Same authors as findings.ts reads:
@@ -331,6 +343,8 @@ export type CycleResult = {
   pr: number;
   snapshot: Snapshot;
   observation: Observation;
+  // PR48-R013: since when (stored local clock) this PR's observation is held as transiently incomplete.
+  heldSince: number | null;
 };
 export async function reconcile(
   reader: GhReader,
@@ -339,6 +353,8 @@ export async function reconcile(
 ): Promise<CycleResult[]> {
   if (p.mode === "off") return [];
   const pending = store.pendingInbox();
+  // PR48-R015: holds created before this fetch began; this reconcile's server time is after their creation.
+  const unsettled = store.unsettledHolds();
   const deliveries = pending.map((row) => ({
     row,
     payload: object(JSON.parse(String(row["payload"]))),
@@ -436,14 +452,9 @@ export async function reconcile(
       (e) => !e.id.startsWith("activity:"),
     );
     apply(c, ready, reviews, p);
-    // The red-team record this dispatcher posted for this pair and policy revision (an AI reviewer's
-    // faultfinding job) and a human reviewer's manual record (PR48-R014). Both: their unresolved IDs together.
-    const own = store.faultfinding(key, c.snapshot.pair, p.revision),
-      manual = manualFaultfinding(p, c);
-    c.snapshot.faultfinding =
-      own && manual
-        ? { ...own, unresolved: [...new Set([...own.unresolved, ...manual.unresolved])].sort() }
-        : (own ?? manual);
+    // The red-team record this dispatcher posted for this pair and policy revision (the AI reviewer's
+    // faultfinding job). A person's manual record is compared only (PR48-R014).
+    c.snapshot.faultfinding = store.faultfinding(key, c.snapshot.pair, p.revision);
     const assessed = assess(p, c.snapshot, store.target(key), store.consumed());
     const legacy = legacyReady(c, p),
       dispatcherAccepted = accepted(p, c.snapshot, assessed),
@@ -464,11 +475,13 @@ export async function reconcile(
       accepted: dispatcherAccepted,
       legacyAccepted: currentAccepted,
       acceptedDiffers: dispatcherAccepted !== currentAccepted,
+      manualFaultfinding: manualFaultfinding(p, c),
     };
-    // PR48-R013: transient incompleteness (the PR or main changed during the fetch, a missing commit page).
-    // An untrusted workflow is not transient: it is processed as before, so a Ready that arrived before the
-    // owner recorded the trust is never bound later (review-dispatch-implementation.md workflowの信頼 3).
-    if (!c.snapshot.complete && c.workflow !== "untrusted") held.add(target.pr);
+    // PR48-R013: transient incompleteness (the PR, its state or main changed during the fetch, a short commit
+    // page) holds everything. Permanent causes alone (an untrusted workflow evaluated on a stable pair, the
+    // 250-commit list limit) are processed without binding, so a Ready that arrived before the owner recorded
+    // the trust is never bound later (review-dispatch-implementation.md workflowの信頼 3).
+    if (c.transient) held.add(target.pr);
     else
       updates.push({
         key,
@@ -478,7 +491,7 @@ export async function reconcile(
         items: c.findingItems,
         changes: [...signals, ...c.findingChanges],
       });
-    results.push({ pr: target.pr, snapshot: c.snapshot, observation });
+    results.push({ pr: target.pr, snapshot: c.snapshot, observation, heldSince: null });
   }
   // Any failed page/batch leaves Inbox pending and prior observation intact. A crash rolls back BOTH bindings and tombstones.
   store.atomic(() => {
@@ -492,7 +505,9 @@ export async function reconcile(
       for (const r of update.changes)
         store.saveEvidence(update.key, "itemchange", changeKey(r), r);
       store.saveObservation(update.key, update.observation);
+      store.settleHolds(update.key, update.observation.observedAt, unsettled);
     }
+    for (const r of results) r.heldSince = store.heldSince(keyOf(p, r.pr), held.has(r.pr));
     for (const { row, payload } of deliveries) {
       const pr = deliveryPr(String(row["event"]), payload);
       if (pr === null || !held.has(pr))

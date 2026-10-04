@@ -205,7 +205,13 @@ export type Collection = {
   // PR48-R007: new immutable observation records of finding items, for the caller to persist.
   findingItems: ItemRecord[];
   findingChanges: ChangeRecord[];
+  // PR48-R013: the incompleteness may go away (the PR, its state or main changed during the fetch, or a
+  // commit page is short). False when the only causes are permanent: an untrusted workflow, or a PR over
+  // the 250-commit list limit of pulls/<n>/commits.
+  transient: boolean;
 };
+// GitHub lists at most 250 commits of a pull request (pulls/<n>/commits).
+export const PR_COMMIT_LIST_LIMIT = 250;
 // PR48-R008: the files that decide the CI judgement. Owner decision (Issue #50, 2026-10-04,
 // issuecomment-5977404200): all of .github, package.json, tools/review_guard/, scripts/check-test-skips.ts
 // and what it reads (scripts/lib/test-skips.ts and the skip table in docs/development.md). Test
@@ -483,7 +489,6 @@ export async function collect(
   const assignment = p.targets.find((t) => t.pr === prNumber)!;
   // W4 row 12: the latest server Date of every response so far, not only the first PR response.
   const observedAt = reader.maxDate;
-  snapshot.observedAt = observedAt;
   const found = unresolvedFindings({
     pr: prNumber,
     head: current.head,
@@ -527,11 +532,13 @@ export async function collect(
       v["updated_at"],
       v["labels"],
     ]);
-  if (
-    !samePair(snapshot.pair, snapshot.finalPair) ||
-    meta(pr) !== meta(afterPR)
-  )
-    snapshot.complete = false;
+  const changed =
+    !samePair(snapshot.pair, snapshot.finalPair) || meta(pr) !== meta(afterPR);
+  if (changed) snapshot.complete = false;
+  const listed =
+    typeof pr["commits"] !== "number" ||
+    commits.length === pr["commits"] ||
+    (Number(pr["commits"]) > PR_COMMIT_LIST_LIMIT && commits.length === PR_COMMIT_LIST_LIMIT);
   return {
     policyRevision: p.revision,
     creation,
@@ -549,6 +556,7 @@ export async function collect(
     workflow,
     findingItems: found.items,
     findingChanges: found.changes,
+    transient: changed || !listed,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>

@@ -258,7 +258,6 @@ test("R002 quota pause survives the rolling window, generation changes and reope
     p = policy(),
     s = snapshot();
   try {
-    s.observedAt = 107; // GitHub server time of the observation (PR48-R015: the pause is timed on it)
     for (let n = 1; n <= 7; n++) {
       s.pair.head = n.toString(16).repeat(40);
       s.finalPair = { ...s.pair };
@@ -278,6 +277,7 @@ test("R002 quota pause survives the rolling window, generation changes and reope
       } else assert.equal(j, null);
     }
     assert.equal(d.store.quotaPaused("1:1"), true);
+    d.store.settleHolds("1:1", 107, d.store.unsettledHolds()); // a later reconcile's server time (PR48-R015)
     d.store.close();
     const resumed = new Store(d.root);
     try {
@@ -428,7 +428,9 @@ test("W4 row 1: blocked survives reopen and the owner's lease release; only an o
   try {
     const j = claim(d.store, p, s, 100);
     d.store.running(j);
-    d.store.block(j, "publication", 200, 200);
+    d.store.block(j, "publication", 200);
+    assert.equal(d.store.blocked(j.key)!.at, null); // pending until a reconcile settles it (PR48-R015)
+    d.store.settleHolds(j.key, 200, d.store.unsettledHolds());
     assert.equal(d.store.job(j.id)!.status, "uncertain");
     d.store.close();
     const store = new Store(d.root);
@@ -610,13 +612,12 @@ test("Round 6 RT-3: a run materials record of the wrong shape is no record (the 
   }
 });
 
-test("PR48-R015 quota and blocked holds use the server clock: local clock skew never makes an earlier owner unpause count", () => {
-  const S = 50_000_000; // GitHub server time of the observations
+test("PR48-R015 holds are timed on the server clock once settled: local skew, an earlier unpause or one before settling never clear them", () => {
+  const S = 50_000_000; // GitHub server time
   for (const [skew, local] of [["behind", 100], ["ahead", S + 10 * 86400000]] as const) {
     const d = database(),
       p = policy(),
       s = snapshot();
-    s.observedAt = S;
     s.history.push({ id: "old-unpause", kind: "unpause", actor: 10, at: S - 1000, pair: null });
     try {
       for (let n = 1; n <= 7; n++) {
@@ -633,51 +634,34 @@ test("PR48-R015 quota and blocked holds use the server clock: local clock skew n
           d.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
         } else assert.equal(j, null, skew);
       }
-      assert.equal(d.store.quotaPaused("1:1"), true, skew);
+      // Pending: no unpause counts, not even one after the pause.
+      s.history.push({ id: "early-unpause", kind: "unpause", actor: 10, at: S + 1, pair: null });
       d.store.clearQuota(p, s);
-      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: an unpause before the pause does not count`);
-      s.history.push({ id: "owner-unpause", kind: "unpause", actor: 10, at: S + 1, pair: null });
+      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: pending`);
+      assert.deepEqual(d.store.status("1:1").pending, ["quota_pause"]);
+      // Settled by a later reconcile at S + 5: unpauses at or before it still do not count.
+      d.store.settleHolds("1:1", S + 5, d.store.unsettledHolds());
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: before the settled time`);
+      s.history.push({ id: "owner-unpause", kind: "unpause", actor: 10, at: S + 6, pair: null });
       d.store.clearQuota(p, s);
       assert.equal(d.store.quotaPaused("1:1"), false, `${skew}: a later owner unpause clears`);
     } finally {
       d.cleanup();
     }
   }
-  // blocked: timed on the latest server time known for the PR (snapshot or saved observation).
-  const d = database(),
-    p = policy(),
-    s = snapshot();
+  // A hold made after a reconcile began is not settled by that reconcile.
+  const d = database();
   try {
-    s.observedAt = S;
-    const j = claim(d.store, p, s, 100);
+    const j = claim(d.store);
     d.store.running(j);
-    d.store.saveObservation("1:1", { observedAt: S + 50 } as never);
-    d.store.block(j, "publication", 100, d.store.serverTime(j.key, s));
-    assert.equal(d.store.blocked(j.key)!.at, S + 50);
-    for (const at of [S - 1000, S + 1]) {
-      const old = snapshot();
-      old.history.push({ id: `owner-${at}`, kind: "unpause", actor: 10, at, pair: null });
-      d.store.clearQuota(p, old);
-      assert.ok(d.store.blocked(j.key), String(at));
-    }
-    const later = snapshot();
-    later.history.push({ id: "owner-later", kind: "unpause", actor: 10, at: S + 51, pair: null });
-    d.store.clearQuota(p, later);
-    assert.equal(d.store.blocked(j.key), null);
+    const before = d.store.unsettledHolds();
+    d.store.block(j, "publication", 101);
+    d.store.settleHolds(j.key, S, before);
+    assert.equal(d.store.blocked(j.key)!.at, null);
+    d.store.settleHolds(j.key, S + 1, d.store.unsettledHolds());
+    assert.equal(d.store.blocked(j.key)!.at, S + 1);
   } finally {
     d.cleanup();
-  }
-  // No server time at all: the hold never clears by an unpause (fail closed).
-  const e = database();
-  try {
-    const j = claim(e.store);
-    e.store.running(j);
-    e.store.block(j, "publication", 100, e.store.serverTime(j.key, snapshot()));
-    const owner = snapshot();
-    owner.history.push({ id: "owner-any", kind: "unpause", actor: 10, at: 8.64e15, pair: null });
-    e.store.clearQuota(policy(), owner);
-    assert.ok(e.store.blocked(j.key));
-  } finally {
-    e.cleanup();
   }
 });

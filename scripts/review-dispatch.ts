@@ -199,6 +199,7 @@ export async function main(
       const r = dispatcher.observe(result.snapshot);
       if (r.notice) log(`PR #${result.pr}: ${r.status}`);
     }
+    heldNotices(results, store, clock(), log);
     // PR48-R016: the design's retention after each reconcile (payload 7 days, finished job details 30 days).
     store.retain(clock());
     // PR48-R011: report lost oversized deliveries once (event names from the allow-list, counts only).
@@ -211,7 +212,11 @@ export async function main(
       log(
         `大きすぎて保存できない配送がありました（${event}、${n}件）。照合で回復できなければ、新しいDraft→Readyが必要です。`,
       );
-    if (install) return await active(policy, store, root, install, transport, results, log, clock, deps);
+    if (install) {
+      const code = await active(policy, store, root, install, transport, results, log, clock, deps);
+      await settleNow(policy, store, transport);
+      return code;
+    }
     return 0;
   } finally {
     store.close();
@@ -323,6 +328,28 @@ async function active(
   log(`PR #${target.pr}: ${outcome}`);
   return 0;
 }
+// PR48-R015: a hold made in this cycle has no time yet. One more reconcile settles it to a server time after
+// its creation, so the owner's later unpause counts. A failure leaves it pending for the next reconcile.
+export async function settleNow(policy: Policy, store: Store, transport: Transport): Promise<void> {
+  if (!store.unsettledHolds().size) return;
+  try {
+    await reconcile(new GhReader(policy.repo, transport), policy, store);
+  } catch {
+    // The next cycle's reconcile settles it.
+  }
+}
+// PR48-R013: a PR whose observation stays transiently incomplete for an hour is reported to the owner once.
+export const HELD_NOTICE_MS = 3600000;
+export function heldNotices(
+  results: readonly { pr: number; heldSince: number | null }[],
+  store: Store,
+  now: number,
+  log: (s: string) => void,
+): void {
+  for (const r of results)
+    if (r.heldSince !== null && now - r.heldSince >= HELD_NOTICE_MS && store.notice(`held:${r.pr}:${r.heldSince}`))
+      log(`PR #${r.pr}: 照合が1時間以上不完全のままです（取得の途中でPRかmainが変わり続けている等）。配送は保留しています。`);
+}
 
 async function receive(
   policy: Policy,
@@ -354,6 +381,7 @@ function status(policy: Policy, store: Store, log: (s: string) => void): number 
       [
         `PR #${t.pr}: ${s.target?.status ?? "未観測"}（${s.target?.reason ?? "-"}、世代${s.target?.generation ?? 0}）`,
         `  blocked: ${s.blocked ? `${s.blocked.reason}（run ${s.blocked.run}）` : "なし"}、上限での停止: ${s.quota ? "あり" : "なし"}、未処理の編集の印: ${s.marked ? "あり" : "なし"}、不明な投稿: ${s.uncertainOutbox}件`,
+        ...(s.pending.length ? [`  停止の時刻が未確定（${s.pending.join("・")}）: 確定する前のreview:pausedの解除は数えません`] : []),
         ...s.jobs.map((j) => `  ${j.kind} 世代${j.generation} ${j.status} run ${j.run}`),
       ].join("\n"),
     );

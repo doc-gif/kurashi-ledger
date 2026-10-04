@@ -80,9 +80,6 @@ export type Snapshot = {
   commits?: string[];
   // PR48-R007 unresolved finding IDs by the actor who raised them (assigned reviewers and owners).
   openFindings?: { actor: number; ids: string[] }[];
-  // GitHub server time of the observation (the latest response Date). PR48-R015: the quota and blocked holds
-  // are timed on this clock, the same clock as the owner's unpause. Absent in older fixtures: holds never clear.
-  observedAt?: number;
 };
 export type Target = {
   key: string;

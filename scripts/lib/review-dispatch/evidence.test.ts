@@ -1112,7 +1112,7 @@ test("PR48-R014 the observation compares accepted() with the current canon's dec
     d.cleanup();
   }
 });
-test("PR48-R014 a human reviewer's manual red-team record is the fault-finding evidence; RTs stay open until resolved in its table", async () => {
+test("PR48-R014 a human reviewer's manual red-team record is compared only (never clears the gate); judgements with reasons are read strictly", async () => {
   const p = policy();
   p.targets[0]!.reviewers = [40]; // a human reviewer
   const redTeam = (id: number, actor: number, lines: string, at = 4, head = HEAD) => ({
@@ -1121,16 +1121,24 @@ test("PR48-R014 a human reviewer's manual red-team record is the fault-finding e
     created_at: t(at),
     body: `<!-- kurashi-ledger:red-team:v1 -->\nauditor_id: synthetic\nhead_sha: ${head}\nbase_sha: ${BASE}\nplan_path: .review/plans/T00.json\n\n| 原因 | 判定 | 箇所 |\n| --- | --- | --- |\n${lines}`,
   });
+  const earlier = (open = false) => redTeam(80, 30, "RT-2: synthetic\n", 3.5, open ? HEAD : "f".repeat(40));
   const cases: [string, Record<string, unknown>[], string[] | null][] = [
-    ["clear", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n")], []],
-    ["new RT", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n\nRT-1: synthetic\n")], ["RT-1"]],
-    ["cannot check", [redTeam(80, 40, "| INV-REVIEW/plan-task-identity | 確認できない | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
-    ["earlier RT resolved", [redTeam(80, 30, "RT-2: synthetic\n", 3.5, "f".repeat(40)), redTeam(81, 40, "| RT-2 | 解消 | commit |\n")], []],
-    ["earlier RT not re-checked", [redTeam(80, 30, "RT-2: synthetic\n", 3.5, "f".repeat(40)), redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n")], ["RT-2"]],
-    ["earlier RT still open", [redTeam(80, 30, "RT-2: synthetic\n", 3.5), redTeam(81, 40, "| RT-2 | 未解消 | 解消していない |\n")], ["RT-2"]],
-    ["implementer's record", [redTeam(80, 20, "| INV-REVIEW/x | 該当なし | - |\n")], null],
-    ["other pair", [redTeam(80, 40, "| INV-REVIEW/x | 該当なし | - |\n", 4, "f".repeat(40))], null],
-    ["marker not on the first line", [{ ...redTeam(80, 40, ""), body: `引用\n${redTeam(80, 40, "").body}` }], null],
+    ["clear", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n")], []],
+    ["clear with a reason", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし（差分にない） | guard |\n")], []],
+    ["new RT", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n\nRT-1: synthetic\n")], ["RT-1"]],
+    ["cannot check", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 確認できない | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
+    ["cannot check with a reason", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 確認できない（CIを読めない） | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
+    ["found", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当（RT-1） | guard |\n")], ["RT-1", "cause:INV-REVIEW/plan-task-identity"].sort()],
+    ["earlier RT resolved", [earlier(), redTeam(81, 40, "| RT-2 | 解消 | commit |\n")], []],
+    ["earlier RT not needed, with a reason", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要（仕様どおり） | - |\n")], []],
+    ["earlier RT not needed, reason in the next cell", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要 | 仕様どおり |\n")], []],
+    ["not needed without a reason", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要 | |\n")], ["RT-2"]],
+    ["negated", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要ではない | 直す |\n")], ["RT-2"]],
+    ["earlier RT not re-checked", [earlier(), redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n")], ["RT-2"]],
+    ["earlier RT still open", [earlier(true), redTeam(81, 40, "| RT-2 | 未解消 | 解消していない |\n")], ["RT-2"]],
+    ["implementer's record", [redTeam(81, 20, "| INV-REVIEW/x | 該当なし | - |\n")], null],
+    ["other pair", [redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n", 4, "f".repeat(40))], null],
+    ["marker not on the first line", [{ ...redTeam(81, 40, ""), body: `引用\n${redTeam(81, 40, "").body}` }], null],
   ];
   for (const [name, conversation, unresolved] of cases) {
     const d = database(),
@@ -1140,22 +1148,127 @@ test("PR48-R014 a human reviewer's manual red-team record is the fault-finding e
       f.state.now = 5;
       f.state.conversation = conversation;
       const [r] = await reconcile(f.reader(), p, d.store);
-      if (unresolved === null) assert.equal(r!.snapshot.faultfinding, null, name);
-      else assert.deepEqual(r!.snapshot.faultfinding, { actor: 40, pair: { head: HEAD, base: BASE }, unresolved }, name);
+      assert.deepEqual(r!.observation.manualFaultfinding, unresolved, name);
+      // Comparison only: the gate's fault-finding evidence stays the dispatcher's own record.
+      assert.equal(r!.snapshot.faultfinding, null, name);
     } finally {
       d.cleanup();
     }
   }
-  // An AI reviewer's record is not a manual record: its evidence is the dispatcher's own faultfinding job.
-  const ai = policy();
+  // An AI reviewer's record is not a manual record.
   const d = database(),
     f = fixture();
   try {
     f.state.ready = true;
     f.state.now = 5;
     f.state.conversation = [redTeam(80, 30, "| INV-REVIEW/x | 該当なし | - |\n")];
-    const [r] = await reconcile(f.reader(), ai, d.store);
-    assert.equal(r!.snapshot.faultfinding, null);
+    const [r] = await reconcile(f.reader(), policy(), d.store);
+    assert.equal(r!.observation.manualFaultfinding, null);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 RT-1: an untrusted workflow seen on a pair that changed during the fetch is held, not processed", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    f.state.ready = true;
+    f.state.now = 5;
+    // H1 changes the CI files (untrusted); by the last read the PR already points at H2.
+    f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    let reads = 0;
+    const moving = new GhReader("synthetic/repository", async (path, h) => {
+      const r = await f.send(path, h);
+      if (!path.endsWith("/pulls/1") || ++reads === 1) return r;
+      const v = JSON.parse(r.body);
+      return { ...r, body: JSON.stringify({ ...v, head: { ...v.head, sha: "d".repeat(40) } }) };
+    });
+    const [held] = await reconcile(moving, p, d.store);
+    assert.equal(held!.observation.workflow, "untrusted");
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)));
+    // The head that needs no trust: the held delivery binds on the next stable reconcile.
+    f.state.headFiles = {};
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 RT-5: a held PR keeps its hold start; the 250-commit list limit is permanent (processed, never bound)", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    d.store.tick(1000);
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1000);
+    const first = (await reconcile(changingReader(f), p, d.store))[0]!;
+    assert.equal(first.heldSince, 1000);
+    d.store.tick(5000);
+    assert.equal((await reconcile(changingReader(f), p, d.store))[0]!.heldSince, 1000);
+    // Over the list limit: pulls/1 says 251 commits, the list gives 250.
+    const capped = new GhReader("synthetic/repository", async (path, h) => {
+      const r = await f.send(path, h);
+      if (path.endsWith("/pulls/1"))
+        return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), commits: 251 }) };
+      if (path.includes("/pulls/1/commits"))
+        return { ...r, body: JSON.stringify(Array.from({ length: 250 }, (_, n) => ({ sha: n.toString(16).padStart(40, "0") }))) };
+      return r;
+    });
+    const [over] = await reconcile(capped, p, d.store);
+    assert.equal(over!.snapshot.complete, false);
+    assert.equal(over!.heldSince, null);
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R015 RT-2: a hold is settled by the first saved reconcile that began after it; an owner pause and unpause during the job never clears it", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    const [r] = await reconcile(f.reader(), p, d.store);
+    d.store.observe(assess(p, r!.snapshot, null));
+    const j = d.store.claim(p, r!.snapshot, 30, "review", 2)!;
+    d.store.running(j);
+    // A hold made while a reconcile is fetching is not settled by that reconcile.
+    let made = false;
+    const during = new GhReader("synthetic/repository", async (path, h) => {
+      if (!made) {
+        made = true;
+        d.store.block(j, "publication", 3);
+      }
+      return f.send(path, h);
+    });
+    f.state.now = 8;
+    await reconcile(during, p, d.store);
+    assert.equal(d.store.blocked(j.key)!.at, null);
+    // During the job the owner paused at t(6) and unpaused at t(7); the next reconcile settles at t(9).
+    f.state.now = 9;
+    await reconcile(f.reader(), p, d.store);
+    assert.equal(d.store.blocked(j.key)!.at, Date.parse(t(9)));
+    const s = { ...r!.snapshot, history: [...r!.snapshot.history] };
+    s.history.push(
+      { id: "pause", kind: "pause", actor: 10, at: Date.parse(t(6)), pair: null },
+      { id: "unpause", kind: "unpause", actor: 10, at: Date.parse(t(7)), pair: null },
+    );
+    d.store.clearQuota(p, s);
+    assert.ok(d.store.blocked(j.key));
+    s.history.push({ id: "unpause-later", kind: "unpause", actor: 10, at: Date.parse(t(10)), pair: null });
+    d.store.clearQuota(p, s);
+    assert.equal(d.store.blocked(j.key), null);
   } finally {
     d.cleanup();
   }

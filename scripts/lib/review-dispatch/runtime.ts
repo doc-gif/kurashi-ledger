@@ -208,17 +208,17 @@ export class Dispatcher {
       } catch (error) {
         // Content rejection (secret shape, format characters, look-alikes, links): blocked, like the check below.
         if (error instanceof ResultContentError)
-          return await this.#block(j, s, runner, value.result, now);
+          return await this.#block(j, runner, value.result, now);
         // Malformed shape: stays uncertain, but any persisted plaintext (the signed envelope) is still redacted.
         this.store.uncertain(j);
         await this.#redact(j, runner, value.result);
         return "uncertain";
       }
       if (resultFindings(parsed, j, s, this.policy.repo).length)
-        return await this.#block(j, s, runner, value.result, now);
+        return await this.#block(j, runner, value.result, now);
       this.store.result(j, value.result, value.origin);
       // The dispatcher never signs (PR48-R003). It forwards the runner's provenance; the Broker verifies it.
-      return await this.#post(j, s, runner, value.result, value.origin, broker, fetchFresh, now);
+      return await this.#post(j, runner, value.result, value.origin, broker, fetchFresh, now);
     } catch {
       this.store.uncertain(j);
       return "uncertain";
@@ -237,7 +237,7 @@ export class Dispatcher {
     const d = this.store.deferred(`${this.policy.repoId}:${s.pr}`);
     if (!d || this.policy.mode !== "active") return null;
     try {
-      return await this.#post(d.job, s, runner, d.result, d.origin as Provenance, broker, fetchFresh, now);
+      return await this.#post(d.job, runner, d.result, d.origin as Provenance, broker, fetchFresh, now);
     } catch {
       this.store.uncertain(d.job);
       return "uncertain";
@@ -245,7 +245,6 @@ export class Dispatcher {
   }
   async #post(
     j: Job,
-    s: Snapshot,
     runner: Runner,
     raw: string,
     origin: Provenance | null,
@@ -265,7 +264,7 @@ export class Dispatcher {
         // and keep the durable per-PR blocked state (W4 row 1).
         this.store.uncertain(j);
         if (outcome === "blocked") {
-          this.store.block(j, "publication", now, this.store.serverTime(j.key, s));
+          this.store.block(j, "publication", now);
           await this.#redact(j, runner, raw);
         }
         return outcome;
@@ -281,11 +280,11 @@ export class Dispatcher {
   }
   // blocked = persistent needs-owner: DB keeps only the hash, one owner notice, lease held, envelope redacted,
   // and the durable per-PR blocked row (store.block, W4 row 1) that only the owner's unpause clears.
-  async #block(j: Job, s: Snapshot, runner: Runner, raw: string, now: number): Promise<"blocked"> {
+  async #block(j: Job, runner: Runner, raw: string, now: number): Promise<"blocked"> {
     this.store.result(j, redactedResult(raw));
     if (!this.store.checkpoint()) this.store.notice(`${j.key}:checkpoint-busy:${j.run}`);
     this.store.notice(blockedNotice(j));
-    this.store.block(j, "publication", now, this.store.serverTime(j.key, s));
+    this.store.block(j, "publication", now);
     await this.#redact(j, runner, raw);
     return "blocked";
   }

@@ -10,8 +10,6 @@
   "scripts/lib/review-dispatch/evidence.test.ts",
   "scripts/lib/review-dispatch/evidence.ts",
   "scripts/lib/review-dispatch/github.ts",
-  "scripts/lib/review-dispatch/model.ts",
-  "scripts/lib/review-dispatch/runtime.ts",
   "scripts/lib/review-dispatch/store.test.ts",
   "scripts/lib/review-dispatch/store.ts",
   "scripts/review-dispatch.test.ts",
@@ -103,7 +101,7 @@
   {
    "id": "INV-REVIEW",
    "disposition": "preserve",
-   "reason": "R013: 取得の途中でPRが変わった等の一時的な不完全（workflowの未信頼ではない）なら、その対象の観測・結合・処理済みの印を保存しない。後の完全な照合で、残した配送か観測区間から回復する。workflowの未信頼は今までどおり処理する（信頼の記録の前のReadyは後から結び付けない）。R014: W4aで済んだのは受付自身の粗探しの記録だけ。足すのは、担当reviewerの人の手動の粗探しの記録と、観測でのaccepted（受付の判定と現行のdecision: accepted）の比較。R015: quotaの停止とblockedの時刻をserver時刻（照合のobservedAt）にし、ownerの解除（timelineのserver時刻）と同じ時計で比べる。server時刻がなければ解除できない側に倒す",
+   "reason": "R013: 一時的な不完全（取得の途中でPR・その状態・mainが変わった、commitの一覧が足りない）なら、その対象の観測・結合・処理済みの印を保存せず、配送を残す。保留の開始を記録し、1時間続けば所有者に1回知らせる。恒久の原因だけ（変わらないpairでのworkflowの未信頼、一覧の上限250件を超えるPR）なら処理し、結び付けない。R014: W4aで済んだのは受付自身の粗探しの記録だけ。足すのは、観測でのaccepted（受付の判定と現行のdecision: accepted）の比較と、担当reviewerの人の手動の粗探しの記録の読取り（比較だけで、判定の門を開けない）。unresolvedDesignの専用の取得元は作らない（所有者決定 5980777385）。R015: quotaの停止とblockedは時刻未定で作り、作った後に始まった照合で保存したserver時刻で確定する。ownerの解除は確定時刻より後のものだけ数える",
    "checks": [
     {
      "id": "duplicates",
@@ -112,7 +110,7 @@
     },
     {
      "id": "trust",
-     "method": "evidence.test.ts: 途中で変わった照合のあと、配送が未処理で残り、後の照合でReadyが結び付くこと（配送あり・なしの両方）。workflowが未信頼のときは処理済みになること。人の記録: 担当でない人・実装担当・別のpair・未解消のRT・解消の表のない前のRTは粗探しとして通らないこと。store.test.ts: ローカル時計がserverより遅れても進んでも、停止より前のownerの解除で解除されないこと",
+     "method": "evidence.test.ts: 途中で変わった照合のあと配送が残り、後の照合でReadyが結び付くこと（配送あり・なし）。取得の途中でheadがH1→H2になり、H1でworkflowが未信頼に見えても保留されること。workflowの未信頼だけ・250件超えなら処理済みで結び付かないこと。人の記録は比較だけで、理由付きの判定・否定の対応不要を未解消と読むこと。store.test.ts・evidence.test.ts: ローカル時計の遅れ・進み、停止より前の解除、確定前の解除、Job中のpause→unpauseで停止が解けないこと。照合の途中で作った停止はその照合で確定しないこと",
      "expected": "取りこぼしたReadyは回復する。信頼の記録の前のReadyは結び付かない。時計のずれで古い解除を数えない"
     }
    ]
@@ -137,7 +135,7 @@
   {
    "id": "INV-STORAGE",
    "disposition": "preserve",
-   "reason": "schemaを5に上げ、schema 4は書かずに止める。観測の記録は変化点だけを残し、PRごとの行数の上限を決める。retainを照合の後に呼び、設計の保持期限（payload 7日、完了Job 30日）を実際に効かせる",
+   "reason": "schemaを5に上げ（quota_pause・blockedの時刻を未定にでき、holdsを足す）、schema 4は書かずに止める。観測の記録は変化点だけを残し、PRごとの行数の上限を決める。retainを照合の後に呼び、設計の保持期限（payload 7日、完了Job 30日）を実際に効かせる",
    "checks": [
     {
      "id": "rollback",
@@ -211,6 +209,14 @@
      "result": "一時的な不完全の対象では全部保存しない"
     },
     {
+     "location": "reconcile: workflowの未信頼の例外",
+     "result": "pairと状態が取得の途中で変わっていないときだけ"
+    },
+    {
+     "location": "reconcile: commitの一覧",
+     "result": "足りなければ保留。250件の上限を超えるPRは恒久として処理"
+    },
+    {
      "location": "reconcile: Webhookの変更の記録（signals）",
      "result": "配送が残るので、後の照合で同じ記録を作る（重複はchangeKeyで除く）"
     },
@@ -220,19 +226,23 @@
     },
     {
      "location": "store.claim: quota_pause.at",
-     "result": "server時刻"
+     "result": "未定で作り、後の照合で確定"
     },
     {
      "location": "store.block: blocked.at",
-     "result": "server時刻（照合の保存したobservedAtとsnapshotの大きいほう）"
+     "result": "未定で作り、後の照合で確定"
     },
     {
      "location": "store.clearQuota",
-     "result": "timelineのserver時刻とだけ比べる。server時刻がなければ解除しない"
+     "result": "確定したserver時刻とtimelineのserver時刻だけを比べる。未定なら解除しない"
     },
     {
-     "location": "store.claimの24時間の数え方・retain・clock",
+     "location": "store.claimの24時間の数え方・retain・holdsの開始",
      "result": "ローカル時計のまま（同じ時計どうしで比べる。PR48-R009）"
+    },
+    {
+     "location": "人の手動の粗探しの記録",
+     "result": "比較だけ。snapshot.faultfindingには入れない"
     }
    ]
   },
@@ -344,8 +354,8 @@
  ],
  "deferred": [
   {
-   "item": "R014のunresolvedDesign（設計段階の未解消の指摘）の別の取得元",
-   "reason": "PR<N>-R・RTの未解消はR007のopenFindingsと粗探しのunresolvedでacceptedを止めている。別の取得元を作るかは所有者の判断（activeの前）"
+   "item": "R014の人の手動の粗探しの記録を判定に使うこと",
+   "reason": "台帳の網羅・前の記録の確かめ直し・readyAfterをAI側とそろえるまで比較だけ。unresolvedDesignの専用の取得元は所有者決定（5980777385）で作らない"
   }
  ],
  "context": {

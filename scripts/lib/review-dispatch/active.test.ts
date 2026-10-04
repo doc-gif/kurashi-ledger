@@ -611,7 +611,7 @@ test("W4 active step: open RTs, an unprocessed edit mark or a blocked PR launch 
     // A blocked PR stays idle until the owner clears it.
     const j = d.store.claim(p, clear, 30, "review", 103)!;
     d.store.running(j);
-    d.store.block(j, "publication", 103, 103);
+    d.store.block(j, "publication", 103);
     d.store.observe(assess(p, clear, d.store.target("1:1")));
     assert.equal(nextKind(d.store, p, clear).reason, "blocked-owner-required");
     assert.deepEqual(launches, ["faultfinding"]);
