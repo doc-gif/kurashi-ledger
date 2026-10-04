@@ -140,7 +140,7 @@ EOF
 所有者への注意:
 
 - `person`が同じ参加者は、実装担当と同じ人として扱い、その指摘を数えない。所有者をCodexと同じ`person`にすると、所有者の指摘が落ちる。
-- 登録した参加者（reviewerでない所有者・Codexも）の行コメントと編集は、その人が今のheadをAPPROVEするまで未解消のまま。そのあいだ自動のAPPROVEは`needs-owner`のCOMMENTになる（[規則](review-dispatch-implementation.md#未解消の指摘pr48-r007)）。
+- 実装担当以外の登録した参加者（reviewerでない所有者を含む）の行コメントと編集は、その人が今のheadをAPPROVEするまで未解消のまま。そのあいだ自動のAPPROVEは`needs-owner`のCOMMENTになる（[規則](review-dispatch-implementation.md#未解消の指摘pr48-r007)）。
 
 ## 5. install記録を作る
 
@@ -387,7 +387,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 期待: 対象のPR番号を含む一覧。
 
-3のpolicy（新しいrevisionと切替時刻の`readyAfter`）。受け口はpolicyを起動時に読むので、再起動する。
+3のpolicy:
 
 ```zsh
 kl_mode active && launchctl kickstart -k "$gui/${label}.serve"
@@ -413,18 +413,27 @@ kl_mode active && launchctl kickstart -k "$gui/${label}.serve"
 
 ## 16. release
 
-runが終わったのにleaseが残る（Macの再起動のあと等）ときだけ使う。実行中のrunを止めるときは、先に`: > "$root/cancel-${run_id}"`で取り消す。
+runが終わったのにleaseが残る（Macの再起動のあと等）ときだけ使う。対象のrunを求める。
 
 ```zsh
-(
-  run_id="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|uncertain)$/ {print $5; exit}')"
-  [[ -n $run_id ]] || { echo "外すrunはない"; exit 0; }
-  echo "run ${run_id}"
-  "${daemon[@]}" "${dispatch[@]}" release --root "$root" --policy "$policy" --install "$install" --run "$run_id"
-)
+run_id="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|uncertain)$/ {print $5; exit}')"; print -r -- "run=${run_id:-なし}"
 ```
 
-期待: `run …のleaseを外しました`。終了コード4は不明な投稿がある。`保留しました`は終了を証明できない。どちらも外さずにそのまま待つ。
+期待: `run=`とID。`なし`なら外すものはない（15のstatusで確かめる）。
+
+実行中のrunを止めるときだけ、取り消しの印を置き、1分待つ。
+
+```zsh
+[[ -n $run_id ]] && : > "$root/cancel-${run_id}"
+```
+
+期待: 表示なし。leaseを外す。
+
+```zsh
+[[ -n $run_id ]] && "${daemon[@]}" "${dispatch[@]}" release --root "$root" --policy "$policy" --install "$install" --run "$run_id"
+```
+
+期待: `run …のleaseを外しました`。終了コード4は不明な投稿がある。`保留しました`は終了を証明できない。どちらも外さずに待つ。
 
 ## 17. rollback
 
@@ -444,7 +453,7 @@ kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"
 for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done; kl_mode off
 ```
 
-期待: `off start-small-…`。CodexのAppのWebhookのActiveを外す。`OWNER_MERGE_ONLY`からPRは外さない。
+期待: `off start-small-…`。CodexのAppのWebhookのActiveを外す。
 
 ## 18. 広げる前に測る
 
@@ -462,7 +471,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 
 | 変えたもの | やり直す手順 |
 | --- | --- |
-| Claude Code | `$install`を消して5、8、9。cycleは版・実行ファイルのhashが違えば起動しない |
-| 写し（新しいmain） | 2、`$install`を消して5、8、9、12（先に17の`bootout`） |
+| Claude Code | `rm "$install"`のあと5、8、9。cycleは版・実行ファイルのhashが違えば起動しない |
+| 写し（新しいmain） | 2、0、`rm "$install"`のあと5、8、9。`for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done`のあと12 |
 | setup-token（期限） | 3、9 |
-| policy | `kl_mode`で変え、serveを再起動する。revisionが変わるので、Readyのやり直しが要る |
+| policy | `kl_mode`か手で変え、revisionを上げ、`launchctl kickstart -k "$gui/${label}.serve"`で受け口を再起動する。Readyのやり直しが要る |
