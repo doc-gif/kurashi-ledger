@@ -7,13 +7,22 @@ import {
   bindReady,
   bindReview,
   ghTransport,
+  ghReviewTransport,
+  canonicalBody,
   type Response,
 } from "./github.ts";
+import { ReviewBroker } from "./broker.ts";
+import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
+import { allowedFor, publicationFindings } from "./publication.ts";
+import { fixtureResult } from "./runtime.ts";
 import {
   policy,
   HEAD,
   BASE,
   TREE,
+  database,
+  claim,
+  snapshot,
 } from "../../../tests/fixtures/review-dispatch.ts";
 const response = (
   value: unknown,
@@ -97,7 +106,15 @@ function fake(changed = false, fail = false): GhReader {
         labels: [],
         user: { id: 20 },
       });
-    if (path.startsWith("contents/")) return response({ sha: "f".repeat(40) });
+    if (path === "git/commits/" + BASE)
+      return response({ tree: { sha: "6".repeat(40) } });
+    if (path.startsWith("git/trees/"))
+      return response({
+        truncated: false,
+        tree: [
+          { path: ".github/workflows/ci.yml", mode: "100644", type: "blob", sha: "5".repeat(40) },
+        ],
+      });
     if (path.startsWith("compare/"))
       return response({ merge_base_commit: { sha: BASE } });
     if (path === "git/commits/" + HEAD)
@@ -119,7 +136,13 @@ function fake(changed = false, fail = false): GhReader {
     if (path.startsWith("actions/runs?"))
       return response({
         workflow_runs: [
-          { id: 2, name: "CI", head_sha: HEAD, conclusion: "success" },
+          {
+            id: 2,
+            name: "CI",
+            path: ".github/workflows/ci.yml",
+            head_sha: HEAD,
+            conclusion: "success",
+          },
         ],
       });
     if (path.startsWith("actions/runs/2/jobs"))
@@ -226,4 +249,102 @@ test("D01/D06 native human review binds only authenticated establishment pair an
     bindReview({ ...payload, review: { ...review, state: "APPROVED" } }, c),
     null,
   );
+});
+
+test("R011 canonical review body: LF, no trailing blanks, NFC, no stray controls; idempotent", () => {
+  const raw = "a  \r\nb\t\rc\u0007\n\u0065\u0301\n\n";
+  const body = canonicalBody(raw);
+  assert.equal(body, "a\nb\nc\n\u00e9");
+  assert.equal(canonicalBody(body), body);
+});
+test("R011 the review transport refuses a non-canonical body before starting gh", async () => {
+  if (process.platform === "win32") {
+    await assert.rejects(
+      ghReviewTransport("synthetic", "C:\\missing-gh.exe", "synthetic/repository", 30).post(1, "COMMENT", HEAD, "x \n"),
+    );
+    return;
+  }
+  const { mkdtempSync, writeFileSync, chmodSync, existsSync, rmSync, realpathSync } = await import("node:fs"),
+    { tmpdir } = await import("node:os"),
+    { join } = await import("node:path");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "dispatch-gh-body-")));
+  try {
+    const flag = join(dir, "started"),
+      gh = join(dir, "fake-gh");
+    writeFileSync(gh, `#!${process.execPath}\nrequire("node:fs").writeFileSync(${JSON.stringify(flag)}, "1");\nprocess.exit(1);\n`);
+    chmodSync(gh, 0o700);
+    const t = ghReviewTransport("synthetic", gh, "synthetic/repository", 30);
+    for (const body of ["trailing \nspace", "crlf\r\nline", "end\n"])
+      await assert.rejects(t.post(1, "COMMENT", HEAD, body));
+    assert.equal(existsSync(flag), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("R011 a marked review whose body hash differs stays uncertain and is never POSTed again", async () => {
+  for (const variant of ["normalized", "extra-copy"] as const) {
+    const d = database();
+    try {
+      const p = policy(),
+        s = snapshot(),
+        j = claim(d.store);
+      d.store.running(j);
+      const raw = JSON.stringify(fixtureResult(j));
+      d.store.result(j, raw);
+      let posts = 0;
+      const rows: { id: string; actor: number; head: string; body: string }[] = [];
+      const channel = new RunChannel(Buffer.alloc(32, 7));
+      const b = new ReviewBroker(
+        30,
+        {
+          post: async (_pr, _event, head, body) => {
+            posts++;
+            assert.equal(body, canonicalBody(body));
+            // GitHub may change the stored text (e.g. a trailing newline) or a second copy may exist.
+            if (variant === "normalized") rows.push({ id: "r1", actor: 30, head, body: body + "\n" });
+            else
+              rows.push(
+                { id: "r1", actor: 30, head, body },
+                { id: "r2", actor: 30, head, body: body + " edited" },
+              );
+          },
+          list: async () => rows,
+        },
+        d.store,
+        channel,
+      );
+      const origin = channel.seal(j, raw);
+      assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
+      assert.equal(await b.submit(p, j, raw, origin, async () => s), "uncertain");
+      assert.equal(posts, 1);
+    } finally {
+      d.cleanup();
+    }
+  }
+});
+test("R011/W4 ordering: canonicalisation can join a split key shape, so a publication check must read the canonical body", async () => {
+  const { parseResult } = await import("./broker.ts");
+  // Synthetic shape only (not a real token). A control character splits it before canonicalisation.
+  const key = /gh[pousr]_[A-Za-z0-9_]{16,}/;
+  const split = "ghp_" + "A".repeat(10) + "\u0007" + "B".repeat(10);
+  assert.equal(key.test(split), false);
+  assert.equal(key.test(canonicalBody(split)), true);
+  // The publication check misses the split shape but catches it after canonicalisation. This is why the Broker
+  // runs canonicalBody -> publicationFindings -> hash -> POST and checks the exact body it posts.
+  const d = database();
+  try {
+    const j = claim(d.store),
+      allowed = allowedFor(j, snapshot());
+    assert.deepEqual(publicationFindings(split, allowed), []);
+    assert.ok(publicationFindings(canonicalBody(split), allowed).includes("key/token"));
+    assert.ok(publicationFindings(canonicalBody(`前置き ${split} 後置き`), allowed).includes("key/token"));
+    // Worker fields cannot carry such a control character into render() in the first place.
+    for (const field of ["summary", "unverified"] as const) {
+      const r = fixtureResult(j) as unknown as Record<string, unknown>;
+      r[field] = field === "summary" ? split : [split];
+      assert.throws(() => parseResult(JSON.stringify(r), j));
+    }
+  } finally {
+    d.cleanup();
+  }
 });

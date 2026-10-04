@@ -1,0 +1,104 @@
+;; CLI profile for the review dispatcher (Issue #50 W1). The launcher applies it as
+;; /usr/bin/sandbox-exec -f cli.sb -D EXECUTABLE=... -D RUNTIME=... -D MATERIALS=...
+;;   -D CONFIG_DIR=... -D RUN_HOME=... -D RUN_TMP=... <CLI> <args>
+;; Every parameter is required: a missing one fails to compile and nothing starts.
+;; Everything the CLI starts inherits this profile: macOS refuses a stricter profile
+;; inside an already sandboxed process, so this one profile is also the tool-child
+;; boundary (the doctor checks the inheritance with a grandchild probe).
+;;
+;; Allowed: read the fixed runtime and the fetched materials, read and write the
+;; dedicated config directory and the run's own HOME/TMP, outbound TCP 443 for the
+;; model service, DNS. Denied by default: every other path (policy, dispatcher DB,
+;; repository, GitHub/other-AI credentials, App keys), other ports, other programs.
+;; No keychain at all (owner decision O2-token, Issue #50): the Claude login comes from
+;; the setup-token in CLAUDE_CODE_OAUTH_TOKEN, so securityd, /usr/bin/security and every
+;; keychain file stay denied, and the explicit denies at the end override any allow.
+;; Not yet measured with a real CLI: the owner checklist in the W1 PR tunes this.
+(version 1)
+(deny default)
+
+(allow process-fork)
+(allow process-exec (literal (param "EXECUTABLE")) (subpath (param "RUNTIME")))
+(allow signal (target same-sandbox))
+(allow sysctl-read
+  (sysctl-name-prefix "hw.")
+  (sysctl-name-prefix "machdep.cpu.")
+  (sysctl-name "kern.osrelease")
+  (sysctl-name "kern.ostype")
+  (sysctl-name "kern.osversion")
+  (sysctl-name "kern.osproductversion")
+  (sysctl-name "kern.version")
+  (sysctl-name "kern.hostname")
+  (sysctl-name "kern.boottime")
+  (sysctl-name "kern.maxfilesperproc")
+  (sysctl-name "kern.argmax")
+  (sysctl-name "kern.usrstack64")
+  (sysctl-name "kern.secure_kernel")
+  (sysctl-name "sysctl.proc_translated")
+  (sysctl-name "vm.pagesize"))
+(allow file-read-metadata)
+(allow system-socket)
+(allow ipc-posix-shm-read-data ipc-posix-shm-write-data ipc-posix-shm-write-create)
+
+(allow file-read*
+  (literal "/")
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/System/Library")
+  (subpath "/System/Cryptexes")
+  (subpath "/Library/Apple")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/db/timezone")
+  (literal "/private/etc/hosts")
+  (literal "/private/etc/resolv.conf")
+  (literal "/private/etc/services")
+  (literal "/private/etc/protocols")
+  (subpath "/private/etc/ssl")
+  (literal "/dev/null")
+  (literal "/dev/random")
+  (literal "/dev/urandom"))
+(allow file-write-data (literal "/dev/null"))
+
+(allow file-read* (subpath (param "RUNTIME")) (subpath (param "MATERIALS")))
+(allow file-read* file-write*
+  (subpath (param "CONFIG_DIR"))
+  (subpath (param "RUN_HOME"))
+  (subpath (param "RUN_TMP")))
+
+;; Name resolution, certificate trust and system logging for the model connection.
+(allow mach-lookup
+  (global-name "com.apple.dnssd.service")
+  (global-name "com.apple.system.opendirectoryd.libinfo")
+  (global-name "com.apple.system.notification_center")
+  (global-name "com.apple.trustd")
+  (global-name "com.apple.trustd.agent")
+  (global-name "com.apple.logd")
+  (global-name "com.apple.system.logger"))
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+(allow network-outbound (remote tcp "*:443"))
+;; Not loopback, not even port 443 (local services, the dispatcher itself).
+(deny network-outbound (remote ip "localhost:*"))
+
+;; Other processes: deny-by-default leaves the arguments and environment of same-user
+;; processes readable (KERN_PROCARGS2 is a process-info operation), and the CLI's own
+;; environment holds the setup-token. Only a process's own information stays readable.
+;; BEGIN process-info-deny
+(deny process-info*)
+(allow process-info* (target self))
+;; END process-info-deny
+
+;; Keychain: never, whatever the rules above allow (last matching rule wins).
+;; BEGIN keychain-deny
+(deny mach-lookup
+  (global-name "com.apple.SecurityServer")
+  (global-name "com.apple.securityd.xpc")
+  (global-name "com.apple.security.agent")
+  (global-name "com.apple.security.authhost")
+  (global-name "com.apple.CoreAuthentication.daemon")
+  (global-name "com.apple.secd")
+  (global-name "com.apple.securityd"))
+(deny process-exec (literal "/usr/bin/security"))
+(deny file-read* file-write*
+  (regex #"/Library/Keychains(/|$)")
+  (regex #"\.keychain(-db)?$"))
+;; END keychain-deny

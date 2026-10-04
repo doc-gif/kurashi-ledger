@@ -1,0 +1,291 @@
+{
+  "schema_version": 2,
+  "base_sha": "d64fcfa0226fcf7ebf4022973f6643c80b8b5c83",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "docs/external-worker.md",
+    "docs/github-agent-operations.md",
+    "docs/implementation-tasks.md",
+    "docs/pr-review-loop.md",
+    "docs/review-dispatch-design.md"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #50 W1-W3 run in parallel; W0 launch requirements could diverge from W1's launcher.",
+      "state": "resolved",
+      "resolution": "W0 changes no code. §7 lists the required layers; W1 implements the same flags. Superseded in part by entry 4 (all layers mandatory)."
+    },
+    {
+      "description": "Who posts the red-team record in active mode (deferred to this PR). Merged reducer.ts/broker.ts require an independent assigned reviewer.",
+      "state": "resolved",
+      "resolution": "Follow the code: one independent assigned reviewer (AI Job via its Broker, or a human by hand). The implementer's App never posts it."
+    },
+    {
+      "description": "T23/T24 and patrols judge and notify today; active needs one judge/notifier per PR.",
+      "state": "resolved",
+      "resolution": "For dispatcher targets, only the dispatcher judges and notifies; patrols skip them; T23 keeps CI-policy protection. No paused PR #38 code is used."
+    },
+    {
+      "description": "RT1 (5977292218): isolation layers, Read scope, keychain, red-team timing, notice, auto-fix, decision scope.",
+      "state": "resolved",
+      "resolution": "All §7 layers mandatory with documented flags and doctor probes; missing = disabled. Seatbelt bounds in-process Read. Keychain per owner decision. Timing recorded as an owner-approved reinterpretation. Auto-fix disabled. Decisions split from design proposals."
+    },
+    {
+      "description": "RT2 (5977366093): dispatch-notice forgeable; decision evidence missing. Receipt 5977365862: O2-token, Codex, R008, R009. Receipt 5977404200 replaces R008 (CI-determining files).",
+      "state": "resolved",
+      "resolution": "Notice is display-only. Receipts linked from §8. §7: setup-token via supervisor, no keychain; Codex with its own sandbox. Superseded in part by entry 5."
+    },
+    {
+      "description": "RT3 (5977423642): receipt forgeable as well. Receipt 5977430810 (active-merge).",
+      "state": "resolved",
+      "resolution": "Root cause: every identity is shared. AIs never merge active PRs; the owner merges in the UI; receipts and notices carry no authority. Residual risk recorded in design §7. RT4 (5977472008, 5977490017): owner-merge noted in state transitions; owner checks a receipt or notice before Ready."
+    },
+    {
+      "description": "Codex review 5404811070: R001 merge authority lost at rollback; R002 AI vs human evidence; R003 Codex reads; R004 nesting. Receipts 5977523656, 5977629581.",
+      "state": "resolved",
+      "resolution": "No earlier RT fix reverted. Merge authority separated from launch mode (see entries 7-8). AI v1 body vs human stored binding; unprovable = hold. Codex auto-launch deferred. Nesting is version/profile dependent. Start-small scope in the switch procedure."
+    },
+    {
+      "description": "RT5 (5977666664): setting location and per-environment copies. Receipt 5977666899.",
+      "state": "resolved",
+      "resolution": "One source: repository variable OWNER_MERGE_ONLY; format PR numbers or `none`; unreadable = no merge; condition recorded as an owner decision. Bootstrap: the owner sets the variable, then #51 merges."
+    },
+    {
+      "description": "RT6 (5977715032): doc-gif read conflicts with the App rule; owner head check dropped. Receipt 5977715281.",
+      "state": "resolved",
+      "resolution": "Read with the App merge-check purpose (#55). Owner UI head check restored. Residual risk: doc-gif can rewrite the variable. Owner review 5404975423: one home per concept, links elsewhere."
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "Docs only; no keys, tokens, hostnames or personal paths.",
+      "checks": [
+        {
+          "id": "public",
+          "method": "Read the staged diff; run check-public --staged; grep for hostnames, keychain values, home paths, tokens.",
+          "expected": "No secrets, tunnel URLs, personal paths or real data."
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "Merge conditions keep their wording; owner decisions add OWNER_MERGE_ONLY and reinterpret red-team timing for active PRs.",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "Trace one target PR through switch, Ready, red team, review, push, main update and rollback.",
+          "expected": "One notifier per state; no double Job; no re-post after uncertain POST; finding IDs stay PR<N>-R."
+        },
+        {
+          "id": "trust",
+          "method": "Compare the rules with design §1/§5/§6 and reducer.ts accepted()/reviewerEligible(); check rollback.",
+          "expected": "Only an independent assigned reviewer's APPROVE at the exact pair counts; comments grant nothing; AIs never merge OWNER_MERGE_ONLY PRs."
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Defines responsibilities; grants no activation (needs W1-W4, doctor/host checks, owner policy).",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "Compare T23/T24 rows, design §8 and the PR48 pre-activation checklist (PR48-R003, PR48-R007 to PR48-R011).",
+          "expected": "Active cannot start before W1-W4 and the checklist; T23 CI-policy protection stays; no Windows backend."
+        },
+        {
+          "id": "entrypoints",
+          "method": "Read pr-review-loop, operations, T23/T24, external-worker and project-status together.",
+          "expected": "Each concept has one home; other entry points link to it. Out-of-scope stale text is listed for W4."
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "The changed docs and plan (public repo)",
+      "data": "Operating rules, owner decisions, CLI flag names",
+      "trust": "untrusted",
+      "control": "Public diff review and check-public --staged."
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "Claude/Codex/GitHub docs fetched 2026-10-04",
+      "data": "Flag names, API permissions, documented behaviour",
+      "trust": "partially-trusted",
+      "control": "Cite documented behaviour only; docs are not a run; doctor probes decide the capability."
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": "AI workers and patrols reading these docs as instructions",
+      "data": "Who judges, notifies, posts and merges; switch and rollback",
+      "trust": "partially-trusted",
+      "control": "Labels, receipts, notices and prose grant nothing; merge authority comes only from OWNER_MERGE_ONLY and the owner."
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "Fallback to another credential when login or App token fails",
+      "places": [
+        {
+          "location": "design §7 O2",
+          "result": "Fail closed; no API key or --bare"
+        },
+        {
+          "location": "operations OWNER_MERGE_ONLY read",
+          "result": "App only; no doc-gif read"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "An isolation layer that is optional or unknown widens what a worker can read",
+      "places": [
+        {
+          "location": "design §7 layer table and probes",
+          "result": "All layers mandatory; missing or failed probe = disabled"
+        },
+        {
+          "location": "design §7 Read/Grep/Glob",
+          "result": "Scoped Read() rules and config-dir deny; Seatbelt is the hard bound"
+        },
+        {
+          "location": "design §7 auth and keychain",
+          "result": "setup-token via supervisor; no keychain; higher-precedence auth excluded; App keys moved if readable"
+        },
+        {
+          "location": "design §7 Codex",
+          "result": "read-only reads the whole disk; auto-launch deferred; disabled"
+        },
+        {
+          "location": "design §7 network",
+          "result": "443 allowed, loopback blocked (net-443 residual)"
+        },
+        {
+          "location": "design §6 Broker",
+          "result": "Publication check before posting (W2)"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "A PR changes the rules that judge it",
+      "places": [
+        {
+          "location": "this PR",
+          "result": "Judged by current rules; new rules apply after merge and the owner's setup"
+        },
+        {
+          "location": "T23 row",
+          "result": "Dispatcher paths added to policy_paths (I007)"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "Forgeable or deletable signals decide judge, notifier or merge authority; one evidence format for AI and humans",
+      "places": [
+        {
+          "location": "operations dispatch-active and owner-merge-only",
+          "result": "AIs never merge active or listed PRs; unreadable = no merge; comments change nothing (PR51-R001; survives rollback)"
+        },
+        {
+          "location": "pr-review-loop active section",
+          "result": "One judge/notifier; no COMMENT->APPROVE conversion; shadow records never count"
+        },
+        {
+          "location": "pr-review-loop owner check",
+          "result": "AI v1 body vs human stored binding; unprovable = hold (PR51-R002); any latest CHANGES_REQUESTED or unresolved finding blocks the owner merge"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "pattern": "Entry points disagree on when active starts",
+      "places": [
+        {
+          "location": "design §8, pr-review-loop switch",
+          "result": "Same preconditions"
+        },
+        {
+          "location": "review-dispatch-implementation.md, project-status.md",
+          "result": "Outside W0; reported to W4"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "Docs claim active is running",
+      "places": [
+        {
+          "location": "changed docs",
+          "result": "Activation pending the owner's switch"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "draft-open-entrypoint-coherence",
+      "pattern": "Draft/Ready meaning differs between old and active mode",
+      "places": [
+        {
+          "location": "pr-review-loop §1 and active section",
+          "result": "Old: red team then ready-for-review. Active: Draft->Ready then red team"
+        },
+        {
+          "location": "external-worker prompt",
+          "result": "Explicit IF/THEN branch"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "pattern": "Active rules usable before W1-W4 and #55 exist",
+      "places": [
+        {
+          "location": "design §8, pr-review-loop switch, operations bootstrap",
+          "result": "Listed as preconditions; failures keep capabilities disabled or block merges"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "review-role-spelling",
+      "pattern": "New role names old parsers do not normalise",
+      "places": [
+        {
+          "location": "pr-review-loop active section",
+          "result": "v1 markers and existing roles only"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "Recording more than the owner decided, or enabling an undesigned capability",
+      "places": [
+        {
+          "location": "design §8",
+          "result": "Decisions split from design proposals"
+        },
+        {
+          "location": "T24 row, pr-review-loop, design §6",
+          "result": "Auto-fix disabled until an implementer-job isolation design is accepted"
+        }
+      ]
+    }
+  ]
+}

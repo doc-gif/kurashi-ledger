@@ -27,7 +27,7 @@ import {
   type BrokerTransport,
   type PostedReview,
 } from "./broker.ts";
-import { Dispatcher, fixtureResult } from "./runtime.ts";
+import { Dispatcher, REQUIRED_PROBES, fixtureResult } from "./runtime.ts";
 import { publicationFindings, allowedFor, resultFindings } from "./publication.ts";
 import { RunVerifier, parseRunKeyLine, parseSignedResult, provenanceOf } from "./provenance.ts";
 import type { Job } from "./model.ts";
@@ -691,7 +691,7 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
       codeHash: "a".repeat(64),
       profileHash: "b".repeat(64),
       probes: Object.fromEntries(
-        ["deny-network", "deny-gh-auth", "deny-other-ai-auth", "deny-keys", "deny-db", "deny-policy-write", "schema", "descendant-lock"].map((k) => [k, true]),
+        REQUIRED_PROBES.map((k) => [k, true]),
       ),
     };
     const leak = SYNTHETIC_LEAKS[0]!;
@@ -753,7 +753,7 @@ async function cycleWith(
     codeHash: "a".repeat(64),
     profileHash: "b".repeat(64),
     probes: Object.fromEntries(
-      ["deny-network", "deny-gh-auth", "deny-other-ai-auth", "deny-keys", "deny-db", "deny-policy-write", "schema", "descendant-lock"].map((k) => [k, true]),
+      REQUIRED_PROBES.map((k) => [k, true]),
     ),
   };
   let raw = "",

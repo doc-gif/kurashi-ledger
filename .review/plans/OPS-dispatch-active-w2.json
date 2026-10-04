@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "666dbd8d723f8c79a21923d28eacff64b61d0932",
+  "base_sha": "b50079b87d9dfcc3ce35565b59cb1c9c8c32de0c",
   "task_id": "OPS-dispatch-active",
   "planned_paths": [
     ".review/tests/test_dispatch_supervisor.py",
@@ -9,6 +9,7 @@
     "scripts/lib/review-dispatch/broker.ts",
     "scripts/lib/review-dispatch/claude-broker.test.ts",
     "scripts/lib/review-dispatch/claude-broker.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
     "scripts/lib/review-dispatch/provenance.test.ts",
     "scripts/lib/review-dispatch/provenance.ts",
     "scripts/lib/review-dispatch/publication.ts",
@@ -39,6 +40,11 @@
       "description": "粗探し（PR #51 P1、PR #53の1〜3回目）: 公開前の検査の経路・許可の出所・平文の残り",
       "state": "resolved",
       "resolution": "検査はpublication.tsの1か所に集め、parseResult・保存前・投稿直前で同じ正規化と規則を使う（緩和。保証はW1の否定試験）。許すIDはsnapshotとrun IDだけ。内容で拒否した結果はblocked（DBはhashだけ、封筒はredact、redactはfixture以外で必須）。詳細は各粗探しの記録"
+    },
+    {
+      "description": "mainの取り込み（#51・#52・#54・#55）でbroker.tsと実装資料が衝突",
+      "state": "resolved",
+      "resolution": "broker.tsは両方のimportを残し、canonicalBody→公開検査→hash→POSTの順に固定した。#52のgithub.test.tsのBroker試験は試験用のRunChannelへ移し、制御文字で分けた鍵の形が正規化後に検査で捕まる否定試験を足した。実装資料のW4項目は両PRの一覧を1つの表にまとめた（統合で済んだ順序の項目は削除）"
     }
   ],
   "assessments": [
@@ -258,7 +264,7 @@
       "location": "Reviewの本文（全Broker）と保存する結果",
       "data": "workerの散文から作る公開の本文",
       "trust": "untrusted",
-      "control": "publication.tsの検査（緩和）。当たればblocked: 投稿0、DBはhashだけ、封筒はredact、通知1回、leaseを保持"
+      "control": "canonicalBody→publication.tsの検査（緩和）→hash→POST。当たればblocked: 投稿0、DBはhashだけ、封筒はredact、通知1回、leaseを保持"
     }
   ],
   "variant_analysis": [

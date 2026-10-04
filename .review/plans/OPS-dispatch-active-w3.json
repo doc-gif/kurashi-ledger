@@ -1,0 +1,459 @@
+{
+  "schema_version": 2,
+  "task_id": "OPS-dispatch-active",
+  "base_sha": "f0d88c9288ff31c5f48afcbf98ec3432bc6f23fa",
+  "planned_paths": [
+    "docs/review-dispatch-implementation.md",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/evidence.test.ts",
+    "scripts/lib/review-dispatch/evidence.ts",
+    "scripts/lib/review-dispatch/findings.test.ts",
+    "scripts/lib/review-dispatch/findings.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
+    "scripts/lib/review-dispatch/github.ts",
+    "scripts/lib/review-dispatch/host.test.ts",
+    "scripts/lib/review-dispatch/host.ts",
+    "scripts/lib/review-dispatch/model.ts",
+    "scripts/lib/review-dispatch/store.test.ts",
+    "scripts/lib/review-dispatch/store.ts",
+    "scripts/lib/review-dispatch/webhook.test.ts",
+    "scripts/lib/review-dispatch/webhook.ts",
+    "scripts/review-dispatch.test.ts",
+    "scripts/review-dispatch.ts"
+  ],
+  "conflicts": [
+    {
+      "description": "Issue #50は W1〜W3 を並行で進める。W3の担当ファイルは store.ts・evidence.ts・github.ts・新しいhost検査。R011（本文の正規化）は broker.ts（W2）、R011（過大な配送）は webhook.ts（W4の受け口）、R008（workflowの信頼）は model.ts の policy、host検査の接続は review-dispatch.ts（W4）に触れる",
+      "state": "resolved",
+      "resolution": "共有ファイルへの変更は最小で追加的にする。broker.ts は render の出力を canonicalBody で包む1行と、回復時に marker が一致して hash が違う投稿を uncertain にする数行だけ。webhook.ts は過大な本文の署名を流しながら確かめて印を残す関数を足し、既存の ingest の判定は変えない。model.ts は任意の欄 trustedCiDigests（当初は trustedWorkflowTrees）とその検査だけを足す。review-dispatch.ts は policy の読取りを host 検査に替え、時計と過大な配送の印の扱いを足すだけ。報告で全てを共有ファイルの変更として挙げ、W4 の統合に任せる"
+    },
+    {
+      "description": "PR48-R007 の「未解消の指摘」を何で判定するか。REST の行コメントには thread の resolve 状態がなく、GraphQL は今の GhReader（/repos/ の GET だけ）の外。Review 本文や行コメントは write 権限者が編集でき、REST の Review には編集時刻がない",
+      "state": "resolved",
+      "resolution": "取得経路は増やさず REST だけで構造化する。割り当てられた reviewer の (1) Review 本文の行頭の PR<N>-R<3桁以上>、(2) 本文に ID がない CHANGES_REQUESTED と DISMISSED の Review（review:<id>）、(3) すべての行コメント（ID があれば ID、なければ comment:<id>）、(4) 編集された行コメント（comment:<id>、時刻は updated_at）を指摘として挙げる。解消は、その reviewer 自身の、より後の APPROVED だけ。本文の「解消」の文言、他の reviewer・第三者・PR作者の操作では解消しない。同時刻は解消しない側に倒す。Review本文の編集で指摘を消す改ざんは REST では見えないので、残る危険として文書に書く"
+    },
+    {
+      "description": "PR48-R008 の workflow の信頼の単位。ci.yml の blob だけを比べると、PRが別のworkflowファイルに name: CI を付けて同名のジョブを成功させられる。.github 全体を比べると PR テンプレート等の変更も止まる",
+      "state": "resolved",
+      "resolution": "（初版。粗探しと所有者決定 issuecomment-5977404200 で置き換え、最後の衝突の(d)を参照）安全側をとり、.github の tree SHA を base と head で比べる。違えば unknown のまま止め、owner が独立レビュー後に policy の trustedWorkflowTrees へその tree SHA を記録した場合だけ信頼する（policy の revision 更新で新しい Ready が要る）。さらに CI run は path が .github/workflows/ci.yml のものだけを選ぶ。commit status と check run は今の判定に使わない補助取得のまま"
+    },
+    {
+      "description": "PR48-R009 の時計の後退。許容幅を設けるか、運用手順だけにするか",
+      "state": "resolved",
+      "resolution": "5秒までの後退は保存済みの時刻を使い続ける（単調な時刻。DBの時刻は戻さない）。それを超える後退は ClockRollbackError で止め、受信は503、claim・retainは拒否、shadow の CLI は待ち時間を示して終了コード3で止める。workerを増やさず、時計を確かめて保存時刻へ追いつくのを待つ手順を文書に書く。許容幅の値は所有者の確認事項として報告する"
+    },
+    {
+      "description": "粗探しの記録（PR #52 issuecomment-5977379116、head 05aebcc）: P2が4件（RT-P2-1 承認後の会話コメント、RT-P2-2 削除・編集で指摘が消える、RT-P2-3 workflowの信頼の範囲、RT-P2-4 #53とのbroker.tsの衝突）、P3が7件。個別に直すと、指摘の入力元・解消の規則・信頼の単位がばらばらに増える",
+      "state": "resolved",
+      "resolution": "全体の方針: 『指摘を挙げられる入力』と『解消できる操作』を1か所（findings.ts）にまとめ、入力を増やしても解消の規則は1つに保つ。(a) 入力: 割り当てたreviewerのReview本文・行コメント・会話コメント（RT-P2-1。行頭IDか、IDがなくdecisionがaccepted以外ならissue:<id>）と、ownerのCHANGES_REQUESTED/DISMISSED（RT-P3 owner。挙げられるが他人の指摘は解消できない）。(b) 観測の永続化（RT-P2-2）: 割り当てたreviewer/ownerの各項目のID・指摘ID・本文のhashを最初の観測で不変の記録として保存し、消えた・変わったらdeleted:<項目>/edited:<項目>をその時刻で挙げる（変更記録も不変なので、後の承認で解消でき、再び変われば新しく挙がる）。WebhookのPR review edited/comment deletedの印はW4。(c) 解消: 同じ人の、より後の、現在のheadのcommit_idへのAPPROVEDだけ（RT-P3 古いcommit）。(d) 信頼の範囲（RT-P2-3）: 所有者が範囲を広げた（issuecomment-5977404200）。CIの判定を決めるファイル（.github/全体、package.json、tools/review_guard/、scripts/check-test-skips.tsと、それが読むscripts/lib/test-skips.ts・docs/development.mdの試験の表）を1つの定数CI_TRUST_PATHSにし、試験の中身（tests/、*.test.ts、test_*.py）をCI_TRUST_EXCLUDEDで除く。tree SHAでは除外を表せないので、headの再帰treeから範囲のファイルの`git ls-tree`行をバイト順に並べたSHA-256（要約）で比べ、ownerは同じ要約をpolicyのtrustedCiDigestsへ記録する（ownerが再現するコマンドを文書に書き、実装と一致することを確かめる）。範囲の外は独立した内容レビューに頼ると明記する。(e) #53との順序（RT-P2-4）: publicationFindingsはこのbaseにない。W4で『canonicalBody → 公開検査 → hash → POST』に固定することを文書と報告に残し、ここでは正規化で鍵の形が連結されうること（検査は正規化後の本文に掛ける必要があること）と、このbaseではparseResultが制御文字を拒否することを否定試験にする。(f) 安いP3: HostCheckErrorの型で検査する試験、repo内の有効なpolicyの拒否、時計の先への飛びとReadyのやり直し・ACL（ls -le）を所有者の手順へ。信頼したtreeのbase/PRへの結び付け（P3）はW4へ送る"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "preserve",
+      "reason": "寿命 lock（supervisor.py が root の親に作る .kurashi-dispatch-<hash>.lock）と run lock の仕組みは変えない。host 検査で lock ファイルの所有者・種類・リンク数・権限を確かめ、他人が先に作った同名ファイルや group/other が書けるファイルを lock として受け付けない。root の祖先は所有者か root（uid 0）が持ち、他人が書ける場合は sticky bit を要求するので、他人が root や lock を差し替えられない",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "host.test.ts で、別所有者（uidを差し替えた検査）・group/other が書ける・symlink・ハードリンクの lock を作り、CLI の寿命 lock の照合が拒否することを試す。既存の R005 の合成（supervisor daemon → Node shadow）が通ることも確かめる",
+          "expected": "条件を満たさない lock では DB を開く前に止まる。既存の daemon の単一起動と fd の照合は変わらない"
+        },
+        {
+          "id": "recovery",
+          "method": "supervisor.py は変えない。.review/tests/test_dispatch_supervisor.py を実行する",
+          "expected": "既存の試験がそのまま通る。lock の取得・解放・継承の挙動は変わらない"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "試験は合成の ID・SHA・一時ディレクトリだけを使い、実鍵・実AI・実App・外部ネットワークを使わない（webhook の試験は既存と同じ 127.0.0.1）。新しいログの行は閉じた集合（event 名・件数・秒数）だけを出し、delivery ID・パス・本文を出さない。policy は repo/worktree の外で所有者だけが書ける場所から、検査した同じ fd で読む",
+      "checks": [
+        {
+          "id": "public",
+          "method": "commit の前に node scripts/check-public.ts --staged を実行し、stage した差分（試験の fixture・文書・計画）を読む。CLI のログに外部の値（delivery ID・本文・パス）が入らないことを試験で確かめる",
+          "expected": "終了コード0。差分に実データ・秘密・個人のパスがない。CLI の新しい出力は固定の文と閉じた集合の値だけ"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "製品の build・依存・Node の版は変えない。DB の schema は 2 のまま（新しい列・表を足さず、既存の inbox の payload NULL かつ未処理の組を過大な配送の印に使う）。off と shadow の既存の動作は保ち、active は今までどおり拒否する",
+      "checks": [
+        {
+          "id": "update",
+          "method": "npm test、npm run typecheck、Python の試験、既存の I002（未知 schema の拒否・backup）の試験を実行する",
+          "expected": "schema 2 のまま、未知 schema は書き込まずに止まる。既存の試験は判定を弱めずに通る"
+        },
+        {
+          "id": "artifact",
+          "method": "配布物の変更がないことを差分で確かめる",
+          "expected": "非該当の範囲（成果物・manifest）に変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "preserve",
+      "reason": "canonicalRoot（絶対・正規・symlink なし・.git の祖先なし）を保ち、POSIX では root の所有者と 0700 相当の権限、祖先の所有者と書込み可否、DB/WAL/SHM の所有者・種類・リンク数・権限を開く前と開いた後に確かめる。不適切なら自動で chmod せず拒否する。新規の init だけは自分で作った DB を 0600 にする",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "store.test.ts / host.test.ts で、空の root の init、既存 DB の再オープン、group/other に権限のある root・DB・WAL・SHM、symlink・ハードリンクの DB を試す",
+          "expected": "空の root では DB を 0600 で作り、WAL/SHM も group/other に権限がない。条件を満たさない既存の root・ファイルは書き換えずに拒否する"
+        },
+        {
+          "id": "aliases",
+          "method": "policy を symlink 経由・正規でない表記・.git のある祖先の下・信頼した写しの下に置き、readOwnerPolicy が拒否するかを試す",
+          "expected": "別名や repo/worktree の中の policy は読まずに拒否する"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "preserve",
+      "reason": "DB と WAL/SHM の対は SQLite に任せ、ファイルを個別に動かさない。時計の後退で保存した時刻を戻さない。過大な配送の印は既存の inbox の行で、retain は payload NULL の未処理の行を消さない。schema の変更・暗黙の migration はしない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "store.test.ts で、時計が許容幅を超えて戻ったときに claim・inbox・retain が transaction ごと戻ること、clock の行が減らないことを確かめる",
+          "expected": "DB の時刻は単調。拒否した操作は部分的な書込みを残さない"
+        },
+        {
+          "id": "restore",
+          "method": "既存の backup の試験を実行する。host 検査が backup の経路を変えないことを差分で確かめる",
+          "expected": "backup と再オープンの既存の試験が通る"
+        },
+        {
+          "id": "manifest",
+          "method": "非該当の確認（manifest を扱わない）",
+          "expected": "manifest の変更がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Issue #50 の W3 の範囲（PR48-R007〜R011）だけを扱う。W0（設計・正本の移行）、W1（起動器・Seatbelt・doctor）、W2（署名・実Broker）、W4（active の CLI・Webhook の受け口）の範囲には、上の衝突に書いた最小の追加以外で触れない。導入前チェックの表（review-dispatch-implementation.md）は、R007〜R011 の行を実装済みの内容と残る実測に合わせて更新する",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "共有ファイルの差分を一覧にして報告に書く。model.ts の新しい欄は任意で、既存の policy と fixture がそのまま通ることを試験する",
+          "expected": "他の W の作業を前提にしない。既存の policy は変更なしで有効"
+        },
+        {
+          "id": "entrypoints",
+          "method": "review-dispatch-implementation.md の導入前チェックの表と、--help・CLI の文言、設計 §5/§7 の記述を照合する",
+          "expected": "文書が実装より強く主張しない。所有者の実測が要る項目（Webhook の実配送の大きさ、本文の正規化、時計）を残す"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "scripts/review-dispatch.ts の --policy → host.ts readOwnerPolicy",
+      "data": "所有者が管理する policy の JSON",
+      "trust": "partially-trusted",
+      "control": "POSIX だけ。絶対で正規のパス（realpath と一致）、祖先に .git がなく信頼した写し（scripts の親）の外、通常ファイルでリンク数1、所有者は実行ユーザー、group/other が書けない、祖先は所有者か uid 0 が持ち他人が書けるなら sticky。O_NOFOLLOW で開いた fd を fstat し lstat と dev/ino を照合して同じ fd から 1 MiB まで読む。その後に既存の validatePolicy"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "store.ts Store の constructor と host.ts checkDispatchRoot（root、dispatch.sqlite、-wal、-shm）、review-dispatch.ts の寿命 lock",
+      "data": "受付専用のディレクトリと SQLite のファイル",
+      "trust": "partially-trusted",
+      "control": "POSIX で、root は実行ユーザーの所有で group/other の権限なし、DB/WAL/SHM と lock は通常ファイル・リンク数1・実行ユーザーの所有・group/other の権限なし。開く前と WAL を有効にした後に確かめ、違えば close して拒否する。既存ファイルの権限を黙って直さない"
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": "store.ts の時刻（inbox・claim・retain・tick）と CLI の Date.now",
+      "data": "OS の時計",
+      "trust": "partially-trusted",
+      "control": "保存した時刻より5秒以内の後退は保存した時刻を使う。それを超えると ClockRollbackError で transaction を戻す。DB の時刻を戻す API を作らない"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "webhook.ts serve の POST /webhook（256 KiB を超える本文）",
+      "data": "GitHub からの署名付き配送の本文",
+      "trust": "untrusted",
+      "control": "256 KiB を超えた分は保持せず HMAC だけを流しながら計算する。25 MiB を超えたら切断して記録しない。署名・event の許可リスト・delivery ID の形式が通ったときだけ、本文なしの印（delivery ID と event）を inbox に残して 413 を返す。印は Ready・Review を結び付けない"
+    },
+    {
+      "id": "B5",
+      "direction": "entry",
+      "location": "github.ts collect → findings.ts unresolvedFindings（pulls/N/reviews、pulls/N/comments、issues/N/comments）と、store の evidence（item・itemchange）",
+      "data": "Review の本文・state・commit_id・時刻、行コメントと会話コメントの本文・作成/更新時刻、前回までに観測した項目の hash と指摘ID",
+      "trust": "untrusted",
+      "control": "割り当てたreviewer（とownerのCHANGES_REQUESTED/DISMISSED）の項目だけを読む。この PR の番号の ID を行頭だけで拾う。会話コメントはIDか、decisionがaccepted以外のときだけ指摘。最初に観測した本文のhashを不変の記録にし、消えた・変わった項目はdeleted:/edited:として挙げる。解消は同じ人の、より後の、現在のheadへのAPPROVEDだけ。不正な時刻・型は EvidenceError"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "github.ts collect（git/commits、git/trees/<root>?recursive=1、actions/runs）",
+      "data": "base と head の、CIの判定を決めるファイルの一覧（mode・type・SHA・path）と workflow run の path",
+      "trust": "untrusted",
+      "control": "truncated の tree・不正な mode/type/path は EvidenceError。範囲は定数 CI_TRUST_PATHS（.github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts、docs/development.md）から CI_TRUST_EXCLUDED（tests/、*.test.ts、test_*.py）を除いたもの。その git ls-tree 行のSHA-256が base と違えば、policy の trustedCiDigests にある場合だけ信頼し、それ以外は complete=false（unknown）。run は name が CI で path が .github/workflows/ci.yml のものだけ。範囲の外は独立した内容レビューに頼る"
+    },
+    {
+      "id": "B7",
+      "direction": "entry",
+      "location": "policy の trustedCiDigests（model.ts validatePolicy）",
+      "data": "所有者が独立レビュー後に記録した、CIの判定を決めるファイルの要約（SHA-256）",
+      "trust": "partially-trusted",
+      "control": "64桁の小文字16進数で重複なしの配列だけを受け付ける。B1 の host 検査を通った policy からだけ読む。記録すると policy の revision が変わり、開いている全PRで Ready のやり直しが要る（所有者の手順に記載）"
+    },
+    {
+      "id": "B8",
+      "direction": "exit",
+      "location": "broker.ts render → canonicalBody → github.ts ghReviewTransport.post",
+      "data": "GitHub へ投稿する Review の本文",
+      "trust": "untrusted",
+      "control": "改行を LF に、行末の空白を除き、NFC にし、末尾の空白を除いた本文だけを送る。transport は正規形でない本文を通信の前に拒否する。回復では hash の完全一致だけを posted とし、同じ marker で hash が違う投稿があれば uncertain に残して再送しない"
+    },
+    {
+      "id": "B9",
+      "direction": "exit",
+      "location": "scripts/review-dispatch.ts の log（時計の後退、過大な配送）",
+      "data": "標準出力の文",
+      "trust": "untrusted",
+      "control": "固定の文に、秒数（整数）・件数・event 名（許可リストの閉じた集合）だけを入れる。delivery ID・本文・パス・時刻の生の値を出さない"
+    },
+    {
+      "id": "B10",
+      "direction": "exit",
+      "location": "store.ts の SQLite への書込み（clock、inbox の印、shadow の観測）",
+      "data": "受付の制御記録",
+      "trust": "partially-trusted",
+      "control": "schema 2 のまま。印は payload NULL・processed 0 の inbox の行、drain で processed にする。観測に未解消の指摘の ID と workflow の状態を足す。秘密を保存しない"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "lock や root の差替え・先取りで、別の実体を同じ排他として扱う",
+      "places": [
+        {
+          "location": "review-dispatch.ts の寿命 lock の照合",
+          "result": "fd と path の dev/ino の一致は既存。所有者・権限・リンク数の検査を足す"
+        },
+        {
+          "location": "root の祖先（lock は root の親に置かれる）",
+          "result": "祖先の所有者と、他人が書ける場合の sticky を検査する。/tmp のような sticky の共有ディレクトリでは他人が削除・改名できない"
+        },
+        {
+          "location": "supervisor.py の lock 作成",
+          "result": "O_NOFOLLOW・0600・nlink の検査は既存。変更しない（W1/W2 の範囲）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "logged-value-carries-data",
+      "pattern": "新しいログ・観測に外部の値をそのまま入れる",
+      "places": [
+        {
+          "location": "CLI の過大な配送の通知",
+          "result": "event 名（許可リスト）と件数だけ。delivery ID を出さない"
+        },
+        {
+          "location": "CLI の時計の後退の通知",
+          "result": "待つ秒数（整数）だけ。保存時刻・現在時刻の生の値を出さない"
+        },
+        {
+          "location": "ClockRollbackError・HostCheckError の文",
+          "result": "固定の文。パスや所有者の値を入れない（CLI は最上位で詳細を出さない既存の catch を通る）"
+        },
+        {
+          "location": "観測（shadow 表）の未解消の指摘",
+          "result": "ID は PR<N>-R<数字>、review:<数字>、comment:<数字> の形だけを保存する。本文は保存しない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "検査できない状態で既定の経路に戻る（fail open）。信頼の範囲の外にある CI を決める入力を、信頼したものとして扱う（粗探しRT-P2-3）",
+      "places": [
+        {
+          "location": "Windows での host 検査",
+          "result": "検査関数は HostCheckError で止める。Store は既存どおり Windows で chmod・検査をしないが、CLI は policy の読取りで止まる（受付は Mac だけ）"
+        },
+        {
+          "location": "未解消の指摘の取得の失敗・時刻の欠落",
+          "result": "EvidenceError で照合全体を止め、何も保存しない"
+        },
+        {
+          "location": "workflow の tree の取得（truncated・欠落）",
+          "result": "EvidenceError。.github がない場合は差分ありとして unknown"
+        },
+        {
+          "location": "review plan のジョブ",
+          "result": "base の検査器を実行するので、候補の変更では変わらない（既存）"
+        },
+        {
+          "location": "CI_TRUST_PATHS（github.ts）",
+          "result": "所有者決定で .github/、package.json、tools/review_guard/、scripts/check-test-skips.ts、scripts/lib/test-skips.ts、docs/development.md（飛ばしてよい試験の表）。各路の変更でだけ unknown になり、範囲外・試験の中身では変わらないことを試験する"
+        },
+        {
+          "location": "docs/development.md（check-test-skips が実行時に読む飛ばしてよい試験の表）",
+          "result": "受領記録（issuecomment-5977404200）の『scripts/check-test-skips.ts とその読む部品』に含まれる（調整役の確認）。CI_TRUST_PATHS に加え、この変更で unknown になることを試験する"
+        },
+        {
+          "location": "所有者が要約を求めるコマンド",
+          "result": "文書のコマンドを zsh と bash で実行し、ciTrustDigest と同じ値になることを確かめた"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "既存の off/shadow の動作や DB の版を、検査の追加で黙って変える",
+      "places": [
+        {
+          "location": "Store の constructor",
+          "result": "既存 DB の権限を黙って chmod する処理を、新規作成のときだけに限る。既存の不適切な権限は拒否する"
+        },
+        {
+          "location": "schema",
+          "result": "2 のまま。新しい表・列を足さない"
+        },
+        {
+          "location": "off の CLI",
+          "result": "引数なしの off は policy・DB・時計を読まない（既存の試験）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "cause_key": "destructive-op-follows-link",
+      "pattern": "対象と直近の親だけを見て、祖先のリンクや他人が書ける祖先を見逃す",
+      "places": [
+        {
+          "location": "canonicalRoot",
+          "result": "既存で全祖先の symlink と .git を検査。所有者・権限の検査を全祖先に足す"
+        },
+        {
+          "location": "readOwnerPolicy",
+          "result": "realpath の一致で全祖先のリンクを拒否し、全祖先の所有者・権限を検査する"
+        },
+        {
+          "location": "DB/WAL/SHM",
+          "result": "lstat で symlink・ハードリンクを拒否（既存）し、所有者・権限を足す"
+        },
+        {
+          "location": "existsSync を使う存在確認（store.ts canonicalRoot の .git、Store の DB/WAL/SHM、Store.backup の出力先、host.ts の .git）",
+          "result": "existsSync は symlink をたどるので、行き先のない symlink を「ない」と判定し、SQLite や backup がリンクの先へ書きうる。lstat に基づく present() に替え、行き先のない symlink の WAL を拒否する試験を足した"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "cause_key": "database-journal-pair",
+      "pattern": "DB だけを検査・変更し、WAL/SHM との対を見ない",
+      "places": [
+        {
+          "location": "host 検査",
+          "result": "DB・WAL・SHM の3つを同じ規則で検査する。WAL を有効にした後にも検査する"
+        },
+        {
+          "location": "時計の拒否",
+          "result": "atomic の中で投げるので、拒否した操作は ROLLBACK される"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "導入前チェックの表・--help・設計の記述が、実装した範囲と食い違う",
+      "places": [
+        {
+          "location": "docs/review-dispatch-implementation.md の導入前チェック",
+          "result": "R007〜R011 の行を、実装したことと所有者の実測が残ることに分けて書き直す"
+        },
+        {
+          "location": "docs/review-dispatch-design.md",
+          "result": "W0 の範囲なので変えない。§5 の COMMENT/行指摘、§3 の 413 と矛盾しないことを確かめる"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "指摘の入力元・解消の規則が経路ごとに違う（粗探しRT-P2-1/2、P3 owner・古いcommit）",
+      "places": [
+        {
+          "location": "Review 本文",
+          "result": "行頭ID、IDのないCHANGES_REQUESTED/DISMISSED。本文の編集は REST で見えないので、観測したhashとの比較で edited: を挙げる"
+        },
+        {
+          "location": "行コメント",
+          "result": "すべて指摘。削除は観測記録との比較で deleted: を挙げる"
+        },
+        {
+          "location": "会話コメント（issues/N/comments）",
+          "result": "今まで対象外だった。行頭ID、IDがなく decision が accepted 以外なら issue:<id>、編集は issue:<id> と edited:"
+        },
+        {
+          "location": "owner の Review",
+          "result": "CHANGES_REQUESTED/DISMISSED は挙げる。解消は owner 自身の後の APPROVED だけで、reviewer の指摘は解消しない。判定では各 reviewer の最新の Review に付けて accepted を止める"
+        },
+        {
+          "location": "解消の APPROVED",
+          "result": "現在の head の commit_id のものだけ。古い commit への承認では解消しない"
+        },
+        {
+          "location": "Webhook の edited/deleted",
+          "result": "W4 の受け口で安全側の印にする（このPRでは照合の観測比較だけ）"
+        }
+      ]
+    }
+  ],
+  "owner_decisions": [
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50（所有者の決定 O1〜O3、Windows）",
+      "decision": "受付は Mac だけで動かす。Webhook と15分の照合。別の OS ユーザーでの分離は見送る。host 検査は同じユーザーの誤り・取り違えを防ぐもので、同じユーザーの悪意あるプロセスへの強い分離ではない"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 所有者決定の受領記録 issuecomment-5977365862",
+      "decision": "R009: 時計の後退を許す幅は5秒。R008: workflowの信頼を記録する単位は.github全体（範囲を広げるかは所有者が別途判断中。今は.githubだけ）"
+    },
+    {
+      "date": "2026-10-04",
+      "source": "Issue #50 所有者決定の受領記録（追加）issuecomment-5977404200",
+      "decision": "R008の信頼の単位を、CIの判定を決めるファイル（.github全体、package.json、tools/review_guard/、scripts/check-test-skips.tsとその読む部品）へ広げる。試験の中身は含めず、独立した内容レビューで守る"
+    }
+  ],
+  "deferred": [
+    {
+      "item": "PR48-R013〜R016",
+      "reason": "Issue #50 の W3 の割当ては R007〜R011。R015（quota の時計の混在）は R009 に近いが、別の判断（server 時刻へそろえる）なので触れない"
+    },
+    {
+      "item": "粗探し（faultfinding）と人の証跡の取得元（R014）",
+      "reason": "W3 の範囲外。R007 は reviewer の Review と行コメントだけを扱う"
+    },
+    {
+      "item": "Review 本文の編集による指摘の削除の検出",
+      "reason": "REST の Review に編集時刻がなく、GraphQL は今の取得経路の外。残る危険として文書に書く"
+    },
+    {
+      "item": "Webhook の pull_request_review.edited・pull_request_review_comment.deleted・issue_comment の印（粗探しRT-P2-2）",
+      "reason": "W4 の受け口。このPRは照合での観測比較で検出する"
+    },
+    {
+      "item": "#53 と broker.ts の順序（粗探しRT-P2-4）",
+      "reason": "publicationFindings はこの base にない。W4 の統合で canonicalBody → 公開検査 → hash → POST に固定する"
+    },
+    {
+      "item": "信頼した要約の base・PR への結び付け（粗探しP3）",
+      "reason": "W4 の active の CLI・policy の運用で決める。今は内容で結び付き（同じ内容の範囲だけ信頼）、記録の後は Ready のやり直しが要る"
+    }
+  ]
+}

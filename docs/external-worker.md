@@ -1,15 +1,50 @@
 # Implementation worker bootstrap
 
-For Claude Code or another implementation environment. This file does not launch or schedule a worker. The owner configures one job per assigned worker and confirms its ID, interval, permissions and budget. Implementation polling is separate from review polling; its current owner-specified baseline is 10 minutes. Do not infer an implementation interval change from the review interval.
+For Claude Code or another implementation environment. This file does not launch or schedule a worker. The owner configures one job per assigned worker (ID, interval, permissions, budget). The implementation baseline is 10 minutes, separate from review polling; do not infer one from the other.
 
 ## Prompt
 
-> Work only on the owner/coordinator-assigned Issue in doc-gif/kurashi-ledger. Read latest main's AGENTS.md, docs/project-status.md, the task in docs/implementation-tasks.md, docs/github-agent-operations.md and docs/pr-review-loop.md. Stop dependent work if evidence is unavailable. Prioritize existing PR findings and follow docs/review-prevention.md before changes. Use the concise handoff format. Before ready-for-review, stay Draft with `worker_status: working` and write "awaiting pre-review red team" in the handoff; post ready-for-review only after a red-team record exists for that exact head/base with no unresolved RT (docs/pr-review-loop.md, 提出前の粗探し). Then wait for independent review. Merge only your own PR under the canonical conditions in docs/github-agent-operations.md#merge-conditions. Do not self-assign, enable auto-merge, deploy, start another AI or buy services. Use synthetic data. Stay quiet while unchanged or waiting; never overlap a still-running job.
+```text
+SCOPE
+- Work only on the Issue the owner or coordinator assigned in doc-gif/kurashi-ledger.
+- On latest main, read: AGENTS.md, docs/project-status.md, your task in
+  docs/implementation-tasks.md, docs/github-agent-operations.md, docs/pr-review-loop.md.
+- If evidence is unavailable, stop dependent work.
 
-Reuse the existing job when changing its interval. Record actual job ID/frequency in the handoff; a prompt is not running-state evidence. T00's initial prompt is historical, not permission for another task.
+WORK
+1. Fix existing PR findings first. Before changes, follow docs/review-prevention.md.
+2. Request review:
+   IF the owner, a receipt or a notice says the PR is on the active dispatcher
+   THEN use the standard Draft->Ready. The dispatcher runs the red team after Ready.
+   ELSE stay Draft with `worker_status: working` and "awaiting pre-review red team";
+        post ready-for-review only when a red-team record for that exact head/base
+        has no unresolved RT (docs/pr-review-loop.md, 提出前の粗探し).
+3. Use the concise handoff format. Wait for independent review.
 
-Verify supported intervals, expiry and persistent/session-local execution in the actual environment using [Claude's scheduling documentation](https://code.claude.com/docs/en/scheduled-tasks). Cloud execution cannot assume local files or Figma access. Codex does not register external jobs.
+MERGE
+- Immediately before merging, read OWNER_MERGE_ONLY with your own App's merge-check
+  purpose, never with doc-gif (docs/github-agent-operations.md#owner-merge-only).
+- IF the PR is listed, OR the read fails, OR the value is malformed
+  THEN do not merge. Stop at the handoff; the owner merges.
+- ELSE merge only your own PR under docs/github-agent-operations.md#merge-conditions.
+
+NEVER
+- Self-assign, enable auto-merge, deploy, start another AI or buy services.
+- Use real data (use synthetic data only).
+- Post while unchanged or waiting. Overlap a still-running job.
+```
+
+## Job settings
+
+- Reuse the existing job when changing its interval.
+- Record the actual job ID and frequency in the handoff. A prompt is not evidence that a job runs.
+- T00's initial prompt is historical. It is not permission for another task.
+- Check supported intervals, expiry and persistent or session-local execution in the actual environment ([Claude's scheduling documentation](https://code.claude.com/docs/en/scheduled-tasks)).
+- Cloud execution cannot assume local files or Figma access. Codex does not register external jobs.
 
 ## GitHub identity
 
-After the migration in [AI GitHub Apps](github-apps.md), do Claude-side pushes, PRs, comments and merges through Claude's App (`--agent claude --purpose implement`) and reviews with `--purpose review`. The script runs the command with the token; never run it from a PR checkout, only from a copy taken from a reviewed main SHA. Never read another AI's key. Until the migration, keep the current method.
+- Do Claude-side pushes, PRs, comments and merges through Claude's App (`--agent claude --purpose implement`), and reviews with `--purpose review` ([AI GitHub Apps](github-apps.md)).
+- Run the token script only from a copy taken from a reviewed main SHA, never from a PR checkout.
+- Never read another AI's key.
+- Before the [App migration](github-apps.md), keep the current method for other operations. Never read `OWNER_MERGE_ONLY` with doc-gif, before or after the migration.

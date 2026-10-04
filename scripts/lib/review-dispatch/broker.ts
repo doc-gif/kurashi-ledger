@@ -8,6 +8,7 @@ import {
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
+import { canonicalBody } from "./github.ts";
 import type { ResultVerifier } from "./provenance.ts";
 import {
   EVIDENCE_SHAPE,
@@ -217,11 +218,12 @@ export class ReviewBroker {
       !reviewerEligible(p, s, this.actor)
     )
       return "stale";
+    // Fixed order: canonicalBody -> publication check -> hash -> POST. The check reads the exact canonical body
+    // that is hashed and posted, because canonicalisation can join a split key shape (PR #52 R011 / W2).
     const marker = `kurashi-ledger:dispatch-run:v1:${j.run}`,
-      body = render(result, marker, identityOf(p, this.actor), j.run),
-      digest = hash(body);
-    // Must run on the exact final body that is posted and hashed. If a later change canonicalises the body
-    // (PR #52), check and hash the canonical form (W4 merge order).
+      body = canonicalBody(
+        render(result, marker, identityOf(p, this.actor), j.run),
+      );
     if (
       resultFindings(result, j, s, p.repo).length ||
       publicationFindings(body, allowedFor(j, s)).length
@@ -233,6 +235,7 @@ export class ReviewBroker {
       this.store.notice(blockedNotice(j));
       return "blocked";
     }
+    const digest = hash(body);
     if (
       result.decision === "accepted" &&
       (!s.faultfinding ||
@@ -263,13 +266,16 @@ export class ReviewBroker {
       } catch {
         return "uncertain";
       }
-      const matches = reviews.filter(
-        (r) =>
-          r.actor === this.actor &&
-          r.head === j.pair.head &&
-          r.body.includes(marker) &&
-          hash(r.body) === digest,
-      );
+      const marked = reviews.filter(
+          (r) =>
+            r.actor === this.actor &&
+            r.head === j.pair.head &&
+            r.body.includes(marker),
+        ),
+        matches = marked.filter((r) => hash(r.body) === digest);
+      // PR48-R011: a review with our marker but another body hash (GitHub normalization, edit or a
+      // second post) is never counted as posted and never followed by another POST.
+      if (marked.length > matches.length) return "uncertain";
       if (matches.length > 1)
         throw new Error(
           "Duplicate remote reviews; owner reconciliation required",
