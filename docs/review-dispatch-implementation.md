@@ -8,7 +8,7 @@ Issue #45の基盤です。**既定はoff、実AI・本番通知・修正pushは
 - `scripts/review-dispatch.ts`: offと、owner管理policyを使った一度のshadow照合。shadowは取得・記録だけで、AI・投稿は0件です。
 - `tools/review_dispatch/supervisor.py`: POSIXの受付排他、合成workerの独立監督・取消・同一runの状態確認。Windowsで起動すると副作用前に拒否します。
 
-実AIを起動するCLIは提供しません。`fixtureCycle`は合成runner専用です。Review Brokerのnative APIアダプタは、独立レビュー後の固定版と身元ごとの縮小tokenを使う境界です。このPRから実鍵を使って起動・投稿しないでください。
+実AIの起動は、W4の`cycle`（policyのmodeがactive、start-smallの形、doctorの結果が起動する計画に結び付いているとき）だけです。下の「[start-smallのactive](#start-smallのactive)」を読んでください。`fixtureCycle`は合成runner専用です。
 
 ### 結果の署名と投稿
 
@@ -61,7 +61,7 @@ launch/POST不明は`uncertain`に残し、期限切れで再起動・再送し�
 
 `supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しません。lockが取れるだけ、PIDが存在しないだけではleaseを解放しません。合成backendでも途中のmanifest/起動境界は不明として保持します。実CLIの子孫へのFD継承は導入前の実測が必要です。
 
-DBはWAL/FULL同期、schema 2です。schema 1からの暗黙の変換はせず、停止状態のbackupと独立レビューを受けた移行が必要です。未知schemaは書き込まず停止します。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしません。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しません。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用ルートで確認してownerが切り替えます。以前のDBを消さず、古い配送ID・quota・投稿hashを保ちます。
+DBはWAL/FULL同期、schema 3です（W4で`blocked`・`run_keys`・`capability`・`marks`を足した）。schema 1・2からの暗黙の変換はせず、停止状態のbackupと独立レビューを受けた移行が必要です。未知schemaは書き込まず停止します。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしません。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しません。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用ルートで確認してownerが切り替えます。以前のDBを消さず、古い配送ID・quota・投稿hashを保ちます。
 
 ## 検証の読み方
 
@@ -84,7 +84,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 - I009: 実AIの全子孫へのFD継承、取消・OS再起動・process tree終了の実測。未確認backendを有効にしません。
 - I010: App作成PRのCopilot依頼・応答の実測は任意の補助情報です。応答や利用枠を起動/マージの条件に戻しません。
 - I011: 共有された従来アカウントの身元移行。ownerがactivity anchorと過去push参加者を検証し、policyの同一人物対応・server境界を設定する。結合と照合のコードは今回追加済み。実repoのmigration設定は未検証。
-- PR48-R003: [結果の署名と投稿](#結果の署名と投稿)で実装しました。実backendは、[W4で必ず行う項目](#w4で必ず行う項目)の1・2・4、W1の`deny-supervisor`、owner導入がそろうまで無効です。
+- PR48-R003: [結果の署名と投稿](#結果の署名と投稿)で実装しました。[W4で必ず行う項目](#w4で必ず行う項目)の1・2・4はW4aで済み。実backendは、doctorの合格（W1の`deny-supervisor`を含む）とowner導入がそろうまで無効です。
 - active、auto-fix、GitHub通知、実Broker接続、旧workerとの交代・rollbackはownerの設定と別の正本移行PR後。dispatcherはマージしません。
 
 導入待ちはIssue #45の基盤受入と分けます。基盤のCIとClaudeの独立accepted後に完了を判定し、残る担当レビューを既存の設定で再開します。
@@ -114,16 +114,13 @@ GitHubのREST APIにはスレッドの解決状態がなく、書込み権限の
 
 ### workflowの信頼（PR48-R008）
 
-範囲は所有者の決定（[Issue #50の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)）で、CIの判定を決めるファイル: `.github/`の全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。
+範囲は所有者の決定（[Issue #50の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)、`.npmrc`は[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）で、CIの判定を決めるファイル: `.github/`の全体、`.npmrc`、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とそれが読む部品（`scripts/lib/test-skips.ts`と、飛ばしてよい試験の表がある`docs/development.md`）。試験の中身（`tests/`の下、`*.test.ts`、`test_*.py`）は含めず、独立した内容レビューで守る。範囲の正本は[github.ts](../scripts/lib/review-dispatch/github.ts)の定数`CI_TRUST_PATHS`と`CI_TRUST_EXCLUDED`で、広げる・狭めるときはここだけを変える。
 
 1. 範囲のファイルを変えるPRは、CIが成功してもunknown（`unknown-evidence`）で止まる。
-2. ownerは差分の独立レビューを確かめ、PRのheadで次の要約を求める（`git ls-tree`の行を範囲で絞り、パスのバイト順に並べたSHA-256）。
+2. ownerは差分の独立レビューを確かめ、PRのheadで要約を求める。信頼した写しの`tools/review_dispatch/ci-trust-digest.sh`を使う（`git -c core.quotePath=false ls-tree -r -z`の行を範囲で絞り、パスのバイト順に並べたSHA-256。合成repoで`ciTrustDigest`と一致することを試験している）。`${repo}`はPRのheadを含むcheckout、`${head}`はPRのhead。
 
    ```sh
-   git ls-tree -r --full-tree <head> \
-     | grep -E $'\t(\\.github/|package\\.json$|tools/review_guard/|scripts/check-test-skips\\.ts$|scripts/lib/test-skips\\.ts$|docs/development\\.md$)' \
-     | grep -Ev $'\t(.*/)?tests/|\\.test\\.[cm]?[jt]s$|\t(.*/)?test_[^/]*\\.py$' \
-     | LC_ALL=C sort -t $'\t' -k2,2 | shasum -a 256
+   sh "${copy}/tools/review_dispatch/ci-trust-digest.sh" "${repo}" "${head}"
    ```
 
 3. owner管理のpolicyの`trustedCiDigests`へその要約を加え、`revision`を上げる。revisionが変わるので、**開いているすべてのPR**で新しいDraft→Readyが要る。信頼を記録する前に届いたReadyも、後から結び付けない。
@@ -140,20 +137,36 @@ GitHubのREST APIにはスレッドの解決状態がなく、書込み権限の
 
 Issue #50 W2・W3から引き継ぐ項目です。
 
-| # | 項目 | 理由 | 時期 |
-| --- | --- | --- | --- |
-| 1 | `blocked`をPRごとの状態としてDBに持ち、ownerの解除だけで消す | 今はleaseの`uncertain`で止めるだけ | active前 |
-| 2 | 鍵の約束値をjobに永続化する | 受付の再起動後に検証できない（今は`uncertain`のまま） | 実runner接続前 |
-| 3 | 通知Broker（Codex AppのPRコメント）にも同じ公開検査を掛ける | 通知も公開repoへ書く | 通知の実装時 |
-| 4 | workerのHOME/TMPDIRをsupervisorのrootから分け、封筒と約束値をworkerから届かない場所へ移す。実backendの署名はmacOSに限る | 今のworkerはrootに書ける | 実runner接続前（W1と調整） |
-| 5 | 過去の公開v1本文で公開検査の誤検知を試験する | 正当なレビューを止めないため | active前 |
-| 6 | PRの全commitの一覧をsnapshotへ取り込む | 今はpair・timelineにないcommitのリンクで止まる | active前 |
-| 7 | SQLiteのWAL・空きページの旧値を消す（`PRAGMA secure_delete`、checkpoint） | 置き換え前の平文が残りうる | active前 |
-| 8 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする | 今は照合の観測比較だけ | Webhook接続時 |
-| 9 | 信頼した要約（`trustedCiDigests`）をbase・PRへ結び付けるか決める | 粗探しのP3 | active前 |
-| 10 | `.npmrc`を`CI_TRUST_PATHS`へ加える | 所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | active前 |
-| 11 | `accepted()`が第三者の最新のCHANGES_REQUESTEDを無視する点を、#51の規則とそろえる | 判定の規則が2つある | active前 |
-| 12 | 照合の`observedAt`に、応答のDateの最大値を使う | 観測区間の端を正しくするため | 実host shadow前 |
-| 13 | 前の内容へ戻されたReview本文の編集を見つける（重複排除に直前のhashを含める） | 今は戻した編集を見落とす | active前 |
-| 14 | ownerのコマンドを`git -c core.quotePath=false ls-tree -r -z`にし、合成repoで`ciTrustDigest`と一致する試験を足す | パスの引用で要約がずれうる | active前 |
-| 15 | 導入手順は小さく始める範囲を先に書き、backendの経緯は参照へ移す | PR #51のCodexレビューR005 | W4の導入手順を書くとき |
+| # | 項目 | 状態（W4a） |
+| --- | --- | --- |
+| 1 | `blocked`をPRごとの状態としてDBに持ち、ownerの解除だけで消す | 済み。`blocked`表。leaseを外しても残り、ownerの`review:paused`の解除（blockより後）だけで消える |
+| 2 | 鍵の約束値をjobに永続化する | 済み。`run_keys`表。受付が保存してから`ack`を返し、supervisorは`ack`を受けてからworkerを起動する。再起動後は`loadVerifier`がDBから検証する |
+| 3 | 通知Broker（Codex AppのPRコメント）にも同じ公開検査を掛ける | 残す。通知Brokerはまだ作らない。start-smallの周知は調整係の受領記録と受付のログで行う（[切替](pr-review-loop.md#切替prごと)の4はどちらかでよい）。通知を作るときに行う |
+| 4 | workerのHOME/TMPDIRをsupervisorのrootから分け、封筒と約束値をworkerから届かない場所へ移す。実backendの署名はmacOSに限る | 済み。`supervisor.py run-worker`（macOSだけ）。cwd・HOME・TMPDIR・config dirがrootと重なれば拒否する。runごとの領域はinstall記録の`runs`に作り、終わったら消す |
+| 5 | 過去の公開v1本文で公開検査の誤検知を試験する | 済み。公開のv1本文143件の文章で、止まる本文が25件から11件になった。残る11件はgithub.com以外のリンク（公式文書）で、所有者の判断を待つ |
+| 6 | PRの全commitの一覧をsnapshotへ取り込む | 済み（`Snapshot.commits`） |
+| 7 | SQLiteのWAL・空きページの旧値を消す（`PRAGMA secure_delete`、checkpoint） | 済み |
+| 8 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする | 済み。受信と同じtransactionで印を付け、照合が処理するまで起動と投稿を止める。照合は配送から変更の記録を作る |
+| 9 | 信頼した要約（`trustedCiDigests`）をbase・PRへ結び付けるか決める | 結び付けない案で残す。要約は範囲のファイルの内容のhashなので、同じ内容なら同じ判断になる。所有者の確認を待つ |
+| 10 | `.npmrc`を`CI_TRUST_PATHS`へ加える | 済み |
+| 11 | `accepted()`が第三者の最新のCHANGES_REQUESTEDを無視する点を、#51の規則とそろえる | 済み |
+| 12 | 照合の`observedAt`に、応答のDateの最大値を使う | 済み |
+| 13 | 前の内容へ戻されたReview本文の編集を見つける（重複排除に直前のhashを含める） | 済み（変更の記録に`previous`） |
+| 14 | ownerのコマンドを`git -c core.quotePath=false ls-tree -r -z`にし、合成repoで`ciTrustDigest`と一致する試験を足す | 済み（`tools/review_dispatch/ci-trust-digest.sh`） |
+| 15 | 導入手順は小さく始める範囲を先に書き、backendの経緯は参照へ移す | 残す。W4bで書く |
+
+### start-smallのactive
+
+Issue #50 W4aの部分です（[所有者決定 start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）。導入の手順はW4bで書きます。
+
+| 部品 | 内容 |
+| --- | --- |
+| `cycle` | 照合（shadowと同じ）。policyのmodeがactiveなら、PRごとにJobを1つまで起動する。順は粗探し→レビューで、同じhead/base・同じ世代に各1回。粗探しの未解消のRT、未処理の編集の印、blocked、上限での停止のときは起動しない |
+| start-smallの形 | 対象のPRは1件、必要なreviewerは1者で、Claude（`executor: claude`のAI）。Codexは`buildLaunch`と`capabilityReady`が常に拒否する |
+| install記録 | ownerがrepoの外に置くJSON（policyと同じ検査）。起動器の設定、Claude Broker、python、supervisor、`runs`、`home`、workerの時間上限。supervisorとtoken wrapperは同じ信頼した写しから |
+| capability | `doctor`がverifiedのときだけ記録する。起動の直前に、版・実行ファイルのsha256・cli.sbのhash・argvの型のhashを今の値と照合し、どれかが違えば起動しない |
+| 資料 | PRの差分・headのファイル・本文と、baseの規約（`AGENTS.md`は`agent-rules.md`へ改名）・原因台帳・書式。中立の名前で置き、件数と大きさに上限がある |
+| 粗探しの投稿 | `kurashi-ledger:red-team:v1`の本文をCOMMENTで投稿する（`role:`・`decision:`の行はない）。RTのIDは`PR<N>-T<3桁>` |
+| `serve` | Webhookの受け口。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存できたら`<root>/trigger`の時刻を変える（launchdのWatchPaths用） |
+| `status`・`release` | 状態の表示（IDと件数）。`release`はsupervisorの`inspect`の証明で終わったrunのleaseを外す。不明な投稿があれば外さない |
+| `measure`・`doctor` | ownerだけが実CLIで行う測定と否定試験。CIでは偽物の部品で試験する |

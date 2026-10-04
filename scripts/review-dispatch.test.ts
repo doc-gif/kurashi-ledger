@@ -171,8 +171,13 @@ test("W4 serve: receiver lock only, a fixed port 1024-65535 other than 443, an o
   }
 });
 
-test("W4 cycle: active needs the start-small shape and an install record before any GitHub read; no bound capability, no launch", async () => {
-  if (process.platform === "win32") return; // the dispatcher and its host checks are macOS/POSIX only
+test("W4 cycle: active needs the start-small shape and an install record before any GitHub read; no bound capability, no launch", async (t) => {
+  if (process.platform === "win32") {
+    // The dispatcher and its host checks are POSIX only; the serve test checks that Windows is refused.
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    await assert.rejects(main(["cycle", "--root", "C:\\x", "--policy", "C:\\p", "--gh", "C:\\gh"], {}, () => {}));
+    return;
+  }
   const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
   const x = await cliSetup();
   try {

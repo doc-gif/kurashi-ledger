@@ -345,8 +345,11 @@ test("W4 Claude runner: the key is stored before ack, the plan goes only through
   }
 });
 
-test("W4 Claude runner: a key line for another job is never acknowledged; refused materials prove the worker never started", async () => {
-  if (process.platform === "win32") return; // covered by the previous test's Windows branch
+test("W4 Claude runner: a key line for another job is never acknowledged; refused materials prove the worker never started", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the previous test checked that the runner never starts a worker");
+    return;
+  }
   const bad = runnerSetup({ badKey: true });
   try {
     bad.d.store.observe(assess(bad.p, bad.s, null));
@@ -531,8 +534,11 @@ test("W4 doctor command stores a capability only when verified, bound to this in
   }
 });
 
-test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-lock evidence from one supervised run", async () => {
-  if (process.platform === "win32") return; // macOS-only owner tool; the plan check refuses Windows paths
+test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-lock evidence from one supervised run", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the owner's measurement is macOS-only (the plan check refuses Windows paths)");
+    return;
+  }
   const { measureCommand } = await import("./active.ts");
   const runs = realpathSync(mkdtempSync(join(tmpdir(), "runs-")));
   try {

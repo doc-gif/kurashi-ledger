@@ -444,12 +444,18 @@ class WorkerTests(unittest.TestCase):
         cmd = [sys.executable, str(SCRIPT), 'run-worker', '--root', str(self.root), '--run', run,
                '--binding', BINDING, '--extract', 'claude-json', '--timeout', '60']
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p.stdin.write(plan)
-        p.stdin.flush()
+        try:
+            p.stdin.write(plan)
+            p.stdin.flush()
+        except BrokenPipeError:
+            pass  # A refused request may end before reading its plan.
         first = p.stdout.readline()
-        if ack:
-            p.stdin.write(b'ack\n')
-        p.stdin.close()
+        try:
+            if ack:
+                p.stdin.write(b'ack\n')
+            p.stdin.close()
+        except BrokenPipeError:
+            pass
         rest = p.stdout.read()
         p.stdout.close()
         return p.wait(timeout=30), first, rest
@@ -482,9 +488,13 @@ class WorkerTests(unittest.TestCase):
                     p.unlink()
 
     def test_plan_areas_must_stay_outside_the_root_and_env_is_the_claude_allowlist(self):
-        # Pure checks: every OS.
+        # Pure checks: every OS. On Windows no path is a POSIX absolute path, so every plan is refused.
         import io
         good = self.plan('pass')
+        if os.name == 'nt':
+            with self.assertRaises(RuntimeError):
+                supervisor.read_plan(io.BytesIO(good), self.root)
+            return
         self.assertEqual(supervisor.read_plan(io.BytesIO(good), self.root)['file'], sys.executable)
         link = self.area / 'link'
         os.symlink(self.root, link)
