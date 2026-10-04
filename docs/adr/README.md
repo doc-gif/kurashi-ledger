@@ -25,10 +25,11 @@ ADRには、決定とその理由、候補の比較、影響、出典を残す�
 | [0004](0004-ui-and-browsers.md) | UI構成と対応ブラウザ | Proposed |
 | [0005](0005-sqlite-driver.md) | SQLiteドライバ | Accepted |
 | [0006](0006-data-location-backup-encryption.md) | データ保管先・バックアップ・暗号化・同期の扱い | Proposed |
-| [0007](0007-shared-safety-checks.md) | 共通の安全確認（G1〜G7）と、操作ごとの適用表（修正の影響範囲の一覧） | Proposed |
+| [0007](0007-shared-safety-checks.md) | 共通の安全確認（G1〜G7）と、操作ごとの適用表（修正の影響範囲の一覧） | Accepted |
 | [0008](0008-install-record.md) | 依存の導入の記録の形式と照合の方法（T02。ADR-0002で後に決めるとした部分） | Accepted |
+| [0010](0010-diagnostics-and-maintainability.md) | 不具合調査の基盤（診断ログ・エラーコード・診断の束）と保守の仕組み（層の境界の検査、カバレッジ、lint、Dependabot）。Issue #35。実装はT29〜T32 | Proposed |
 
-`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0009以降の番号を使う（0008はT02で使った）。
+`docs/architecture.md`は移動しない。状態欄は、2026-10-02の所有者決定（下記）によりT00で更新した。E01（OpenFisca）など今後のADRは0011以降の番号を使う（0008はT02、0009はT26のPR #25、0010はIssue #35で使った）。
 
 ## T00の決定の要約
 
