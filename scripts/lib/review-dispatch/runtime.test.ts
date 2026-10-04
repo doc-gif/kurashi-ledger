@@ -5,6 +5,7 @@ import {
   capabilityReady,
   workerEnvironment,
   fixtureResult,
+  REQUIRED_PROBES,
   type Capability,
 } from "./runtime.ts";
 import { ReviewBroker, RunChannel } from "./broker.ts";
@@ -18,18 +19,7 @@ const capability: Capability = {
   version: "synthetic-1",
   codeHash: "a".repeat(64),
   profileHash: "b".repeat(64),
-  probes: Object.fromEntries(
-    [
-      "deny-network",
-      "deny-gh-auth",
-      "deny-other-ai-auth",
-      "deny-keys",
-      "deny-db",
-      "deny-policy-write",
-      "schema",
-      "descendant-lock",
-    ].map((k) => [k, true]),
-  ),
+  probes: Object.fromEntries(REQUIRED_PROBES.map((k) => [k, true])),
 };
 test("D08 complete fake-runner cycle posts once and ignores unchanged replay", async () => {
   const d = database();
@@ -109,6 +99,17 @@ test("D10 off/shadow and unverified real CLI start no workers or posts", async (
     }
   }
   assert.equal(capabilityReady({ ...capability, probes: {} }), false);
+  // Each required probe on its own keeps the capability off when missing or false.
+  for (const k of REQUIRED_PROBES) {
+    const missing = { ...capability.probes };
+    delete missing[k];
+    assert.equal(capabilityReady({ ...capability, probes: missing }), false, k);
+    assert.equal(
+      capabilityReady({ ...capability, probes: { ...capability.probes, [k]: false } }),
+      false,
+      k,
+    );
+  }
   assert.deepEqual(
     Object.keys(workerEnvironment("/synthetic", "/usr/bin")).sort(),
     ["HOME", "LANG", "NO_COLOR", "PATH", "TMPDIR"],

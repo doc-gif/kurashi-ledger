@@ -16,17 +16,23 @@ export type Capability = {
   profileHash: string;
   probes: Record<string, boolean>;
 };
+// Every probe must be proven denied (doctor.ts). Missing or false keeps the backend off.
+export const REQUIRED_PROBES = [
+  "deny-network",
+  "deny-gh-auth",
+  "deny-other-ai-auth",
+  "deny-keys",
+  "deny-keychain",
+  "deny-db",
+  "deny-policy-write",
+  "deny-supervisor",
+  "deny-hooks-mcp",
+  "tool-child-confined",
+  "schema",
+  "descendant-lock",
+] as const;
 export function capabilityReady(c: Capability | null): boolean {
-  const required = [
-    "deny-network",
-    "deny-gh-auth",
-    "deny-other-ai-auth",
-    "deny-keys",
-    "deny-db",
-    "deny-policy-write",
-    "schema",
-    "descendant-lock",
-  ];
+  const required = REQUIRED_PROBES;
   return (
     c !== null &&
     c.version !== "" &&
