@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "PRの巡回の判定（tools/review_guard/patrol.py）の、このrepoの設定。役割は本文の印とrole欄だけで決め、loginでは決めない。trusted_associationsは役割ではなく、外部の第三者が書いた印を読まないための信頼の境界。copilot_loginsはCopilotの補助レビューの有無を表示するためだけに使い、判定と承認には使わない。 tested_commit_env は、必須のcheckのジョブのログで試験したmerge commitを示す環境変数の名前（.github/workflows/ci.ymlのQuality gate）。trusted_logins は、author_associationが信頼の値にならないアカウント（GitHub Appのbot等）の記録も読むための追加の一覧で、役割は本文の印で決める。 agent_sidesは、agent_idの先頭から実装・レビューの系統（Codex側・Claude側）を決める表。レビューは実装と反対の系統のものだけを数える。reviewer_rolesの値は系統で、*は旧表記のreviewerのようにagent_idから系統を決める。",
+  "note": "PRの巡回の判定（tools/review_guard/patrol.py）の、このrepoの設定。役割は本文の印とrole欄だけで決め、loginでは決めない。trusted_associationsは役割ではなく、外部の第三者が書いた印を読まないための信頼の境界。copilot_loginsはCopilotの補助レビューの有無を表示するためだけに使い、判定と承認には使わない。 tested_commit_env は、必須のcheckのジョブのログで試験したmerge commitを示す環境変数の名前（.github/workflows/ci.ymlのQuality gate）。trusted_loginsは、author_associationがNONEになるGitHub Appのbotのloginと、そのbotが書く系統（codex・claude）の対応。設定したbotの記録だけを読み、印の系統（引継ぎはagent_idの先頭、レビューはrole）がbotの系統と食い違えば数えず未確認にする。役割は本文の印で決める。 agent_sidesは、agent_idの先頭から実装・レビューの系統（Codex側・Claude側）を決める表。レビューは実装と反対の系統のものだけを数える。reviewer_rolesの値は系統で、*は旧表記のreviewerのようにagent_idから系統を決める。",
   "repository": "doc-gif/kurashi-ledger",
   "marker_namespace": "kurashi-ledger",
   "required_check": "Quality gate",
@@ -23,7 +23,10 @@
     "MEMBER",
     "COLLABORATOR"
   ],
-  "trusted_logins": [],
+  "trusted_logins": {
+    "kurashi-ledger-codex[bot]": "codex",
+    "kurashi-ledger-claude[bot]": "claude"
+  },
   "copilot_logins": [
     "copilot-pull-request-reviewer[bot]",
     "Copilot"
@@ -40,6 +43,8 @@
     "scripts/lib/test-skips.ts",
     "scripts/lib/browser-outcomes.ts",
     "e2e/strict-reporter.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "scripts/github-app-token.ts",
+    "scripts/lib/github-app-token.ts"
   ]
 }

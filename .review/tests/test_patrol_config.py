@@ -47,6 +47,14 @@ class PatrolConfigTests(unittest.TestCase):
         self.assertEqual(self.config["reviewer_roles"]["codex-reviewer"], "codex")
         self.assertEqual(self.config["reviewer_roles"]["claude-reviewer"], "claude")
 
+    def test_app_bots_map_to_their_own_side(self):
+        # docs/github-apps.md: one App per AI; their records have author_association NONE.
+        self.assertEqual(self.config["trusted_logins"],
+                         {"kurashi-ledger-codex[bot]": "codex", "kurashi-ledger-claude[bot]": "claude"})
+        for path in ["scripts/github-app-token.ts", "scripts/lib/github-app-token.ts"]:
+            with self.subTest(path=path):
+                self.assertTrue(any(patrol.fnmatch.fnmatchcase(path, p) for p in self.config["policy_paths"]))
+
     def test_roles_are_not_identified_by_login(self):
         # Copilot logins only label the auxiliary review; no reviewer role is mapped to a login.
         self.assertFalse(set(self.config["copilot_logins"]) & set(self.config["reviewer_roles"]))

@@ -252,18 +252,41 @@ class SameAccountAndTrustTests(unittest.TestCase):
         self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), comment(2, T2, leading_blank)])))["state"],
                          patrol.ACCEPTED)
 
-    def test_trusted_logins_extend_trust_for_bot_accounts(self):
-        bot = comment(2, T2, review_body("changes-requested"), association="NONE", login="example-app[bot]")
-        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), bot])))["state"], patrol.READY)
-        extended = config()
-        extended["trusted_logins"] = ["example-app[bot]"]
-        result = patrol.judge(snapshot(pull([comment(1, T1, handoff_body()), bot])), extended)
-        self.assertEqual(only(result)["state"], patrol.FIXES)
-        # Trust is not a role: the bot's role still comes from the body.
-        note = comment(3, T3, "LGTM", association="NONE", login="example-app[bot]", source="review",
+    def test_configured_bot_records_are_read_although_the_association_is_none(self):
+        # A bot working note after a human-account ready makes the PR in progress.
+        bot_working = comment(2, T2, handoff_body(status="working"), association="NONE", login="example-claude[bot]")
+        result = only(judged(pull([comment(1, T1, handoff_body()), bot_working])))
+        self.assertEqual(result["state"], patrol.IN_PROGRESS)
+        codex_review = comment(2, T2, review_body("changes-requested"), association="NONE", login="example-codex[bot]")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), codex_review])))["state"], patrol.FIXES)
+        # Trust is not a role: a bot's plain APPROVED without a marker decides nothing.
+        note = comment(3, T3, "LGTM", association="NONE", login="example-codex[bot]", source="review",
                        review_state="APPROVED", commit_id=HEAD)
-        result = patrol.judge(snapshot(pull([comment(1, T1, handoff_body()), note])), extended)
-        self.assertEqual(only(result)["state"], patrol.READY)
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), note])))["state"], patrol.READY)
+
+    def test_bot_writing_for_another_side_is_unconfirmed(self):
+        mismatch = comment(2, T2, review_body("accepted", role="claude-reviewer", agent="claude-session/x"),
+                           association="NONE", login="example-codex[bot]")
+        result = only(judged(pull([comment(1, T1, handoff_body(agent="codex-session/impl")), mismatch])))
+        self.assertEqual(result["state"], patrol.UNCONFIRMED)
+        self.assertTrue(any("example-codex[bot]" in w for w in result["warnings"]))
+        handoff_mismatch = comment(2, T2, handoff_body(agent="codex-session/impl"),
+                                   association="NONE", login="example-claude[bot]")
+        result = only(judged(pull([comment(1, T1, handoff_body()), handoff_mismatch])))
+        self.assertEqual(result["state"], patrol.UNCONFIRMED)
+
+    def test_unknown_bots_and_none_humans_are_ignored(self):
+        for login in ("someone-else[bot]", "someone-else"):
+            with self.subTest(login=login):
+                other = comment(2, T2, review_body("changes-requested"), association="NONE", login=login)
+                result = only(judged(pull([comment(1, T1, handoff_body()), other])))
+                self.assertEqual(result["state"], patrol.READY)
+                self.assertTrue(any("untrusted" in w for w in result["warnings"]))
+
+    def test_human_account_records_keep_the_association_rule(self):
+        # doc-gif style: OWNER association, no bot mapping, no family cross-check.
+        owner = comment(2, T2, review_body("accepted"), association="OWNER", login="shared-account")
+        self.assertEqual(only(judged(pull([comment(1, T1, handoff_body()), owner])))["state"], patrol.ACCEPTED)
 
     def test_unreadable_or_unmarked_reviewer_text_after_ready_is_unconfirmed(self):
         placeholder = review_body("changes-requested | accepted | needs-owner")
@@ -374,7 +397,7 @@ class ParseAndConfigTests(unittest.TestCase):
 
     def test_config_is_validated(self):
         for key, value in [("marker_namespace", "Bad Name"), ("repository", "no-slash"),
-                           ("tested_commit_env", "lower"), ("trusted_logins", "not-a-list"),
+                           ("tested_commit_env", "lower"), ("trusted_logins", ["a-list"]), ("trusted_logins", {"x[bot]": "unknown-side"}),
                            ("agent_sides", {"codex": ["codex"]}),
                            ("reviewer_roles", {"codex-reviewer": "unknown-side"}),
                            ("trusted_associations", []), ("policy_paths", ["/abs"]), ("reviewer_roles", {})]:

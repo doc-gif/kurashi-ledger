@@ -16,6 +16,11 @@ import sys
 import guard
 
 Invalid = guard.Invalid
+
+
+class Mismatch(Invalid):
+    """A configured bot wrote a record for another AI's side."""
+
 require = guard.require
 
 # Classification of an open PR. Only the first three are the ledger's categories; the others
@@ -53,9 +58,6 @@ def load_config(value):
     require(isinstance(value.get("tested_commit_env"), str)
             and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", value["tested_commit_env"]) is not None,
             "tested_commit_env must name the environment variable that the required check logs")
-    logins = value.get("trusted_logins", [])
-    require(isinstance(logins, list) and all(guard.text(item) for item in logins),
-            "trusted_logins must be a list of strings")
     sides = value.get("agent_sides")
     require(isinstance(sides, dict) and len(sides) >= 2 and all(
         guard.text(side) and side != ANY_SIDE and isinstance(prefixes, list) and prefixes
@@ -65,6 +67,9 @@ def load_config(value):
     require(isinstance(roles, dict) and roles and all(
         guard.text(k) and (v in sides or v == ANY_SIDE) for k, v in roles.items()),
         "reviewer_roles must map each role to a side in agent_sides, or to * (side from agent_id)")
+    logins = value.get("trusted_logins", {})
+    require(isinstance(logins, dict) and all(guard.text(k) and v in sides for k, v in logins.items()),
+            "trusted_logins must map each bot login to a side in agent_sides")
     for key in ("trusted_associations", "copilot_logins", "policy_paths"):
         require(isinstance(value.get(key), list) and value[key] and all(
             guard.text(item) for item in value[key]), f"{key} must be a non-empty list of strings")
@@ -178,14 +183,15 @@ def collect(pull, config):
     """
     ns = config["marker_namespace"]
     trusted = set(config["trusted_associations"])
-    trusted_logins = set(config.get("trusted_logins", []))
+    bots = config.get("trusted_logins", {})
     out = {"handoffs": [], "reviews": [], "unreadable": [], "warnings": []}
     for item in sorted(pull.get("comments", []), key=order):
         records, unmarked, misplaced = parse_records(item.get("body"), ns)
         where = f"{item.get('source', 'comment')} {item.get('id')}"
         at = {"at": item.get("created_at"), "id": item.get("id") if isinstance(item.get("id"), int) else 0,
               "source": item.get("source", "comment")}
-        if item.get("author_association") not in trusted and item.get("login") not in trusted_logins:
+        bot_side = bots.get(item.get("login"))
+        if item.get("author_association") not in trusted and bot_side is None:
             if records or unmarked or misplaced:
                 out["warnings"].append(f"{where}: record from an untrusted author association ignored")
             continue
@@ -199,15 +205,22 @@ def collect(pull, config):
             try:
                 require(record["error"] is None and record["kind"], record.get("error") or "invalid record")
                 if record["kind"] == "handoff":
-                    out["handoffs"].append(dict(handoff(record["fields"]), **at))
+                    value = handoff(record["fields"])
+                    side = side_of(value["agent_id"], config)
                 else:
-                    out["reviews"].append(dict(review(record["fields"], config), **at))
+                    value = review(record["fields"], config)
+                    side = value["side"]
+                if bot_side is not None and side != bot_side:
+                    # A configured bot writes for one AI only; a record for another side is not counted.
+                    raise Mismatch(f"written by {item.get('login')} ({bot_side}) for side {side}")
+                (out["handoffs"] if record["kind"] == "handoff" else out["reviews"]).append(dict(value, **at))
             except Invalid as exc:
                 reason = f"{where}: {record['kind'] or 'unknown'} record not readable ({exc})"
                 out["warnings"].append(reason)
                 if record["kind"] == "handoff":
                     out["handoffs"].append(dict(at, worker_status=None, agent_id=None, task_id="",
-                                                head_sha=None, base_sha=None, invalid=str(exc)))
+                                                head_sha=None, base_sha=None, invalid=str(exc),
+                                                mismatch=isinstance(exc, Mismatch)))
                 else:
                     out["unreadable"].append(dict(at, reason=reason))
     return out
@@ -286,6 +299,10 @@ def judge_pull(pull, base_tip, config, issues):
     if tied:
         result.update(state=UNCONFIRMED, reasons=[
             "a comment and a review share the latest handoff's timestamp; their order cannot be proven"])
+        return result
+    if latest.get("mismatch"):
+        result.update(state=UNCONFIRMED, reasons=[
+            "the latest handoff was written by a bot of another side: " + latest["invalid"]])
         return result
     if latest.get("invalid"):
         return finish(IN_PROGRESS, "the latest handoff is not readable; earlier handoffs are not used")

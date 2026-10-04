@@ -26,7 +26,7 @@ CONFIG = {
     "marker_namespace": NS,
     "required_check": "Quality gate",
     "tested_commit_env": "TESTED_SHA",
-    "trusted_logins": [],
+    "trusted_logins": {"example-codex[bot]": "codex", "example-claude[bot]": "claude"},
     "agent_sides": {"codex": ["codex"], "claude": ["claude"]},
     "reviewer_roles": {"codex-reviewer": "codex", "claude-reviewer": "claude", "reviewer": "*"},
     "trusted_associations": ["OWNER", "MEMBER", "COLLABORATOR"],

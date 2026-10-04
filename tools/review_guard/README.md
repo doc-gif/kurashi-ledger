@@ -106,7 +106,7 @@ python3 tools/review_guard/patrol.py judge --snapshot snap.json   # 保存した
 
 - 経過時間は判定に使わない（時計を読まない）。無更新のPRは、引継ぎがなければいつまでも`in-progress`。Openであることは完了の根拠にしない。Draftは作業中として扱う（[AGENTS.md](../../AGENTS.md)の作業中Draft・レビュー依頼Open）。
 - 役割は、本文の印（`<!-- <名前空間>:handoff:v1 -->`・`<!-- <名前空間>:review:v1 -->`）と`role:`欄だけで決める。全員が同じGitHubアカウントで書くので、loginでは決めない。GitHubのレビューの状態（APPROVED等）やCOMMENTかどうかも使わない。印は**本文の1行目**（先頭の空行は除く）にあるものだけを読み、2行目以降の印（前置きのあとの例示、コードブロック、後置の書式例）は記録にしない（警告に出す）。`role: reviewer`（旧表記）も読む。
-- 作者の関係（`author_association`）が`trusted_associations`になく、loginが`trusted_logins`にない記録は読まない。これは役割の識別ではなく、public repoで第三者が書いた印を除くため。GitHub Appのbotで投稿する場合は、そのbotのloginを`trusted_logins`に加える（役割は本文の印のまま）。
+- 人のアカウントの記録は、作者の関係（`author_association`）が`trusted_associations`のときだけ読む。GitHub Appのbotの記録は`author_association`が`NONE`になるので、`trusted_logins`（botのloginから系統への対応。このrepoではCodexとClaudeのApp）に設定したbotのものだけを読む。知らないbot・`NONE`の人の記録は読まない。これは役割の識別ではなく、public repoで第三者が書いた印を除くため。botの記録は、印の系統（引継ぎは`agent_id`の先頭、レビューは`role`）とbotの系統を照合し、食い違えば数えずに未確認にする。
 - 必須のcheckの成功は、そのrunが試験したmerge commitが、いまのbaseの先端とheadを親に持つときだけ数える。試験したcommitはジョブのログの`<tested_commit_env>: <SHA>`の行（このrepoではQuality gateの`TESTED_SHA`）から読み、commitのAPIで親を確かめる。PRやrunのAPIのbase.shaは更新が遅れるので使わない。
 - レビューは、実装と反対の系統のものだけを数える（Claude側の実装はCodex側、Codex側の実装はClaude側。[現在の状態](../../docs/project-status.md)の「レビュー」）。実装の系統は引継ぎの`agent_id`の先頭、レビューの系統は`role`（`codex-reviewer`・`claude-reviewer`）で決める。旧表記の`role: reviewer`はレビューの`agent_id`の先頭で決める。`role`と`agent_id`の系統が食い違う、または決められないレビューは未確認にする。同じ系統の別のsubagentのレビューは数えない。`agent_id`は協調用の表示で、本人確認ではない（同じアカウントの間は、書いた本人を機械では確かめられない）。
 - 前後は作成時刻で決める。同じ資源（issue comment同士、pull review同士）の同じ秒はIDで決めるが、別の資源の同じ秒はIDで決めない（前後を証明できないので未確認）。
