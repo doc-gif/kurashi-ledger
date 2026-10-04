@@ -1,6 +1,6 @@
 # GitHubを介した実装AIとレビューAIの運用
 
-更新日: 2026-10-03。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。2026-10-02に所有者が製品実装の停止を解除し、マージの条件を決めた。
+更新日: 2026-10-04。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。2026-10-02に所有者が製品実装の停止を解除し、マージの条件を決めた。
 
 ## 分担
 
@@ -15,16 +15,17 @@
 
 ## マージ条件（正本）
 
-**いずれのAIも自動マージしない。** auto-mergeは無効のままにする。実装担当は、自分のPRに限り、最新head/baseで次をすべて確かめてから、`--match-head-commit`付きのマージコミットでマージしてよい: 実装していない別の担当の`decision: accepted`、Copilotの未対応の指摘がないこと、baseが変わっておらず競合がないこと。ほかの担当のPRはマージしない（根拠: 2026-10-02の所有者決定）。マージの直前に、mainの先端が確認したbase_shaと同じことを確かめる。`--match-head-commit`はheadしか固定しないので、マージのあとで、マージコミットの1つ目の親が確認したbase_shaであることも確かめる。違っていれば（確認の直後に別のPRが入った等）、その組み合わせをもう一度確かめ、問題があれば修正のPRを出す。マージは1件ずつ行う。
+実装担当は、自分のPRに限り、最新head/baseで次をすべて確認してからマージする。
 
-デプロイは所有者の明示指示まで行わない。
+- 実装していない側の`decision: accepted`がある。自己承認しない。
+- 提出前に実装していない担当が粗探しを完了し、設計段階の未解消の指摘がない。原因台帳・不変条件ごとの同種箇所も確認する。
+- 必須チェック`Quality gate`が成功している。関連ジョブと試験commitが対象head/baseに対応することも確認する。
+- 最新mainを取り込んでおり、確認したbaseが変わっておらず、競合がない。
+- `--match-head-commit`付きのマージコミットで、1件ずつマージする。auto-mergeは使わない。
 
-**Copilot利用枠不足の暫定条件（2026-10-03）:** [範囲](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970135036)と[所有者本人の直接確認の記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)に従う。
+マージ直前にmain先端と確認したbase_shaを照合する。`--match-head-commit`はheadだけを固定するので、マージ後に第1親がそのbase_shaと一致することも確認する。異なれば組み合わせを再検証し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
 
-- 最新headへのCopilotのレビューが利用枠不足で「レビューできない」と応答した場合だけ適用し、その応答をPRに記録する。応答なし・接続失敗は未確認であり、暫定条件の根拠にはしない。
-- 代わりに、最新head/baseで実装していない別担当の`accepted`と、そのheadでの実装していない担当による粗探し完了を確認する。粗探しは原因台帳・不変条件ごとの同種箇所を洗い出し、設計段階の未解消の指摘がないことを明記する。Claude実装にはCodex accepted、Codex実装の#40にはClaude acceptedが必要。自己承認しない。
-- 以前のheadへのCopilotの指摘には引き続き対応し、解消の証跡を残す。CI、最新base、競合なしなど、ほかのマージ条件も維持する。
-- 枠が戻った時点で暫定条件を終了する。暫定条件でマージしたPRを記録し、復旧後にCopilotへ再レビューを依頼する。新しい指摘は後続PRで対応する。
+**Copilotレビューは任意（2026-10-04の[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
 
@@ -72,7 +73,7 @@ Open PRだから完成、Draftだから絶対未完成とはみなさない。�
 
 同一GitHubアカウントでは作者自身にApprove/Request changesできない場合があるため、COMMENTレビューにrole: codex-reviewerまたはclaude-reviewer・agent_id・対象SHA・decisionを明記する。実装者とは別担当がレビューし、Claude/Codexのどちらも実装とレビューを担当できるが自分の差分は承認しない。GitHub上の正式な独立承認が必要な構成では、別の権限主体を準備する。2026-10-03の所有者決定で、AIごとのGitHub App（役割ではなく身元）を用意した。移行とrulesetの承認の規則は所有者の確認待ち（[AIのGitHub App](github-apps.md)）。コメントを保護ルールの承認に見せかけない。
 
-Copilotの自動レビューはmain向けPRに設定済み。repo側はdraftレビューfalse、新pushレビューtrue。個人設定等が別途draftレビューを有効にしている可能性があるため、repo設定だけで全てのdraftレビューを禁止できるとは限らない。レビューの実行はPRの記録で確認済みだが、2026-10-03は[利用枠不足の応答](https://github.com/doc-gif/kurashi-ledger/pull/40#pullrequestreview-5401246180)がある。各headの実行結果と利用可能性を確認し、上の[暫定条件](#merge-conditions)を適用する。[Copilot設定](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review)
+Copilotの自動レビューはmain向けPRに設定済み。repo側はdraftレビューfalse、新pushレビューtrue。個人設定等が別途draftレビューを有効にしている可能性があるため、repo設定だけで全てのdraftレビューを禁止できるとは限らない。レビューの実行はPRの記録で確認済みだが、2026-10-03は[利用枠不足の応答](https://github.com/doc-gif/kurashi-ledger/pull/40#pullrequestreview-5401246180)がある。取得できた実行結果と指摘を補助情報として確認する。応答待ちや利用枠不足だけでは止めない（[現行マージ条件](#merge-conditions)）。[Copilot設定](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review)
 
 Copilotによる承認・マージ条件充足をこの運用の許可として採用しない。Copilot cloud agentやFix with Copilotは起動せず、修正担当の重複を避ける。Copilotへの返信は、人間と実装担当へ理由を残すために使い、返信だけでCopilotが再応答すると仮定しない。再レビューは新push設定または明示的な再依頼を使う。[Copilotレビューの利用方法](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review)
 
