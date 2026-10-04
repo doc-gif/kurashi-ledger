@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
+  "base_sha": "5f8439751fd5c888377a0db908f3b189fe21bf27",
   "task_id": "OPS-plan-tables",
   "planned_paths": [
     ".github/PULL_REQUEST_TEMPLATE.md",
