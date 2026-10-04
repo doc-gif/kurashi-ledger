@@ -24,6 +24,11 @@
       "description": "T23 (PR #38, paused) owns state judgement and notification today; T24 owns external AI polling. Active mode needs exactly one judge/notifier per PR.",
       "state": "resolved",
       "resolution": "Per migrated PR, the Issue45 dispatcher is the only judge and notifier. T23/T24 and the existing patrols skip migrated PRs; T23 keeps CI-policy protection for all PRs. No paused PR38/44 code is imported or resumed."
+    },
+    {
+      "description": "Red team on 6ceb1bf (issuecomment-5977292218): 2 P1, 4 P2, 4 P3 at design level. Fixed holistically, by root cause, not finding by finding.",
+      "state": "resolved",
+      "resolution": "C1 (P1 layers, P1 Read scope, P2 keychain, P3 auth-status): each isolation layer must name the documented mechanism, be mandatory, and have a doctor negative probe; any missing flag/setting or failed probe disables the capability. No 'adopt if supported' for required layers. Read runs inside the CLI process, so the CLI Seatbelt profile and scoped Read rules (not the tool-child profile) bound it; Read rules reach Grep/Glob only best-effort, so Seatbelt is the hard bound. Keychain: owner decision 2026-10-04 - if the probe reads an App key or a synthetic item with the same ACL shape, the owner moves App keys to a dedicated keychain file; launch stays disabled until then. Broker runs a publication check before posting (W2). Auth-status check left to W1. C2 (P2 timing, P2 notice, P3 rollback reviewers, P3 who posts red team): active changes how conditions are evaluated, so record it as an owner-approved reinterpretation (2026-10-04: Ready = request review; red team after Ready, before the review job, same head/base) and stop claiming 'unchanged'; give non-dispatcher actors one information-only dispatch-notice per switch/rollback with mode, policy revision and required reviewers; missing/ambiguous notice = old rules and no merge; rollback reuses APPROVEs only when all required reviewers approved; red team by one independent assigned reviewer (human posts manually in the same format), matching reducer.ts. C3 (P2 auto-fix, P3 O1 scope): record only what the owner decided; auto-fix disabled until a separate implementer-job isolation design is accepted; Cloudflare Tunnel, receive App and Codex argv are design proposals, the owner picks the tunnel in W4. Variant sweep: design §3/§5/§6/§7/§8/§9, pr-review-loop (red-team section, active section), operations (merge conditions, roles, polling), T23/T24, external-worker."
     }
   ],
   "assessments": [
@@ -119,11 +124,27 @@
     {
       "invariant_id": "INV-PRIVACY",
       "cause_key": "token-scope-fail-open",
-      "pattern": "Text that widens what a worker can read (keychain, config dir) when a probe is unknown",
+      "pattern": "Text that widens what a worker can read (keychain, config dir) when a probe is unknown; also: an isolation layer written as intent or optional, so an unsupported flag or in-process tool silently widens access (PR51 RT P1 x2, P2 keychain)",
       "places": [
         {
           "location": "design §7 Seatbelt/doctor paragraph",
           "result": "CLI profile may read only its dedicated config dir login; tool-child profile reads no credential; unknown probe = disabled"
+        },
+        {
+          "location": "design §7 layer table",
+          "result": "Every row names a documented flag/setting; all mandatory; missing = disabled"
+        },
+        {
+          "location": "design §7 Read/Grep/Glob",
+          "result": "Scoped rules to materials + config-dir deny; CLI profile limited to materials/runtime/config dir; Seatbelt is the hard bound because Read rules reach Grep/Glob best-effort"
+        },
+        {
+          "location": "design §7 keychain",
+          "result": "Synthetic same-ACL probe; owner moves App keys to a dedicated keychain file on failure; disabled until probe passes"
+        },
+        {
+          "location": "design §6 Broker",
+          "result": "Publication check before posting (W2)"
         }
       ]
     },
@@ -144,7 +165,7 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "Two judges or two notifiers for the same PR; old approval converted",
+      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2)",
       "places": [
         {
           "location": "github-agent-operations 分担/定期実行",
@@ -153,6 +174,22 @@
         {
           "location": "design §5 table and rollback",
           "result": "No COMMENT->APPROVE conversion; shadow records never count"
+        },
+        {
+          "location": "github-agent-operations merge conditions",
+          "result": "Owner-approved reinterpretation recorded with date"
+        },
+        {
+          "location": "pr-review-loop red-team section and active section",
+          "result": "Same reinterpretation; notice per switch/rollback; missing/ambiguous = old rules, no merge"
+        },
+        {
+          "location": "design §5",
+          "result": "Red team after Ready and before the review job, same pair"
+        },
+        {
+          "location": "rollback step",
+          "result": "Reuse APPROVEs only with all required reviewers"
         }
       ]
     },
@@ -216,6 +253,20 @@
         {
           "location": "pr-review-loop active section",
           "result": "Broker bodies keep v1 markers and roles codex-reviewer/claude-reviewer; no new role spelling"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "Recording more than the owner decided or enabling an undesigned capability (RT P2 auto-fix, P3 O1 scope)",
+      "places": [
+        {
+          "location": "design §8 decision table",
+          "result": "Decision vs design proposal columns split"
+        },
+        {
+          "location": "T24 row, pr-review-loop roles table, design §6",
+          "result": "Auto-fix disabled until implementer-job isolation design is accepted"
         }
       ]
     }
