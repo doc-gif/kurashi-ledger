@@ -42,7 +42,9 @@ import {
   type SpawnSupervisor,
   type SupervisorChild,
 } from "./lib/review-dispatch/active.ts";
-import { createClaudeReviewBroker } from "./lib/review-dispatch/claude-broker.ts";
+import { createClaudeReviewBroker, type SpawnRelay } from "./lib/review-dispatch/claude-broker.ts";
+import { createHash } from "node:crypto";
+import type { LaunchOptions } from "./lib/review-dispatch/launcher.ts";
 import {
   inspectConfigDir,
   managedSettingsPresent,
@@ -84,7 +86,9 @@ export type Deps = {
   transport?: (token: string, gh: string) => Transport;
   spawn?: SpawnSupervisor;
   digest?: (path: string) => string;
-  readText?: (path: string) => string;
+  readBytes?: (path: string) => Buffer;
+  relaySpawn?: SpawnRelay;
+  launch?: LaunchOptions;
   platform?: NodeJS.Platform;
 };
 // A file of the trusted copy the supervisor runs from (install.supervisor ends in tools/review_dispatch/supervisor.py).
@@ -226,14 +230,18 @@ async function active(
   const target = startSmall(policy);
   const current = results.find((r) => r.pr === target.pr);
   if (!current) return 0;
-  // Nothing to launch (not eligible, waiting for RTs, already reviewed): the status command shows why.
-  if (!nextKind(store, policy, current.snapshot).kind) return 0;
+  // A post deferred by an edit mark is recovered first (Codex PR56-R003); otherwise stop when nothing is due
+  // (not eligible, waiting for RTs, already reviewed): the status command shows why.
+  if (!store.deferred(target.key) && !nextKind(store, policy, current.snapshot).kind) return 0;
   const digest = deps.digest ?? fileDigest;
   const executableSha256 = digest(install.claude.executable);
+  // Codex PR56-R005: cli.sb is read once. The same bytes are matched with the capability and give the hash the
+  // launch is bound to; a later change of the file means no launch (the runner and the supervisor re-check).
+  const profileBytes = (deps.readBytes ?? ((p: string) => readFileSync(p)))(install.claude.cliProfile ?? "");
   const bound = boundCapability(
     store.capability("claude"),
     install.claude,
-    (deps.readText ?? ((p) => readFileSync(p, "utf8")))(install.claude.cliProfile ?? ""),
+    profileBytes.toString("utf8"),
     executableSha256,
   );
   if (!bound.capability) {
@@ -254,20 +262,24 @@ async function active(
         { ...current.snapshot, pair: j.pair },
         dir,
         trustedGuard(install.python, trustedCopyFile(install, "tools/review_guard/guard.py")),
+        policy.actors.map((a) => a.id),
       ),
     spawn: deps.spawn ?? realSpawn,
     now: clock,
     // Re-checked by the supervisor immediately before the worker starts (PR #56 red team P3).
     bound: {
       profile: install.claude.cliProfile ?? "",
-      profileSha256: digest(install.claude.cliProfile ?? ""),
+      profileSha256: createHash("sha256").update(profileBytes).digest("hex"),
       executable: install.claude.executable,
       executableSha256,
     },
+    digest,
+    ...(deps.launch ? { launch: deps.launch } : {}),
   });
   const broker = createClaudeReviewBroker(policy, install.broker, store, verifier, {
     platform: deps.platform ?? process.platform,
     home: install.home,
+    ...(deps.relaySpawn ? { spawn: deps.relaySpawn } : {}),
   });
   const fresh = async () => {
     const again = (await reconcile(new GhReader(policy.repo, transport), policy, store)).find(
@@ -360,7 +372,7 @@ async function doctor(
   clock: () => number,
   deps: Deps,
 ): Promise<number> {
-  const read = deps.readText ?? ((p: string) => readFileSync(p, "utf8"));
+  const read = (p: string) => (deps.readBytes ?? ((q: string) => readFileSync(q)))(p).toString("utf8");
   const host = seatbeltHost({ cliProfile: install.claude.cliProfile ?? "" });
   try {
     const result = await doctorCommand({
@@ -408,7 +420,7 @@ async function measure(
       executableSha256: digest(install.claude.executable),
     },
     executableDigest: digest(install.claude.executable),
-    profileText: (deps.readText ?? ((p: string) => readFileSync(p, "utf8")))(install.claude.cliProfile ?? ""),
+    profileText: (deps.readBytes ?? ((p: string) => readFileSync(p)))(install.claude.cliProfile ?? "").toString("utf8"),
     executor: spawnExecutor(),
     spawn: deps.spawn ?? realSpawn,
     layout: trapLayout,

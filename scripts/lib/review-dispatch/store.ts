@@ -709,12 +709,12 @@ export class Store {
     return false;
   }
   // The dispatcher's own record of a run's materials (plan path, ledger causes); written once by the runner.
-  saveRunMaterials(run: string, value: { planPath: string | null; ledger: string[] }): void {
+  saveRunMaterials(run: string, value: { planPath: string | null; ledger: string[]; previousRts: string[] }): void {
     this.db.prepare("INSERT INTO run_materials VALUES(?,?)").run(run, JSON.stringify(value));
   }
-  runMaterials(run: string): { planPath: string | null; ledger: string[] } | null {
+  runMaterials(run: string): { planPath: string | null; ledger: string[]; previousRts: string[] } | null {
     const r = this.db.prepare("SELECT value FROM run_materials WHERE run=?").get(run) as Row | undefined;
-    return r ? (JSON.parse(String(r["value"])) as { planPath: string | null; ledger: string[] }) : null;
+    return r ? (JSON.parse(String(r["value"])) as { planPath: string | null; ledger: string[]; previousRts: string[] }) : null;
   }
   // A leased job whose result waits for its post (Broker "deferred"): the next cycle retries the same job.
   deferred(key: string): { job: Job; result: string; origin: unknown } | null {

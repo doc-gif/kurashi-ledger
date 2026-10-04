@@ -926,3 +926,62 @@ test("W4 a registered participant who is not an assigned reviewer raises finding
     d.cleanup();
   }
 });
+
+test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or a conversation comment blocks accepted and turns the APPROVE into a needs-owner COMMENT", async () => {
+  const { approvalBlockers } = await import("./reducer.ts");
+  const { ReviewBroker } = await import("./broker.ts");
+  const { RunChannel } = await import("../../../tests/fixtures/review-dispatch-run-channel.ts");
+  const { fixtureResult } = await import("./runtime.ts");
+  for (const where of ["review", "line", "conversation"] as const) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    try {
+      const ownerReview = { id: 61, user: { id: 10 }, state: "COMMENTED", commit_id: HEAD, submitted_at: t(5), body: "PR1-R005 — 所有者の指摘" };
+      if (where === "line")
+        f.state.lineComments = [{ id: 62, user: { id: 10 }, created_at: t(5), updated_at: t(5), body: "PR1-R005 — 所有者の指摘", pull_request_review_id: 99 }];
+      if (where === "conversation")
+        f.state.conversation = [{ id: 63, user: { id: 10 }, created_at: t(5), updated_at: t(5), body: "PR1-R005 — 所有者の指摘" }];
+      const transport: Transport = async (path, h) => {
+        const r = await f.send(path, h);
+        if (where === "review" && path.includes("/pulls/1/reviews")) {
+          const v = JSON.parse(r.body) as unknown[];
+          return { ...r, body: JSON.stringify([...v, ownerReview]) };
+        }
+        return r;
+      };
+      f.state.ready = true;
+      f.state.now = 6;
+      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1);
+      const s = (await reconcile(new GhReader("synthetic/repository", transport), p, d.store))[0]!.snapshot;
+      assert.deepEqual(s.openFindings, [{ actor: 10, ids: ["PR1-R005"] }], where);
+      const target = assess(p, s, null);
+      s.faultfinding = { actor: 30, pair: { ...s.pair }, unresolved: [] };
+      assert.equal(accepted(p, s, target), false, where);
+      assert.deepEqual(approvalBlockers(p, s, 30), ["PR1-R005"], where);
+      // Through the Broker: the review result is accepted, the post is a COMMENT with needs-owner.
+      d.store.observe(target);
+      const j = d.store.claim(p, s, 30, "review", Date.parse(t(7)))!;
+      d.store.running(j);
+      const raw = JSON.stringify({ ...fixtureResult(j), decision: "accepted" });
+      d.store.result(j, raw);
+      const channel = new RunChannel(Buffer.alloc(32, 5));
+      const posts: { event: string; body: string }[] = [];
+      const broker = new ReviewBroker(
+        30,
+        {
+          post: async (_pr, event, _head, body) => void posts.push({ event, body }),
+          list: async () => posts.map((x, n) => ({ id: String(n + 1), actor: 30, head: HEAD, body: x.body })),
+        },
+        d.store,
+        channel,
+      );
+      assert.equal(await broker.submit(p, j, raw, channel.seal(j, raw), async () => s), "posted", where);
+      assert.equal(posts[0]!.event, "COMMENT", where);
+      assert.match(posts[0]!.body, /^decision: needs-owner$/m);
+      assert.match(posts[0]!.body, /APPROVEにせずCOMMENTにした（PR1-R005）/);
+    } finally {
+      d.cleanup();
+    }
+  }
+});

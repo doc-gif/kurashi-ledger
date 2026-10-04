@@ -190,7 +190,7 @@ async function content(reader: GhReader, path: string, ref: string): Promise<Con
   const bytes = Buffer.from(v["content"], "base64");
   return bytes.length > MAX_FILE ? { bytes: null, note: "too-large" } : { bytes, note: null };
 }
-export type MaterialsMeta = { planPath: string | null; ledger: string[] };
+export type MaterialsMeta = { planPath: string | null; ledger: string[]; previousRts: string[] };
 // The trusted guard check (tools/review_guard/guard.py from the trusted copy) over copies of the PR's plan,
 // its changed paths and the base's catalog and ledger. Returns its stdout (JSON or an error line).
 export type GuardCheck = (input: {
@@ -225,6 +225,8 @@ export async function buildMaterials(
   s: Pick<Snapshot, "pr" | "pair" | "reviews" | "openFindings">,
   dir: string,
   guard: GuardCheck | null = null,
+  // Policy participants: only their earlier red-team records are materials and evidence (Codex PR56-R004).
+  registered: readonly number[] = [],
 ): Promise<{ files: number; bytes: number } & MaterialsMeta> {
   let total = 0;
   const write = (rel: string, data: Buffer | string) => {
@@ -278,16 +280,26 @@ export async function buildMaterials(
     .filter((r) => r.state === "CHANGES_REQUESTED")
     .map((r) => ({ actor: r.actor, review: r.id }));
   write("pr/open-findings.json", `${JSON.stringify({ changesRequested: requests, findings: s.openFindings ?? [] }, null, 1)}\n`);
-  // Earlier red-team records of this PR (conversation comments and Reviews), for the RT re-check.
+  // Earlier red-team records of this PR (conversation comments and Reviews) by registered participants, for
+  // the RT re-check. A record by anyone else is neither material nor evidence.
   const earlier: string[] = [];
+  const previousRts = new Set<string>();
   for (const [kind, path] of [
     ["comment", `issues/${s.pr}/comments?per_page=100`],
     ["review", `pulls/${s.pr}/reviews?per_page=100`],
   ] as const)
     for (const v of await reader.pages(path)) {
       const o = object(v);
-      if (typeof o["body"] === "string" && o["body"].includes(RED_TEAM_MARK))
-        earlier.push(`## ${kind} ${String(o["id"])}\n\n${o["body"]}\n`);
+      const user = o["user"] && typeof o["user"] === "object" ? (o["user"] as Record<string, unknown>)["id"] : null;
+      if (
+        typeof o["body"] !== "string" ||
+        !o["body"].includes(RED_TEAM_MARK) ||
+        !Number.isSafeInteger(user) ||
+        !registered.includes(Number(user))
+      )
+        continue;
+      earlier.push(`## ${kind} ${String(o["id"])}\n\n${o["body"]}\n`);
+      for (const m of o["body"].matchAll(/^[ \t]*(?:[-*][ \t]+)?(RT-[1-9][0-9]{0,2})[ \t]*[:：]/gm)) previousRts.add(m[1]!);
     }
   write("pr/previous-redteam.md", earlier.length ? earlier.join("\n") : "なし\n");
   const base: Record<string, Buffer | null> = {};
@@ -315,7 +327,7 @@ export async function buildMaterials(
     });
   }
   write("context/guard-check.json", `${guardOut.trim()}\n`);
-  return { files: index.length, bytes: total, planPath: plan?.path ?? null, ledger };
+  return { files: index.length, bytes: total, planPath: plan?.path ?? null, ledger, previousRts: [...previousRts].sort() };
 }
 // guard.py check from the trusted copy: fixed interpreter and argv, no shell, minimal env, bounded time.
 export function trustedGuard(python: string, guardPy: string): GuardCheck {
@@ -406,7 +418,14 @@ type Supervised = {
 export type SupervisorCommand = { python: string; supervisor: string; root: string; spawn: SpawnSupervisor };
 const supervisor = (c: SupervisorCommand, mode: string, extra: string[]) =>
   c.spawn(c.python, [c.supervisor, mode, "--root", c.root, ...extra], { ...SUPERVISOR_ENV });
-export type Descendants = { seen: number; checked: number; holding: number };
+export type Descendants = {
+  seen: number;
+  checked: number;
+  holding: number;
+  pending: number;
+  failed: number;
+  proven: boolean;
+};
 export async function inspectRun(
   c: SupervisorCommand,
   run: string,
@@ -421,8 +440,19 @@ export async function inspectRun(
         treeEnded: v["treeEnded"] === true,
         neverStarted: v["neverStarted"] === true,
         uncertain: v["uncertain"] !== false,
-        ...(d && ["seen", "checked", "holding"].every((k) => Number.isSafeInteger(d[k]))
-          ? { descendants: { seen: Number(d["seen"]), checked: Number(d["checked"]), holding: Number(d["holding"]) } }
+        ...(d &&
+        ["seen", "checked", "holding", "pending", "failed"].every((k) => Number.isSafeInteger(d[k])) &&
+        typeof d["proven"] === "boolean"
+          ? {
+              descendants: {
+                seen: Number(d["seen"]),
+                checked: Number(d["checked"]),
+                holding: Number(d["holding"]),
+                pending: Number(d["pending"]),
+                failed: Number(d["failed"]),
+                proven: d["proven"] === true,
+              },
+            }
           : {}),
       };
     }
@@ -430,6 +460,17 @@ export async function inspectRun(
     // Unknown state stays uncertain.
   }
   return { treeEnded: false, neverStarted: false, uncertain: true };
+}
+export function descendantsProven(d: Descendants | undefined): boolean {
+  return (
+    !!d &&
+    d.proven === true &&
+    d.seen >= 1 &&
+    d.holding === d.seen &&
+    d.checked === d.seen &&
+    d.pending === 0 &&
+    d.failed === 0
+  );
 }
 // The files the doctor measured, re-checked by the supervisor immediately before the worker starts.
 export type BoundFiles = { profile: string; profileSha256: string; executable: string; executableSha256: string };
@@ -502,6 +543,8 @@ export type ClaudeRunnerDeps = {
   spawn: SpawnSupervisor;
   now: () => number;
   bound: BoundFiles;
+  // Re-hash of the bound files just before anything starts (Codex PR56-R005). Defaults to fileDigest.
+  digest?: (path: string) => string;
   launch?: LaunchOptions; // tests only (platform, token reader)
 };
 export function claudeRunner(d: ClaudeRunnerDeps): Runner {
@@ -514,6 +557,20 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
   return {
     capability: { ...d.capability, backend: "claude" },
     async run(j) {
+      const digest = d.digest ?? fileDigest;
+      const unchanged = () => {
+        try {
+          return (
+            digest(d.bound.profile) === d.bound.profileSha256 &&
+            digest(d.bound.executable) === d.bound.executableSha256
+          );
+        } catch {
+          return false;
+        }
+      };
+      // The files the capability was matched with must still be the same, before and right before the launch.
+      if (!unchanged())
+        return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "bound-file-changed", origin: null };
       const { area, run } = newRunArea(d.install.runs, j.run);
       try {
         let plan: ReturnType<typeof buildLaunch>;
@@ -526,6 +583,8 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
           const reason = e instanceof ActiveError ? e.message.replace("active refused: ", "") : "launch-refused";
           return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason, origin: null };
         }
+        if (!unchanged())
+          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "bound-file-changed", origin: null };
         // Persist the commitment before the supervisor may start the worker (W4 row 2).
         const r = await superviseRun(command, j, plan, d.install.workerTimeoutSeconds, d.bound, (record) => {
           d.store.saveRunKey(j, record, d.now());
@@ -623,7 +682,6 @@ export function measurementJob(p: Policy, kind: "review" | "faultfinding" = "rev
     policy: p.revision,
   };
 }
-export const readText = (path: string): string => readFileSync(path, "utf8");
 
 // ---- Owner tools: measurement record and doctor (real CLI and real Seatbelt; never in CI) ----
 
@@ -806,17 +864,9 @@ export async function measureCommand(d: {
     return {
       schema: 1,
       measurement: measurementRecord(d.install.claude, d.executableDigest, profileHash(d.profileText), outcomes),
-      // Inheritance is proven only by an observed and checked child that held the run lock, and no child
-      // that did not; a normal exit alone proves nothing (I009).
-      external: {
-        schema,
-        descendantLock:
-          r.treeEnded &&
-          !r.uncertain &&
-          !!r.descendants &&
-          r.descendants.checked >= 1 &&
-          r.descendants.holding === r.descendants.checked,
-      },
+      // Inheritance is proven only when EVERY observed child was seen holding the run lock (Codex PR56-R001):
+      // one unchecked, failed or pending child, or none at all, is not proof. A normal exit proves nothing (I009).
+      external: { schema, descendantLock: r.treeEnded && !r.uncertain && descendantsProven(r.descendants) },
     };
   } finally {
     removeRunArea(area);

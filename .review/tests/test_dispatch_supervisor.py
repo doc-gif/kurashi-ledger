@@ -623,8 +623,7 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(status, 0, run)
             d = supervisor.inspect(self.root, run)['descendants']
             self.assertGreaterEqual(d['seen'], 1, run)
-            self.assertGreaterEqual(d['checked'], 1, run)
-            self.assertEqual(d['holding'] == d['checked'], not close, (run, d))
+            self.assertEqual(d['proven'], not close, (run, d))
 
     def test_a_failed_or_unstructured_claude_run_is_never_signed(self):
         if sys.platform != 'darwin':
@@ -720,3 +719,36 @@ class TreeEndTests(unittest.TestCase):
             if child.poll() is None:
                 child.kill()
             child.wait()
+
+
+class DescendantProbeTests(unittest.TestCase):
+    """Codex PR56-R001: inheritance is proven only when every observed child was seen holding the run lock."""
+
+    def probe(self, results, wait=2):
+        members = list(results)
+
+        def check(pid, _path):
+            r = results[pid]
+            if r == 'slow':
+                time.sleep(wait + 1)
+                return True
+            if r == 'raise':
+                raise OSError('lsof failed')
+            return r
+
+        p = supervisor.DescendantProbe(1, '/nonexistent.lock', members=lambda _g: members, check=check, wait=wait)
+        p.sample()
+        return p.report()
+
+    def test_every_observed_child_must_hold_the_lock(self):
+        self.assertTrue(self.probe({11: True, 12: True})['proven'])
+        # Independent expectations: one unproven child is never proof, whatever the others say.
+        for name, results in [('partial', {11: True, 12: None}),
+                              ('not holding', {11: True, 12: False}),
+                              ('lsof failed', {11: True, 12: 'raise'}),
+                              ('slow lsof', {11: True, 12: 'slow'}),
+                              ('no child', {})]:
+            r = self.probe(results, wait=0.3)
+            self.assertFalse(r['proven'], (name, r))
+        r = self.probe({11: True, 12: 'slow'}, wait=0.3)
+        self.assertEqual((r['seen'], r['holding'], r['pending']), (2, 1, 1))

@@ -140,16 +140,17 @@ export const independent = (policy: Policy, a: number, b: number): boolean => {
   );
 };
 // Who can raise a finding on a PR (owner decision, Issue #50 issuecomment-5978984980): every participant
-// registered in the policy (owner, Codex, Claude and others), not only the assigned reviewers. Owners raise
-// through their own narrower rule (findings.ts), so they are not listed here. The PR's implementer (and anyone
-// who is the same person) is excluded: an implementer's own notes on its fixes are not findings. Unregistered
-// third parties are reference only, so a stranger on a public repository cannot block.
+// registered in the policy (owner, Codex, Claude and others), not only the assigned reviewers, all under the
+// same rules (Codex PR56-R002: an owner's COMMENT, line or conversation finding counts too). The PR's
+// implementer (and anyone who is the same person) is excluded: an implementer's own notes on its fixes are not
+// findings. Unregistered third parties are reference only, so a stranger on a public repository cannot block.
+// Collection, edit/delete records, Webhook marks, the pre-APPROVE check and accepted() all use this list.
 export function findingRaisers(p: Policy, pr: number): number[] {
   const t = p.targets.find((x) => x.pr === pr);
   if (!t) return [];
   const implementer = p.actors.find((a) => a.id === t.implementer)?.person;
   return p.actors
-    .filter((a) => !p.owners.includes(a.id) && a.person !== implementer)
+    .filter((a) => a.person !== implementer)
     .map((a) => a.id)
     .sort((a, b) => a - b);
 }

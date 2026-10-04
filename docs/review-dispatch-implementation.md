@@ -60,7 +60,7 @@ Webhook欠落は、保存した観測より後のReady/Reviewを、同じpolicy�
 
 launch/POST不明は`uncertain`に残し、期限切れで再起動・再送しません。Outboxは全ページから身元・commit・marker・本文hashが一致する1件を確認して初めてpostedになります。複数一致はownerへ保留します。
 
-`supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しません。lockが取れるだけ、PIDが存在しないだけではleaseを解放しません。合成backendでも途中のmanifest/起動境界は不明として保持します。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明します（setsidで抜けた子孫はrun lockの継承で見つける）。実CLIの子がrun lockを継承するかは、`measure`が子を作るrunで実測し、観測できなければ`descendantLock`をfalseにします。
+`supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しません。lockが取れるだけ、PIDが存在しないだけではleaseを解放しません。合成backendでも途中のmanifest/起動境界は不明として保持します。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明します（setsidで抜けた子孫はrun lockの継承で見つける）。実CLIの子がrun lockを継承するかは、`measure`が子を作るrunで実測します。観測した子のすべてで継承を確かめられたときだけ`descendantLock`をtrueにし、1つでも未検査・失敗・処理中の子があるか、子を観測できなければfalseにします。
 
 DBはWAL/FULL同期、schema 4です（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足した）。schema 1〜3からの暗黙の変換はせず、停止状態のbackupと独立レビューを受けた移行が必要です。未知schemaは書き込まず停止します。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしません。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しません。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用ルートで確認してownerが切り替えます。以前のDBを消さず、古い配送ID・quota・投稿hashを保ちます。
 
@@ -105,7 +105,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 
 GitHubのREST APIにはスレッドの解決状態がなく、書込み権限のある人（実装AIのAppやownerを含む）はReviewのdismissやコメントの編集・削除ができる。そのため、入力を1つの規則にまとめて安全側に倒す。
 
-- **挙げられる人:** policyに登録した参加者（割り当てたreviewer以外も含む。そのPRの実装担当と同じ人は除く。[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。ownerはCHANGES_REQUESTED/DISMISSEDのReviewだけで挙げられ、ほかの人の指摘は解消できない。登録していない第三者のコメントは参考で、判定を変えない。`accepted()`、APPROVEの前の確認、Webhookの印は、この同じ範囲を使う。
+- **挙げられる人:** policyに登録した参加者（ownerと、割り当てたreviewer以外も含む。そのPRの実装担当と同じ人は除く。[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。全員が下の同じ規則で挙げる（ownerのCOMMENTのReview・行コメント・会話コメントも数える）。だれも、ほかの人の指摘は解消できない。登録していない第三者のコメントは参考で、判定を変えない。`accepted()`、APPROVEの前の確認、Webhookの印は、この同じ範囲を使う。
 - **Review本文:** 行頭の`PR<N>-R<3桁以上>`（このPRの番号だけ。`> `の引用行と文中の言及は除く）。IDのないCHANGES_REQUESTEDとDISMISSEDは`review:<ID>`。
 - **行コメント:** すべて指摘（IDがなければ`comment:<ID>`）。編集されたものは、更新時刻に`comment:<ID>`も挙げる。
 - **会話コメント（PRのconversation）:** 行頭ID。IDがなく、`decision:`の行の値が`accepted`以外なら`issue:<ID>`。編集されたものは`issue:<ID>`も挙げる。
@@ -167,11 +167,11 @@ Issue #50 W4aの部分です（[所有者決定 start-small](https://github.com/
 | `cycle` | 照合（shadowと同じ）。policyのmodeがactiveなら、PRごとにJobを1つまで起動する。順は粗探し→レビューで、同じhead/base・同じ世代に各1回。粗探しの未解消のRT、未処理の編集の印、blocked、上限での停止のときは起動しない |
 | start-smallの形 | 対象のPRは1件、必要なreviewerは1者で、Claude（`executor: claude`のAI）。Codexは`buildLaunch`と`capabilityReady`が常に拒否する |
 | install記録 | ownerがrepoの外に置くJSON（policyと同じ検査）。起動器の設定、Claude Broker、python、supervisor、`runs`、`home`、workerの時間上限。supervisorとtoken wrapperは同じ信頼した写しから |
-| capability | `doctor`がverifiedのときだけ記録する。起動の直前に、版・実行ファイルのsha256・cli.sbのhash・argvの型のhashを今の値と照合し、どれかが違えば起動しない |
+| capability | `doctor`がverifiedのときだけ記録する。起動の前に、版・実行ファイルのsha256・cli.sbのhash・argvの型のhashを今の値と照合し、どれかが違えば起動しない。cli.sbは1回だけ読み、照合したそのbytesのhashを起動に結び付ける。受付とsupervisorが起動の直前にもう一度照合し、変わっていれば未起動 |
 | 資料 | PRの差分・headのファイル・本文、ほかの人の変更要求と未解消の指摘（`pr/open-findings.json`）、前の粗探しの記録、baseの規約（`AGENTS.md`は`agent-rules.md`へ改名）・原因台帳・書式、信頼した写しの`guard.py check`の出力。中立の名前で置く。差分も中身もないファイル（中身の変わらない改名を除く）、件数・大きさの上限超え、読めない原因台帳では起動しない（未起動として1回通知） |
-| 粗探しの投稿 | 正本の書式（`kurashi-ledger:red-team:v1`、plan_path、台帳の件数、原因ごとの判定表、前のRTの解消・対応不要・未解消、`RT-<番号>`）をCOMMENTで投稿する（`role:`・`decision:`の行はない）。RT、未解消の前のRT、判定のない原因、needs-ownerのどれかがあれば、レビューを起動しない |
+| 粗探しの投稿 | 正本の書式（`kurashi-ledger:red-team:v1`、plan_path、台帳の件数、原因ごとの判定表、前のRTの解消・対応不要・未解消、`RT-<番号>`）をCOMMENTで投稿する（`role:`・`decision:`の行はない）。RT、未解消の前のRT、判定のない原因、「確認できない」とした台帳の原因、再確認していない前のRT（policyに登録した参加者が投稿した記録のRTだけを数える。未登録の人の記録は資料にも根拠にも入れない）、needs-ownerのどれかがあれば、レビューを起動しない |
 | APPROVEの前の確認 | `accepted()`と同じ止め方（policyに登録したほかの参加者の最新の決定的なCHANGES_REQUESTEDと未解消の指摘。登録していない第三者は参考）に当たれば、APPROVEにせず`decision: needs-owner`のCOMMENTにし、止めたIDを本文に書く |
-| 編集・削除の印 | 登録した参加者（実装担当を除く）とownerが書いた項目の配送だけに付く。投稿の前に印があれば照合をやり直し、3回で消えなければ結果とleaseを保ったまま`deferred`にして1回通知する。次の`cycle`が同じJobを投稿する（再起動しない） |
+| 編集・削除の印 | 登録した参加者（実装担当を除く）とownerが書いた項目の配送だけに付く。投稿の前に印があれば照合をやり直し、3回で消えなければ結果とleaseを保ったまま`deferred`にして1回通知する。次の`cycle`は、新しい起動の判定より先に同じJobを投稿する（再起動しない） |
 | 終了の証明 | supervisorは正常終了のあともprocess groupが空であることを確かめる（残っていれば止めてから）。run-keyを受けていないかackを送っていないrun、manifestがなくrun lockが空いているrunは未起動として扱う |
 | `serve` | Webhookの受け口。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存できたら`<root>/trigger`の時刻を変える（launchdのWatchPaths用） |
 | `status`・`release` | 状態の表示（IDと件数）。`release`はsupervisorの`inspect`の証明で終わったrunのleaseを外す。不明な投稿があれば外さない |

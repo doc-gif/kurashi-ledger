@@ -326,41 +326,79 @@ def clear_group(pgid):
     return False, True
 
 
+def lsof_holds(pid, lock_path):
+    """True if the process holds the run lock open, False if it provably does not, None if unknown."""
+    try:
+        p = subprocess.run(['/usr/sbin/lsof', '-t', '-a', '-p', str(pid), '--', str(lock_path)],
+                           capture_output=True, text=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if str(pid) in p.stdout.split():
+        return True
+    # lsof exits 1 with no output both when the file is not open and when the process is gone. Only a process
+    # still alive in the group afterwards proves "not holding"; anything else stays unknown.
+    return False if p.returncode == 1 and p.stdout.strip() == '' and _alive(pid) else None
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class DescendantProbe:
     """Owner measurement only (--probe-descendants): do the worker's children inherit the run lock?
 
     Samples the worker's process group; for each new member asks lsof whether it holds the run lock file.
-    Only counts are recorded. Without an observed and checked child, inheritance stays unproven.
+    Each observed child ends in one state: holding, not-holding, or unknown (lsof failed, timed out, or the
+    child was gone first). report() waits for every check. Inheritance is proven only when EVERY observed
+    child was seen holding the lock (Codex PR56-R001); one unchecked, failed or pending child is not proof.
     """
 
-    def __init__(self, pgid, lock_path):
+    def __init__(self, pgid, lock_path, members=None, check=None, wait=10):
         self.pgid, self.lock_path = pgid, str(lock_path)
-        self.seen, self.checked, self.holding = set(), set(), set()
+        self.members = members or group_members
+        self.check = check or lsof_holds
+        self.wait = wait
+        self.state = {}
+        self.threads = []
         self.lock = threading.Lock()
 
     def sample(self):
-        for pid in group_members(self.pgid) or []:
-            if pid not in self.seen:
-                self.seen.add(pid)
-                threading.Thread(target=self._check, args=(pid,), daemon=True).start()
+        for pid in self.members(self.pgid) or []:
+            with self.lock:
+                if pid in self.state:
+                    continue
+                self.state[pid] = 'pending'
+            t = threading.Thread(target=self._check, args=(pid,), daemon=True)
+            self.threads.append(t)
+            t.start()
 
     def _check(self, pid):
         try:
-            p = subprocess.run(['/usr/sbin/lsof', '-t', '-a', '-p', str(pid), '--', self.lock_path],
-                               capture_output=True, text=True, check=False, timeout=5)
-        except (OSError, subprocess.TimeoutExpired):
-            return
-        alive = group_members(self.pgid)
+            held = self.check(pid, self.lock_path)
+        except Exception:  # noqa: BLE001 - any failure is "unknown", never proof
+            held = None
         with self.lock:
-            if str(pid) in p.stdout.split():
-                self.checked.add(pid)
-                self.holding.add(pid)
-            elif alive is not None and pid in alive:
-                self.checked.add(pid)  # still running and not holding the lock: inheritance failed
+            self.state[pid] = 'holding' if held is True else 'not-holding' if held is False else 'failed'
 
     def report(self):
+        deadline = time.monotonic() + self.wait
+        for t in list(self.threads):
+            t.join(max(0, deadline - time.monotonic()))
         with self.lock:
-            return {'seen': len(self.seen), 'checked': len(self.checked), 'holding': len(self.holding)}
+            states = list(self.state.values())
+        seen = len(states)
+        holding = states.count('holding')
+        pending = states.count('pending')
+        failed = states.count('failed')
+        return {'seen': seen, 'checked': seen - pending - failed, 'holding': holding,
+                'pending': pending, 'failed': failed,
+                'proven': seen >= 1 and holding == seen and pending == 0 and failed == 0}
 
 
 def claude_structured(raw):
@@ -623,8 +661,9 @@ def inspect(root, run_id):
     # 'signed' only reports the manifest; the signature itself is checked against the launch-recorded key.
     report = {}
     d = value.get('descendants')
-    if isinstance(d, dict) and all(isinstance(d.get(k), int) for k in ('seen', 'checked', 'holding')):
-        report = {'descendants': {k: d[k] for k in ('seen', 'checked', 'holding')}}
+    keys = ('seen', 'checked', 'holding', 'pending', 'failed')
+    if isinstance(d, dict) and all(isinstance(d.get(k), int) for k in keys) and isinstance(d.get('proven'), bool):
+        report = {'descendants': {**{k: d[k] for k in keys}, 'proven': d['proven']}}
     return {**report, 'run': run_id, 'treeEnded': ended and not never, 'neverStarted': never,
             'uncertain': not ended, 'supervisorAlive': live, 'lockHeld': locked,
             'signed': ended and value.get('signed') is True}

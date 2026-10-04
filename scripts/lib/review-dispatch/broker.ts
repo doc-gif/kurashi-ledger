@@ -420,13 +420,21 @@ export function render(
 
 // What stays open after a red-team record: its RTs, earlier RTs it found still open, ledger causes without a
 // judgement (the scope is every cause_key; pr-review-loop.md#提出前の粗探し), and a needs-owner decision.
-export type RunMaterials = { planPath: string | null; ledger: string[] };
+// `previousRts`: RT IDs of the earlier red-team records that registered participants posted on this PR (the
+// dispatcher's own record of the materials; an unregistered third party's record is never evidence).
+export type RunMaterials = { planPath: string | null; ledger: string[]; previousRts: string[] };
+// Codex PR56-R004: clear only when every required ledger cause was judged and none of them is 確認できない,
+// and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear.
 export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[] {
-  const judged = new Set(r.causes.map((c) => c.cause));
+  const judged = new Map(r.causes.map((c) => [c.cause, c.judgement]));
+  const rechecked = new Set(r.previous.map((v) => v.id));
+  const ledger = meta?.ledger ?? [];
   return [
     ...r.findings.map((f) => f.id),
     ...r.previous.filter((v) => v.status === "未解消").map((v) => v.id),
-    ...(meta === null || meta.ledger.some((c) => !judged.has(c)) ? ["ledger-incomplete"] : []),
+    ...(meta === null || ledger.some((c) => !judged.has(c)) ? ["ledger-incomplete"] : []),
+    ...ledger.filter((c) => judged.get(c) === "確認できない").map((c) => `unconfirmed:${c}`),
+    ...(meta?.previousRts ?? []).filter((id) => !rechecked.has(id)).map((id) => `unchecked:${id}`),
     ...(r.decision === "needs-owner" ? ["needs-owner"] : []),
   ];
 }

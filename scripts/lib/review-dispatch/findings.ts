@@ -1,10 +1,12 @@
 // PR48-R007: unresolved findings, from native Reviews, line comments and conversation comments.
 // GitHub REST has no thread resolution state, and anyone with write access can dismiss reviews and
 // edit or delete comments, so one rule set covers every input (pre-review red team on PR #52):
-// Who raises (owner decision, Issue #50 issuecomment-5978984980)
-// - every participant registered in the policy except owners and the PR's implementer (model.ts
-//   findingRaisers; the caller passes them as `reviewers`): all three inputs below;
-// - owners: their CHANGES_REQUESTED / DISMISSED Reviews only. They cannot resolve anyone else's finding.
+// Who raises (owner decision, Issue #50 issuecomment-5978984980; Codex PR56-R002)
+// - every participant registered in the policy, owners included, except the PR's implementer (model.ts
+//   findingRaisers; the caller passes them as `reviewers`): all three inputs below. Nobody resolves anyone
+//   else's finding (only the raiser's own later approval does).
+// - `owners` outside that list keep the narrow rule (their CHANGES_REQUESTED / DISMISSED Reviews only); the
+//   dispatcher passes every owner in the list above, so this path is for other callers only.
 // - everybody else (unregistered third parties, the PR's implementer) is reference only.
 // What raises
 // - Review body: line-start IDs `PR<N>-R<3+ digits>` of this PR. A CHANGES_REQUESTED or DISMISSED Review

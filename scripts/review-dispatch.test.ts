@@ -186,7 +186,7 @@ test("W4 cycle: active needs the start-small shape and an install record before 
       transport: () => fakeGitHub(github),
       spawn: () => assert.fail("no supervisor without a bound capability"),
       digest: () => "e".repeat(64),
-      readText: () => "(version 1)",
+      readBytes: () => Buffer.from("(version 1)"),
     };
     const env = { ...x.env, GH_TOKEN: "synthetic-dispatch-read" };
     const { HEAD, BASE } = await import("../tests/fixtures/review-dispatch.ts");
@@ -222,5 +222,169 @@ test("W4 cycle: active needs the start-small shape and an install record before 
     assert.match(out.join("\n"), /capability\(claude\): なし/);
   } finally {
     x.cleanup();
+  }
+});
+
+// Shared pieces for the CLI tests of the active path (Codex PR56-R003/R005).
+async function activeCli() {
+  const fs = await import("node:fs");
+  const { createHash } = await import("node:crypto");
+  const { HEAD, BASE } = await import("../tests/fixtures/review-dispatch.ts");
+  const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
+  const { argvTemplateHash } = await import("./lib/review-dispatch/launcher.ts");
+  const { profileHash } = await import("./lib/review-dispatch/doctor.ts");
+  const { REQUIRED_PROBES } = await import("./lib/review-dispatch/runtime.ts");
+  const x = await cliSetup();
+  const install = JSON.parse(fs.readFileSync(x.installFile, "utf8"));
+  const A = Buffer.from("(version 1)\n(deny default)\n"),
+    EXE = "e".repeat(64),
+    sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+  x.d.store.saveCapability(
+    "claude",
+    {
+      backend: "claude",
+      version: install.claude.version,
+      codeHash: EXE,
+      profileHash: profileHash(A.toString("utf8")),
+      argvHash: argvTemplateHash(install.claude),
+      probes: Object.fromEntries(REQUIRED_PROBES.map((k) => [k, true])),
+    },
+    1,
+  );
+  x.d.store.inbox(3, "ready", "pull_request", JSON.stringify({
+    repository: { id: 1 }, installation: { id: 2 }, sender: { id: 20 }, action: "ready_for_review",
+    pull_request: { number: 1, updated_at: "2026-01-01T00:00:03.000Z", head: { sha: HEAD }, base: { sha: BASE } },
+  }), 1);
+  const github = { ready: true, now: 5, calls: 0 };
+  const args = ["cycle", "--root", x.d.root, "--policy", x.file, "--gh", "/opt/synthetic/gh/bin/gh", "--install", x.installFile];
+  const env = { ...x.env, GH_TOKEN: "synthetic-dispatch-read" };
+  return { x, install, A, EXE, sha, github, args, env, fakeGitHub };
+}
+
+test("Codex PR56-R005: the capability is matched with the bytes read once; a profile replaced afterwards starts no worker", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { EventEmitter } = await import("node:events");
+  // Run 1: the file now holds B. Run 2 (control, a fresh dispatcher): the file still holds A.
+  for (const replaced of [true, false]) {
+    const c = await activeCli();
+    try {
+      let spawned = 0;
+      const deps = {
+        transport: () => c.fakeGitHub(c.github),
+        spawn: () => {
+          spawned++;
+          // A supervisor that reads the plan and ends without announcing a key: the worker never starts.
+          const child = new EventEmitter() as InstanceType<typeof EventEmitter> & Record<string, unknown>;
+          child["stdout"] = { on: () => child };
+          child["stdin"] = { on: () => child, write: () => (setImmediate(() => child.emit("close", 2)), true), end: () => true };
+          child["kill"] = () => true;
+          return child as never;
+        },
+        readBytes: () => c.A,
+        digest: (path: string) =>
+          path === c.install.claude.cliProfile ? c.sha(replaced ? Buffer.from("B") : c.A) : c.EXE,
+        platform: "darwin" as const,
+        launch: { platform: "darwin" as const, exists: () => false, readToken: () => "synthetic-setup-token-0123456789abcdef" },
+      };
+      const lines: string[] = [];
+      assert.equal(await main(c.args, c.env, (s) => lines.push(s), () => 1000, deps), 0);
+      if (replaced) {
+        assert.equal(spawned, 0);
+        assert.match(lines.join("\n"), /PR #1: faultfinding:not-started:bound-file-changed/);
+      } else {
+        assert.ok(spawned >= 1); // the binding passed and the launch reached the supervisor
+        assert.match(lines.join("\n"), /PR #1: faultfinding:not-started:not-acknowledged/);
+      }
+    } finally {
+      c.x.cleanup();
+    }
+  }
+});
+
+test("Codex PR56-R003: a deferred post is recovered from the cycle entry point once the mark clears: posted once, no relaunch, no new quota, lease released", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { EventEmitter } = await import("node:events");
+  const { GhReader } = await import("./lib/review-dispatch/github.ts");
+  const { reconcile } = await import("./lib/review-dispatch/evidence.ts");
+  const { runBinding, signedMessage } = await import("./lib/review-dispatch/provenance.ts");
+  const { hash } = await import("./lib/review-dispatch/model.ts");
+  const { fixtureResult } = await import("./lib/review-dispatch/runtime.ts");
+  const { TestSigner } = await import("../tests/fixtures/review-dispatch-run-signer.ts");
+  const c = await activeCli();
+  try {
+    const store = c.x.d.store,
+      p = c.x.p;
+    // A faultfinding job whose result waits for its post: signed, key recorded, materials recorded, lease held.
+    const s = (await reconcile(new GhReader(p.repo, c.fakeGitHub(c.github)), p, store))[0]!.snapshot;
+    store.observe((await import("./lib/review-dispatch/reducer.ts")).assess(p, s, null));
+    const j = store.claim(p, s, 30, "faultfinding", 500)!;
+    assert.ok(j);
+    store.running(j);
+    const signer = new TestSigner();
+    store.saveRunKey(j, { run: j.run, binding: runBinding(j), key: signer.publicKey() }, 501);
+    store.saveRunMaterials(j.run, { planPath: null, ledger: [], previousRts: [] });
+    const raw = JSON.stringify({ ...fixtureResult(j), decision: "accepted", unverified: [] });
+    const origin = { run: j.run, actor: 30, resultHash: hash(raw), signature: signer.sign(signedMessage(j.run, runBinding(j), hash(raw))) };
+    store.result(j, raw, origin);
+    // A reviewer's edit delivery that no reconcile has processed yet.
+    store.inbox(3, "edit-1", "issue_comment", JSON.stringify({
+      repository: { id: 1 }, installation: { id: 2 }, sender: { id: 30 }, action: "edited",
+      issue: { number: 1, pull_request: {} }, comment: { id: 5, user: { id: 30 }, body: "x", updated_at: "2026-01-01T00:00:04.000Z" },
+    }), 502, "1:1");
+    assert.ok(store.deferred("1:1"));
+    const jobsBefore = store.status("1:1").jobs.length;
+    // Fake Claude App relay (list/post JSON lines), standing in for the token wrapper session.
+    const posted: { event: string; body: string; head: string }[] = [];
+    const relaySpawn = () => {
+      const out = new EventEmitter();
+      const child = new EventEmitter() as InstanceType<typeof EventEmitter> & Record<string, unknown>;
+      child["stdout"] = { on: (e: string, f: (b: Buffer) => void) => out.on(e, f) };
+      child["kill"] = () => true;
+      child["stdin"] = {
+        on: () => child,
+        end: () => setImmediate(() => child.emit("exit")),
+        write: (line: string) => {
+          const r = JSON.parse(line) as Record<string, unknown>;
+          let reply: Record<string, unknown>;
+          if (r["op"] === "post") {
+            posted.push({ event: String(r["event"]), body: String(r["body"]), head: String(r["head"]) });
+            reply = { id: r["id"], ok: true };
+          } else reply = { id: r["id"], ok: true, reviews: posted.map((x, n) => ({ id: String(900 + n), actor: 30, head: x.head, body: x.body })) };
+          setImmediate(() => out.emit("data", Buffer.from(`${JSON.stringify(reply)}\n`)));
+          return true;
+        },
+      };
+      return child as never;
+    };
+    const lines: string[] = [];
+    const deps = {
+      transport: () => c.fakeGitHub(c.github),
+      spawn: () => assert.fail("no worker relaunch"),
+      relaySpawn,
+      readBytes: () => c.A,
+      digest: (path: string) => (path === c.install.claude.cliProfile ? c.sha(c.A) : c.EXE),
+      platform: "darwin" as const,
+    };
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1000, deps), 0);
+    assert.match(lines.join("\n"), /PR #1: resume:posted/);
+    assert.equal(posted.length, 1);
+    assert.equal(posted[0]!.event, "COMMENT");
+    assert.match(posted[0]!.body, /^<!-- kurashi-ledger:red-team:v1 -->/);
+    assert.equal(store.marked("1:1"), false);
+    assert.equal(store.deferred("1:1"), null);
+    assert.equal(store.status("1:1").jobs.length, jobsBefore); // no new job, no new quota use
+    assert.equal(store.job(j.id)!.status, "posted");
+    assert.equal(store.db.prepare("SELECT count(*) AS n FROM leases").get()!["n"], 0);
+    // The next cycle posts nothing more.
+    assert.equal(await main(c.args, c.env, () => {}, () => 1100, deps), 0);
+    assert.equal(posted.length, 1);
+  } finally {
+    c.x.cleanup();
   }
 });

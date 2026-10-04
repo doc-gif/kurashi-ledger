@@ -42,6 +42,12 @@ export function fakeGitHub(state: { ready: boolean; now: number; calls: number }
       value = { total_count: REQUIRED_JOBS.length, jobs: REQUIRED_JOBS.map((name, i) => ({ id: i + 3, name, conclusion: "success" })) };
     else if (path === "actions/jobs/3/logs") return { status: 200, headers: { date: at(state.now) }, body: `TESTED_SHA: ${TESTED}` };
     else if (path.includes("check-runs")) value = { total_count: 0, check_runs: [] };
+    else if (path.startsWith("contents/")) {
+      // The base's repository rules for the materials; the ledger is a small synthetic one.
+      const name = decodeURIComponent(path.slice("contents/".length).split("?")[0]!);
+      const body = name === ".review/findings.json" ? JSON.stringify({ findings: [] }) : `synthetic ${name}\n`;
+      value = { type: "file", encoding: "base64", content: Buffer.from(body).toString("base64") };
+    }
     return { status: 200, headers: { date: at(state.now) }, body: JSON.stringify(value) };
   };
 }

@@ -355,12 +355,12 @@ test("W4 a later COMMENTED review does not undo a change request; approval block
   assert.deepEqual(approvalBlockers(p, s, 30), []);
 });
 
-test("W4 finding raisers are the registered participants except owners and the PR's implementer (same person included)", async () => {
+test("W4 finding raisers are every registered participant, owners included, except the PR's implementer (same person included)", async () => {
   const { findingRaisers } = await import("./model.ts");
   const p = policy();
-  assert.deepEqual(findingRaisers(p, 1), [30, 40]); // 10 is the owner, 20 the implementer
+  assert.deepEqual(findingRaisers(p, 1), [10, 30, 40]); // 10 is the owner (Codex PR56-R002), 20 the implementer
   p.actors.push({ id: 21, person: "implementer", kind: "ai", executor: "claude" }); // same person as 20
   p.actors.push({ id: 50, person: "codex-reviewer", kind: "ai", executor: "codex" });
-  assert.deepEqual(findingRaisers(p, 1), [30, 40, 50]);
+  assert.deepEqual(findingRaisers(p, 1), [10, 30, 40, 50]);
   assert.deepEqual(findingRaisers(p, 99), []);
 });

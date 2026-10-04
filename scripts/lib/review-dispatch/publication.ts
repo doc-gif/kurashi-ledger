@@ -148,11 +148,15 @@ const wordLike = (run: string): boolean =>
 // Every prose field of a parsed worker result, checked as one text (so cross-field joins are also seen).
 export function resultFindings(r: WorkerResult, j: Job, s: Seen, repo: string): string[] {
   const allowed = allowedFor(j, s),
+    // Every text field of the result, the red-team table and earlier-RT notes included (Codex PR56-R006),
+    // checked as one text before anything is stored.
     parts = [
       r.summary,
-      ...r.findings.flatMap((f) => [f.location, f.impact, f.completion]),
+      ...r.findings.flatMap((f) => [f.id, f.location, f.impact, f.completion]),
       ...r.unverified,
       ...r.evidence,
+      ...(r.causes ?? []).flatMap((c) => [c.cause, c.judgement, c.where]),
+      ...(r.previous ?? []).flatMap((v) => [v.id, v.status, v.reason]),
     ];
   return [
     ...evidenceFindings(r.evidence, repo, allowed),
