@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "T14",
   "planned_paths": [
     "README.md",
@@ -42,6 +42,11 @@
       "description": "Copilot 4173206358とCodex 5400849200の食い違い: Copilotは、Issue #32で所有者が契約の見直しの方針を決めたので、帰属の規則・比較の対応表の「契約への候補（所有者の判断待ち）」を「決定済み・契約の変更と追従待ち」に更新するよう求める。Codexは、そのIssueの記載を独立の確認・直接の所有者の承認として採らず、候補・追従の扱いをこの記載だけで広げないとする。調整係の前の指示は、契約のレビューは別PR（Issue #32）で進め、統合まで帰属の自動適用を無効のままにすること。",
       "state": "resolved",
       "resolution": "所有者が(A)を選んだ（2026-10-03「今は変えず、契約2.0の後で追従」。調整係の転記 https://github.com/doc-gif/kurashi-ledger/pull/29#issuecomment-5970001882 ）。このPRでは記載を変えない。契約の変更（PR #36、契約版2.0）がmainに統合されたあと、T14の後続で契約に合わせて帰属の規則・比較の対応表の状態と規則をまとめて追従させる。規則の挙動（帰属の自動適用は無効、対応させない項目はrule-pending）は変わらない。"
+    },
+    {
+      "description": "open PRとの共有ファイル（2026-10-04、base 409bd3f）: #36（契約版2.0）はregime-cases.json・contract-shape.ts・ledger.test.ts・docs/test-oracles/README.md・README.md・implementation-tasks.md・project-status.mdを変える。#25・#28・#33・#37・#38もREADME.md・implementation-tasks.md・project-status.md（#28・#33・#25はtesting.md、#28はtest-oracles/README.md）を変える。#44はtools/review_guard/README.mdだけで重ならない。",
+      "state": "resolved",
+      "resolution": "このPRのそれらのファイルの変更は、入口の数行（README・状態・台帳・試験の文書）と、#36と重なる台帳の検査の共通の一覧・制度のケースの行に限る。契約・台帳の型の変更は#36の範囲で、このPRでは行わない。後からmainに統合する側が行の競合を解消する（#40の正本の構成を優先し、規則を言い直さずにリンクする）。#36の統合後の契約2.0への追従は、上の決定(A)のとおりT14の後続で行う。"
     }
   ],
   "assessments": [
