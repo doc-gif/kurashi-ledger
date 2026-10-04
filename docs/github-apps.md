@@ -33,6 +33,7 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Checks | Read-only | CIの結果の確認（check run） |
 | Commit statuses | Read-only | CIの結果の確認（commit status） |
 | Workflows | Read and write | `.github/workflows/`を変えるcommitのpush（その用途のトークンにだけ付ける） |
+| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。所有者が足す（下の「マージ前の確認」） |
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
@@ -91,6 +92,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
+  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ前の確認」） |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
@@ -262,6 +264,35 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 | administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
+
+## マージ前の確認（merge-check）
+
+2026-10-04の所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）で、AIはリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。doc-gifでは読まない。値の書式と判定は、[PRレビューのループ](pr-review-loop.md)の「OWNER_MERGE_ONLY」の節（Issue #50のW0、PR #51で追加）に従う。
+
+```sh
+env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|claude> --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
+```
+
+終了コードが0でない、または値の書式が違えば、マージしない。
+
+**使えるようにする手順（所有者）:**
+
+1. 2つのApp（CodexとClaude）のSettings → Permissions & events → Repository permissions で、Variables を Read-only にする。
+2. インストール先で権限の変更を承認する（Installed GitHub Apps → Configure → Review request）。2つとも行う。
+3. この用途を足したPRのマージ後に、マージ後のmainのSHAで信頼した写しを作り直す（上の「信頼した写し」）。古い写しは`merge-check`を知らないので、125で終わる。
+
+承認の前は、GitHubが`actions_variables`を付けないので、スクリプトは完全一致の照合で失敗し、コマンドを実行しない（マージしない）。
+
+**否定の確認（実際の鍵で、所有者またはそのAI自身が行う）:**
+
+| 確かめること | `--purpose` | コマンドの`--`のあと | 期待 |
+| --- | --- | --- | --- |
+| 読取りに権限が要る | `review` | `gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY` | 403 |
+| 変数を書けない | `merge-check` | `gh api -X POST repos/doc-gif/kurashi-ledger/actions/variables -f name= -f value=x` | 403（書けるなら名前が無効で422。2xxならすぐ所有者に知らせる） |
+
+**残る限界:** doc-gifは所有者と共用なので、doc-gifの資格情報で`OWNER_MERGE_ONLY`を書き換えられる。GitHubはこれを止めない。AIはdoc-gifで変数を読まず、書かない（規則）。防ぐには、AIが使えない所有者だけの身元が要る。
+
+**確かめていないこと:** トークンの要求で、権限の名前`actions_variables`が受け付けられるか。この名前は、GitHub docsの権限の一覧のデータ（Variablesのread）から取った。RESTのOpenAPIの`app-permissions`には載っていない。違えば、スクリプトは安全側に失敗する。そのときは名前を直すPRを出す。
 
 ## レビュー受付の読取り用途
 
