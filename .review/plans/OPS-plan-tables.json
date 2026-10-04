@@ -699,5 +699,19 @@
       "source": "同上（dispatchのactive時の粗探しの投稿者）",
       "decision": "「本番移行のときに決める」: review-dispatchをactiveにする正本移行のPRで決める。今は変えない"
     }
+  ],
+  "deferred": [
+    {
+      "item": "深いJSONでのRecursionError",
+      "reason": "既存の振る舞いで、例外は捕まらずに非0で終わる（fail-closed）。この変更で新しく生じない。表の検査の範囲外"
+    },
+    {
+      "item": "ci.pyの水準での版1・版2の試験",
+      "reason": "ci.pyはguard.checkを呼ぶだけで、版の扱いはguardの試験で網羅した。版1の抜け道をci.pyで塞ぐIssue #49で、ci.pyの試験を足す"
+    },
+    {
+      "item": "施策3の基準(a)の時点・基準(c)の広さ",
+      "reason": "運用の基準で、試しに使ってから見直す。試用期間のあとで所有者へ報告する"
+    }
   ]
 }
