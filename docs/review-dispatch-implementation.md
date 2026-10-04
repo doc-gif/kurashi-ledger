@@ -151,3 +151,9 @@ Issue #50 W2・W3から引き継ぐ項目です。
 | 7 | SQLiteのWAL・空きページの旧値を消す（`PRAGMA secure_delete`、checkpoint） | 置き換え前の平文が残りうる | active前 |
 | 8 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）を、照合を待たずに安全側の印にする | 今は照合の観測比較だけ | Webhook接続時 |
 | 9 | 信頼した要約（`trustedCiDigests`）をbase・PRへ結び付けるか決める | 粗探しのP3 | active前 |
+| 10 | `.npmrc`を`CI_TRUST_PATHS`へ加える | 所有者決定（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | active前 |
+| 11 | `accepted()`が第三者の最新のCHANGES_REQUESTEDを無視する点を、#51の規則とそろえる | 判定の規則が2つある | active前 |
+| 12 | 照合の`observedAt`に、応答のDateの最大値を使う | 観測区間の端を正しくするため | 実host shadow前 |
+| 13 | 前の内容へ戻されたReview本文の編集を見つける（重複排除に直前のhashを含める） | 今は戻した編集を見落とす | active前 |
+| 14 | ownerのコマンドを`git -c core.quotePath=false ls-tree -r -z`にし、合成repoで`ciTrustDigest`と一致する試験を足す | パスの引用で要約がずれうる | active前 |
+| 15 | 導入手順は小さく始める範囲を先に書き、backendの経緯は参照へ移す | PR #51のCodexレビューR005 | W4の導入手順を書くとき |
