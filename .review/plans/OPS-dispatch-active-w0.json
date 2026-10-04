@@ -29,6 +29,11 @@
       "description": "Red team on 6ceb1bf (issuecomment-5977292218): 2 P1, 4 P2, 4 P3 at design level. Fixed holistically, by root cause, not finding by finding.",
       "state": "resolved",
       "resolution": "C1 (P1 layers, P1 Read scope, P2 keychain, P3 auth-status): each isolation layer must name the documented mechanism, be mandatory, and have a doctor negative probe; any missing flag/setting or failed probe disables the capability. No 'adopt if supported' for required layers. Read runs inside the CLI process, so the CLI Seatbelt profile and scoped Read rules (not the tool-child profile) bound it; Read rules reach Grep/Glob only best-effort, so Seatbelt is the hard bound. Keychain: owner decision 2026-10-04 - if the probe reads an App key or a synthetic item with the same ACL shape, the owner moves App keys to a dedicated keychain file; launch stays disabled until then. Broker runs a publication check before posting (W2). Auth-status check left to W1. C2 (P2 timing, P2 notice, P3 rollback reviewers, P3 who posts red team): active changes how conditions are evaluated, so record it as an owner-approved reinterpretation (2026-10-04: Ready = request review; red team after Ready, before the review job, same head/base) and stop claiming 'unchanged'; give non-dispatcher actors one information-only dispatch-notice per switch/rollback with mode, policy revision and required reviewers; missing/ambiguous notice = old rules and no merge; rollback reuses APPROVEs only when all required reviewers approved; red team by one independent assigned reviewer (human posts manually in the same format), matching reducer.ts. C3 (P2 auto-fix, P3 O1 scope): record only what the owner decided; auto-fix disabled until a separate implementer-job isolation design is accepted; Cloudflare Tunnel, receive App and Codex argv are design proposals, the owner picks the tunnel in W4. Variant sweep: design §3/§5/§6/§7/§8/§9, pr-review-loop (red-team section, active section), operations (merge conditions, roles, polling), T23/T24, external-worker."
+    },
+    {
+      "description": "Red team round 2 on 9af6c88 (issuecomment-5977366093): new P1 notice forgery (Codex implementer posts via Codex App; doc-gif is shared by AIs), P2 notice kinds, P2 missing decision evidence; P3s. Owner receipt issuecomment-5977365862 adds O2-token, Codex without outer Seatbelt, R009=5s, R008=.github.",
+      "state": "resolved",
+      "resolution": "Root cause: a GitHub comment that any AI identity can author was used as an input to rule choice and merge. Fix: dispatch-notice is display-only and never an input to the merge judgement or to old-vs-active choice. The active PR set and required reviewers come only from owner-confirmed records (the owner's instruction received by the coordinator and posted as a receipt, like issuecomment-5977365862); the PR's implementer never writes it; without it the old rules apply and nothing merges on active evidence. Old-patrol exclusion is an owner setting only. Notice kinds (switch/change/rollback) stay for display. Link the receipt from design §8 and the reinterpretation paragraph. §7: Claude gets CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` via the supervisor; the Claude profile denies all keychain access; env allowlist excludes ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN (higher precedence). Codex runs only with its own --sandbox read-only (no outer Seatbelt, macOS rejects nesting); keychain/App-key reach is a real-Mac measurement. R009/R008 recorded in §8. P3: Read() only; moving App keys needs a separate independently reviewed App-procedure PR; config-dir residual settings check is W1. Variant sweep: every place that reads the notice (pr-review-loop 対象/担当/マージ表/切替/rollback, operations merge+polling, external-worker, design §6)."
     }
   ],
   "assessments": [
@@ -145,6 +150,10 @@
         {
           "location": "design §6 Broker",
           "result": "Publication check before posting (W2)"
+        },
+        {
+          "location": "design §7 auth row and Codex row",
+          "result": "Claude: setup-token via supervisor env, no keychain at all; Codex: own read-only sandbox only, keychain reach measured on the real Mac"
         }
       ]
     },
@@ -165,7 +174,7 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2)",
+      "pattern": "Two judges or two notifiers for the same PR; old approval converted; also: Active changes how a merge condition is evaluated while the text says unchanged; actors outside the dispatcher cannot see target/reviewer set (RT P2 x2, P3 x2); also: an AI-authorable comment (dispatch-notice) used as authority for rule choice, reviewer set or patrol skip (PR51 RT2 P1)",
       "places": [
         {
           "location": "github-agent-operations 分担/定期実行",
@@ -190,6 +199,14 @@
         {
           "location": "rollback step",
           "result": "Reuse APPROVEs only with all required reviewers"
+        },
+        {
+          "location": "pr-review-loop 対象/マージ表/rollback, operations, external-worker",
+          "result": "Notice is display-only; active set and reviewers only from owner receipts; patrol exclusion only by owner setting"
+        },
+        {
+          "location": "design §6 notice sentence",
+          "result": "Display-only, never an input"
         }
       ]
     },
