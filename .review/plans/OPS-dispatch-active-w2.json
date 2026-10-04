@@ -11,9 +11,11 @@
     "scripts/lib/review-dispatch/claude-broker.ts",
     "scripts/lib/review-dispatch/provenance.test.ts",
     "scripts/lib/review-dispatch/provenance.ts",
+    "scripts/lib/review-dispatch/publication.ts",
     "scripts/lib/review-dispatch/runtime.test.ts",
     "scripts/lib/review-dispatch/runtime.ts",
     "scripts/review-dispatch-claude-broker.ts",
+    "tests/fixtures/review-dispatch-run-channel.ts",
     "tests/fixtures/review-dispatch-run-signature.json",
     "tools/review_dispatch/supervisor.py"
   ],
@@ -32,6 +34,11 @@
       "description": "署名の約束値をDBへ永続化するにはstore.ts（W3の担当）を変える必要がある",
       "state": "resolved",
       "resolution": "このPRではstore.tsを変えない。検証器は起動時に受けた約束値の記録だけを信頼し、manifest・root内のファイルの値は使わない。DBへの永続化と再起動後の検証はW4の統合で行い、それまでは受付の再起動後のrunはuncertainのまま（安全側）と報告する"
+    },
+    {
+      "description": "PR #53の粗探し（issuecomment-5977420814、P1なし、P2-1〜P2-6・P3）。個別に塞ぐと、検査の経路・身元の型・状態の意味がまたずれる",
+      "state": "resolved",
+      "resolution": "全体方針: (1) 署名の型の境界: RunChannel（封ができる）をtests/fixturesへ移し、本物のBroker生成（createClaudeReviewBroker）はRunVerifierの実体だけを受ける。固定ベクトルのjobをStoreへ置き、supervisorが署名した結果がClaude Brokerを通る正常系を試験する。(2) 公開検査は1つの新しいモジュールpublication.tsに集め、parseResult・store.resultの前・投稿直前の本文の3か所で同じ正規化（NFKC、\\p{Cf}は拒否）と同じ規則を使う。SHA/UUIDの例外はそのjobのpair・run・evidenceにある値だけ。github.com以外のURLを散文で拒否。区切り・空白を除いた詰めた文字列にも同じ規則を掛ける。これは緩和であり、PR51のP1を閉じる条件はW1の否定試験（秘密を読めないこと）に置く。(3) 当たった結果はDBへ平文で残さず、hashだけの記録を保存する。(4) blockedの意味を今決める: 持続するneeds-owner。leaseを保持（uncertain）し、ownerが解除するまで同じPRで起動しない。状態の永続化（store.ts）はW3が変更中なので触らず、W4の必須項目として実装資料に書く。(5) 鍵・制御パイプの否定試験（deny-supervisor）はW1が持つ。参照だけ。(6) #52との統合: 検査とhashは正規化後の本文に掛ける（引継ぎに書く）。(7) P3: submitごとにtransportを作り必ず閉じる、試験ベクトルに別の道具（shasum）で出したdigestを記録する。HOME/TMPDIRのrunごとの分離と誤検知の資料はW4へ回す"
     }
   ],
   "assessments": [
@@ -366,7 +373,7 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "workerや受付が投稿身元・出所を選べる・偽れる",
+      "pattern": "workerや受付が投稿身元・出所を選べる・偽れる。同じ不信な散文に対し、受入れ・保存・投稿で検査がずれる（正規化の有無、例外の範囲）",
       "places": [
         {
           "location": "ReviewBroker",
@@ -379,6 +386,22 @@
         {
           "location": "createClaudeReviewBroker",
           "result": "policyのactorがai・claudeでなければ拒否"
+        },
+        {
+          "location": "parseResult",
+          "result": "\\p{Cf}を拒否し、NFKC後の文字列で偽装・秘密・URLを検査"
+        },
+        {
+          "location": "Dispatcher.fixtureCycle（store.resultの前）",
+          "result": "resultFindingsに当たればhashだけを保存してblocked"
+        },
+        {
+          "location": "ReviewBroker.submit（投稿直前）",
+          "result": "同じpublicationFindingsを最終本文へ。#52の正規化後に掛ける"
+        },
+        {
+          "location": "createClaudeReviewBroker",
+          "result": "RunVerifierの実体以外を拒否（RunChannelは試験のfixtureだけ）"
         }
       ]
     },
