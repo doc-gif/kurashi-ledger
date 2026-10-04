@@ -55,6 +55,7 @@
 2026-10-04の所有者決定（[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。手順は[PR書式](pr-review-loop.md#受付がactiveのpr)。
 
 - AIはマージしない。所有者がGitHubの画面でマージする。`--match-head-commit`の代わりに、headが`APPROVE`のcommit_idと同じことを確かめ、マージコミットで1件ずつマージする。
+- 必要なreviewer以外も含め、最新の`CHANGES_REQUESTED`や未解消の指摘があればマージしない。
 - 受付は、粗探しとレビューの起動と投稿だけを行う。
 - 粗探しの時点を読み替える（所有者承認）: Readyはレビューの依頼。粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。
 - 受領記録と受付の通知は表示と案内だけで、権限を変えない。AIと所有者がすべての身元を共用し、所有者だけの合図がないため。

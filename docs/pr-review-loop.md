@@ -166,6 +166,7 @@ required_reviewers: <login/App IDの一覧>
 | accepted | 必要なreviewerの最新Reviewが`APPROVE`。commit_idがhead、v1本文のbase_shaが確認したbase | 標準の`APPROVE`。受付が保存した結合（actor・commit_id・成立時のbase・policy revision）が今のhead/baseと一致 |
 | 粗探し | 同じhead/baseの`kurashi-ledger:red-team:v1`を、必要なreviewerのうち独立性を満たす1者のbotが投稿。未解消のRTなし | 同じ書式の手動の記録 |
 
+- 必要なreviewer以外も含め、最新の`CHANGES_REQUESTED`や未解消の指摘があればマージしない（[規則](github-agent-operations.md#dispatch-active)）。
 - ほかの[マージ条件](github-agent-operations.md#merge-conditions)は変わらない。mainが進めば、新しいReady・粗探し・レビューが要る。
 - 人の操作の結合を受付の記録で証明できなければ保留する。SHAの自己申告で補わない（GitHubのReviewにbaseはない）。
 

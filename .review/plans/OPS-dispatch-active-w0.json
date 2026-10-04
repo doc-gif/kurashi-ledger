@@ -11,7 +11,7 @@
   ],
   "conflicts": [
     {
-      "description": "W1-W3 run in parallel; W0 launch requirements could diverge from W1's launcher.",
+      "description": "Issue #50 W1-W3 run in parallel; W0 launch requirements could diverge from W1's launcher.",
       "state": "resolved",
       "resolution": "W0 changes no code. §7 lists the required layers; W1 implements the same flags. Superseded in part by entry 4 (all layers mandatory)."
     },
@@ -23,7 +23,7 @@
     {
       "description": "T23/T24 and patrols judge and notify today; active needs one judge/notifier per PR.",
       "state": "resolved",
-      "resolution": "For dispatcher targets, only the dispatcher judges and notifies; patrols skip them; T23 keeps CI-policy protection. No paused PR38 code is used."
+      "resolution": "For dispatcher targets, only the dispatcher judges and notifies; patrols skip them; T23 keeps CI-policy protection. No paused PR #38 code is used."
     },
     {
       "description": "RT1 (5977292218): isolation layers, Read scope, keychain, red-team timing, notice, auto-fix, decision scope.",
@@ -31,14 +31,14 @@
       "resolution": "All §7 layers mandatory with documented flags and doctor probes; missing = disabled. Seatbelt bounds in-process Read. Keychain per owner decision. Timing recorded as an owner-approved reinterpretation. Auto-fix disabled. Decisions split from design proposals."
     },
     {
-      "description": "RT2 (5977366093): dispatch-notice forgeable; decision evidence missing. Receipt 5977365862: O2-token, Codex, R008, R009.",
+      "description": "RT2 (5977366093): dispatch-notice forgeable; decision evidence missing. Receipt 5977365862: O2-token, Codex, R008, R009. Receipt 5977404200 replaces R008 (CI-determining files).",
       "state": "resolved",
       "resolution": "Notice is display-only. Receipts linked from §8. §7: setup-token via supervisor, no keychain; Codex with its own sandbox. Superseded in part by entry 5."
     },
     {
       "description": "RT3 (5977423642): receipt forgeable as well. Receipt 5977430810 (active-merge).",
       "state": "resolved",
-      "resolution": "Root cause: every identity is shared. AIs never merge active PRs; the owner merges in the UI; receipts and notices carry no authority. Residual risk recorded in design §7."
+      "resolution": "Root cause: every identity is shared. AIs never merge active PRs; the owner merges in the UI; receipts and notices carry no authority. Residual risk recorded in design §7. RT4 (5977472008, 5977490017): owner-merge noted in state transitions; owner checks a receipt or notice before Ready."
     },
     {
       "description": "Codex review 5404811070: R001 merge authority lost at rollback; R002 AI vs human evidence; R003 Codex reads; R004 nesting. Receipts 5977523656, 5977629581.",
@@ -48,7 +48,7 @@
     {
       "description": "RT5 (5977666664): setting location and per-environment copies. Receipt 5977666899.",
       "state": "resolved",
-      "resolution": "One source: repository variable OWNER_MERGE_ONLY; format PR numbers or `none`; unreadable = no merge; condition recorded as an owner decision."
+      "resolution": "One source: repository variable OWNER_MERGE_ONLY; format PR numbers or `none`; unreadable = no merge; condition recorded as an owner decision. Bootstrap: the owner sets the variable, then #51 merges."
     },
     {
       "description": "RT6 (5977715032): doc-gif read conflicts with the App rule; owner head check dropped. Receipt 5977715281.",
@@ -93,7 +93,7 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "Compare T23/T24 rows, design §8 and the PR48 pre-activation checklist.",
+          "method": "Compare T23/T24 rows, design §8 and the PR48 pre-activation checklist (PR48-R003, PR48-R007 to PR48-R011).",
           "expected": "Active cannot start before W1-W4 and the checklist; T23 CI-policy protection stays; no Windows backend."
         },
         {
@@ -198,7 +198,7 @@
       "places": [
         {
           "location": "operations dispatch-active and owner-merge-only",
-          "result": "AIs never merge active or listed PRs; unreadable = no merge; comments change nothing"
+          "result": "AIs never merge active or listed PRs; unreadable = no merge; comments change nothing (PR51-R001; survives rollback)"
         },
         {
           "location": "pr-review-loop active section",
@@ -206,7 +206,7 @@
         },
         {
           "location": "pr-review-loop owner check",
-          "result": "AI v1 body vs human stored binding; unprovable = hold"
+          "result": "AI v1 body vs human stored binding; unprovable = hold (PR51-R002); any latest CHANGES_REQUESTED or unresolved finding blocks the owner merge"
         }
       ]
     },
