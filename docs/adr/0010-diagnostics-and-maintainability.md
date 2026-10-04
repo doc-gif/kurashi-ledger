@@ -287,7 +287,7 @@
 
 **背景:** 計算や照合の分岐（未知値・0・境界）に試験のない箇所があると、テスト方針の「意図的な変異を検出できること」を確かめにくい。レビューで「この分岐は試験されているか」を毎回読み解くのは往復を増やす。
 
-**決定:** `node --test --experimental-test-coverage`（Node.js 24ではStability 1 - Experimental）で、CIのLinuxの1つのjobだけで行・分岐・関数の割合を集め、runのSummaryに表で出す。対象は`--test-coverage-include`で`src/`の製品のファイル（`.ts`・`.tsx`）を明示し、試験のファイルは`--test-coverage-exclude`で外す。既定のままだと、どの試験からも読み込まれない製品のファイルが表に出ず、試験のまったくないファイルほど見えなくなるため（Copilot r4173480743）。使うNode.jsの版で、読み込まれないファイルが表に出ない場合は、`src/`の製品のファイルの一覧と表を突き合わせ、表にないファイルを0%として足す。閾値（`--test-coverage-lines`等）は当面使わない。実験的な機能で数値が版により変わりうること、閾値は数字合わせの試験を招くことが理由。domainの割合が安定したら、閾値の導入をT25で判断する。lcovのファイルをartifactとしてuploadしない（CIの方針）。CI設定を変えるので、ほかのCIの変更（Issue #19のPR #33等）と同時に行わない。
+**決定:** `node --test --experimental-test-coverage`（Node.js 24ではStability 1 - Experimental）で、CIのLinuxの1つのjobだけで行・分岐・関数の割合を集め、runのSummaryに表で出す。対象は`--test-coverage-include`で`src/`の製品の`.ts`のファイルを明示し、試験のファイルは`--test-coverage-exclude`で外す。`.tsx`（UI）は`node --test`では読めず常に0%になるので、T08で決めるUIの試験の実行器に合わせて計測方法を決める（T31）。既定のままだと、どの試験からも読み込まれない製品のファイルが表に出ず、試験のまったくないファイルほど見えなくなるため（Copilot r4173480743）。使うNode.jsの版で、読み込まれないファイルが表に出ない場合は、`src/`の製品のファイルの一覧と表を突き合わせ、表にないファイルを0%として足す。閾値（`--test-coverage-lines`等）は当面使わない。実験的な機能で数値が版により変わりうること、閾値は数字合わせの試験を招くことが理由。domainの割合が安定したら、閾値の導入をT25で判断する。lcovのファイルをartifactとしてuploadしない（CIの方針）。CI設定を変えるので、ほかのCIの変更（Issue #19のPR #33等）と同時に行わない。
 
 **候補:** c8・istanbul（依存が増える。Node.jsの組み込みで足りる）。
 
