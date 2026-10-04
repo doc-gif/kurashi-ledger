@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "T06",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -29,7 +29,18 @@
     "src/domain/records/values.ts",
     "src/domain/records/views.ts"
   ],
-  "conflicts": [],
+  "conflicts": [
+    {
+      "description": "契約版2.0（PR #36）が、行IDのwholeの予約、検査済みの改訂による回復、修復の改訂、古い版で読むだけ、incomeTimingKindを契約に書く。T06はその文に合わせる必要がある。",
+      "state": "resolved",
+      "resolution": "T06（PR #28）はPR #36のあとにマージする。意味はPR #36の文に合わせ、食い違いは選ばずに報告する。incomeTimingKindはPR #36のマージ後に追従する。"
+    },
+    {
+      "description": "README・docs/project-status.md・docs/implementation-tasks.mdは、ほかの作業中のPR（#25・#29・#33・#37・#38・#44等）も変える共有の文書。",
+      "state": "resolved",
+      "resolution": "T06は記録ドメインの事実を足す数行だけにし、#40の構成（正本へのリンク、表）に合わせる。後からマージする側が行の競合を解消する。"
+    }
+  ],
   "assessments": [
     {
       "id": "INV-LOCK",
