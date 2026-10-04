@@ -367,6 +367,11 @@
           "reason": "閲覧履歴のDBへの記録は、実際のブラウザで確かめる"
         }
       ]
+    },
+    {
+      "description": "レッドチームの再確認（head 42ed8b2。P1・P2なし、F1〜F16とR009の継続は解消、挙動の変更は受入れ）の追加の指摘N1〜N4と軽微な2件。N1（F9の兄弟、設計）: Connection: closeの判断がreject()だけにあり、本文のある成功の応答（Transfer-Encoding: chunkedのGET /launch、開発時のmiddleware、本文付きのAPIのGET）はkeep-aliveで返り、あとの壊れたchunkにclientErrorが同じ要求への2つ目の400を書く。N2: Node自身の書込み箇所の一覧はv24.21.0で確かめたが、enginesは>=24.15.0 <25。N3: requestTimeoutが既定（300秒）のまま。N4: injectLaunchIdがUTF-8で読み直すので、UTF-8でない読み出し元のバイト列を変えうる。軽微: firstRequestTimeoutMsの検証、macOSのNFD・NFCの名前とF11。",
+      "state": "resolved",
+      "resolution": "N1: 判断を出口の1か所（enforceResponseHeadersのwriteHeadの包み）へ移す。ヘッダを書き出す時点で、要求が未完了（!req.complete）で本文がある（Transfer-Encodingがある、またはContent-Lengthが0でない）なら、Connection: closeを付ける。reject()の個別の判断は消す。試験: Transfer-Encoding: chunkedのGET /launchの200にConnection: closeが付き、あとの壊れたchunkに2つ目の応答を書かない。N3: requestTimeoutを60秒にする（要求の全体を受け取るまでの上限。ローカルのUIの要求は小さく、本文の上限は宣言した最大でも数MiB以下なのでloopbackでは60秒で十分。既定の300秒より、遅い送信で接続を占有されにくい）。ADR-0009に、同じPCのほかのプロセスによる資源の枯渇（DoS）への耐性はこの境界の保証の外で、上限と時間切れは追加の防御だと書く。軽微: firstRequestTimeoutMsは0以上の整数（Number.isSafeInteger）だけを受け付ける。ADR-0009の静的配信に、macOSで正規化の形（NFD・NFC）が違う非ASCIIの名前はF11の規則で404になると書く。N2はT28へ（理由: enginesの範囲の変更はこのPRの範囲外で、版ごとの確認はCIの版の管理と一緒に行うのが適切）。Nodeの版を変えるたびに、_http_server.jsの書込み箇所の一覧を新しい版で確かめ直し、生の応答の試験を流し直すことを台帳のT28の受入とADR-0009に書く。enginesは変えない。N4はT09へ（理由: UTF-8でない読み出し元はT09のメモリの読み出し元で初めて現れうる）。injectLaunchIdがバイト列を切り貼りし、UTF-8で読み直さないことを台帳のT09の受入に書く。"
     }
   ],
   "assessments": [
