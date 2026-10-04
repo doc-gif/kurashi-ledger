@@ -215,6 +215,8 @@ AIの記録と人の標準操作で、証跡を分ける。
 
 前提（全体で1回）: Issue #50のW1〜W4がマージ済み。doctorの否定試験とhost検査が合格。Webhookの経路・購読・秘密をownerが設定済み。shadowで現行の判定との差を確かめた。
 
+初期の範囲（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測る。効果が出たとownerが判断してから、対象を広げる。
+
 1. ownerが、そのPRの旧担当（レビュー担当、粗探し、T23の巡回）を止め、終了を確かめる。進行中のレビューは完了させるか取り消す。
 2. ownerが、設定のactiveの一覧と「所有者だけがマージ」の一覧にそのPRを加える。
 3. ownerがpolicyへそのPRを加える。新しいrevisionと、切替時刻の`readyAfter`を付ける。
