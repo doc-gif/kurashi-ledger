@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "base_sha": "1d513e74b6fd5e1dd081184440c4bb2bbfc8ffb4",
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
   "task_id": "T26",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -204,6 +204,11 @@
       "description": "PR25-R009の継続（Codex 5401173702のneeds-owner、Copilot 4173479208）とPR25-R012（Codex 5401173702、Copilot 4173479186）をまとめて見た全体の方針。R009: 出口はwriteHeadだけを包むので、informational応答（1xx）の入口（Node.js v24.21.0の_http_server.jsのServerResponse.prototype.writeInformationと、それを呼ぶwriteContinue・writeProcessing・writeEarlyHints）が、必須のヘッダとCORSの除去を迂回して生の1xxを書ける。2026-10-03の所有者の決定（5970070532、AIによる転記）:「中間の応答を禁止する」。R012: 例外のcode・nameを任意の文字列のままログに出すので、秘密の形の値の漏えいや、改行によるログの行の偽装が起きる。",
       "state": "resolved",
       "resolution": "全体の方針: 応答とログの「出口」を、それぞれ1か所の許可リストにする。(A) 応答: すべての応答に付けるヘッダの定義（requiredResponseHeaders）を通らない応答は書かない。node:httpの公開のAPIで応答を書く入口を、Node.js v24.21.0のソースから列挙し直した: writeHead（とその別名writeHeader。出口で包む）、writeInformation・writeContinue・writeProcessing・writeEarlyHints（1xx。所有者の決定で禁止）、サーバーの既定の自動の応答（自動の100 Continue・417はcheckContinue・checkExpectationの処理で、400・431等はclientErrorの処理で、503のdropRequestはmaxRequestsPerSocketを設定しないことで、すべて出口を通す。R009・R011）、upgradeの拒否（R008）、受け付けたupgradeの101（T08の開発時の口の分担。変えない）。1xxの4つは、すべての応答（通常・開発時の口・Expect）で、応答のインスタンスのメソッドを、呼ぶと例外（ERR_KL_INFORMATIONAL_RESPONSE_FORBIDDEN）を投げて何も書かないものに置き換える。内部のメソッド（_writeRaw等）やソケットへの直接の書込みは公開のAPIではなく、同じプロセスの組込みのコード（T08のVite）の責任とし、ADR-0009に明記する。(B) ログ: 例外のnameは出さない。codeは、入口ごとに決めた、既知の必要な符号の許可リスト（ファイル操作の誤り、HTTPの解析器の誤り等）にあるときだけ出し、それ以外は固定のotherにする（文字種や長さの制限だけでは英数字の秘密を防げないため）。入口: APIの処理・開発時のmiddleware（同期の例外・reject）の失敗、upgradeの処理の例外、一時ファイルの削除の失敗、clientError。試験: (A) 開発時のmiddlewareが4つの1xxの入口を呼ぶと、例外になり、生の応答に1xxの行が現れず、最後の応答に必須のヘッダが付く（捕まえて応答を続ける場合と、捕まえずに500になる場合）。(B) 各入口に、codeとnameに秘密の形の値・改行・長い値を持つ例外を与え、ログに出ず、通常の500または接続の終了になること。分類の関数の単体試験。既存の試験のうち、合成の符号（ELATE・ESYNTHETIC）をそのまま記録すると期待していたものは、新しい契約（other）に合わせて直す（後退ではなく、契約の変更）。"
+    },
+    {
+      "description": "2026-10-04のmain（409bd3f。#40の規則の集約、#42のAIのGitHub App、#46・#48のreview-dispatch、#47のCopilotを任意にした変更）の取込みと、いまopenのPRとの共有資源の重なり。取込みで、.github/copilot-instructions.md・AGENTS.md・README.md・docs/development.md・docs/project-status.mdが競合した。openのPRとの重なり: #28（T06）・#29（T14）・#33（Issue #19）・#36・#37・#38がREADME.md・docs/implementation-tasks.md・docs/project-status.mdを、#33・#37がdocs/development.md（#33はskipの表）を、#28・#33が.github/copilot-instructions.mdを、#28がAGENTS.md・docs/github-agent-operations.mdを、#28・#29・#33がdocs/testing.mdを、#33・#37がdocs/adr/README.mdを変える。#44は重ならない。",
+      "state": "resolved",
+      "resolution": "第1段階（所有者の指示「コンフリクトだけ一気に片付けたい」）では、競合の解消だけを行い、内容の変更はしない。#40・#47の正本の文と構成を優先し、T26の追記は#40が定めた場所に置き、規則は書き写さずにリンクする（削除された文を戻さない）。AGENTS.mdはmainの版のまま（T26の追記は開発環境へのリンクで足りる）。.github/copilot-instructions.md・README.md・docs/project-status.mdは、mainの文に、製品の試験がT26のHTTPの境界から始まったこと・npm startの1行・T26の行だけを加えた。docs/development.mdのskipの表は、mainの行（scripts/github-app-token.test.tsの2件）とT26の行（src/start.test.tsの1件）を両方残し、Windowsの件数を7件から8件にした。openのPRとは、同じ文書の別の行・別の節を変えるので、あとからマージする側がmainを取り込んで解消する（#33がskipの表を変える場合は、件数の文を両方の行に合わせる）。所有者の決定1〜3とF1〜F16の対応（レッドチームの事前レビュー）は第2段階で行い、この計画にそのとき全体の方針を書く。"
     }
   ],
   "assessments": [
