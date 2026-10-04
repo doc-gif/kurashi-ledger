@@ -10,6 +10,7 @@ import {
   idInUse,
   isNewerContractVersion,
   isUnchecked,
+  revisionKey,
   withRequestResult,
   writeRequestIdInUse,
   type RequestResult,
@@ -163,7 +164,7 @@ export function saveRevision(ledger: Ledger, raw: unknown, deps: SaveDeps): Save
     if (previous === undefined) return reject(ledger, one("record-not-found", "$.id", `改訂する記録がない: ${id}`));
     // 読む処理より新しい契約版を名乗るデータから入り、この版の表にない項目を持つ記録は、この版では読むだけにする（所有者の判断
     // 「新しい版のデータのときだけ読むだけ」）。名乗りのない知らない項目（壊れた取込等）は、修復の改訂で直せる。
-    if (ledger.newerVersionRecords.has(id) && hasUnknownContent(previous.recordType, previous.body)) {
+    if (ledger.newerVersionRevisions.has(revisionKey(id, previous.revision)) && hasUnknownContent(previous.recordType, previous.body)) {
       return reject(ledger, one("read-only-unknown-content", "$.body", "この版が知らない項目を持つ記録は、この版では改訂しない（読むだけ）"));
     }
     const predecessorTrusted = isHistoryValid(ledger, previous);
@@ -400,12 +401,13 @@ export function restoreUnchecked(ledger: Ledger, records: readonly unknown[], de
       recordedAt: nowOf(deps.clock),
       recordedSeq: nextSeq(cur),
     });
-    cur = withRevision(cur, revision, false);
-    if (newer && !cur.newerVersionRecords.has(revision.id)) {
-      const ids = new Set(cur.newerVersionRecords);
-      ids.add(revision.id);
-      cur = { ...cur, newerVersionRecords: ids };
+    // 入ったときの契約版の印は、改訂を置く前に付ける（信頼の判定の記憶が、印のない状態で決まらないように）。
+    if (newer) {
+      const keys = new Set(cur.newerVersionRevisions);
+      keys.add(revisionKey(revision.id, revision.revision));
+      cur = { ...cur, newerVersionRevisions: keys };
     }
+    cur = withRevision(cur, revision, false);
   }
   return cur;
 }

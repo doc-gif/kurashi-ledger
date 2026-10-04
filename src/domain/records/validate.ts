@@ -17,8 +17,9 @@ function isObj(v: unknown): v is Obj {
 
 class Out {
   readonly list: Violation[] = [];
-  // 読取の検査（stored）では、Factの標準の表記の知らない項目を、ないものとして飛ばす（契約版2.0の共通の型の1「読む処理が
-  // 知らない項目」、所有者の判断「新しい版のデータのときだけ読むだけ」。R28-2）。保存しようとしている改訂では違反にする。
+  // 新しい版のデータの読取の検査では、Factの標準の表記の知らない項目を、ないものとして飛ばす（契約版2.0の共通の型の1「読む処理が
+  // 知らない項目」、所有者の判断「新しい版のデータのときだけ読むだけ」。R28-2）。それ以外（保存しようとしている改訂、名乗りのない
+  // 復元・取込）では違反にする（壊れた中身は修復の改訂で直す）。
   ignoreUnknownFacts = false;
   add(reason: RejectionReason, path: string, message: string): void {
     this.list.push({ reason, path, message });
@@ -197,12 +198,14 @@ export interface StaticCheckOptions {
   // 把握日）だけを確かめる。bodyと変えられない項目（entryChannel・importKey）は、直前の版と同じであることを遷移の検査で確かめる
   // （所有者の判断「信頼できない記録だけ修復を許す」。PR #36の共通の型の9。D2）。
   readonly voidScope?: boolean;
+  // trueなら、読む処理より新しい契約版を名乗るデータから入った保存した改訂として、読取の検査で確かめる（storedのときだけ効く）。
+  readonly newerVersion?: boolean;
 }
 
 // 改訂1件の静的な検査。違反がなければ空の並び。
 export function checkRevisionStatic(record: unknown, options: StaticCheckOptions = { stored: false }): Violation[] {
   const out = new Out();
-  out.ignoreUnknownFacts = options.stored;
+  out.ignoreUnknownFacts = options.stored && options.newerVersion === true;
   if (!isObj(record)) {
     out.add("value-invalid", "$", "改訂がobjectではない");
     return out.list;

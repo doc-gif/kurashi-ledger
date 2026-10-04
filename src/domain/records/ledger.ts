@@ -71,10 +71,11 @@ export interface Ledger {
   // して扱う（印の欠落を検査済みと読まない。N-P2-2）。T07は、この区別を改訂ごとの印（契約版2.0のsaveCheck）として永続化し、
   // 読み込みで復元する（所有者の判断「正しい保存で信頼を回復」。P1-1）。
   readonly checked: ReadonlySet<string>;
-  // 読む処理（READER_CONTRACT_VERSION）より新しい契約版を名乗るデータから入った記録のID（復元・取込の入口で、データの契約版を
-  // 渡したとき）。この版では、これらの記録のうち知らない項目を持つものを読むだけにする（所有者の判断「新しい版のデータのときだけ
-  // 読むだけ」。R36-2）。
-  readonly newerVersionRecords: ReadonlySet<string>;
+  // 読む処理（READER_CONTRACT_VERSION）より新しい契約版を名乗るデータから入った改訂の、revisionKeyの集合（復元・取込の入口で、
+  // データの契約版を渡したとき）。これらの改訂だけを読取の検査（Factの形の知らない項目を違反にしない）で確かめ、知らない項目を
+  // 持つ記録を読むだけにする。名乗りのない改訂は保存と同じ検査で確かめる（所有者の判断「新しい版のデータのときだけ読むだけ」。
+  // PR #36の共通の型の1「新しい版のデータ」）。T07は、改訂ごとに入ったときの契約版を永続化する。
+  readonly newerVersionRevisions: ReadonlySet<string>;
 }
 
 // この処理が読む契約版。
@@ -118,7 +119,7 @@ export function emptyLedger(): Ledger {
     sha256s: new Map(),
     runIds: new Set(),
     checked: new Set(),
-    newerVersionRecords: new Set(),
+    newerVersionRevisions: new Set(),
   };
 }
 

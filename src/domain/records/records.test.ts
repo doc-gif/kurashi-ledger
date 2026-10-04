@@ -1344,20 +1344,28 @@ test("読むだけ（所有者の判断「新しい版のデータのときだ�
   assert.deepEqual(depositOct(l), { state: "complete", knownSum: 1, missing: [] });
   rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0), "read-only-unknown-content");
   rejectedUnchanged(l, save(l, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "correct-input-error", body: { amount: { state: "known", value: 2 } } }, T0), "read-only-unknown-content");
-  // 名乗りのない知らない項目（壊れた取込等）は、読むときはないものとして扱い、改訂できる（取消、知らない項目を外す訂正）。
-  let m = setup();
-  m = restoreUnchecked(m, [withUnknown], { clock: { now: () => T0 } }, { contractVersion: "1.0" });
-  assert.deepEqual(depositOct(m), { state: "complete", knownSum: 1, missing: [] });
-  ok(save(m, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0));
-  const { futureField: _f, ...cleanBody } = withUnknown.body as Record<string, unknown>;
-  void _f;
-  const fix = saveRevision(m, { ...withUnknown, revision: 2, reason: "correct-input-error", writeRequestId: "w-fix", body: { ...cleanBody, amount: { state: "known", value: 2 } }, baseRevision: 1 }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
-  assert.equal(fix.kind, "accepted");
+  // 名乗りのない知らない項目（壊れた取込等。契約版の名乗りが読む処理と同じか、名乗りがない）は、保存と同じ検査で確かめるので
+  // 静的な違反（信頼しない）。読むだけにはせず、修復の改訂で直せる（PR #36の共通の型の1「新しい版のデータ」）。
+  for (const options of [{ contractVersion: "1.0" }, {}]) {
+    let m = setup();
+    m = restoreUnchecked(m, [withUnknown], { clock: { now: () => T0 } }, options);
+    assert.deepEqual(depositOct(m), { state: "incomplete", knownSum: 0, missing: ["dep_1@1:save-check:conflict"] });
+    const note = { changeNote: { state: "known", value: "知らない項目を外す" } };
+    rejectedUnchanged(m, save(m, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void" }, T0), "value-invalid");
+    rejectedUnchanged(m, save(m, { id: "dep_1", recordType: "bank-deposit", revision: 2, reason: "void", ...note }, T0), "value-invalid");
+    const { futureField: _f, ...cleanBody } = withUnknown["body"] as Record<string, unknown>;
+    void _f;
+    const fix = (extra: Obj) => saveRevision(m, { ...withUnknown, revision: 2, reason: "correct-input-error", writeRequestId: "w-fix", body: { ...cleanBody, amount: { state: "known", value: 2 } }, baseRevision: 1, ...extra }, { clock: { now: () => T0 }, ids: { next: () => "dep_1" } });
+    rejectedUnchanged(m, fix({}), "transition-not-allowed");
+    const fixed = fix(note);
+    assert.equal(fixed.kind, "accepted");
+    if (fixed.kind === "accepted") assert.deepEqual(depositOct(fixed.ledger), { state: "complete", knownSum: 2, missing: [] });
+  }
   // 新しい保存（版1）は、知らない項目を受け付けない。
   rejected(saveRevision(setup(), (() => { const { id: _i, ...x } = withUnknown; void _i; return x; })(), { clock: { now: () => T0 }, ids: { next: () => "dep_9" } }), "value-invalid");
-  // Factの形でない知らない項目は、読むときも保存の検査をすり抜けたデータ。
+  // Factの形でない知らない項目は、新しい版のデータの読取の検査でも違反（保存の検査をすり抜けたデータ）。
   let n = setup();
-  n = restoreUnchecked(n, [{ ...r, body: { ...(r["body"] as Obj), broken: 7 } }], { clock: { now: () => T0 } });
+  n = restoreUnchecked(n, [{ ...r, body: { ...(r["body"] as Obj), broken: 7 } }], { clock: { now: () => T0 } }, { contractVersion: "2.0" });
   assert.deepEqual(depositOct(n), { state: "incomplete", knownSum: 0, missing: ["dep_1@1:save-check:conflict"] });
 });
 

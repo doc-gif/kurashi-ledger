@@ -2,7 +2,7 @@
 // 移行等）を導く判定のたびに確かめる条件（同9の「保存の検査をすり抜けたデータ」）を、同じ関数で決める。
 
 import { knownValue, stateOf } from "./fact.ts";
-import { isUnchecked, revisionsOf, type Ledger, type Revision, type RevisionReason } from "./ledger.ts";
+import { isUnchecked, revisionKey, revisionsOf, type Ledger, type Revision, type RevisionReason } from "./ledger.ts";
 import type { RejectionReason, Violation } from "./reasons.ts";
 import { LINE_LISTS } from "./schema.ts";
 import { checkRevisionStatic, lineObjects } from "./validate.ts";
@@ -114,7 +114,7 @@ export function checkAgainstPrevious(history: readonly Revision[], proposal: Obj
 // 取消の改訂の静的な検査の範囲（PR #36の共通の型の9、所有者の判断1）: 取消（void）で、bodyと変えられない項目が直前の版と
 // 同じなら、その改訂が決める項目だけを確かめる。修復の再度の取消でbody等を変えた場合は、変えた値も確かめる（全体の検査）。
 // 直前までの履歴が信頼できない記録の取消（修復の取消）は、bodyを変えなくてもbodyも確かめる（所有者の判断2。R36-1）。
-export function staticCheckFor(proposal: Obj, previous: Revision | undefined, stored: boolean, predecessorTrusted = true): Violation[] {
+export function staticCheckFor(proposal: Obj, previous: Revision | undefined, stored: boolean, predecessorTrusted = true, newerVersion = false): Violation[] {
   const voidScope =
     predecessorTrusted &&
     proposal["reason"] === "void" &&
@@ -122,7 +122,7 @@ export function staticCheckFor(proposal: Obj, previous: Revision | undefined, st
     sameJson(proposal["body"], previous.body) &&
     proposal["entryChannel"] === previous.entryChannel &&
     sameJson(proposal["importKey"], previous.importKey);
-  return checkRevisionStatic(proposal, { stored, voidScope });
+  return checkRevisionStatic(proposal, { stored, voidScope, newerVersion });
 }
 
 // 記録の種類ごとの、改訂の理由と前後の値の規則（PR28-R008）。保存のときと、検査をすり抜けた履歴の検査で同じに使う。
@@ -288,7 +288,8 @@ export function isHistoryValid(ledger: Ledger, revision: Revision): boolean {
 function revisionValid(ledger: Ledger, prior: readonly Revision[], r: Revision): boolean {
   const previous = prior[prior.length - 1];
   const predecessorTrusted = previous === undefined || isHistoryValid(ledger, previous);
-  if (staticCheckFor(r as unknown as Obj, previous, true, predecessorTrusted).length > 0) return false;
+  const newerVersion = ledger.newerVersionRevisions.has(revisionKey(r.id, r.revision));
+  if (staticCheckFor(r as unknown as Obj, previous, true, predecessorTrusted, newerVersion).length > 0) return false;
   if (r.revision !== prior.length + 1) return false;
   if (previous !== undefined) {
     if (r.recordedSeq <= previous.recordedSeq) return false;

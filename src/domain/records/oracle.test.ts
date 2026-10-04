@@ -174,14 +174,20 @@ function applyOp(run: Run, op: Obj, scenarioId: string): void {
       break;
     }
     case "restoreUnchecked": {
+      // 1つの操作で同じ記録の版を続けて置くときは、同じ操作の前の版を直前の改訂として展開する。
+      const placed = new Map<string, Obj>();
       const records = (op["records"] as Obj[]).map((r) => {
         const rid = str(r["id"], `${where}のrecords[].id`);
-        const prev = latestRevision(run.ledger, rid) as unknown as Obj | undefined;
+        const prev = placed.get(rid) ?? (latestRevision(run.ledger, rid) as unknown as Obj | undefined);
         const revision = typeof r["revision"] === "number" ? r["revision"] : 1;
-        return expandRecord(r, { scenarioId, opId, previous: prev, defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, revision) });
+        const expanded = expandRecord(r, { scenarioId, opId, previous: prev, defaultWriteRequestId: restoredWriteRequestId(scenarioId, opId, rid, revision) });
+        placed.set(rid, expanded);
+        return expanded;
       });
       // 1つの操作で置く改訂は、それぞれ別の保存として連番を持つ。台帳の時刻を同じ値で使う。
-      run.ledger = restoreUnchecked(run.ledger, records, deps(at));
+      // 台帳の契約版より新しいsourceContractVersionを付けた操作だけを、新しい版のデータとして読取の検査で確かめる。
+      const source = op["sourceContractVersion"];
+      run.ledger = restoreUnchecked(run.ledger, records, deps(at), typeof source === "string" ? { contractVersion: source } : {});
       run.results.set(opId, { opId, outcome: "restored" });
       break;
     }
