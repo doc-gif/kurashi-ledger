@@ -69,7 +69,7 @@ print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} p
   mkdir -p "$root" "$etc" "$secrets" "$runs" "$config" "$logs" && chmod 700 "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" || exit 1
   src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
   git clone --quiet --no-checkout "https://github.com/${repo_slug}.git" "$src/repo" || exit 1
-  new="$(git -C "$src/repo" rev-parse origin/main)"
+  new="$(git -C "$src/repo" rev-parse origin/main)" && (( ${#new} == 40 )) || exit 1
   git -C "$src/repo" merge-base --is-ancestor bea1f658f106c9b7810457634927eff595743c60 "${new}" || { echo "mainに#58がない"; exit 1; }
   git -C "$src/repo" cat-file -e "${new}:tools/review_dispatch/launchd/cycle.plist.in" 2>/dev/null || { echo "mainにlaunchdの雛形がない"; exit 1; }
   test -e "$base/copy-${new}" || { mkdir "$base/copy-${new}" && git -C "$src/repo" archive "${new}" | tar -x -C "$base/copy-${new}" && chmod -R go-rwx "$base/copy-${new}"; } || exit 1
@@ -272,7 +272,7 @@ cloudflared tunnel login && cloudflared tunnel create kurashi-dispatch && cloudf
   umask 077
   [[ -n $tunnel_host ]] || { echo "0のtunnel_hostを入れる"; exit 1; }
   tid="$(cloudflared tunnel list | awk '$2 == "kurashi-dispatch" {print $1}')"
-  test -f "$HOME/.cloudflared/${tid}.json" || { echo "tunnelの資格情報がない。Bの1つ目をやり直す"; exit 1; }
+  [[ -n $tid ]] && test -f "$HOME/.cloudflared/${tid}.json" || { echo "tunnelの資格情報がない。Bの1つ目をやり直す"; exit 1; }
   cat > "$etc/tunnel.yml" <<EOF
 tunnel: ${tid}
 credentials-file: $HOME/.cloudflared/${tid}.json
@@ -356,12 +356,13 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
 
    ```zsh
    (
-     runs() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\t'"$1"'" {print $2}'; }
-     before="$(runs runs)"; [[ -n $before ]] || { echo "未完了: cycleが登録されていない（12）"; exit 1; }
+     setopt pipefail
+     info() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} END {if (r ~ /^[0-9]+$/ && s != "" && c != "") print r "|" s "|" c; else exit 1}'; }
+     r="$(info)" || { echo "未完了: cycleを読めない（12）"; exit 1; }; before="${r%%|*}"
      launchctl kickstart "$gui/${label}.cycle" || { echo "未完了: 起動できない"; exit 1; }
-     for i in {1..120}; do [[ $(runs runs) -gt $before && $(runs state) != running ]] && break; sleep 5; done
-     [[ $(runs runs) -gt $before && $(runs state) != running ]] || { echo "未完了: 10分で終わらない"; exit 1; }
-     code="$(runs 'last exit code')"; [[ $code == 0 ]] || { echo "未完了: 終了コード${code}（tail \"$logs/cycle.err\"）"; exit 1; }
+     fin=; for i in {1..120}; do sleep 5; r="$(info)" || continue; IFS='|' read -r n st code <<< "$r"; (( n > before )) && [[ $st == "not running" ]] && { fin=1; break; }; done
+     [[ -n $fin ]] || { echo "未完了: 今回の終了を確かめられない"; exit 1; }
+     [[ $code == 0 ]] || { echo "未完了: 終了コード${code}（tail \"$logs/cycle.err\"）"; exit 1; }
      echo "照合完了"
    )
    ```
@@ -380,29 +381,33 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
    (
      rm -f "$etc/r006-ok"
      gh api --paginate "repos/${repo_slug}/issues/${target_pr}/timeline" --jq '.[] | select(.event == "ready_for_review") | "\(.id)\t\(.created_at)\t\(.actor.id)"' > "$etc/r006-timeline.tsv" || exit 1
-     main_sha="$(gh api "repos/${repo_slug}/commits/main" --jq .sha)" && head_sha="$(gh api "repos/${repo_slug}/pulls/${target_pr}" --jq .head.sha)" || exit 1
-     "$node_bin" -e '
+     main_sha="$(gh api "repos/${repo_slug}/commits/main" --jq .sha)" && head_sha="$(gh api "repos/${repo_slug}/pulls/${target_pr}" --jq .head.sha)" && (( ${#main_sha} == 40 && ${#head_sha} == 40 )) || exit 1
+     "$node_bin" -e 'try {
        const fs = require("fs"); const { DatabaseSync } = require("node:sqlite");
        const [db, pol, pr, main, head, tlf, out] = process.argv.slice(1);
        const p = JSON.parse(fs.readFileSync(pol, "utf8")); const key = p.repoId + ":" + pr;
        const tl = fs.readFileSync(tlf, "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
        const d = new DatabaseSync(db, { readOnly: true });
-       const bound = new Set(d.prepare("SELECT id FROM evidence WHERE key = ?").all(key).map((r) => r.id));
-       let ok = false;
+       const ev = d.prepare("SELECT value FROM evidence WHERE id = ?");
+       let ok = "";
        for (const r of d.prepare("SELECT delivery, policy, payload FROM inbox WHERE event = ? AND payload IS NOT NULL").all("pull_request")) {
-         const b = JSON.parse(r.payload), x = b.pull_request || {};
+         const b = JSON.parse(r.payload), x = b.pull_request;
          if (b.action !== "ready_for_review" || String(x.number) !== pr) continue;
          const m = tl.filter(([, at, actor]) => Date.parse(at) === Date.parse(x.updated_at) && Number(actor) === b.sender.id);
-         const c = { revision: r.policy === p.revision, updated_at: m.length === 1, head: x.head.sha === head, base: x.base.sha === main, bound: m.length === 1 && bound.has("ready:" + key + ":timeline:" + m[0][0]) };
+         const row = m.length === 1 ? ev.get("ready:" + key + ":timeline:" + m[0][0]) : undefined;
+         const v = row ? JSON.parse(row.value) : null;
+         const c = { revision: r.policy === p.revision, updated_at: m.length === 1, head: x.head.sha === head, base: x.base.sha === main,
+           bound: !!v && v.id === "timeline:" + m[0][0] && v.policy === p.revision && v.at > p.readyAfter && v.actor === b.sender.id && v.pair.head === x.head.sha && v.pair.base === x.base.sha };
          console.log(r.delivery, JSON.stringify(c));
-         if (Object.values(c).every(Boolean)) { ok = true; fs.writeFileSync(out, r.delivery + "\n", { mode: 0o600 }); }
+         if (Object.values(c).every((y) => y === true)) ok = r.delivery;
        }
+       if (ok) fs.writeFileSync(out, ok + "\n", { mode: 0o600 });
        console.log(ok ? "R006 完了" : "R006 未完了"); process.exit(ok ? 0 : 1);
-     ' "$root/dispatch.sqlite" "$policy" "$target_pr" "$main_sha" "$head_sha" "$etc/r006-timeline.tsv" "$etc/r006-ok"
+     } catch { console.log("R006 未完了（読取り・解析の失敗）"); process.exit(1); }' "$root/dispatch.sqlite" "$policy" "$target_pr" "$main_sha" "$head_sha" "$etc/r006-timeline.tsv" "$etc/r006-ok"
    )
    ```
 
-   期待: 配送ごとの比較（revision・updated_at＝timelineの時刻・head・base＝main・結合）が1行ずつと、`R006 完了`。`R006 未完了`なら結合の規則を独立レビューで直すまでactiveにしない（14の3が止める）。比較の行をIssue #50に記録する。
+   期待: 配送ごとの比較（revision・updated_at＝timelineの時刻・head・base＝main・結合＝今のrevisionで`readyAfter`より後、この配送のpair・actor・ID）が1行ずつと、`R006 完了`。読取り・解析の失敗では印を作らない。`R006 未完了`なら結合の規則を独立レビューで直すまでactiveにしない（14の3が止める）。比較の行をIssue #50に記録する。
 5. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめ、Issue #50に記録する（PR48-R011、I003）。
 
 ## Bへ移る
@@ -443,7 +448,8 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
-  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 && ! pgrep -f 'cloudflared tunnel --url' >/dev/null || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
+  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
+  pgrep -f 'cloudflared tunnel --url' >/dev/null; pg=$?; (( pg == 1 )) || { echo "クイックトンネルが動いているか、確かめられない（pgrep ${pg}）"; exit 1; }
   kl_mode active
 )
 ```
@@ -506,10 +512,12 @@ kl_mode shadow
 全体を止める。まずlaunchdから外す（serveはoffで起動しないので、先に外す）:
 
 ```zsh
-for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
+(
+  for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; ! launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 || { echo "外れていない: ${n}"; exit 1; }; done; echo "外した"
+)
 ```
 
-期待: 表示なし。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
+期待: `外した`。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
 
 ```zsh
 kl_mode off
@@ -533,7 +541,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
+| 写し（新しいmain） | 17のlaunchdから外すブロック（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`（revisionと`readyAfter`を新しくする）か手で変える。手で変えるときも`readyAfter`を切替の時刻にする。受け口は配送ごとに読み直すので再起動は要らない。Readyのやり直しが要る |
 | cycleが終了コード4、受け口が503を返し続ける | [policyの更新と受け口の503](review-dispatch-implementation.md#policyの更新と受け口の503) |
