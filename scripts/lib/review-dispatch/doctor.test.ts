@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   MEASURED_PROBES,
+  PLAIN_SOCKET_PREFIX,
   PROBE_SOURCE,
   SOCKET_DENY_LINE,
   SUN_PATH_MAX,
@@ -214,6 +215,12 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
     [`${PROFILE}\n(allow network-outbound)`, "network-open"],
     [`${PROFILE}\n(allow network*)`, "network-open"],
     [`${PROFILE}\n(allow network-outbound (remote unix-socket (path-literal "/srv/synthetic/control.sock")))`, "network-open"],
+    // PR60 RT-2: a network operation anywhere in the operation list.
+    [PROFILE.replace("(allow file-read-metadata)", '(allow file-read* network-outbound (subpath "/private"))'), "network-open"],
+    [PROFILE.replace("(allow file-read-metadata)", "(allow system-socket network-outbound)"), "network-open"],
+    // PR60 RT-3: no allow after the explicit denies (a later rule wins).
+    [`${PROFILE}\n(allow file-read-data (literal "/srv/synthetic/x"))`, "allow-after-deny"],
+    [PROFILE.replace(";; BEGIN socket-deny", '(allow file-read-data (literal "/srv/synthetic/x"))\n;; BEGIN socket-deny'), "allow-after-deny"],
   ];
   for (const [text, problem] of bad) {
     assert.ok(lintProfile(text).includes(problem), problem);
@@ -378,7 +385,7 @@ test("Seatbelt integration: real sandbox-exec denies every synthetic probe and i
 test("CLI measurement harness: outcomes need attempt evidence from the CLI's events; no evidence is inconclusive", async (t) => {
   if (process.platform === "win32") {
     // Not a skip: workers launch on macOS only; the measurement refuses before starting any CLI.
-    const layout = { root: "C:/x", secretFiles: { key: "", token: "", gh: "", ssh: "", otherAi: "" }, writeTargets: { db: "", policy: "" }, keychain: null, network: { url: "", hits: () => 0 }, supervisor: { socket: "", hits: () => 0 } };
+    const layout = { root: "C:/x", secretFiles: { key: "", token: "", gh: "", ssh: "", otherAi: "" }, writeTargets: { db: "", policy: "" }, keychain: null, network: { url: "", hits: () => 0 }, supervisor: { sockets: [""], hits: () => 0 } };
     await assert.rejects(measureCli(policy(), job(30), install, layout, async () => assert.fail("CLI started")), LaunchError);
     t.diagnostic("Windows: the measurement refused before starting any CLI");
     return;
@@ -405,7 +412,7 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
       writeTargets: { db: f("dispatch.sqlite"), policy: f("policy.json") },
       keychain: { path: f("synthetic.keychain-db"), service: `kl-synthetic-${name}`, account: "doctor", value: `SYNTHETIC-ITEM-${name}` },
       network: { url: "http://127.0.0.1:9/synthetic", hits: () => netHits },
-      supervisor: { socket: f("control.sock"), hits: () => controlHits },
+      supervisor: { sockets: [f("control.sock"), f("plain.sock")], hits: () => controlHits },
     };
   };
   const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
@@ -666,7 +673,7 @@ test("W4d: the control socket gets a fresh 0700 directory under /tmp, a path of 
   }
 });
 
-test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the control socket, and cli.sb denies it by its own rule", async (t) => {
+test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the control sockets, and cli.sb denies them by deny default and by its own rule", async (t) => {
   if (process.platform !== "darwin") {
     // Not a skip: the doctor needs Seatbelt and disables elsewhere (the integration test above checks that).
     t.diagnostic(`no Seatbelt on ${process.platform}: the doctor disables before binding any socket`);
@@ -682,6 +689,20 @@ test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the con
     await host.close();
   }
   assert.deepEqual(readdirSync(base), []);
+
+  // PR60 RT-1: deny default alone (cli.sb without the socket-deny line) still denies every control socket.
+  const plainDir = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt1-")));
+  t.after(() => rmSync(plainDir, { recursive: true, force: true }));
+  assert.ok(PROFILE.includes(SOCKET_DENY_LINE));
+  writeFileSync(join(plainDir, "cli.sb"), PROFILE.replace(SOCKET_DENY_LINE, ""));
+  const plainHost = seatbeltHost({ cliProfile: join(plainDir, "cli.sb") });
+  try {
+    assert.equal(await plainHost.run("supervisor-pipe", "control"), "allowed");
+    assert.equal(await plainHost.run("supervisor-pipe", "cli"), "denied");
+    assert.equal(await plainHost.run("supervisor-pipe", "cli-child"), "denied");
+  } finally {
+    await plainHost.close();
+  }
 
   // The explicit socket-deny, not only deny-default: with broad allows placed before it the socket stays
   // denied (both spellings, /private/tmp and /tmp); the same profile without the block lets it through.
@@ -700,6 +721,7 @@ test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the con
   const profiles = { reviewed: PROFILE, broadWithDeny: `${head}${broad};; BEGIN socket-deny\n${tail}`, broadWithoutDeny: `${head}${broad}` };
   const node = realpathSync(process.execPath);
   const s = await privateSocket(createServer((c) => c.end()));
+  const plain = await privateSocket(createServer((c) => c.end()), { prefix: PLAIN_SOCKET_PREFIX });
   try {
     const probe = (profile: string, target: string) =>
       new Promise<string>((resolve) => {
@@ -717,7 +739,48 @@ test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the con
       assert.equal(await probe("broadWithDeny", target), "denied", `socket-deny ${target}`);
       assert.equal(await probe("broadWithoutDeny", target), "allowed", `control ${target}`);
     }
+    // The second control socket is outside the explicit rule: only deny default denies it (PR60 RT-1).
+    assert.equal(await probe("reviewed", plain.path), "denied", "deny default");
+    assert.equal(await probe("broadWithDeny", plain.path), "allowed", "outside socket-deny");
   } finally {
     await s.close();
+    await plain.close();
   }
+});
+
+test("PR60 RT-4: a failure late in the doctor's fixture setup leaves no directory, listener, socket or child behind", async (t) => {
+  if (process.platform === "win32") {
+    // Not a skip: on Windows the fixture refuses at the control sockets (no Unix sockets), before the hook.
+    t.diagnostic("Windows: the doctor fixture refuses before making the sockets");
+    return;
+  }
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt4-doctor-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  type Made = { root: string; sockets: string[]; port: number; pid: number | null; keychain: string | null };
+  let made: Made | null = null;
+  const host = seatbeltHost({
+    cliProfile: join(seatbeltDir, "cli.sb"),
+    base,
+    inject: (m) => {
+      made = m;
+      throw new Error("synthetic-failure");
+    },
+  });
+  await assert.rejects(host.run("supervisor-pipe", "control"), /synthetic-failure/);
+  const m = made as Made | null;
+  assert.ok(m && m.sockets.length === 2 && m.pid !== null);
+  assert.deepEqual(readdirSync(base), []);
+  for (const socket of m.sockets) assert.equal(existsSync(dirname(socket)), false, socket);
+  if (m.keychain) assert.equal(existsSync(m.keychain), false);
+  assert.throws(() => process.kill(m.pid!, 0), /ESRCH/, "the sleeper child is gone");
+  const refused = await new Promise<boolean>((resolve) => {
+    const c = connect(m.port, "127.0.0.1");
+    c.on("connect", () => {
+      c.destroy();
+      resolve(false);
+    });
+    c.on("error", () => resolve(true));
+  });
+  assert.equal(refused, true, "the loopback listener is closed");
+  await host.close();
 });

@@ -218,7 +218,11 @@
     },
     {
      "location": "lintProfile",
-     "result": "socket-deny-missing・socket-dir-openを足す"
+     "result": "socket-deny-missing・socket-dir-openを足す。操作の並びのどこかにnetwork系があるallowは、DNSとTCP 443の規則と完全一致しない限りnetwork-open（PR60 RT-2）。keychain-deny・socket-denyより後のallowはallow-after-deny（RT-3）"
+    },
+    {
+     "location": "deny-supervisorの実測（doctorとmeasure）",
+     "result": "socketを2つ（特例のdenyのkl-sock-と、対象外のkl-ctl-）作り、両方deniedを求める。特例の行を消したcli.sbでもdenied（RT-1）"
     }
    ]
   },
@@ -234,6 +238,10 @@
     {
      "location": "privateSocketのclose",
      "result": "作ったdirだけを消す"
+    },
+    {
+     "location": "seatbeltHost.setup・trapLayoutの途中の失敗",
+     "result": "作ったもの（root・listener・socket・子・keychain）を逆順に片付ける（PR60 RT-4）"
     }
    ]
   },

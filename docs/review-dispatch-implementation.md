@@ -29,7 +29,7 @@ Issue #45の基盤と、Issue #50のstart-smallのactive。**既定はoff。** �
 | 終了の証明 | supervisorは正常終了のあともprocess groupが空であることを確かめる。run-keyを受けていないかackを送っていないrun、manifestがなくrun lockが空いているrunは未起動として扱う |
 | `serve` | Webhookの受け口（127.0.0.1、1024〜65535で443以外）。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存したら`<root>/trigger`の時刻を変える（launchdのWatchPaths用）。policyは署名を確かめた配送ごとに読み直す（[policyの更新](#policyの更新と受け口の503)） |
 | `status`・`release` | 状態の表示（IDと件数）。`release`はsupervisorの`inspect`の証明で終わったrunのleaseを外す。不明な投稿があれば外さない |
-| `measure`・`doctor` | ownerだけが実CLIで行う測定と否定試験。CIでは偽物の部品で試験する。代役のcontrol socketはmacOSのパスの上限（104 byte）のため、runの領域ではなく`/private/tmp/kl-sock-*`（自分の0700のdir）に置き、104 byte以上なら作らずに止める。cli.sbは末尾の`socket-deny`でそこを読取り・接続とも拒否する |
+| `measure`・`doctor` | ownerだけが実CLIで行う測定と否定試験。CIでは偽物の部品で試験する。代役のcontrol socketはmacOSのパスの上限（104 byte）のため、runの領域ではなく`/private/tmp`の自分の0700のdirに2つ置き（`kl-sock-*`と`kl-ctl-*`）、104 byte以上なら作らずに止める。cli.sbはdeny defaultで両方を拒否し、末尾の`socket-deny`で`kl-sock-*`も明示で拒否する。両方deniedでなければdeny-supervisorは通らない |
 
 ## 結果の署名と投稿
 

@@ -18,7 +18,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
-import { createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { GhReader, object, EvidenceError } from "./github.ts";
 import {
@@ -48,14 +47,13 @@ import {
   createSyntheticKeychain,
   measureCli,
   measurementRecord,
-  privateSocket,
+  controlSockets,
   profileHash,
   removeSyntheticKeychain,
   runDoctor,
   type CliExecutor,
   type DoctorResult,
   type Measurement,
-  type PrivateSocket,
   type SandboxHost,
   type TrapLayout,
 } from "./doctor.ts";
@@ -848,7 +846,11 @@ export async function doctorCommand(d: {
 // Synthetic trap layout for measureCli (doctor.ts): stand-in credentials outside every worker area, a
 // loopback listener and a stand-in control socket that count connections, and an App-key-shaped keychain
 // item. Nothing real is read.
-export async function trapLayout(root: string): Promise<TrapLayout & { close(): Promise<void> }> {
+export async function trapLayout(
+  root: string,
+  // Test hook: runs after everything is made; a throw there must leave nothing behind (PR60 RT-4).
+  inject?: (made: { port: number; sockets: string[]; keychain: string | null }) => void,
+): Promise<TrapLayout & { close(): Promise<void> }> {
   const dir = (...p: string[]) => {
     const d = join(root, ...p);
     mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -858,48 +860,54 @@ export async function trapLayout(root: string): Promise<TrapLayout & { close(): 
     targets = dir("targets");
   let hits = 0,
     control = 0;
-  const web = createHttpServer((_req, res) => {
-    hits++;
-    res.end();
-  });
-  await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", () => resolve()));
-  const address = web.address();
-  const port = typeof address === "object" && address ? address.port : 0;
-  // Not under root: a run directory is too deep for a macOS socket path (W4d). privateSocket refuses a
-  // path of 104 bytes or more instead of failing with EINVAL.
-  let sock: PrivateSocket;
+  // Undone in reverse order on failure and on close.
+  const undo: (() => unknown)[] = [];
+  const undoAll = async () => {
+    for (const step of undo.splice(0).reverse())
+      try {
+        await step();
+      } catch {
+        // The remaining steps still run.
+      }
+  };
   try {
-    sock = await privateSocket(
-      createNetServer((c) => {
-        control++;
-        c.end();
-      }),
-    );
+    const web = createHttpServer((_req, res) => {
+      hits++;
+      res.end();
+    });
+    await new Promise<void>((resolve, reject) => {
+      web.once("error", reject);
+      web.listen(0, "127.0.0.1", () => resolve());
+    });
+    undo.push(() => new Promise<void>((resolve) => web.close(() => resolve())));
+    const address = web.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    // Not under root: a run directory is too deep for a macOS socket path (W4d). One socket under the
+    // socket-deny prefix and one outside it, so a denial also proves deny default (PR60 RT-1).
+    const sockets = await controlSockets(() => control++);
+    undo.push(() => sockets.close());
+    const keychain = createSyntheticKeychain(dir("keychain"));
+    if (keychain) undo.push(() => removeSyntheticKeychain(keychain));
+    inject?.({ port, sockets: sockets.paths, keychain: keychain?.path ?? null });
+    return {
+      root,
+      secretFiles: {
+        key: join(secrets, "app-key.pem"),
+        token: join(secrets, "setup-token"),
+        gh: join(secrets, "gh-hosts.yml"),
+        ssh: join(secrets, "id_synthetic"),
+        otherAi: join(secrets, "other-ai.json"),
+      },
+      writeTargets: { db: join(targets, "dispatch.sqlite"), policy: join(targets, "policy.json") },
+      keychain,
+      network: { url: `http://127.0.0.1:${port}/probe`, hits: () => hits },
+      supervisor: { sockets: sockets.paths, hits: () => control },
+      close: undoAll,
+    };
   } catch (e) {
-    await new Promise<void>((resolve) => web.close(() => resolve()));
+    await undoAll();
     throw e;
   }
-  const socket = sock.path;
-  const keychain = createSyntheticKeychain(dir("keychain"));
-  return {
-    root,
-    secretFiles: {
-      key: join(secrets, "app-key.pem"),
-      token: join(secrets, "setup-token"),
-      gh: join(secrets, "gh-hosts.yml"),
-      ssh: join(secrets, "id_synthetic"),
-      otherAi: join(secrets, "other-ai.json"),
-    },
-    writeTargets: { db: join(targets, "dispatch.sqlite"), policy: join(targets, "policy.json") },
-    keychain,
-    network: { url: `http://127.0.0.1:${port}/probe`, hits: () => hits },
-    supervisor: { socket, hits: () => control },
-    async close() {
-      if (keychain) removeSyntheticKeychain(keychain);
-      await new Promise<void>((resolve) => web.close(() => resolve()));
-      await sock.close();
-    },
-  };
 }
 // The owner's measurement (measure CLI). Real CLI, real Seatbelt, real setup-token: owner only.
 // 1. measureCli (doctor.ts) through the production argv template.

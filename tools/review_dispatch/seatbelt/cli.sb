@@ -104,9 +104,10 @@
 ;; END keychain-deny
 
 ;; Stand-in control sockets of the doctor and measure: a macOS socket path is at most 104
-;; bytes, so they live in fresh 0700 "kl-sock-" directories under /private/tmp (Issue #50
-;; W4d), not inside a run directory. Nothing above opens /private/tmp; this rule keeps them
-;; unreadable and unconnectable whatever the rules above allow.
+;; bytes, so they live in fresh 0700 directories under /private/tmp (Issue #50 W4d), not
+;; inside a run directory. Nothing above opens /private/tmp, so deny default refuses them
+;; all (the "kl-ctl-" one proves it); this rule also keeps the "kl-sock-" one unreadable and
+;; unconnectable whatever the rules above allow. No allow may follow it (the lint checks).
 ;; BEGIN socket-deny
 (deny file-read* file-write* network-outbound (regex #"^/private/tmp/kl-sock-"))
 ;; END socket-deny
