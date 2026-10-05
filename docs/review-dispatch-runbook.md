@@ -35,6 +35,8 @@ dispatch=("$node_bin" "$copy/scripts/review-dispatch.ts")
 daemon=("$python_bin" "$copy/tools/review_dispatch/supervisor.py" daemon --root "$root" --)
 kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"; [[ -n $d || $1 != active ]] || { echo "GitHubの時刻を取れない。policyを変えない"; return 1; }; "$node_bin" -e 'const fs = require("fs"); const [f, mode, date] = process.argv.slice(1); let g = Date.parse(date); if (!Number.isFinite(g)) { if (mode === "active") { console.error("GitHubの時刻が読めない。policyを変えない"); process.exit(1); } console.error("GitHubの時刻を取れないので、Macの時刻を使う"); g = 0; } const t = Math.max(Date.now(), g + 1000); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + t; p.readyAfter = t; fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1" "$d"; }
 kl_stopped() { local st; st="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null)" || { run_id=; echo "statusが失敗した（cycleの実行中なら1分後に）。停止は未確認"; return 1; }; run_id="$(print -r -- "$st" | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|result-ready|uncertain)$/ {print $5; exit}')"; [[ -z $run_id && $st == *"不明な投稿: 0件"* && $st != *"不明な投稿: "[1-9]* ]] && { echo "停止を確認"; return 0; }; echo "停止していない（run=${run_id:-なし}、不明な投稿あり、のどちらか）。16を行う"; return 1; }
+kl_svc() { local o; o="$(launchctl print "$gui/${label}.$1" 2>&1)"; case $? in 0) [[ $o == *"state = "* ]] && echo loaded || echo unknown;; 113) [[ $o == *"Could not find service \"${label}.$1\""* ]] && echo absent || echo unknown;; *) echo unknown;; esac; }
+kl_cycle_once() { local o r0 n st c g i; o="$(launchctl print "$gui/${label}.cycle" 2>/dev/null)" || { echo unknown; return 1; }; r0="$(print -r -- "$o" | awk -F' = ' '$1 == "\truns" {print $2}')"; r0="${r0:-0}"; [[ $r0 == <-> ]] && launchctl kickstart "$gui/${label}.cycle" >/dev/null 2>&1 || { echo unknown; return 1; }; for i in {1..120}; do sleep 5; o="$(launchctl print "$gui/${label}.cycle" 2>/dev/null)" || continue; IFS='|' read -r n st c g <<< "$(print -r -- "$o" | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} $1 == "\tlast terminating signal" {g = "signal"} END {print r "|" s "|" c "|" g}')"; [[ $n == <-> ]] && (( n > r0 )) && [[ $st == "not running" ]] || continue; [[ $c == 0 && -z $g ]] && { echo ok; return 0; }; echo "failed（終了コード${c:-なし}${g:+、signal}）"; return 1; done; echo unknown; return 1; }
 print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} python=${python_bin:-なし} claude=${claude_ver:-なし}"
 ```
 
@@ -311,7 +313,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 12. launchdに登録する
 
-雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。Bを選んだときはトンネルも登録する。登録済みのものは飛ばすので、やり直してよい。
+雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。Bを選んだときはトンネルも登録する。登録済み（`loaded`）は飛ばし、状態不明なら止まるので、やり直してよい。
 
 ```zsh
 (
@@ -319,19 +321,19 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
   names=(serve cycle); [[ -n $tunnel_host ]] && names+=(tunnel)
   mkdir -p "$agents"
   for n in $names; do
+    case "$(kl_svc $n)" in loaded) continue;; absent) ;; *) echo "状態不明: ${n}"; exit 1;; esac
     sed -e "s|@LABEL@|${label}|g" -e "s|@NODE@|${node_bin}|g" -e "s|@PYTHON@|${python_bin}|g" -e "s|@COPY@|${copy}|g" \
       -e "s|@ROOT@|${root}|g" -e "s|@POLICY@|${policy}|g" -e "s|@INSTALL@|${install}|g" -e "s|@SECRET@|${secret_file}|g" \
       -e "s|@PORT@|${port}|g" -e "s|@GH@|${gh_bin}|g" -e "s|@LOGS@|${logs}|g" -e "s|@HOME@|${HOME}|g" \
       -e "s|@CODEX_APP_ID@|${KL_GITHUB_APP_ID_CODEX}|g" -e "s|@CODEX_INSTALLATION_ID@|${KL_GITHUB_APP_INSTALLATION_ID_CODEX}|g" \
       -e "s|@CLOUDFLARED@|$(command -v cloudflared)|g" -e "s|@TUNNEL_CONFIG@|${etc}/tunnel.yml|g" \
-      "$copy/tools/review_dispatch/launchd/${n}.plist.in" > "$agents/${label}.${n}.plist" && plutil -lint "$agents/${label}.${n}.plist" || exit 1
+      "$copy/tools/review_dispatch/launchd/${n}.plist.in" > "$agents/${label}.${n}.plist" && plutil -lint "$agents/${label}.${n}.plist" && launchctl bootstrap "$gui" "$agents/${label}.${n}.plist" || exit 1
   done
-  for n in $names; do launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 || launchctl bootstrap "$gui" "$agents/${label}.${n}.plist" || exit 1; done
   sleep 5; curl -s -o /dev/null -w '受け口: %{http_code}\n' -X POST "http://127.0.0.1:${port}/webhook"
 )
 ```
 
-期待: 各plistが`OK`、`受け口: 401`（署名がないので拒否）。`serve`は常駐し、`cycle`は15分ごとと、配送を保存したとき（`$root/trigger`）に動く。
+期待: 新しく登録したplistが`OK`、`受け口: 401`（署名がないので拒否）。`serve`は常駐し、`cycle`は15分ごとと、配送を保存したとき（`$root/trigger`）に動く。
 
 Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
 
@@ -355,19 +357,10 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
 2. cycleを1回動かし、今回の起動が終了コード0で終わったことを確かめる。
 
    ```zsh
-   (
-     setopt pipefail
-     info() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} $1 == "\tlast terminating signal" {g = 1} END {if (r ~ /^[0-9]+$/ && s != "" && c != "" && !g) print r "|" s "|" c; else exit 1}'; }
-     r="$(info)" || { echo "未完了: cycleを読めない（12）"; exit 1; }; before="${r%%|*}"
-     launchctl kickstart "$gui/${label}.cycle" || { echo "未完了: 起動できない"; exit 1; }
-     fin=; for i in {1..120}; do sleep 5; r="$(info)" || continue; IFS='|' read -r n st code <<< "$r"; (( n > before )) && [[ $st == "not running" ]] && { fin=1; break; }; done
-     [[ -n $fin ]] || { echo "未完了: 今回の終了を確かめられない"; exit 1; }
-     [[ $code == 0 ]] || { echo "未完了: 終了コード${code}（tail \"$logs/cycle.err\"）"; exit 1; }
-     echo "照合完了"
-   )
+   kl_cycle_once
    ```
 
-   期待: `照合完了`。ほかの表示なら13は未完了。終了コード4は[policyの更新](review-dispatch-implementation.md#policyの更新と受け口の503)、125はApp鍵を読めない（launchdからkeychain）。
+   期待: `ok`。`failed`・`unknown`なら13は未完了（`tail "$logs/cycle.err"`で読む）。終了コード4は[policyの更新](review-dispatch-implementation.md#policyの更新と受け口の503)、125はApp鍵を読めない（launchdからkeychain）。
 3. 状態を見る（[15](#15-statusの読み方)）。
 
    ```zsh
@@ -448,7 +441,7 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
-  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
+  test -e "$etc/tunnel-b-ok" && [[ $(kl_svc tunnel) == loaded ]] || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
   pgrep -f 'cloudflared tunnel --url' >/dev/null; pg=$?; (( pg == 1 )) || { echo "クイックトンネルが動いているか、確かめられない（pgrep ${pg}）"; exit 1; }
   kl_mode active
 )
@@ -514,12 +507,13 @@ kl_mode shadow
 ```zsh
 (
   for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
-  for i in {1..12}; do left=(); for n in cycle serve tunnel; do launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 && left+=($n); done; (( $#left )) || break; sleep 5; done
-  (( $#left )) && { echo "外れていない: ${left}"; exit 1; }; echo "外した"
+  for i in {1..12}; do left=(); for n in cycle serve tunnel; do v="$(kl_svc $n)"; [[ $v == absent ]] || left+=("${n}=${v}"); done; (( $#left )) || break; sleep 5; done
+  echo "全体を止めるときは、次に必ずkl_mode offを行う"
+  (( $#left )) && { echo "外れていない: ${left}（写しの更新はしない）"; exit 1; }; echo "外した"
 )
 ```
 
-期待: `外した`。`外れていない: …`でも、次の`kl_mode off`は必ず行い、残った名前をもう一度このブロックで外す。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
+期待: `外した`。`外れていない: …`なら、`kl_mode off`のあとでこのブロックをやり直す。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
 
 ```zsh
 kl_mode off
@@ -543,7 +537,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17のlaunchdから外すブロック（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
+| 写し（新しいmain） | 17のlaunchdから外すブロックで`外した`まで（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`（revisionと`readyAfter`を新しくする）か手で変える。手で変えるときも`readyAfter`を切替の時刻にする。受け口は配送ごとに読み直すので再起動は要らない。Readyのやり直しが要る |
 | cycleが終了コード4、受け口が503を返し続ける | [policyの更新と受け口の503](review-dispatch-implementation.md#policyの更新と受け口の503) |
