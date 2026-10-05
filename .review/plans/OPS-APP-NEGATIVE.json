@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "base_sha": "d0f95ff4c20a3deeab282b3ea066529e4ff78481",
+  "task_id": "OPS-APP-NEGATIVE",
+  "planned_paths": [
+    "docs/github-apps.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "期待するHTTP状態の文書訂正だけ。実鍵での否定確認は所有者に残す。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "staged公開検査と差分の目視。",
+          "expected": "終了0。秘密、実データ、個人のパスを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "所有者の確認結果を表へ反映し、422を権限不足の証拠にしない。受付の設定や開始条件は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "否定確認の表と前置きを照合する。",
+          "expected": "issuesの行は両用途とも422。コマンドと他の行は不変。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "変更範囲とPR引継ぎを確認する。",
+          "expected": "文書の変更は前置きとissuesの行のみ。Claudeと所有者のレビュー待ちで止まる。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "docs/github-apps.md:否定確認",
+      "data": "所有者が確認したHTTP 422",
+      "trust": "trusted",
+      "control": "422では権限不足を証明できないと明記し、実鍵での再確認は行わない。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "token-scope-fail-open",
+      "pattern": "本文の検証結果を権限の検証と取り違える。",
+      "places": [
+        {
+          "location": "否定確認の前置き・issuesの行",
+          "result": "422を記載し、権限不足を証明できないことを明記する。トークンの権限検査は変更しない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "期待値の訂正が別の要求や受付の開始条件へ広がる。",
+      "places": [
+        {
+          "location": "否定確認の3行・PR引継ぎ",
+          "result": "他の行・コマンドは維持する。Readyは所有者が依頼したshadow試運転の対象とし、独立レビューは未完了として引き継ぐ。"
+        }
+      ]
+    }
+  ]
+}
