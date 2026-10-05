@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "dbf17492bb276d5102c50b3e4f04e1b14871e7d1",
+  "base_sha": "bea1f658f106c9b7810457634927eff595743c60",
   "task_id": "OPS-dispatch-active",
   "planned_paths": [
     "README.md",
@@ -53,8 +53,8 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "手順が#56のコードと、このPRの雛形を含むmainの写しを前提にすることを確かめる",
-          "expected": "写しは#56を含むmainから作り、雛形がなければ止まる"
+          "method": "手順が#58を含むmainの写しを前提にすることを確かめる",
+          "expected": "写しは#58を含むmainから作り、雛形がなければ止まる"
         },
         {
           "id": "entrypoints",
