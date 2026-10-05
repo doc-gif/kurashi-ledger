@@ -248,8 +248,8 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 | 要るもの | なし（アカウント不要） | Cloudflareのアカウントと、DNSをCloudflareに置いたドメイン |
 | 費用 | 無料 | Tunnelは無料。ドメインの登録料（年額） |
 | URL | 起動のたびに変わる。毎回Appの設定を直す | 固定 |
-| 転送するpath | すべて（受け口は`POST /webhook`以外に404） | `/webhook`だけ |
-| 向く用途 | shadowの試し。稼働の保証なし（[Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)） | 常用 |
+| 転送するpath | すべて | `/webhook`だけ（ほかはトンネルが404） |
+| 使える段階 | shadow のみ。残る危険（全pathが受け口に届く。受け口の404と署名で守る）（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。稼働の保証なし（[Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)） | shadowとactive。14の前に必須 |
 
 **A.** 別のターミナルで動かし続ける。
 
@@ -286,7 +286,7 @@ EOF
 )
 ```
 
-期待: `OK`と、`http://127.0.0.1:`のportに当たった規則の表示。11のURLは`https://${tunnel_host}/webhook`。
+期待: `OK`と、`http://127.0.0.1:`のportに当たった規則の表示。11のURLは`https://${tunnel_host}/webhook`。設定は[公式の形](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/)（`path`の正規表現と、最後の`http_status:404`）。
 
 ## 11. Webhookの秘密と購読（CodexのApp）
 
@@ -332,6 +332,22 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 ```
 
 期待: 各plistが`OK`、`受け口: 401`（署名がないので拒否）。`serve`は常駐し、`cycle`は15分ごとと、配送を保存したとき（`$root/trigger`）に動く。
+
+Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
+
+```zsh
+(
+  rm -f "$etc/tunnel-b-ok"
+  [[ -n $tunnel_host ]] || { echo "Bではない"; exit 1; }
+  for x in /other /webhook/extra; do cloudflared tunnel --config "$etc/tunnel.yml" ingress rule "https://${tunnel_host}${x}" | grep -q 'http_status:404' || { echo "トンネルが${x}を通す"; exit 1; }; done
+  w="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/webhook")"
+  o="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/other")"; e="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/webhook/extra")"
+  print -r -- "webhook=${w} other=${o} extra=${e}"
+  [[ $w == 401 && $o == 404 && $e == 404 ]] && : > "$etc/tunnel-b-ok" && echo "B確認"
+)
+```
+
+期待: `webhook=401 other=404 extra=404`と`B確認`（`/other`・`/webhook/extra`はトンネルの規則で404。受け口へは`/webhook`だけが届く）。
 
 ## 13. 最初のshadow
 
@@ -415,6 +431,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
+  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 && ! pgrep -f 'cloudflared tunnel --url' >/dev/null || { echo "Bのトンネルでない（12のBの確認、クイックトンネルの停止）"; exit 1; }
   kl_mode active
 )
 ```
