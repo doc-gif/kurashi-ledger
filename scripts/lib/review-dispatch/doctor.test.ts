@@ -16,6 +16,9 @@ import {
   checkSocketPath,
   inspectConfigDir,
   lintProfile,
+  parseSbpl,
+  sbText,
+  VETTED_RULES,
   managedSettingsPresent,
   inspectCodexHome,
   parseEvents,
@@ -201,58 +204,68 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   const spaced = PROFILE.replace(/\n/g, "\n\t  ").replace(/\(allow /g, "(  allow\t").replace(/\)\n/g, " )\n");
   assert.notEqual(spaced, PROFILE);
   assert.deepEqual(lintProfile(spaced), []);
+  // The vetted rules are exactly the rules of the shipped cli.sb (PR60 RT-7..9): the two cannot drift.
+  assert.deepEqual(parseSbpl(PROFILE).map(sbText).slice(1), VETTED_RULES);
   // Parens and ";" inside strings, #"regex" literals and comments are not structure.
-  const before = (rule: string) => PROFILE.replace(";; BEGIN keychain-deny", `${rule}\n;; BEGIN keychain-deny`);
-  const tricky = before(
-    [
-      ";; (allow default) ) (( (allow network*)",
-      '(allow file-read* (literal "/srv/synthetic/a)b(c;d \\"e\\" (allow network*)"))',
-      '(allow file-read* (regex #"^/srv/synthetic/(x|y)\\)\\;$"))',
-    ].join("\n"),
+  assert.deepEqual(
+    parseSbpl(';; (allow default) ) ((\n(allow file-read* (literal "/a)b(c;d \\"e\\" (x") (regex #"^(x|y)\\)\\;$")) ; (deny\n').map(sbText),
+    ['(allow file-read* (literal "/a)b(c;d \\"e\\" (x") (regex #"^(x|y)\\)\\;$"))'],
   );
-  assert.deepEqual(lintProfile(tricky), []);
+  assert.deepEqual(lintProfile(PROFILE.replace(";; BEGIN keychain-deny", ";; (allow network*) ) ((\n;; BEGIN keychain-deny")), []);
+  const before = (rule: string) => PROFILE.replace(";; BEGIN keychain-deny", `${rule}\n;; BEGIN keychain-deny`);
   const bad: [string, string][] = [
     [PROFILE.replace("(deny default)", "(allow default)"), "not-deny-default"],
-    [`${PROFILE}\n(allow process-info* (target others))`, "process-access"],
-    [`${PROFILE}\n(allow mach-task-name)`, "process-access"],
-    [`${PROFILE}\n(allow signal)`, "signal-outside"],
-    [`${PROFILE}\n(allow mach-lookup (global-name "com.apple.SecurityServer"))`, "keychain"],
     [PROFILE.replace('(deny process-exec (literal "/usr/bin/security"))', ""), "keychain-deny-missing"],
     [PROFILE.replace("(deny process-info*)", ""), "process-info-deny-missing"],
     [PROFILE.replace('(deny network-outbound (remote ip "localhost:*"))', ""), "loopback-deny-missing"],
-    [`${PROFILE}\n(allow sysctl-read)`, "sysctl-unrestricted"],
-    [`${PROFILE}\n(allow process-info*)`, "process-access"],
-    // W4d: the stand-in control sockets live under /private/tmp; only DNS and TCP 443 go out.
     [PROFILE.replace(SOCKET_DENY_LINE, ""), "socket-deny-missing"],
-    [`${PROFILE}\n(allow file-read* (subpath "/private/tmp"))`, "socket-dir-open"],
-    [`${PROFILE}\n(allow file-read* (regex #"^/tmp/kl-sock-"))`, "socket-dir-open"],
-    [PROFILE.replace("(allow file-read-metadata)", '(allow file-write* (regex #"kl-ctl-"))'), "socket-dir-open"], // PR60 RT-6
-    [`${PROFILE}\n(allow network-outbound)`, "network-open"],
-    // PR60 RT-5: whitespace other than one space (Seatbelt accepts these).
-    [PROFILE.replace("(allow file-read-metadata)", "(allow\tnetwork-outbound)"), "network-open"],
-    [PROFILE.replace("(allow file-read-metadata)", "(  allow\n  network-outbound  )"), "network-open"],
-    [`${PROFILE}\n(allow network*)`, "network-open"],
-    [`${PROFILE}\n(allow network-outbound (remote unix-socket (path-literal "/srv/synthetic/control.sock")))`, "network-open"],
-    // PR60 RT-2: a network operation anywhere in the operation list.
-    [PROFILE.replace("(allow file-read-metadata)", '(allow file-read* network-outbound (subpath "/private"))'), "network-open"],
-    [PROFILE.replace("(allow file-read-metadata)", "(allow system-socket network-outbound)"), "network-open"],
-    // PR60 RT-3: no allow after the explicit denies (a later rule wins).
-    [`${PROFILE}\n(allow file-read-data (literal "/srv/synthetic/x"))`, "allow-after-deny"],
-    [PROFILE.replace(";; BEGIN socket-deny", '(allow file-read-data (literal "/srv/synthetic/x"))\n;; BEGIN socket-deny'), "allow-after-deny"],
-    // PR60-R001: every allow is read whatever its depth, before the explicit denies too.
-    [before('(allow network-outbound (require-all (require-any (remote tcp "*:8443"))))'), "network-open"],
-    [before('(allow file-write* (require-all (require-any (require-not (require-all (regex #"^/private/tmp/kl-ctl-"))))))'), "socket-dir-open"],
-    [before('(allow file-read* (require-any (require-all (require-any (literal "/srv/synthetic/Library/Keychains/login.keychain-db")))))'), "keychain"],
+    // No allow after the explicit denies (a later rule wins), even a vetted one (PR60 RT-3).
+    [`${PROFILE}\n(allow file-read-metadata)`, "allow-after-deny"],
+    [PROFILE.replace(";; BEGIN socket-deny", "(allow process-fork)\n;; BEGIN socket-deny"), "allow-after-deny"],
+    // Every rule must be a vetted one; a changed or added rule is refused whatever it means.
+    [PROFILE.replace("(target self)", "(target others)"), "allow-not-vetted"],
+    [PROFILE.replace('"*:443"', '"*:8443"'), "allow-not-vetted"],
+    [PROFILE.replace('"localhost:*"', '"localhost:80"'), "deny-not-vetted"],
+    ...[
+      "(allow mach-task-name)",
+      "(allow signal)",
+      '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
+      "(allow sysctl-read)",
+      "(allow process-info*)",
+      '(allow file-read* (subpath "/private/tmp"))',
+      '(allow file-write* (regex #"kl-ctl-"))',
+      "(allow network-outbound)",
+      "(allow\tnetwork-outbound)",
+      "(  allow\n  network-outbound  )",
+      "(allow network*)",
+      '(allow file-read* network-outbound (subpath "/private"))',
+      "(allow system-socket network-outbound)",
+      // PR60-R001: depth does not matter.
+      '(allow network-outbound (require-all (require-any (remote tcp "*:8443"))))',
+      '(allow file-write* (require-all (require-any (require-not (require-all (regex #"^/private/tmp/kl-ctl-"))))))',
+      // PR60 RT-7: Seatbelt evaluates the arguments, so an expression can name an operation.
+      "(allow file-read-metadata (begin network-outbound))",
+      "(allow file-read-metadata (or network-outbound))",
+      "(allow file-read-metadata (let ((x network-outbound)) x))",
+      "(allow file-read-metadata ((lambda () network-outbound)))",
+      "(allow file-read-metadata (car (list network-outbound)))",
+      "(allow file-read-metadata (car (list network-outbound file-read-metadata)))",
+      // PR60 RT-8: an operation after a filter.
+      '(allow file-read* (subpath "/private") network-outbound)',
+      // PR60 RT-9: a path built at evaluation time.
+      '(allow file-write* (regex (string-append "^/private/t" "mp/kl-c" "tl-")))',
+    ].map((rule): [string, string] => [before(rule), "allow-not-vetted"]),
+    [before('(deny file-read* (literal "/srv/synthetic/x"))'), "deny-not-vetted"],
     // Anything the parser does not know fails closed.
     [before('(allow file-read* (literal "/srv/x")'), "profile-parse"],
     [before('(allow file-read* (literal "/srv/x"))))'), "profile-parse"],
     [before('(allow file-read* (literal "/srv/x))'), "profile-parse"],
     [before("'(allow default)"), "profile-parse"],
     [before("#| (allow default) |#"), "profile-parse"],
-    [before("(define x (allow default))"), "profile-unknown-form"],
     [before("(if #t (allow default))"), "profile-parse"],
-    [before('(allow file-read* (allow network-outbound))'), "profile-unknown-form"],
-    [before('(allow (literal "/srv/x"))'), "profile-unknown-form"],
+    [before("(define x (allow default))"), "profile-unknown-form"],
+    [before("(begin (allow default))"), "profile-unknown-form"],
+    [before("network-outbound"), "profile-unknown-form"],
   ];
   for (const [text, problem] of bad) {
     assert.ok(lintProfile(text).includes(problem), problem);

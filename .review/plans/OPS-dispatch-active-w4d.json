@@ -218,7 +218,7 @@
     },
     {
      "location": "lintProfile",
-     "result": "socket-deny-missing・socket-dir-openを足す。操作の並びのどこかにnetwork系があるallowは、DNSとTCP 443の規則と完全一致しない限りnetwork-open（PR60 RT-2）。keychain-deny・socket-denyより後のallowはallow-after-deny（RT-3）。空白（tab・連続・括弧の内側）を正規化してから読む（RT-5）。socket-dir-openはkl-ctlも対象（RT-6）。正規表現での抽出をやめ、S式として構文解析して全てのtop-levelの式を深さによらず検査する。文字列・正規表現のliteral・;のコメントの括弧は構文ではない。解析できない・知らない構文はprofile-parse・profile-unknown-form（PR60-R001）"
+     "result": "Seatbeltは規則を式として評価するので、意味を推測しない。S式として構文解析し（文字列・正規表現のliteral・;のコメントは構文ではない）、全ての規則がcli.sbの規則と同じ正準形の審査済みの一覧VETTED_RULESのどれかと完全一致することを求める（allow-not-vetted・deny-not-vetted）。一覧とcli.sbの一致は試験で保つ。解析できない・規則以外のtop-levelの式はprofile-parse・profile-unknown-form。socket-deny・keychain-denyの存在と、その後にallowがないこと（PR60 RT-2〜RT-9、PR60-R001）"
     },
     {
      "location": "deny-supervisorの実測（doctorとmeasure）",

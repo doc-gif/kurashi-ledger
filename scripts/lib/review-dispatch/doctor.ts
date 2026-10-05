@@ -312,11 +312,11 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
   return result();
 }
 
-// Static lint of cli.sb: rules that would hand a worker the supervisor's task port,
-// other processes, the keychain, a socket or everything at once. Deny-by-default must stay first.
-// The profile is parsed as S-expressions (PR60-R001): every top-level form is checked whatever its depth,
-// parens inside strings, #"regex" literals and ; comments are not structure, and anything the parser does
-// not know (other top-level forms, quote, #| comments, unbalanced parens) is a problem: it fails closed.
+// Static lint of cli.sb. Seatbelt evaluates its rules as Scheme, so the lint does not try to model what a
+// rule means (PR60 RT-7..RT-9): every rule must equal, in canonical form, one of the vetted rules below,
+// which are the rules of the shipped cli.sb and are reviewed like code (a test keeps them equal). The
+// profile is parsed as S-expressions (strings, #"regex" literals and ; comments are not structure);
+// anything that does not parse, other top-level forms, or an unvetted rule disables the doctor.
 export type SbNode = { t: "list"; items: SbNode[] } | { t: "atom"; v: string } | { t: "str"; raw: string } | { t: "re"; raw: string };
 export class SbParseError extends Error {}
 export function parseSbpl(text: string): SbNode[] {
@@ -359,62 +359,57 @@ export function parseSbpl(text: string): SbNode[] {
 // One canonical spelling: single spaces, no space inside parentheses, strings as written.
 export const sbText = (x: SbNode): string =>
   x.t === "list" ? `(${x.items.map(sbText).join(" ")})` : x.t === "atom" ? x.v : x.t === "str" ? `"${x.raw}"` : `#"${x.raw}"`;
-const canonical = (form: string): string => sbText(parseSbpl(form)[0]!);
-const NETWORK_ALLOWS = [
-  '(allow network-outbound (literal "/private/var/run/mDNSResponder"))',
-  '(allow network-outbound (remote tcp "*:443"))',
+export const VETTED_RULES = [
+  `(deny default)`,
+  `(allow process-fork)`,
+  `(allow process-exec (literal (param "EXECUTABLE")) (subpath (param "RUNTIME")))`,
+  `(allow signal (target same-sandbox))`,
+  `(allow sysctl-read (sysctl-name-prefix "hw.") (sysctl-name-prefix "machdep.cpu.") (sysctl-name "kern.osrelease") (sysctl-name "kern.ostype") (sysctl-name "kern.osversion") (sysctl-name "kern.osproductversion") (sysctl-name "kern.version") (sysctl-name "kern.hostname") (sysctl-name "kern.boottime") (sysctl-name "kern.maxfilesperproc") (sysctl-name "kern.argmax") (sysctl-name "kern.usrstack64") (sysctl-name "kern.secure_kernel") (sysctl-name "sysctl.proc_translated") (sysctl-name "vm.pagesize"))`,
+  `(allow file-read-metadata)`,
+  `(allow system-socket)`,
+  `(allow ipc-posix-shm-read-data ipc-posix-shm-write-data ipc-posix-shm-write-create)`,
+  `(allow file-read* (literal "/") (subpath "/usr/lib") (subpath "/usr/share") (subpath "/System/Library") (subpath "/System/Cryptexes") (subpath "/Library/Apple") (subpath "/private/var/db/dyld") (subpath "/private/var/db/timezone") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf") (literal "/private/etc/services") (literal "/private/etc/protocols") (subpath "/private/etc/ssl") (literal "/dev/null") (literal "/dev/random") (literal "/dev/urandom"))`,
+  `(allow file-write-data (literal "/dev/null"))`,
+  `(allow file-read* (subpath (param "RUNTIME")) (subpath (param "MATERIALS")))`,
+  `(allow file-read* file-write* (subpath (param "CONFIG_DIR")) (subpath (param "RUN_HOME")) (subpath (param "RUN_TMP")))`,
+  `(allow mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.notification_center") (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent") (global-name "com.apple.logd") (global-name "com.apple.system.logger"))`,
+  `(allow network-outbound (literal "/private/var/run/mDNSResponder"))`,
+  `(allow network-outbound (remote tcp "*:443"))`,
+  `(deny network-outbound (remote ip "localhost:*"))`,
+  `(deny process-info*)`,
+  `(allow process-info* (target self))`,
+  `(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.security.agent") (global-name "com.apple.security.authhost") (global-name "com.apple.CoreAuthentication.daemon") (global-name "com.apple.secd") (global-name "com.apple.securityd"))`,
+  `(deny process-exec (literal "/usr/bin/security"))`,
+  `(deny file-read* file-write* (regex #"/Library/Keychains(/|$)") (regex #"\\.keychain(-db)?$"))`,
+  `(deny file-read* file-write* network-outbound (regex #"^/private/tmp/kl-sock-"))`,
 ];
 export function lintProfile(text: string): string[] {
-  let forms: SbNode[];
+  let texts: string[];
   try {
-    forms = parseSbpl(text);
+    texts = parseSbpl(text).map(sbText);
   } catch {
     return ["profile-parse"];
   }
   const problems: string[] = [];
-  const texts = forms.map(sbText);
-  const head = (x: SbNode) => (x.t === "list" && x.items[0]?.t === "atom" ? x.items[0].v : null);
-  // Rules (allow/deny) only at the top level; nothing else but (version 1).
-  const nested = (x: SbNode): boolean =>
-    x.t === "list" && x.items.some((y) => ["allow", "deny"].includes(head(y) ?? "") || nested(y));
-  forms.forEach((f, k) => {
-    const h = head(f);
-    if (f.t !== "list" || !(h === "allow" || h === "deny" || (h === "version" && k === 0)) || nested(f)) problems.push("profile-unknown-form");
+  const vetted = new Set(VETTED_RULES);
+  texts.forEach((t, k) => {
+    const h = /^\((allow|deny)[ )]/.exec(t)?.[1];
+    if (k === 0 && t === "(version 1)") return;
+    if (!h) problems.push("profile-unknown-form");
+    else if (!vetted.has(t)) problems.push(`${h}-not-vetted`);
   });
   if (texts[0] !== "(version 1)" || texts[1] !== "(deny default)") problems.push("not-deny-default");
-  const allowsNetwork = NETWORK_ALLOWS.map(canonical);
-  const lastDenies = [
-    texts.findIndex((t) => t.startsWith('(deny mach-lookup (global-name "com.apple.SecurityServer")')),
-    texts.indexOf(canonical(SOCKET_DENY_LINE)),
-  ].filter((k) => k >= 0);
-  const firstLast = lastDenies.length > 0 ? Math.min(...lastDenies) : texts.length;
-  forms.forEach((f, k) => {
-    if (head(f) !== "allow" || f.t !== "list") return;
-    const a = texts[k]!;
-    const rest = f.items.slice(1);
-    const nOps = rest.findIndex((x) => x.t !== "atom");
-    const ops = (nOps < 0 ? rest : rest.slice(0, nOps)).map((x) => (x.t === "atom" ? x.v : ""));
-    const filters = (nOps < 0 ? [] : rest.slice(nOps)).map(sbText).join(" ");
-    if (ops.length === 0) problems.push("profile-unknown-form");
-    if (k > firstLast) problems.push("allow-after-deny"); // a later rule wins over the explicit denies (PR60 RT-3)
-    if (ops.includes("default")) problems.push("allow-default");
-    if (/mach-task|mach-priv|debug/.test(a) || (ops.some((o) => o.startsWith("process-exec")) && /\(with no-sandbox\)/.test(filters)))
-      problems.push("process-access");
-    if (ops.some((o) => o.startsWith("process-info")) && a !== "(allow process-info* (target self))") problems.push("process-access");
-    if (ops.some((o) => o.startsWith("signal")) && !/^\(target (?:self|same-sandbox)\)$/.test(filters)) problems.push("signal-outside");
-    if (/SecurityServer|securityd|security\.agent|\/usr\/bin\/security|Keychains/.test(a)) problems.push("keychain");
-    // The stand-in control sockets (privateSocket) live under /private/tmp: nothing anywhere may open it.
-    if (/\/tmp\b|kl-sock|kl-ctl/.test(filters)) problems.push("socket-dir-open");
-    // A Unix socket connect is network-outbound: only DNS and TCP 443, as the exact reviewed rules (RT-2).
-    if (ops.some((o) => o.startsWith("network")) && !allowsNetwork.includes(a)) problems.push("network-open");
-    if (ops.some((o) => o.startsWith("sysctl")) && filters === "") problems.push("sysctl-unrestricted");
-  });
-  for (const need of ['(deny mach-lookup (global-name "com.apple.SecurityServer")', '(deny process-exec (literal "/usr/bin/security"))'])
-    if (!texts.some((t) => t.startsWith(need))) problems.push("keychain-deny-missing");
+  const has = (prefix: string) => texts.findIndex((t) => t.startsWith(prefix));
+  const keychain = has('(deny mach-lookup (global-name "com.apple.SecurityServer")');
+  const socket = texts.indexOf(SOCKET_DENY_LINE);
+  if (keychain < 0 || has('(deny process-exec (literal "/usr/bin/security"))') < 0) problems.push("keychain-deny-missing");
+  if (socket < 0) problems.push("socket-deny-missing");
+  // The explicit denies stay last: a later rule wins over them (PR60 RT-3).
+  const last = Math.min(...[keychain, socket].filter((k) => k >= 0), texts.length);
+  if (texts.slice(last).some((t) => t.startsWith("(allow"))) problems.push("allow-after-deny");
   const pi = texts.indexOf("(deny process-info*)");
   if (pi < 0 || texts[pi + 1] !== "(allow process-info* (target self))") problems.push("process-info-deny-missing");
   if (!texts.includes('(deny network-outbound (remote ip "localhost:*"))')) problems.push("loopback-deny-missing");
-  if (!texts.includes(canonical(SOCKET_DENY_LINE))) problems.push("socket-deny-missing");
   return [...new Set(problems)];
 }
 
