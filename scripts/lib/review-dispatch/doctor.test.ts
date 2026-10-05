@@ -197,6 +197,20 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   assert.deepEqual(lintProfile(PROFILE), []);
   // The same rules with CRLF line endings (a Windows checkout) lint the same way.
   assert.deepEqual(lintProfile(PROFILE.replace(/\r?\n/g, "\r\n")), []);
+  // PR60-R001: whitespace variants (tabs, runs, space inside parentheses) parse to the same rules.
+  const spaced = PROFILE.replace(/\n/g, "\n\t  ").replace(/\(allow /g, "(  allow\t").replace(/\)\n/g, " )\n");
+  assert.notEqual(spaced, PROFILE);
+  assert.deepEqual(lintProfile(spaced), []);
+  // Parens and ";" inside strings, #"regex" literals and comments are not structure.
+  const before = (rule: string) => PROFILE.replace(";; BEGIN keychain-deny", `${rule}\n;; BEGIN keychain-deny`);
+  const tricky = before(
+    [
+      ";; (allow default) ) (( (allow network*)",
+      '(allow file-read* (literal "/srv/synthetic/a)b(c;d \\"e\\" (allow network*)"))',
+      '(allow file-read* (regex #"^/srv/synthetic/(x|y)\\)\\;$"))',
+    ].join("\n"),
+  );
+  assert.deepEqual(lintProfile(tricky), []);
   const bad: [string, string][] = [
     [PROFILE.replace("(deny default)", "(allow default)"), "not-deny-default"],
     [`${PROFILE}\n(allow process-info* (target others))`, "process-access"],
@@ -225,6 +239,20 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
     // PR60 RT-3: no allow after the explicit denies (a later rule wins).
     [`${PROFILE}\n(allow file-read-data (literal "/srv/synthetic/x"))`, "allow-after-deny"],
     [PROFILE.replace(";; BEGIN socket-deny", '(allow file-read-data (literal "/srv/synthetic/x"))\n;; BEGIN socket-deny'), "allow-after-deny"],
+    // PR60-R001: every allow is read whatever its depth, before the explicit denies too.
+    [before('(allow network-outbound (require-all (require-any (remote tcp "*:8443"))))'), "network-open"],
+    [before('(allow file-write* (require-all (require-any (require-not (require-all (regex #"^/private/tmp/kl-ctl-"))))))'), "socket-dir-open"],
+    [before('(allow file-read* (require-any (require-all (require-any (literal "/srv/synthetic/Library/Keychains/login.keychain-db")))))'), "keychain"],
+    // Anything the parser does not know fails closed.
+    [before('(allow file-read* (literal "/srv/x")'), "profile-parse"],
+    [before('(allow file-read* (literal "/srv/x"))))'), "profile-parse"],
+    [before('(allow file-read* (literal "/srv/x))'), "profile-parse"],
+    [before("'(allow default)"), "profile-parse"],
+    [before("#| (allow default) |#"), "profile-parse"],
+    [before("(define x (allow default))"), "profile-unknown-form"],
+    [before("(if #t (allow default))"), "profile-parse"],
+    [before('(allow file-read* (allow network-outbound))'), "profile-unknown-form"],
+    [before('(allow (literal "/srv/x"))'), "profile-unknown-form"],
   ];
   for (const [text, problem] of bad) {
     assert.ok(lintProfile(text).includes(problem), problem);

@@ -313,51 +313,108 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
 }
 
 // Static lint of cli.sb: rules that would hand a worker the supervisor's task port,
-// other processes, the keychain or everything at once. Deny-by-default must stay first.
+// other processes, the keychain, a socket or everything at once. Deny-by-default must stay first.
+// The profile is parsed as S-expressions (PR60-R001): every top-level form is checked whatever its depth,
+// parens inside strings, #"regex" literals and ; comments are not structure, and anything the parser does
+// not know (other top-level forms, quote, #| comments, unbalanced parens) is a problem: it fails closed.
+export type SbNode = { t: "list"; items: SbNode[] } | { t: "atom"; v: string } | { t: "str"; raw: string } | { t: "re"; raw: string };
+export class SbParseError extends Error {}
+export function parseSbpl(text: string): SbNode[] {
+  let i = 0;
+  const n = text.length;
+  const quoted = (start: number): string => {
+    // From the opening quote at `start` to the closing one; a backslash escapes the next character.
+    let k = start + 1;
+    while (k < n && text[k] !== '"') k += text[k] === "\\" ? 2 : 1;
+    if (k >= n) throw new SbParseError("unterminated string");
+    i = k + 1;
+    return text.slice(start + 1, k);
+  };
+  const stack: SbNode[][] = [[]];
+  while (i < n) {
+    const c = text[i]!;
+    if (/\s/.test(c)) i++;
+    else if (c === ";") {
+      while (i < n && text[i] !== "\n") i++;
+    } else if (c === "(") {
+      stack.push([]);
+      i++;
+    } else if (c === ")") {
+      if (stack.length < 2) throw new SbParseError("unbalanced )");
+      const items = stack.pop()!;
+      stack[stack.length - 1]!.push({ t: "list", items });
+      i++;
+    } else if (c === '"') stack[stack.length - 1]!.push({ t: "str", raw: quoted(i) });
+    else if (c === "#" && text[i + 1] === '"') stack[stack.length - 1]!.push({ t: "re", raw: quoted(i + 1) });
+    else if (c === "#" || c === "'" || c === "`" || c === ",") throw new SbParseError(`unknown syntax ${c}`);
+    else {
+      const m = /^[^\s()";]+/.exec(text.slice(i))!;
+      stack[stack.length - 1]!.push({ t: "atom", v: m[0] });
+      i += m[0].length;
+    }
+  }
+  if (stack.length !== 1) throw new SbParseError("unbalanced (");
+  return stack[0]!;
+}
+// One canonical spelling: single spaces, no space inside parentheses, strings as written.
+export const sbText = (x: SbNode): string =>
+  x.t === "list" ? `(${x.items.map(sbText).join(" ")})` : x.t === "atom" ? x.v : x.t === "str" ? `"${x.raw}"` : `#"${x.raw}"`;
+const canonical = (form: string): string => sbText(parseSbpl(form)[0]!);
 const NETWORK_ALLOWS = [
   '(allow network-outbound (literal "/private/var/run/mDNSResponder"))',
   '(allow network-outbound (remote tcp "*:443"))',
 ];
 export function lintProfile(text: string): string[] {
-  const problems: string[] = [];
-  // A Windows checkout may carry CRLF line endings; the rules are the same text. Whitespace is
-  // normalised (tabs, runs, space after "(" or before ")"), as Seatbelt reads it (PR60 RT-5).
-  const code = text
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((l) => l.replace(/;.*$/, "").trim())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .replace(/\( /g, "(")
-    .replace(/ \)/g, ")");
-  if (!/^\(version 1\) \(deny default\)/.test(code)) problems.push("not-deny-default");
-  const allows = code.match(/\(allow [^()]*(?:\([^()]*(?:\([^()]*\)[^()]*)*\)[^()]*)*\)/g) ?? [];
-  for (const a of allows) {
-    if (/^\(allow default/.test(a)) problems.push("allow-default");
-    if (/mach-task|mach-priv|process-exec\*? \(with no-sandbox\)|debug/.test(a)) problems.push("process-access");
-    if (/process-info/.test(a) && a !== "(allow process-info* (target self))") problems.push("process-access");
-    if (/^\(allow signal\)/.test(a) || (/^\(allow signal/.test(a) && !/target (?:self|same-sandbox)/.test(a)))
-      problems.push("signal-outside");
-    if (/SecurityServer|securityd|security\.agent|\/usr\/bin\/security|Keychains/.test(a)) problems.push("keychain");
-    // The stand-in control sockets (privateSocket) live under /private/tmp: nothing may open it.
-    if (/\/tmp\b|kl-sock|kl-ctl/.test(a)) problems.push("socket-dir-open");
-    // A Unix socket connect is network-outbound: only DNS and TCP 443 may be allowed, and only as the
-    // exact reviewed rules. Any network operation in an operation list counts (PR60 RT-2).
-    const ops = /^\(allow ([^()]*)/.exec(a)?.[1]?.trim().split(/\s+/) ?? [];
-    if (ops.some((o) => o.startsWith("network")) && !NETWORK_ALLOWS.includes(a)) problems.push("network-open");
+  let forms: SbNode[];
+  try {
+    forms = parseSbpl(text);
+  } catch {
+    return ["profile-parse"];
   }
-  // The explicit denies must stay last: a later allow would win over them (PR60 RT-3).
-  const lastDenies = ['(deny mach-lookup (global-name "com.apple.SecurityServer")', SOCKET_DENY_LINE]
-    .map((d) => code.indexOf(d))
-    .filter((i) => i >= 0);
-  if (lastDenies.length > 0 && code.slice(Math.min(...lastDenies)).includes("(allow")) problems.push("allow-after-deny");
+  const problems: string[] = [];
+  const texts = forms.map(sbText);
+  const head = (x: SbNode) => (x.t === "list" && x.items[0]?.t === "atom" ? x.items[0].v : null);
+  // Rules (allow/deny) only at the top level; nothing else but (version 1).
+  const nested = (x: SbNode): boolean =>
+    x.t === "list" && x.items.some((y) => ["allow", "deny"].includes(head(y) ?? "") || nested(y));
+  forms.forEach((f, k) => {
+    const h = head(f);
+    if (f.t !== "list" || !(h === "allow" || h === "deny" || (h === "version" && k === 0)) || nested(f)) problems.push("profile-unknown-form");
+  });
+  if (texts[0] !== "(version 1)" || texts[1] !== "(deny default)") problems.push("not-deny-default");
+  const allowsNetwork = NETWORK_ALLOWS.map(canonical);
+  const lastDenies = [
+    texts.findIndex((t) => t.startsWith('(deny mach-lookup (global-name "com.apple.SecurityServer")')),
+    texts.indexOf(canonical(SOCKET_DENY_LINE)),
+  ].filter((k) => k >= 0);
+  const firstLast = lastDenies.length > 0 ? Math.min(...lastDenies) : texts.length;
+  forms.forEach((f, k) => {
+    if (head(f) !== "allow" || f.t !== "list") return;
+    const a = texts[k]!;
+    const rest = f.items.slice(1);
+    const nOps = rest.findIndex((x) => x.t !== "atom");
+    const ops = (nOps < 0 ? rest : rest.slice(0, nOps)).map((x) => (x.t === "atom" ? x.v : ""));
+    const filters = (nOps < 0 ? [] : rest.slice(nOps)).map(sbText).join(" ");
+    if (ops.length === 0) problems.push("profile-unknown-form");
+    if (k > firstLast) problems.push("allow-after-deny"); // a later rule wins over the explicit denies (PR60 RT-3)
+    if (ops.includes("default")) problems.push("allow-default");
+    if (/mach-task|mach-priv|debug/.test(a) || (ops.some((o) => o.startsWith("process-exec")) && /\(with no-sandbox\)/.test(filters)))
+      problems.push("process-access");
+    if (ops.some((o) => o.startsWith("process-info")) && a !== "(allow process-info* (target self))") problems.push("process-access");
+    if (ops.some((o) => o.startsWith("signal")) && !/^\(target (?:self|same-sandbox)\)$/.test(filters)) problems.push("signal-outside");
+    if (/SecurityServer|securityd|security\.agent|\/usr\/bin\/security|Keychains/.test(a)) problems.push("keychain");
+    // The stand-in control sockets (privateSocket) live under /private/tmp: nothing anywhere may open it.
+    if (/\/tmp\b|kl-sock|kl-ctl/.test(filters)) problems.push("socket-dir-open");
+    // A Unix socket connect is network-outbound: only DNS and TCP 443, as the exact reviewed rules (RT-2).
+    if (ops.some((o) => o.startsWith("network")) && !allowsNetwork.includes(a)) problems.push("network-open");
+    if (ops.some((o) => o.startsWith("sysctl")) && filters === "") problems.push("sysctl-unrestricted");
+  });
   for (const need of ['(deny mach-lookup (global-name "com.apple.SecurityServer")', '(deny process-exec (literal "/usr/bin/security"))'])
-    if (!code.includes(need)) problems.push("keychain-deny-missing");
-  if (!code.includes("(deny process-info*) (allow process-info* (target self))")) problems.push("process-info-deny-missing");
-  if (!code.includes('(deny network-outbound (remote ip "localhost:*"))')) problems.push("loopback-deny-missing");
-  if (/\(allow sysctl-read\)/.test(code)) problems.push("sysctl-unrestricted");
-  if (!code.includes(SOCKET_DENY_LINE)) problems.push("socket-deny-missing");
+    if (!texts.some((t) => t.startsWith(need))) problems.push("keychain-deny-missing");
+  const pi = texts.indexOf("(deny process-info*)");
+  if (pi < 0 || texts[pi + 1] !== "(allow process-info* (target self))") problems.push("process-info-deny-missing");
+  if (!texts.includes('(deny network-outbound (remote ip "localhost:*"))')) problems.push("loopback-deny-missing");
+  if (!texts.includes(canonical(SOCKET_DENY_LINE))) problems.push("socket-deny-missing");
   return [...new Set(problems)];
 }
 
