@@ -213,9 +213,9 @@ export type GuardCheck = (input: {
 }) => { state: "ok" | "refused" | "unavailable"; output: string };
 // A red-team record starts with its marker (any spacing) on the first non-empty line. A comment that only
 // quotes or mentions the marker further down is not a record (red team round 5).
-const RED_TEAM_MARK = /^\s*<!--\s*kurashi-ledger:red-team:v1\s*-->[ \t]*(?:\r?\n|$)/;
+export const RED_TEAM_MARK = /^\s*<!--\s*kurashi-ledger:red-team:v1\s*-->[ \t]*(?:\r?\n|$)/;
 // Every RT ID anywhere in a record (bullets, tables, "[RT-1][P2]", prose), not only "RT-1:" at a line start.
-const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
+export const RT_ID = /\bRT-([1-9][0-9]{0,2})\b/g;
 // Every cause of the base ledger, as `invariant_id/cause_key` (the red-team table's rows).
 export function ledgerCauses(raw: Buffer | null): string[] {
   if (!raw) return refuse("materials-incomplete");

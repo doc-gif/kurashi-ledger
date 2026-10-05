@@ -262,7 +262,7 @@ test("R004 signed Inbox -> gh binding -> acceptance and tombstone is atomic, rep
           "ready-delivery",
           "pull_request",
           JSON.stringify(delivery()),
-          3,
+          3, "p1",
         ),
         false,
       );
@@ -335,7 +335,7 @@ test("R004 failure during persistence rolls back binding and processed flag toge
       "transaction",
       "pull_request",
       JSON.stringify(delivery()),
-      1,
+      1, "p1",
     );
     const original = d.store.saveObservation.bind(d.store);
     d.store.saveObservation = () => {
@@ -360,7 +360,7 @@ test("R004 activity actor proves pusher independence; owner anchor requires API-
     f.state.pusher = 30;
     f.state.ready = true;
     f.state.now = 5;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const s = (await reconcile(f.reader(), p, d.store))[0]!.snapshot;
     assert.deepEqual(s.pushers, [30]);
     assert.equal(reviewerEligible(p, s, 30), false);
@@ -592,7 +592,7 @@ async function boundApproval(
     ["pull_request_review", "review-delivery", delivery(false)],
     ["pull_request", "ready-delivery", delivery()],
   ] as const)
-    d.store.inbox(3, name, event, JSON.stringify(payload), 1);
+    d.store.inbox(3, name, event, JSON.stringify(payload), 1, "p1");
   return (await reconcile(f.reader(), p, d.store))[0]!;
 }
 test("R007 an assigned reviewer's later line finding blocks acceptance; third-party lines are reference only", async () => {
@@ -668,7 +668,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     f.state.ready = true;
     f.state.now = 5;
     f.state.headFiles = change;
-    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const untrusted = (await reconcile(f.reader(), p, d.store))[0]!;
     assert.equal(untrusted.observation.workflow, "untrusted");
     assert.equal(untrusted.snapshot.complete, false);
@@ -702,7 +702,7 @@ test("R008 a change to a CI-deciding file stays unknown until the owner trusts t
     g.state.now = 5;
     g.state.headFiles = change;
     q.trustedCi = [{ main: ciTrustDigest(listing()), head: ciTrustDigest(listing(change)) }];
-    e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+    e.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
     const r = (await reconcile(g.reader(), q, e.store))[0]!;
     assert.equal(r.observation.workflow, "trusted");
     assert.equal(assess(q, r.snapshot, null).status, "eligible");
@@ -767,7 +767,7 @@ test("R008 required jobs count only from the reviewed ci.yml path; a truncated t
     try {
       f.state.ready = true;
       f.state.now = 5;
-      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const transport: Transport = async (path, h) => {
         const r = await f.send(path, h);
         if (variant === "other-path" && path.includes("/actions/runs?")) {
@@ -865,7 +865,7 @@ test("W4 row 8: a signed edit/delete delivery raises a change the next reconcile
           ...(event === "issue_comment" ? { issue: { number: 1, pull_request: {} } } : { pull_request: { number: 1 } }),
           ...(event === "pull_request_review" ? { review: thing } : { comment: thing }),
         }),
-        Date.parse(t(7)),
+        Date.parse(t(7)), "p1",
         "1:1",
       );
     signal("s1", "issue_comment", "deleted", { id: 55, user: { id: 30 }, body: "PR1-R009 hidden" });
@@ -952,7 +952,7 @@ test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or
       };
       f.state.ready = true;
       f.state.now = 6;
-      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1);
+      d.store.inbox(3, "ready-delivery", "pull_request", JSON.stringify(delivery()), 1, "p1");
       const s = (await reconcile(new GhReader("synthetic/repository", transport), p, d.store))[0]!.snapshot;
       assert.deepEqual(s.openFindings, [{ actor: 10, ids: ["PR1-R005"] }], where);
       const target = assess(p, s, null);
@@ -983,5 +983,564 @@ test("Codex PR56-R002: an owner's finding in a COMMENT review, a line comment or
     } finally {
       d.cleanup();
     }
+  }
+});
+
+// PR48-R013: a reader whose PR response changes between the first and the last read (updated_at moved
+// during the fetch), so the observation is transiently incomplete.
+function changingReader(f: ReturnType<typeof fixture>) {
+  let reads = 0;
+  return new GhReader("synthetic/repository", async (path, h) => {
+    const r = await f.send(path, h);
+    if (!path.endsWith("/pulls/1")) return r;
+    return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), updated_at: t(10 + ++reads) }) };
+  });
+}
+test("PR48-R013 a transiently incomplete reconcile saves nothing and keeps the delivery; a later reconcile binds the Ready", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    const prior = d.store.observation<{ observedAt: number }>("1:1")!;
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+    const [held] = await reconcile(changingReader(f), p, d.store);
+    assert.equal(held!.snapshot.complete, false);
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.deepEqual(d.store.observation("1:1"), prior);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 a missed Ready webhook is still recovered after an incomplete reconcile (the window does not move)", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store); // observedAt t(2)
+    f.state.ready = true; // Ready at t(3), no delivery
+    f.state.now = 5;
+    await reconcile(changingReader(f), p, d.store);
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 an untrusted workflow is not transient: the delivery is processed and its Ready is never bound later", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+    const [r] = await reconcile(f.reader(), p, d.store);
+    assert.equal(r!.observation.workflow, "untrusted");
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(5)));
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R016 observation history keeps change points only and at most OBSERVATION_HISTORY rows per PR", async () => {
+  const { OBSERVATION_HISTORY } = await import("./store.ts");
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  const rows = () =>
+    Number(d.store.db.prepare("SELECT count(*) n FROM evidence WHERE id LIKE 'observation:%'").get()!["n"]);
+  try {
+    for (let n = 2; n < 12; n++) {
+      f.state.now = n;
+      await reconcile(f.reader(), p, d.store);
+    }
+    assert.equal(rows(), 1);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(11)));
+    f.state.legacy = true; // the observed state changes (legacy Ready): one more row
+    f.state.now = 12;
+    await reconcile(f.reader(), p, d.store);
+    assert.equal(rows(), 2);
+    for (let n = 0; n < OBSERVATION_HISTORY + 20; n++)
+      d.store.saveObservation("1:1", { observedAt: n, status: `synthetic-${n % 2}` } as never);
+    assert.equal(rows(), OBSERVATION_HISTORY);
+    const latest = OBSERVATION_HISTORY + 19;
+    assert.ok(d.store.evidence<{ observedAt: number }>("1:1", "observation").some((o) => o.observedAt === latest));
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R014 the observation compares accepted() with the current canon's decision: accepted for this head/base", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  p.mode = "shadow";
+  const record = (decision: string, head = HEAD) => ({
+    id: 70,
+    user: { id: 30 },
+    created_at: t(4),
+    body: `<!-- kurashi-ledger:review:v1 -->\nrole: claude-reviewer\nhead_sha: ${head}\nbase_sha: ${BASE}\ndecision: ${decision}\n`,
+  });
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.conversation = [record("accepted")];
+    const [r] = await reconcile(f.reader(), p, d.store);
+    assert.equal(r!.observation.legacyAccepted, true);
+    assert.equal(r!.observation.accepted, false); // no red-team record and no APPROVE
+    assert.equal(r!.observation.acceptedDiffers, true);
+    for (const other of [record("changes-requested"), record("accepted", "f".repeat(40))]) {
+      f.state.conversation = [record("accepted"), { ...other, id: 71, created_at: t(4.5) }];
+      const [x] = await reconcile(f.reader(), p, d.store);
+      assert.equal(x!.observation.legacyAccepted, false);
+      assert.equal(x!.observation.acceptedDiffers, false);
+    }
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R014 a human reviewer's manual red-team record is compared only (never clears the gate); judgements with reasons are read strictly", async () => {
+  const p = policy();
+  p.targets[0]!.reviewers = [40]; // a human reviewer
+  const redTeam = (id: number, actor: number, lines: string, at = 4, head = HEAD) => ({
+    id,
+    user: { id: actor },
+    created_at: t(at),
+    body: `<!-- kurashi-ledger:red-team:v1 -->\nauditor_id: synthetic\nhead_sha: ${head}\nbase_sha: ${BASE}\nplan_path: .review/plans/T00.json\n\n| 原因 | 判定 | 箇所 |\n| --- | --- | --- |\n${lines}`,
+  });
+  const earlier = (open = false) => redTeam(80, 30, "RT-2: synthetic\n", 3.5, open ? HEAD : "f".repeat(40));
+  const cases: [string, Record<string, unknown>[], string[] | null][] = [
+    ["clear", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n")], []],
+    ["clear with a reason", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし（差分にない） | guard |\n")], []],
+    ["new RT", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当なし | guard |\n\nRT-1: synthetic\n")], ["RT-1"]],
+    ["cannot check", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 確認できない | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
+    ["cannot check with a reason", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 確認できない（CIを読めない） | guard |\n")], ["cause:INV-REVIEW/plan-task-identity"]],
+    ["found", [redTeam(81, 40, "| INV-REVIEW/plan-task-identity | 該当（RT-1） | guard |\n")], ["RT-1", "cause:INV-REVIEW/plan-task-identity"].sort()],
+    ["earlier RT resolved", [earlier(), redTeam(81, 40, "| RT-2 | 解消 | commit |\n")], []],
+    ["earlier RT not needed, with a reason", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要（仕様どおり） | - |\n")], []],
+    ["earlier RT not needed, reason in the next cell", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要 | 仕様どおり |\n")], []],
+    ["not needed without a reason", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要 | |\n")], ["RT-2"]],
+    ["negated", [earlier(), redTeam(81, 40, "| RT-2 | 対応不要ではない | 直す |\n")], ["RT-2"]],
+    ["earlier RT not re-checked", [earlier(), redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n")], ["RT-2"]],
+    ["earlier RT still open", [earlier(true), redTeam(81, 40, "| RT-2 | 未解消 | 解消していない |\n")], ["RT-2"]],
+    ["implementer's record", [redTeam(81, 20, "| INV-REVIEW/x | 該当なし | - |\n")], null],
+    ["other pair", [redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n", 4, "f".repeat(40))], null],
+    ["marker not on the first line", [{ ...redTeam(81, 40, ""), body: `引用\n${redTeam(81, 40, "").body}` }], null],
+  ];
+  for (const [name, conversation, unresolved] of cases) {
+    const d = database(),
+      f = fixture();
+    try {
+      f.state.ready = true;
+      f.state.now = 5;
+      f.state.conversation = conversation;
+      const [r] = await reconcile(f.reader(), p, d.store);
+      assert.deepEqual(r!.observation.manualFaultfinding, unresolved, name);
+      // Comparison only: the gate's fault-finding evidence stays the dispatcher's own record.
+      assert.equal(r!.snapshot.faultfinding, null, name);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // An AI reviewer's record is not a manual record.
+  const d = database(),
+    f = fixture();
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    f.state.conversation = [redTeam(80, 30, "| INV-REVIEW/x | 該当なし | - |\n")];
+    const [r] = await reconcile(f.reader(), policy(), d.store);
+    assert.equal(r!.observation.manualFaultfinding, null);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 RT-1: an untrusted workflow seen on a pair that changed during the fetch is held, not processed", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    f.state.ready = true;
+    f.state.now = 5;
+    // H1 changes the CI files (untrusted); by the last read the PR already points at H2.
+    f.state.headFiles = { ".github/workflows/ci.yml": "b1".repeat(20) };
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+    let reads = 0;
+    const moving = new GhReader("synthetic/repository", async (path, h) => {
+      const r = await f.send(path, h);
+      if (!path.endsWith("/pulls/1") || ++reads === 1) return r;
+      const v = JSON.parse(r.body);
+      return { ...r, body: JSON.stringify({ ...v, head: { ...v.head, sha: "d".repeat(40) } }) };
+    });
+    const [held] = await reconcile(moving, p, d.store);
+    assert.equal(held!.observation.workflow, "untrusted");
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)));
+    // The head that needs no trust: the held delivery binds on the next stable reconcile.
+    f.state.headFiles = {};
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R013 RT-5: a held PR keeps its hold start; the 250-commit list limit is permanent (processed, never bound)", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    d.store.tick(1000);
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1000, "p1");
+    const first = (await reconcile(changingReader(f), p, d.store))[0]!;
+    assert.equal(first.heldSince, 1000);
+    d.store.tick(5000);
+    assert.equal((await reconcile(changingReader(f), p, d.store))[0]!.heldSince, 1000);
+    // Over the list limit: pulls/1 says 251 commits, the list gives 250.
+    const capped = new GhReader("synthetic/repository", async (path, h) => {
+      const r = await f.send(path, h);
+      if (path.endsWith("/pulls/1"))
+        return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), commits: 251 }) };
+      if (path.includes("/pulls/1/commits"))
+        return { ...r, body: JSON.stringify(Array.from({ length: 250 }, (_, n) => ({ sha: n.toString(16).padStart(40, "0") }))) };
+      return r;
+    });
+    const [over] = await reconcile(capped, p, d.store);
+    assert.equal(over!.snapshot.complete, false);
+    assert.equal(over!.heldSince, null);
+    assert.equal(d.store.pendingInbox().length, 0);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR48-R015 RT-2: a hold is settled by the first saved reconcile that began after it; an owner pause and unpause during the job never clears it", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+    const [r] = await reconcile(f.reader(), p, d.store);
+    d.store.observe(assess(p, r!.snapshot, null));
+    const j = d.store.claim(p, r!.snapshot, 30, "review", 2)!;
+    d.store.running(j);
+    // A hold made while a reconcile is fetching is not settled by that reconcile.
+    let made = false;
+    const during = new GhReader("synthetic/repository", async (path, h) => {
+      if (!made) {
+        made = true;
+        d.store.block(j, "publication", 3);
+      }
+      return f.send(path, h);
+    });
+    f.state.now = 8;
+    await reconcile(during, p, d.store);
+    assert.equal(d.store.blocked(j.key)!.at, null);
+    // During the job the owner paused at t(6) and unpaused at t(7); the next reconcile settles at t(9).
+    f.state.now = 9;
+    await reconcile(f.reader(), p, d.store);
+    assert.equal(d.store.blocked(j.key)!.at, Date.parse(t(9)));
+    const s = { ...r!.snapshot, history: [...r!.snapshot.history] };
+    s.history.push(
+      { id: "pause", kind: "pause", actor: 10, at: Date.parse(t(6)), pair: null },
+      { id: "unpause", kind: "unpause", actor: 10, at: Date.parse(t(7)), pair: null },
+    );
+    d.store.clearQuota(p, s);
+    assert.ok(d.store.blocked(j.key));
+    s.history.push({ id: "unpause-later", kind: "unpause", actor: 10, at: Date.parse(t(10)), pair: null });
+    d.store.clearQuota(p, s);
+    assert.equal(d.store.blocked(j.key), null);
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR58-R001 a temporarily lost activity anchor holds the observation; the missed Ready binds once history is complete again", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    f.state.now = 2;
+    await reconcile(f.reader(), p, d.store); // complete observation at t(2)
+    f.state.ready = true; // Ready at t(3); its webhook was missed
+    f.state.now = 5;
+    const lost = new GhReader(p.repo, async (path, h) =>
+      path.includes("/activity?") ? { status: 200, headers: { date: t(5) }, body: "[]" } : f.send(path, h),
+    );
+    const [held] = await reconcile(lost, p, d.store);
+    assert.equal(held!.snapshot.historyComplete, false);
+    assert.equal(held!.heldSince !== null, true);
+    assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)));
+    f.state.now = 6;
+    const [later] = await reconcile(f.reader(), p, d.store);
+    assert.equal(later!.heldSince, null);
+    assert.equal(d.store.evidence("1:1", "ready").length, 1);
+    assert.equal(assess(p, later!.snapshot, null).status, "eligible");
+  } finally {
+    d.cleanup();
+  }
+});
+test("PR58-R002 a missing or invalid commit count is unconfirmed: nothing bound, processed or advanced; a valid count recovers", async () => {
+  for (const count of [undefined, null, "0", -1, 1.5]) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    const name = String(count);
+    try {
+      await reconcile(f.reader(), p, d.store);
+      f.state.ready = true;
+      f.state.now = 5;
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+      const odd = new GhReader(p.repo, async (path, h) => {
+        const r = await f.send(path, h);
+        if (!path.endsWith("/pulls/1")) return r;
+        const v = JSON.parse(r.body);
+        if (count === undefined) delete v.commits;
+        else v.commits = count;
+        return { ...r, body: JSON.stringify(v) };
+      });
+      const [held] = await reconcile(odd, p, d.store);
+      assert.equal(held!.snapshot.complete, false, name);
+      assert.equal(d.store.pendingInbox().length, 1, name);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, name);
+      assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)), name);
+      f.state.now = 6; // the count is valid again (0, matching the empty list)
+      const [later] = await reconcile(f.reader(), p, d.store);
+      assert.equal(assess(p, later!.snapshot, null).status, "eligible", name);
+      assert.equal(d.store.pendingInbox().length, 0, name);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // A counted list (workflow runs, jobs, check runs) without a valid total_count is never complete.
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+    f.state.ready = true;
+    f.state.now = 5;
+    const uncounted = new GhReader(p.repo, async (path, h) => {
+      const r = await f.send(path, h);
+      if (!path.includes("/actions/runs?")) return r;
+      const v = JSON.parse(r.body);
+      delete v.total_count;
+      return { ...r, body: JSON.stringify(v) };
+    });
+    await assert.rejects(reconcile(uncounted, p, d.store));
+    assert.equal(d.store.pendingInbox().length, 1);
+    assert.equal(d.store.observation("1:1"), null);
+  } finally {
+    d.cleanup();
+  }
+});
+// PR58-R003: a reader whose timeline is given by the test (Draft/Ready events at chosen times).
+function timelineReader(f: ReturnType<typeof fixture>, events: () => Record<string, unknown>[], changing = false) {
+  let reads = 0;
+  return new GhReader("synthetic/repository", async (path, h) => {
+    if (path.includes("/issues/1/timeline"))
+      return { status: 200, headers: { date: t(f.state.now) }, body: JSON.stringify(events()) };
+    const r = await f.send(path, h);
+    if (!changing || !path.endsWith("/pulls/1")) return r;
+    return { ...r, body: JSON.stringify({ ...JSON.parse(r.body), updated_at: t(100 + ++reads) }) };
+  });
+}
+const readyAt = (at: number) => ({ ...delivery(), pull_request: { ...delivery().pull_request, updated_at: t(at) } });
+test("PR58-R003 a Ready received under an earlier policy revision never binds to a new one, held or not; a fresh Ready binds once", async () => {
+  for (const variant of ["complete at p2", "p2 first incomplete"] as const) {
+    const d = database(),
+      f = fixture();
+    const events: Record<string, unknown>[] = [];
+    try {
+      // p1: the identity anchor is wrong, so the history is incomplete and the reconcile at t(5) holds.
+      const p1 = policy();
+      p1.targets[0]!.identity = { activity: "missing-anchor", head: HEAD, at: Date.parse(t(1)), pushers: [20] };
+      f.state.now = 5;
+      const [held] = await reconcile(timelineReader(f, () => events), p1, d.store);
+      assert.notEqual(held!.heldSince, null, variant);
+      // Still p1: Draft at t(6), Ready at t(7); the delivery arrives at t(8) (after the last hold).
+      events.push(
+        { id: 8, event: "convert_to_draft", actor: { id: 20 }, created_at: t(6) },
+        { id: 9, event: "ready_for_review", actor: { id: 20 }, created_at: t(7) },
+      );
+      d.store.inbox(3, "old-ready", "pull_request", JSON.stringify(readyAt(7)), 8000, "p1");
+      // t(9): the owner fixes the identity and raises the revision; readyAfter stays as it was.
+      const p2 = policy();
+      p2.revision = "p2";
+      f.state.now = 10;
+      if (variant === "p2 first incomplete") {
+        const [again] = await reconcile(timelineReader(f, () => events, true), p2, d.store);
+        assert.equal(again!.snapshot.complete, false, variant);
+        assert.equal(d.store.pendingInbox().length, 1, variant);
+        f.state.now = 11;
+      }
+      const [r] = await reconcile(timelineReader(f, () => events), p2, d.store);
+      assert.equal(r!.snapshot.historyComplete, true, variant);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, variant);
+      assert.equal(assess(p2, r!.snapshot, null).reason, "new-ready-required", variant);
+      assert.equal(d.store.pendingInbox().length, 0, variant);
+      // A fresh Draft -> Ready after the change, received under p2, binds exactly once.
+      events.push(
+        { id: 10, event: "convert_to_draft", actor: { id: 20 }, created_at: t(12) },
+        { id: 11, event: "ready_for_review", actor: { id: 20 }, created_at: t(13) },
+      );
+      d.store.inbox(3, "new-ready", "pull_request", JSON.stringify(readyAt(13)), 14000, "p2");
+      f.state.now = 15;
+      const [fresh] = await reconcile(timelineReader(f, () => events), p2, d.store);
+      assert.deepEqual(
+        d.store.evidence<{ id: string; policy: string }>("1:1", "ready").map((x) => [x.id, x.policy]),
+        [["timeline:11", "p2"]],
+        variant,
+      );
+      assert.equal(assess(p2, fresh!.snapshot, null).status, "eligible", variant);
+    } finally {
+      d.cleanup();
+    }
+  }
+});
+test("PR58-R003 a delivery with no recorded revision never binds", async () => {
+  const d = database(),
+    f = fixture(),
+    p = policy();
+  try {
+    await reconcile(f.reader(), p, d.store);
+    f.state.ready = true;
+    f.state.now = 5;
+    d.store.inbox(3, "unknown", "pull_request", JSON.stringify(delivery()), 1, null);
+    // Not recoverable either: the Ready (t(3)) is before the prior observation window ends (t(2) < t(3) is
+    // inside), so the timeline path would recover it; move the prior window past it to isolate the delivery.
+    d.store.saveObservation("1:1", { ...d.store.observation<{ observedAt: number }>("1:1")!, observedAt: Date.parse(t(4)) });
+    await reconcile(f.reader(), p, d.store);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    assert.equal(d.store.pendingInbox().length, 0);
+  } finally {
+    d.cleanup();
+  }
+});
+test("Red team round 3 RT-2: a short list against a valid count over the cap, and an invalid count with a non-empty list, are held", async () => {
+  const listOf = (n: number) =>
+    JSON.stringify(Array.from({ length: n }, (_, i) => ({ sha: i.toString(16).padStart(40, "0") })));
+  for (const [name, count, listed] of [
+    ["251 vs 249", 251, 249],
+    ["invalid count, 3 listed", "3", 3],
+    ["missing count, 3 listed", undefined, 3],
+  ] as const) {
+    const d = database(),
+      f = fixture(),
+      p = policy();
+    try {
+      await reconcile(f.reader(), p, d.store);
+      f.state.ready = true;
+      f.state.now = 5;
+      d.store.inbox(3, "ready", "pull_request", JSON.stringify(delivery()), 1, "p1");
+      const odd = new GhReader(p.repo, async (path, h) => {
+        const r = await f.send(path, h);
+        if (path.endsWith("/pulls/1")) {
+          const v = JSON.parse(r.body);
+          if (count === undefined) delete v.commits;
+          else v.commits = count;
+          return { ...r, body: JSON.stringify(v) };
+        }
+        return path.includes("/pulls/1/commits") ? { ...r, body: listOf(listed) } : r;
+      });
+      const [r] = await reconcile(odd, p, d.store);
+      assert.equal(r!.snapshot.complete, false, name);
+      assert.notEqual(r!.heldSince, null, name);
+      assert.equal(d.store.pendingInbox().length, 1, name);
+      assert.equal(d.store.evidence("1:1", "ready").length, 0, name);
+      assert.equal(d.store.observation<{ observedAt: number }>("1:1")!.observedAt, Date.parse(t(2)), name);
+    } finally {
+      d.cleanup();
+    }
+  }
+});
+test("Red team round 4 RT-2: a revision change must move readyAfter past the last observation; a pre-switch Ready never binds", async () => {
+  const { ReadyAfterError } = await import("./store.ts");
+  const d = database(),
+    f = fixture();
+  const events: Record<string, unknown>[] = [];
+  try {
+    f.state.now = 5;
+    await reconcile(timelineReader(f, () => events), policy(), d.store); // p1, complete, observed at t(5)
+    // Still p1: Ready at t(7). The owner switches to p2 at t(7.2); the delivery arrives after it (p2).
+    events.push({ id: 9, event: "ready_for_review", actor: { id: 20 }, created_at: t(7) });
+    d.store.inbox(3, "late", "pull_request", JSON.stringify(readyAt(7)), 7500, "p2");
+    const p2 = policy();
+    p2.revision = "p2";
+    f.state.now = 8;
+    // readyAfter left as it was: the reconcile stops before reading anything.
+    await assert.rejects(reconcile(timelineReader(f, () => events), p2, d.store), ReadyAfterError);
+    assert.equal(d.store.pendingInbox().length, 1);
+    // readyAfter at the switch: the pre-switch Ready binds 0 times.
+    p2.readyAfter = Date.parse(t(7.2));
+    const [r] = await reconcile(timelineReader(f, () => events), p2, d.store);
+    assert.equal(d.store.evidence("1:1", "ready").length, 0);
+    assert.equal(assess(p2, r!.snapshot, null).reason, "new-ready-required");
+    // A new Draft -> Ready after the switch binds exactly once.
+    events.push(
+      { id: 10, event: "convert_to_draft", actor: { id: 20 }, created_at: t(9) },
+      { id: 11, event: "ready_for_review", actor: { id: 20 }, created_at: t(10) },
+    );
+    d.store.inbox(3, "new", "pull_request", JSON.stringify(readyAt(10)), 10500, "p2");
+    f.state.now = 11;
+    const [fresh] = await reconcile(timelineReader(f, () => events), p2, d.store);
+    assert.deepEqual(d.store.evidence<{ id: string }>("1:1", "ready").map((x) => x.id), ["timeline:11"]);
+    assert.equal(assess(p2, fresh!.snapshot, null).status, "eligible");
+  } finally {
+    d.cleanup();
+  }
+});
+test("Red team round 5 RT-1: a Review submitted before the switch never binds to the new revision; one after it binds once", async () => {
+  const d = database(),
+    f = fixture();
+  const reviews: Record<string, unknown>[] = [];
+  const review = (id: number, at: number) => ({ id, user: { id: 30 }, state: "APPROVED", commit_id: HEAD, submitted_at: t(at), body: null });
+  const submitted = (id: number, at: number) => ({ ...delivery(false), review: review(id, at) });
+  const reader = () =>
+    new GhReader("synthetic/repository", async (path, h) =>
+      path.includes("/pulls/1/reviews")
+        ? { status: 200, headers: { date: t(f.state.now) }, body: JSON.stringify(reviews) }
+        : f.send(path, h),
+    );
+  try {
+    f.state.now = 5;
+    await reconcile(reader(), policy(), d.store); // p1, observed at t(5)
+    // APPROVE at t(7) under p1; the switch to p2 at t(7.2); the delivery arrives after it.
+    reviews.push(review(12, 7));
+    d.store.inbox(3, "old-approve", "pull_request_review", JSON.stringify(submitted(12, 7)), 7500, "p2");
+    const p2 = policy();
+    p2.revision = "p2";
+    p2.readyAfter = Date.parse(t(7.2));
+    f.state.now = 8;
+    await reconcile(reader(), p2, d.store);
+    assert.equal(d.store.evidence("1:1", "review").length, 0);
+    assert.equal(d.store.pendingInbox().length, 0);
+    // A Review after the switch binds exactly once.
+    reviews.push(review(13, 9));
+    d.store.inbox(3, "new-approve", "pull_request_review", JSON.stringify(submitted(13, 9)), 9500, "p2");
+    f.state.now = 10;
+    await reconcile(reader(), p2, d.store);
+    await reconcile(reader(), p2, d.store);
+    assert.deepEqual(d.store.evidence<{ id: string }>("1:1", "review").map((x) => x.id), ["13"]);
+  } finally {
+    d.cleanup();
   }
 });

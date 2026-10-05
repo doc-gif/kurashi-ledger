@@ -32,9 +32,13 @@ export function canonicalRoot(path: string): string {
   return path;
 }
 // Schema 4 (Issue #50 W4): blocked, run_keys, capability, marks, run_materials and jobs.origin. Schema 3 was
-// an unreleased draft of this PR. Older DBs are not migrated implicitly; they are refused like any unknown
-// schema and the owner initializes a new root.
-const SCHEMA = 4;
+// an unreleased draft of this PR. Schema 5 (W4c): quota_pause.at and blocked.at are GitHub server times, NULL
+// until settled (PR48-R015), `holds` (PR48-R013) and inbox.policy (PR58-R003). Older DBs are not migrated implicitly; they are refused
+// like any unknown schema and the owner initializes a new root.
+const SCHEMA = 5;
+// PR48-R016: observation history kept per PR (change points only; the latest is also in `shadow`).
+export const OBSERVATION_HISTORY = 200;
+const HOLD_TABLES = ["quota_pause", "blocked"] as const;
 // PR48-R009: a small step back (NTP) keeps using the stored time; the stored clock never moves back.
 export const CLOCK_SKEW_MS = 5000;
 export class ClockRollbackError extends Error {
@@ -42,6 +46,17 @@ export class ClockRollbackError extends Error {
   constructor(behindMs: number) {
     super("Clock moved backwards; wait for the stored time before launch");
     this.behindMs = behindMs;
+  }
+}
+// Red team round 4 RT-2: a new policy revision must move readyAfter past the last observation saved under the
+// previous revision, so a Ready made before the switch never binds to the new revision.
+export class ReadyAfterError extends Error {
+  readonly pr: number;
+  readonly observedAt: number;
+  constructor(pr: number, observedAt: number) {
+    super("readyAfter must be later than the last observation under the previous policy revision");
+    this.pr = pr;
+    this.observedAt = observedAt;
   }
 }
 const posix = process.platform !== "win32";
@@ -92,7 +107,7 @@ export class Store {
         this.db.exec(`
         BEGIN IMMEDIATE;
         CREATE TABLE targets(key TEXT PRIMARY KEY, value TEXT NOT NULL, pending TEXT);
-        CREATE TABLE inbox(app INTEGER, delivery TEXT, event TEXT, received INTEGER, payload TEXT, processed INTEGER DEFAULT 0, PRIMARY KEY(app,delivery));
+        CREATE TABLE inbox(app INTEGER, delivery TEXT, event TEXT, received INTEGER, payload TEXT, processed INTEGER DEFAULT 0, policy TEXT, PRIMARY KEY(app,delivery));
         CREATE TABLE consumed(id TEXT PRIMARY KEY);
         CREATE TABLE jobs(id TEXT PRIMARY KEY,key TEXT,generation INTEGER,actor INTEGER,kind TEXT,executor TEXT,run TEXT UNIQUE,value TEXT,status TEXT,started INTEGER,result TEXT,origin TEXT, UNIQUE(key,generation,actor,kind));
         CREATE TABLE leases(key TEXT PRIMARY KEY,job TEXT UNIQUE REFERENCES jobs(id),cancel INTEGER DEFAULT 0);
@@ -101,14 +116,15 @@ export class Store {
         CREATE TABLE clock(id INTEGER PRIMARY KEY CHECK(id=1),now INTEGER);
         CREATE TABLE acceptance(id TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE evidence(id TEXT PRIMARY KEY,key TEXT,value TEXT NOT NULL);
-        CREATE TABLE quota_pause(key TEXT PRIMARY KEY,at INTEGER NOT NULL,owner_clear TEXT);
+        CREATE TABLE quota_pause(key TEXT PRIMARY KEY,at INTEGER,owner_clear TEXT);
         CREATE TABLE shadow(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-        CREATE TABLE blocked(key TEXT PRIMARY KEY,run TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,owner_clear TEXT);
+        CREATE TABLE blocked(key TEXT PRIMARY KEY,run TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER,owner_clear TEXT);
         CREATE TABLE run_keys(run TEXT PRIMARY KEY,job TEXT NOT NULL UNIQUE REFERENCES jobs(id),binding TEXT NOT NULL,key TEXT NOT NULL UNIQUE,at INTEGER NOT NULL);
         CREATE TABLE capability(backend TEXT PRIMARY KEY,value TEXT NOT NULL,at INTEGER NOT NULL);
         CREATE TABLE marks(app INTEGER NOT NULL,delivery TEXT NOT NULL,key TEXT NOT NULL,PRIMARY KEY(app,delivery));
         CREATE TABLE run_materials(run TEXT PRIMARY KEY,value TEXT NOT NULL);
-        PRAGMA user_version=4; COMMIT;
+        CREATE TABLE holds(key TEXT PRIMARY KEY,since INTEGER NOT NULL);
+        PRAGMA user_version=5; COMMIT;
       `);
       if (posix) checkDispatchRoot(root); // WAL/SHM exist now; SQLite copies the DB file mode.
     } catch {
@@ -163,12 +179,15 @@ export class Store {
   }
   // `mark` (W4 row 8): the target key of an edit/delete/dismiss delivery. It is stored in the same
   // transaction and stops launches and posts for that PR until a reconcile has processed the delivery.
+  // `policy` (PR58-R003): the policy revision current when the delivery was received. A delivery binds only
+  // under that same revision; null (unknown) never binds.
   inbox(
     app: number,
     delivery: string,
     event: string,
     payload: string,
     now: number,
+    policy: string | null,
     mark: string | null = null,
   ): boolean {
     return this.atomic(() => {
@@ -177,9 +196,9 @@ export class Store {
         Number(
           this.db
             .prepare(
-              "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload) VALUES(?,?,?,?,?)",
+              "INSERT OR IGNORE INTO inbox(app,delivery,event,received,payload,policy) VALUES(?,?,?,?,?,?)",
             )
-            .run(app, delivery, event, at, payload).changes,
+            .run(app, delivery, event, at, payload, policy).changes,
         ) === 1;
       if (stored && mark !== null)
         this.db
@@ -262,14 +281,67 @@ export class Store {
       .get(key) as Row | undefined;
     return row ? (JSON.parse(String(row["value"])) as T) : null;
   }
-  saveObservation(key: string, value: unknown): void {
-    const raw = JSON.stringify(value);
-    this.saveEvidence(key, "observation", hash(raw), value);
+  // PR48-R016: the history keeps change points only. An observation equal to the latest one apart from its
+  // time adds no row; the latest OBSERVATION_HISTORY rows per PR are kept and older ones are deleted.
+  saveObservation(key: string, value: { observedAt: number }): void {
+    const raw = JSON.stringify(value),
+      content = (v: { observedAt?: unknown }) => JSON.stringify({ ...v, observedAt: null });
+    const latest = this.observation<{ observedAt: number }>(key);
+    if (!latest || content(latest) !== content(value))
+      this.saveEvidence(key, "observation", hash(raw), value);
     this.db
       .prepare(
         "INSERT INTO shadow VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       )
       .run(key, raw);
+    this.db
+      .prepare(
+        "DELETE FROM evidence WHERE key=? AND id LIKE 'observation:%' AND rowid NOT IN (SELECT rowid FROM evidence WHERE key=? AND id LIKE 'observation:%' ORDER BY rowid DESC LIMIT ?)",
+      )
+      .run(key, key, OBSERVATION_HISTORY);
+  }
+  // Red team round 4 RT-2: throws ReadyAfterError when a target's last saved observation is under another
+  // revision and readyAfter is not later than its server time. Read-only (the receiver uses it too).
+  checkReadyAfter(p: Policy): void {
+    for (const t of p.targets) {
+      const o = this.observation<{ policy?: unknown; observedAt?: unknown }>(keyOf(p, t.pr));
+      if (o && o.policy !== p.revision && !(p.readyAfter > Number(o.observedAt)))
+        throw new ReadyAfterError(t.pr, Number(o.observedAt));
+    }
+  }
+  // PR48-R015: a quota pause or blocked row starts with its time pending (NULL). The first reconcile that
+  // began after the row existed and saved this PR's observation settles it to that server time (the latest
+  // response Date), so the owner's unpause and the hold are compared on GitHub's clock only.
+  unsettledHolds(): Set<string> {
+    const out = new Set<string>();
+    for (const table of HOLD_TABLES)
+      for (const r of this.db
+        .prepare(`SELECT key FROM ${table} WHERE at IS NULL AND owner_clear IS NULL`)
+        .all() as Row[])
+        out.add(`${table}:${String(r["key"])}`);
+    return out;
+  }
+  settleHolds(key: string, serverAt: number, only: ReadonlySet<string>): void {
+    if (!Number.isSafeInteger(serverAt) || serverAt < 0) return;
+    for (const table of HOLD_TABLES)
+      if (only.has(`${table}:${key}`))
+        this.db
+          .prepare(`UPDATE ${table} SET at=? WHERE key=? AND at IS NULL AND owner_clear IS NULL`)
+          .run(serverAt, key);
+  }
+  // PR48-R013: since when (stored local clock) a PR's observation is held as transiently incomplete; null
+  // once a reconcile processes it.
+  heldSince(key: string, held: boolean): number | null {
+    if (!held) {
+      this.db.prepare("DELETE FROM holds WHERE key=?").run(key);
+      return null;
+    }
+    this.db
+      .prepare("INSERT OR IGNORE INTO holds VALUES(?,?)")
+      .run(key, this.storedClock() ?? 0);
+    return Number(
+      (this.db.prepare("SELECT since FROM holds WHERE key=?").get(key) as Row)["since"],
+    );
   }
   processed(app: number, delivery: string): void {
     this.db
@@ -360,13 +432,15 @@ export class Store {
       .prepare("SELECT 1 FROM quota_pause WHERE key=? AND owner_clear IS NULL")
       .get(key);
   }
-  // Owner holds (quota pause, blocked) end only by an owner's removal of review:paused after the hold.
+  // Owner holds (quota pause, blocked) end only by an owner's removal of review:paused after the hold. Both
+  // times are GitHub server times (PR48-R015): the settled `at` and the timeline event's created_at. A hold
+  // whose time is still pending is not cleared.
   clearQuota(p: Policy, s: Snapshot): void {
-    for (const table of ["quota_pause", "blocked"] as const) {
+    for (const table of HOLD_TABLES) {
       const row = this.db
         .prepare(`SELECT at FROM ${table} WHERE key=? AND owner_clear IS NULL`)
         .get(keyOf(p, s.pr)) as Row | undefined;
-      if (!row || !s.complete || !s.historyComplete) continue;
+      if (!row || row["at"] === null || !s.complete || !s.historyComplete) continue;
       const event = s.history
         .filter(
           (e) =>
@@ -383,23 +457,29 @@ export class Store {
   }
   // W4 row 1: blocked is a durable per-PR needs-owner state. It outlives the job's lease (an owner may
   // release the ended run) and clears only through clearQuota (an owner's later unpause).
-  blocked(key: string): { run: string; reason: string; at: number } | null {
+  // `at`: the settled server time, or null while pending (PR48-R015).
+  blocked(key: string): { run: string; reason: string; at: number | null } | null {
     const r = this.db
       .prepare("SELECT run,reason,at FROM blocked WHERE key=? AND owner_clear IS NULL")
       .get(key) as Row | undefined;
     return r
-      ? { run: String(r["run"]), reason: String(r["reason"]), at: Number(r["at"]) }
+      ? {
+          run: String(r["run"]),
+          reason: String(r["reason"]),
+          at: r["at"] === null ? null : Number(r["at"]),
+        }
       : null;
   }
+  // The time is pending until a later reconcile settles it (PR48-R015); `now` is the local clock tick.
   block(j: Job, reason: string, now: number): void {
     if (!/^[a-z-]{1,40}$/.test(reason)) throw new Error("Invalid block reason");
     this.atomic(() => {
-      const at = this.time(now);
+      this.time(now);
       this.db
         .prepare(
-          "INSERT INTO blocked VALUES(?,?,?,?,NULL) ON CONFLICT(key) DO UPDATE SET run=excluded.run,reason=excluded.reason,at=excluded.at,owner_clear=NULL",
+          "INSERT INTO blocked VALUES(?,?,?,NULL,NULL) ON CONFLICT(key) DO UPDATE SET run=excluded.run,reason=excluded.reason,at=NULL,owner_clear=NULL",
         )
-        .run(j.key, j.run, reason, at);
+        .run(j.key, j.run, reason);
       this.db
         .prepare("UPDATE jobs SET status='uncertain' WHERE id=?")
         .run(j.id);
@@ -469,9 +549,9 @@ export class Store {
       if (used >= 6) {
         this.db
           .prepare(
-            "INSERT INTO quota_pause VALUES(?,?,NULL) ON CONFLICT(key) DO UPDATE SET at=excluded.at,owner_clear=NULL",
+            "INSERT INTO quota_pause VALUES(?,NULL,NULL) ON CONFLICT(key) DO UPDATE SET at=NULL,owner_clear=NULL",
           )
-          .run(t.key, now);
+          .run(t.key);
         this.db
           .prepare("UPDATE targets SET value=? WHERE key=?")
           .run(
@@ -858,8 +938,10 @@ export class Store {
   // Read-only owner summary (status CLI): IDs and states only.
   status(key: string): {
     target: Target | null;
-    blocked: { run: string; reason: string; at: number } | null;
+    blocked: { run: string; reason: string; at: number | null } | null;
     quota: boolean;
+    // PR48-R015: holds of this PR whose server time is not settled yet (an unpause does not count before).
+    pending: string[];
     marked: boolean;
     jobs: { kind: string; run: string; status: string; generation: number }[];
     uncertainOutbox: number;
@@ -868,6 +950,7 @@ export class Store {
       target: this.target(key),
       blocked: this.blocked(key),
       quota: this.quotaPaused(key),
+      pending: HOLD_TABLES.filter((x) => this.unsettledHolds().has(`${x}:${key}`)),
       marked: this.marked(key),
       jobs: (
         this.db
