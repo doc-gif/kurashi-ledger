@@ -98,6 +98,11 @@ GitHubのREST APIにはスレッドの解決状態がなく、書込み権限の
 - **時計の先への飛び:** その時刻が保存され、時計を戻した後は追いつくまで受付が止まる。24時間の起動上限の窓も先へ進む。誤った時刻で動いたと分かったら受付を止めて記録を確かめ、待てなければ停止状態のbackupと独立レビューした手順で切り替える。DBの時刻を手で戻さない。
 - **大きな配送（R011）:** 256KiBを超える署名付き配送は本文を保持せず、HMACを流しながら確かめてdelivery IDとeventだけを残し、413を返す。照合のあとCLIがevent名と件数を一度だけ知らせる。Brokerは改行・行末空白・NFCを整えた本文だけを投稿し、同じmarkerでhashが違う投稿があればuncertainに保持して再送しない。
 
+## policyの更新と受け口の503
+
+- **policyの更新:** revisionを上げるときは`readyAfter`を切替の時刻にする。前のrevisionの最後の観測より後でなければ、照合は終了コード4で止まり、受け口は配送を503にする。受け口は署名を確かめた配送ごとにpolicyを読み直すので、再起動は要らない（repo・installation・App IDを変えるときは再起動する）。
+- **受け口の503が続く:** 受け口のログの理由（`policy-unreadable`・`policy-identity-changed`・`ready-after-not-moved`、理由ごとに1回。配送を保存できれば次の失敗でまた出る）を見て、policyの権限・内容、またはreadyAfterを直す。直すまでの配送は保存されないので、GitHubのApp設定から再配送するか、新しいDraft→Readyにする。
+
 ## shadowの照合
 
 shadowは取得・判定・記録だけで、AIの起動と投稿は0件。
@@ -107,13 +112,22 @@ shadowは取得・判定・記録だけで、AIの起動と投稿は0件。
 - Webhook欠落は、保存した観測より後のReady/Reviewを、同じpolicy・pair・完全なactivity履歴・pushのない観測区間でのみ回復する。初回観測・base更新・履歴欠落では過去eventへ現在のSHAを付け直さず、新しいDraft→Readyを要求する。
 - 観測区間・成立pair・世代変更の証跡を保存し、現行v1引継ぎとの差も`shadow`表へ記録する。この比較は起動の許可にならない。
 
+## PR48-R013〜R016（W4c、[#58](https://github.com/doc-gif/kurashi-ledger/pull/58)）
+
+| 指摘 | 内容 |
+| --- | --- |
+| R013 | 取得の途中でPR・その状態・mainが変わった、commitの一覧が足りないか件数を確かめられない、branchの履歴が不完全、のどれかでは、その対象の観測・結合・処理済みの印を保存せず配送を残し、後の照合で結び付けるか回復する。1時間続けば所有者に1回知らせる。配送には受けたときのpolicyのrevisionを記録し、同じrevisionで、かつ`readyAfter`より後のReady・Reviewだけを結び付ける。記録のない配送は結び付けない。恒久の原因（変わらないpairでのworkflowの未信頼、一覧の上限250件を超えるPR、repoの外のhead）なら処理し、結び付けない。件数のある一覧（workflow run・job・check run）は`total_count`がなければ取得失敗 |
+| R014 | 受付自身の粗探しJobの記録を判定に使う（W4a）。観測にaccepted()と現行の`decision: accepted`の比較（`acceptedDiffers`）と、担当reviewerの人の手動の記録の読取り（`該当なし`以外の判定と、`解消`・理由付きの`対応不要`で閉じていないRTを未解消）がある。人の記録は、台帳の網羅・前の記録の確かめ直し・readyAfterをAI側とそろえるまで**比較だけ**に使い、判定の門を開けない |
+| R015 | quotaの停止とblockedは時刻「未定」で作り、作った後に始まった照合（同じcycleで1回取り直す）のserver時刻で確定する。ownerの解除（timelineの時刻）は確定した時刻より後のものだけ数える。`status`に「停止の時刻が未確定」が出ていないことを確かめてから、`review:paused`を付けて外す。確定前の解除は数えないので、やり直す |
+| R016 | 観測の履歴は時刻のほかが前回と同じなら足さず、PRごとに新しい200行まで残す。照合のあとに`retain`を呼び、設計の保持期限（payload 7日、完了Jobの詳細30日）を効かせる |
+
 ## 故障時
 
 launch/POST不明は`uncertain`に残し、期限切れで再起動・再送しない。Outboxは全ページから身元・commit・marker・本文hashが一致する1件を確認して初めてpostedになる。複数一致はownerへ保留する。
 
 `supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しない。lockが取れるだけ、PIDが存在しないだけではleaseを解放しない。途中のmanifest・起動境界は不明として保持する。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明する（setsidで抜けた子孫はrun lockの継承で見つける）。`measure`は子を作るrunで継承を実測し、観測した子のすべてで確かめられたときだけ`descendantLock`をtrueにする。1つでも未検査・失敗・処理中の子があるか、groupの列挙に1回でも失敗したか、子を観測できなければfalse。
 
-DBはWAL/FULL同期、schema 4（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足した）。`PRAGMA secure_delete`とcheckpointでWAL・空きページの旧値を消す。schema 1〜3からの暗黙の変換はせず（停止状態のbackupと独立レビューを受けた移行が要る）、未知schemaは書き込まず停止する。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしない。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しない。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用rootで確認してownerが切り替える。以前のDBを消さず、古い配送ID・quota・投稿hashを保つ。
+DBはWAL/FULL同期、schema 5（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足し、W4cでquota・blockedの時刻をserver時刻にし、`holds`とinboxの`policy`を足した）。`PRAGMA secure_delete`とcheckpointでWAL・空きページの旧値を消す。schema 1〜4からの暗黙の変換はせず（停止状態のbackupと独立レビューを受けた移行が要る）、未知schemaは書き込まず停止する。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしない。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しない。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用rootで確認してownerが切り替える。以前のDBを消さず、古い配送ID・quota・投稿hashを保つ。schema 5は実機のshadowの前の変更なので、残すべきschema 4のDBはない。あれば新しい専用rootをinitし、対象PRは新しいDraft→Readyにする（配送IDと使用済みの記録は引き継がない）。
 
 ## 検証の読み方
 
@@ -137,7 +151,6 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 | PR48-R006 / I003 | 実Webhookの前に、配送のbase.shaとtimeline・updated_atの実際の値を測る（導入手順の13）。結合できなければunknownを保ち、結合の規則を独立レビューで直す |
 | I010 | App作成PRのCopilotの応答は任意の補助情報。起動・マージの条件に戻さない |
 | I011 | 共有された従来アカウントの身元移行。結合と照合のコードはある。実repoの`identity`の設定は未検証 |
-| [PR #48のレビュー](https://github.com/doc-gif/kurashi-ledger/pull/48)のR013・R015・R016（不完全な照合でも配送を処理済みにする、quota解除の時計の混在、観測の記録の保持期限） | [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)で直す。R013・R016は実機のshadowの前、R015はactiveの前（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)） |
-| PR48-R014の残り（人の手動の粗探しの記録と、acceptedの比較） | 対象を広げる前（「正本移行/active前」とされた）。start-smallは受付が投稿した粗探しだけを使う |
+| PR48-R014の`unresolvedDesign`の専用の取得元 | activeの前に作らない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980777385)） |
 | 通知Broker（Codex AppのPRコメント） | 作っていない。start-smallの周知は調整係の受領記録と受付のログで行う（[切替](pr-review-loop.md#切替prごと)の4はどちらかでよい）。作るときは同じ公開検査を掛ける |
 | Codexの自動起動、auto-fix、旧workerとの自動の交代 | 無効（[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)）。受付はマージしない |

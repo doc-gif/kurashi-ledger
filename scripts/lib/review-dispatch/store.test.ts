@@ -29,19 +29,19 @@ test("D02 real SQLite WAL survives reopening and payload TTL retains tombstones"
   const d = database();
   try {
     assert.equal(
-      d.store.inbox(3, "delivery", "pull_request", "synthetic", 0),
+      d.store.inbox(3, "delivery", "pull_request", "synthetic", 0, "p1"),
       true,
     );
     d.store.processed(3, "delivery");
     d.store.retain(8 * 86400000);
     assert.equal(
-      d.store.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000),
+      d.store.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000, "p1"),
       false,
     );
     assert.equal(d.store.pendingInbox().length, 0);
     const second = new Store(d.root);
     assert.equal(
-      second.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000),
+      second.inbox(3, "delivery", "pull_request", "replay", 8 * 86400000, "p1"),
       false,
     );
     second.close();
@@ -197,7 +197,7 @@ test("D08 notice once; transaction crash rolls back ownership", () => {
 test("I002 unknown schema rejected without write; quiesced backup restores replay state", async () => {
   const d = database();
   try {
-    d.store.inbox(3, "delivery", "pull_request", "synthetic", 0);
+    d.store.inbox(3, "delivery", "pull_request", "synthetic", 0, "p1");
     const copy = join(d.root, "backup.sqlite");
     await d.store.backup(copy);
     const read = new DatabaseSync(copy, { readOnly: true });
@@ -236,7 +236,7 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
   const d = database(),
     e = database();
   try {
-    d.store.inbox(3, "retained", "pull_request", "synthetic", 0);
+    d.store.inbox(3, "retained", "pull_request", "synthetic", 0, "p1");
     const path = join(e.root, "copy.sqlite");
     await d.store.backup(path);
     await assert.rejects(d.store.backup(path));
@@ -245,7 +245,7 @@ test("I002 cold SQLite backup into an empty root preserves replay state; existin
       read.prepare("SELECT delivery FROM inbox").get()!["delivery"],
       "retained",
     );
-    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 4); // schema 4 (W4)
+    assert.equal(read.prepare("PRAGMA user_version").get()!["user_version"], 5); // schema 5 (W4c)
     read.close();
   } finally {
     d.cleanup();
@@ -277,6 +277,7 @@ test("R002 quota pause survives the rolling window, generation changes and reope
       } else assert.equal(j, null);
     }
     assert.equal(d.store.quotaPaused("1:1"), true);
+    d.store.settleHolds("1:1", 107, d.store.unsettledHolds()); // a later reconcile's server time (PR48-R015)
     d.store.close();
     const resumed = new Store(d.root);
     try {
@@ -334,7 +335,7 @@ test("R009 clock rollback beyond tolerance refuses inbox/claim/retain atomically
     assert.equal(d.store.tick(T0), T0);
     // Within tolerance: the stored (later) time is used and kept.
     assert.equal(d.store.tick(T0 - CLOCK_SKEW_MS), T0);
-    assert.equal(d.store.inbox(3, "inside", "pull_request", "synthetic", T0 - 1), true);
+    assert.equal(d.store.inbox(3, "inside", "pull_request", "synthetic", T0 - 1, "p1"), true);
     assert.equal(
       d.store.db.prepare("SELECT received FROM inbox WHERE delivery='inside'").get()!["received"],
       T0,
@@ -342,7 +343,7 @@ test("R009 clock rollback beyond tolerance refuses inbox/claim/retain atomically
     // Beyond tolerance: refused, nothing written, the stored clock is unchanged.
     const behind = T0 - CLOCK_SKEW_MS - 1;
     assert.throws(() => d.store.tick(behind), ClockRollbackError);
-    assert.throws(() => d.store.inbox(3, "behind", "pull_request", "synthetic", behind), ClockRollbackError);
+    assert.throws(() => d.store.inbox(3, "behind", "pull_request", "synthetic", behind, "p1"), ClockRollbackError);
     assert.throws(() => d.store.oversized(3, "behind-big", "pull_request", behind), ClockRollbackError);
     assert.throws(() => d.store.retain(behind), ClockRollbackError);
     assert.throws(() => claim(d.store, policy(), snapshot(), behind), ClockRollbackError);
@@ -403,12 +404,12 @@ test("R011 a signed oversized delivery leaves only a marker that binds nothing a
   }
 });
 
-test("W4 schema 4: a schema 2 or 3 database is refused before any write (no implicit migration)", () => {
-  for (const version of [2, 3]) {
+test("W4c schema 5: a schema 2, 3 or 4 database is refused before any write (no implicit migration)", () => {
+  for (const version of [2, 3, 4]) {
     const d = database();
     const file = join(d.root, "dispatch.sqlite");
     try {
-      assert.equal(d.store.db.prepare("PRAGMA user_version").get()!["user_version"], 4);
+      assert.equal(d.store.db.prepare("PRAGMA user_version").get()!["user_version"], 5);
       d.store.db.exec(`PRAGMA user_version=${version}`);
       d.store.close();
       const before = readFileSync(file);
@@ -428,6 +429,8 @@ test("W4 row 1: blocked survives reopen and the owner's lease release; only an o
     const j = claim(d.store, p, s, 100);
     d.store.running(j);
     d.store.block(j, "publication", 200);
+    assert.equal(d.store.blocked(j.key)!.at, null); // pending until a reconcile settles it (PR48-R015)
+    d.store.settleHolds(j.key, 200, d.store.unsettledHolds());
     assert.equal(d.store.job(j.id)!.status, "uncertain");
     d.store.close();
     const store = new Store(d.root);
@@ -488,9 +491,9 @@ test("W4 row 8: an edit/delete mark stops claims until the delivery is processed
     s = snapshot();
   try {
     d.store.observe(assess(p, s, null));
-    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 50, "1:1"), true);
+    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 50, "p1", "1:1"), true);
     // A repeated delivery adds neither a row nor a second mark.
-    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 51, "1:1"), false);
+    assert.equal(d.store.inbox(3, "edit-1", "issue_comment", "{}", 51, "p1", "1:1"), false);
     assert.equal(d.store.marked("1:1"), true);
     assert.equal(d.store.claim(p, s, 30, "faultfinding", 100), null);
     d.store.processed(3, "edit-1");
@@ -604,6 +607,60 @@ test("Round 6 RT-3: a run materials record of the wrong shape is no record (the 
     assert.equal(d.store.runMaterials("run-5"), null);
     const j = { id: "j", key: "1:1", generation: 1, actor: 30, kind: "faultfinding" as const, run: "r", pair: { head: "a".repeat(40), base: "b".repeat(40) }, policy: "p1" };
     assert.ok(redTeamOpen({ ...fixtureResult(j), decision: "accepted", unverified: [] }, d.store.runMaterials("run-1")).includes("ledger-incomplete"));
+  } finally {
+    d.cleanup();
+  }
+});
+
+test("PR48-R015 holds are timed on the server clock once settled: local skew, an earlier unpause or one before settling never clear them", () => {
+  const S = 50_000_000; // GitHub server time
+  for (const [skew, local] of [["behind", 100], ["ahead", S + 10 * 86400000]] as const) {
+    const d = database(),
+      p = policy(),
+      s = snapshot();
+    s.history.push({ id: "old-unpause", kind: "unpause", actor: 10, at: S - 1000, pair: null });
+    try {
+      for (let n = 1; n <= 7; n++) {
+        s.pair.head = n.toString(16).repeat(40);
+        s.finalPair = { ...s.pair };
+        s.testedParents = [s.pair.base, s.pair.head];
+        s.history[1]!.id = `skew-ready${n}`;
+        s.history[1]!.at = S - 500;
+        s.history[1]!.pair = { ...s.pair };
+        d.store.observe(assess(p, s, d.store.target("1:1")));
+        const j = d.store.claim(p, s, 30, "review", local + n);
+        if (n <= 6) {
+          assert.ok(j, `${skew} ${n}`);
+          d.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+        } else assert.equal(j, null, skew);
+      }
+      // Pending: no unpause counts, not even one after the pause.
+      s.history.push({ id: "early-unpause", kind: "unpause", actor: 10, at: S + 1, pair: null });
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: pending`);
+      assert.deepEqual(d.store.status("1:1").pending, ["quota_pause"]);
+      // Settled by a later reconcile at S + 5: unpauses at or before it still do not count.
+      d.store.settleHolds("1:1", S + 5, d.store.unsettledHolds());
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), true, `${skew}: before the settled time`);
+      s.history.push({ id: "owner-unpause", kind: "unpause", actor: 10, at: S + 6, pair: null });
+      d.store.clearQuota(p, s);
+      assert.equal(d.store.quotaPaused("1:1"), false, `${skew}: a later owner unpause clears`);
+    } finally {
+      d.cleanup();
+    }
+  }
+  // A hold made after a reconcile began is not settled by that reconcile.
+  const d = database();
+  try {
+    const j = claim(d.store);
+    d.store.running(j);
+    const before = d.store.unsettledHolds();
+    d.store.block(j, "publication", 101);
+    d.store.settleHolds(j.key, S, before);
+    assert.equal(d.store.blocked(j.key)!.at, null);
+    d.store.settleHolds(j.key, S + 1, d.store.unsettledHolds());
+    assert.equal(d.store.blocked(j.key)!.at, S + 1);
   } finally {
     d.cleanup();
   }

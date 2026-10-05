@@ -69,7 +69,7 @@ print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} p
   src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
   git clone --quiet --no-checkout "https://github.com/${repo_slug}.git" "$src/repo" || exit 1
   new="$(git -C "$src/repo" rev-parse origin/main)"
-  git -C "$src/repo" merge-base --is-ancestor dbf17492bb276d5102c50b3e4f04e1b14871e7d1 "${new}" || { echo "mainに#56がない"; exit 1; }
+  git -C "$src/repo" merge-base --is-ancestor bea1f658f106c9b7810457634927eff595743c60 "${new}" || { echo "mainに#58がない"; exit 1; }
   git -C "$src/repo" cat-file -e "${new}:tools/review_dispatch/launchd/cycle.plist.in" 2>/dev/null || { echo "mainにlaunchdの雛形がない"; exit 1; }
   test -e "$base/copy-${new}" || { mkdir "$base/copy-${new}" && git -C "$src/repo" archive "${new}" | tar -x -C "$base/copy-${new}" && chmod -R go-rwx "$base/copy-${new}"; } || exit 1
   (cd "$base/copy-${new}" && mise install --quiet) || exit 1
@@ -334,8 +334,6 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 13. 最初のshadow
 
-前提: [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)がマージ済み（R013・R016、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）。写しがそれより古ければ「[更新したとき](#更新したとき)」の写しの行を行う。
-
 1. CodexのAppの設定 → Advanced → Recent Deliveriesで、`ping`をRedeliverする。期待: 応答`400`（秘密は一致し、`ping`は受け付けない種類）。`401`なら秘密が違う。
 2. cycleを1回動かす。
 
@@ -354,8 +352,6 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 4. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめる。結果をIssue #50に記録する（PR48-R006・R011、I003の実測）。
 
 ## 14. 1件のPRをactiveにする
-
-前提: [#58](https://github.com/doc-gif/kurashi-ledger/pull/58)がマージ済み（R015、[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980478517)）で、写しがそれを含む。
 
 [切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは2と3。
 
@@ -380,7 +376,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
   cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
-  kl_mode active && launchctl kickstart -k "$gui/${label}.serve"
+  kl_mode active
 )
 ```
 
@@ -395,6 +391,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 | `PR #N: 状態（理由、世代G）` | 状態は`waiting`・`eligible`・`finished`。主な理由: `draft`、`new-ready-required`（新しいDraft→Readyが要る）、`ci-not-proven`、`base-not-incorporated`（mainを取り込む）、`unknown-identity`（branchの作成から身元を証明できない。新しいPRにするか、[shadowの照合](review-dispatch-implementation.md#shadowの照合)の`identity`を設定する）、`unknown-evidence`（取得の欠け、[CIの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008)の未記録）、`paused`、`blocked-owner-required`、`quota-owner-required` |
 | `blocked` | 公開前の検査で止めた結果。内容を確かめ、PRに`review:paused`を付けてから外すと消える |
 | `上限での停止` | 24時間に6回の起動の上限。原因を確かめ、`review:paused`の付け外しで解く |
+| `停止の時刻が未確定` | 出ているあいだの`review:paused`の解除は数えない。消えてから付け外しする（[R015](review-dispatch-implementation.md#pr48-r013r016w4c58)） |
 | `未処理の編集の印` | 指摘の編集・削除の配送。次のcycleの照合で消える |
 | `不明な投稿` | 0でなければ、GitHubで投稿を確かめるまでreleaseもrollbackもしない |
 | Jobの行 `種類 世代G 状態 run ID` | 新しい順に20件まで。状態は`launching`・`running`・`result-ready`・`posted`・`finished`・`uncertain` |
@@ -433,7 +430,7 @@ run_id="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$polic
 PRを戻す（受付は照合だけを続ける）:
 
 ```zsh
-kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"
+kl_mode shadow
 ```
 
 期待: `shadow start-small-…`。続けて15のstatusで、Jobの行に`launching`・`running`・`result-ready`・`uncertain`がなく、`不明な投稿: 0件`。残れば16。
@@ -468,6 +465,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow && launchctl kickstart -k "$gui/${label}.serve"`、activeなら14の3。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直す |
+| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow`、activeなら14の3。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直す |
 | setup-token（期限） | 3、9 |
-| policy | `kl_mode`か手で変え、revisionを上げ、`launchctl kickstart -k "$gui/${label}.serve"`で受け口を再起動する。Readyのやり直しが要る |
+| policy | `kl_mode`（revisionと`readyAfter`を新しくする）か手で変える。手で変えるときも`readyAfter`を切替の時刻にする。受け口は配送ごとに読み直すので再起動は要らない。Readyのやり直しが要る |
+| cycleが終了コード4、受け口が503を返し続ける | [policyの更新と受け口の503](review-dispatch-implementation.md#policyの更新と受け口の503) |

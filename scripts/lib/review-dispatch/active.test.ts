@@ -605,7 +605,7 @@ test("W4 active step: open RTs, an unprocessed edit mark or a blocked PR launch 
     assert.equal(await activeStep({ policy: p, store: d.store, snapshot: open, runner, broker, fresh, now: 101 }), "idle:faultfinding-open");
     // An edit/delete delivery not yet reconciled stops the next launch.
     const clear = { ...open, faultfinding: { ...open.faultfinding!, unresolved: [] } };
-    d.store.inbox(3, "edit", "issue_comment", "{}", 102, "1:1");
+    d.store.inbox(3, "edit", "issue_comment", "{}", 102, "p1", "1:1");
     assert.equal(nextKind(d.store, p, clear).reason, "edit-mark-pending");
     d.store.processed(3, "edit");
     // A blocked PR stays idle until the owner clears it.
@@ -849,7 +849,7 @@ test("W4 an edit/delete mark during a run keeps the result: the post is deferred
     // A reviewer's edit arrives while the review job runs, and no reconcile clears it (this fresh fetch does
     // not process the Inbox).
     x.setFresh(async () => {
-      x.d.store.inbox(3, "edit-during-run", "issue_comment", "{}", 101, "1:1");
+      x.d.store.inbox(3, "edit-during-run", "issue_comment", "{}", 101, "p1", "1:1");
       return ff;
     });
     assert.equal(await x.step(ff, 102), "review:deferred");

@@ -117,10 +117,12 @@ export class GhReader {
       } catch {
         throw new EvidenceError();
       }
-      if (field && Number.isSafeInteger(object(value)["total_count"])) {
-        const n = Number(object(value)["total_count"]);
+      // A counted list without a valid count is unconfirmed, never complete (PR58-R002 sweep).
+      if (field) {
+        const n = object(value)["total_count"];
+        if (!Number.isSafeInteger(n) || Number(n) < 0) throw new EvidenceError();
         if (expected !== null && expected !== n) throw new EvidenceError();
-        expected = n;
+        expected = Number(n);
       }
       const page = field ? object(value)[field] : value;
       if (!Array.isArray(page)) throw new EvidenceError();
@@ -205,7 +207,22 @@ export type Collection = {
   // PR48-R007: new immutable observation records of finding items, for the caller to persist.
   findingItems: ItemRecord[];
   findingChanges: ChangeRecord[];
+  // PR48-R013: the incompleteness may go away (the PR, its state or main changed during the fetch, or the
+  // commit list is short or its expected count is unconfirmed). False when the only causes are permanent: an
+  // untrusted workflow, or a PR over the 250-commit list limit of pulls/<n>/commits.
+  transient: boolean;
+  // PR58-R002: the commit list against the PR's count: all listed, the known 250 cap (permanent), short, or a
+  // count that is missing or not a non-negative integer (unconfirmed, never complete).
+  commitList: "listed" | "capped" | "short" | "unconfirmed";
 };
+// GitHub lists at most 250 commits of a pull request (pulls/<n>/commits).
+export const PR_COMMIT_LIST_LIMIT = 250;
+export function commitList(expected: unknown, listed: number): Collection["commitList"] {
+  if (!Number.isSafeInteger(expected) || Number(expected) < 0) return "unconfirmed";
+  const n = Number(expected);
+  if (listed === n) return "listed";
+  return n > PR_COMMIT_LIST_LIMIT && listed === PR_COMMIT_LIST_LIMIT ? "capped" : "short";
+}
 // PR48-R008: the files that decide the CI judgement. Owner decision (Issue #50, 2026-10-04,
 // issuecomment-5977404200): all of .github, package.json, tools/review_guard/, scripts/check-test-skips.ts
 // and what it reads (scripts/lib/test-skips.ts and the skip table in docs/development.md). Test
@@ -439,9 +456,7 @@ export async function collect(
     author: id(object(pr["user"])),
     pushers: options.pushers,
     historyComplete: options.historyComplete,
-    complete:
-      workflowTrusted &&
-      (typeof pr["commits"] !== "number" || commits.length === pr["commits"]),
+    complete: workflowTrusted && commitList(pr["commits"], commits.length) === "listed",
     mergeBase: sha(object(compare["merge_base_commit"])["sha"]),
     headTree,
     testedTree,
@@ -526,11 +541,10 @@ export async function collect(
       v["updated_at"],
       v["labels"],
     ]);
-  if (
-    !samePair(snapshot.pair, snapshot.finalPair) ||
-    meta(pr) !== meta(afterPR)
-  )
-    snapshot.complete = false;
+  const changed =
+    !samePair(snapshot.pair, snapshot.finalPair) || meta(pr) !== meta(afterPR);
+  if (changed) snapshot.complete = false;
+  const list = commitList(pr["commits"], commits.length);
   return {
     policyRevision: p.revision,
     creation,
@@ -548,6 +562,8 @@ export async function collect(
     workflow,
     findingItems: found.items,
     findingChanges: found.changes,
+    transient: changed || list === "short" || list === "unconfirmed",
+    commitList: list,
   };
 }
 const objectOrNull = (v: unknown): Record<string, unknown> | null =>
