@@ -33,7 +33,7 @@ claude_ver="$("$claude_exe" --version 2>/dev/null | awk '{print $1}')"
 agents="$HOME/Library/LaunchAgents" label=local.kurashi-ledger.dispatch gui="gui/$(id -u)"
 dispatch=("$node_bin" "$copy/scripts/review-dispatch.ts")
 daemon=("$python_bin" "$copy/tools/review_dispatch/supervisor.py" daemon --root "$root" --)
-kl_mode() { "$node_bin" -e 'const fs = require("fs"); const [f, mode] = process.argv.slice(1); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + Date.now(); p.readyAfter = Date.now(); fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1"; }
+kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"; [[ -n $d ]] || { echo "GitHubの時刻を取れない。policyを変えない"; return 1; }; "$node_bin" -e 'const fs = require("fs"); const [f, mode, date] = process.argv.slice(1); const g = Date.parse(date); if (!Number.isFinite(g)) { console.error("GitHubの時刻が読めない。policyを変えない"); process.exit(1); } const t = Math.max(Date.now(), g + 1000); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + t; p.readyAfter = t; fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1" "$d"; }
 print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} python=${python_bin:-なし} claude=${claude_ver:-なし}"
 ```
 
@@ -465,7 +465,7 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 | 変えたもの | やり直す手順 |
 | --- | --- |
 | Claude Code（自動更新を含む。`ls "$claude_exe"`が失敗するか、cycleのログに`capability-version`・`capability-executable`が出たら） | 0、`rm "$install"`のあと5、8、9 |
-| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。そのあと前のmodeに戻す: shadowなら`kl_mode shadow`、activeなら14の3。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直す |
+| 写し（新しいmain） | 17のlaunchdから外す行（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`（revisionと`readyAfter`を新しくする）か手で変える。手で変えるときも`readyAfter`を切替の時刻にする。受け口は配送ごとに読み直すので再起動は要らない。Readyのやり直しが要る |
 | cycleが終了コード4、受け口が503を返し続ける | [policyの更新と受け口の503](review-dispatch-implementation.md#policyの更新と受け口の503) |

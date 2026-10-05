@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Template. docs/review-dispatch-runbook.md renders the @NAME@ values; do not edit by hand. -->
-<!-- The Webhook receiver on 127.0.0.1:@PORT@. It reads the policy at start: restart it after a policy change. -->
+<!-- The Webhook receiver on 127.0.0.1:@PORT@. It re-reads the policy for every signed delivery; restart only if the repo, installation or App ID changes. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>

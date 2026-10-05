@@ -27,7 +27,7 @@ Issue #45の基盤と、Issue #50のstart-smallのactive。**既定はoff。** �
 | APPROVEの前の確認 | `accepted()`と同じ止め方（[未解消の指摘](#未解消の指摘pr48-r007)と、登録したほかの参加者の最新のCHANGES_REQUESTED）に当たれば、`decision: needs-owner`のCOMMENTにし、止めたIDを本文に書く |
 | 編集・削除の印 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）のうち、登録した参加者（実装担当を除く）とownerの項目に、受信と同じtransactionで付く。投稿の前に印があれば照合をやり直し、3回で消えなければ結果とleaseを保ったまま`deferred`にして1回通知する。次の`cycle`は、新しい起動の判定より先に同じJobを投稿する（再起動しない。capabilityの照合より前） |
 | 終了の証明 | supervisorは正常終了のあともprocess groupが空であることを確かめる。run-keyを受けていないかackを送っていないrun、manifestがなくrun lockが空いているrunは未起動として扱う |
-| `serve` | Webhookの受け口（127.0.0.1、1024〜65535で443以外）。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存したら`<root>/trigger`の時刻を変える（launchdのWatchPaths用）。policyは起動時に読む |
+| `serve` | Webhookの受け口（127.0.0.1、1024〜65535で443以外）。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存したら`<root>/trigger`の時刻を変える（launchdのWatchPaths用）。policyは署名を確かめた配送ごとに読み直す（[policyの更新](#policyの更新と受け口の503)） |
 | `status`・`release` | 状態の表示（IDと件数）。`release`はsupervisorの`inspect`の証明で終わったrunのleaseを外す。不明な投稿があれば外さない |
 | `measure`・`doctor` | ownerだけが実CLIで行う測定と否定試験。CIでは偽物の部品で試験する |
 
