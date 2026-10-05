@@ -212,7 +212,11 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
     [PROFILE.replace(SOCKET_DENY_LINE, ""), "socket-deny-missing"],
     [`${PROFILE}\n(allow file-read* (subpath "/private/tmp"))`, "socket-dir-open"],
     [`${PROFILE}\n(allow file-read* (regex #"^/tmp/kl-sock-"))`, "socket-dir-open"],
+    [PROFILE.replace("(allow file-read-metadata)", '(allow file-write* (regex #"kl-ctl-"))'), "socket-dir-open"], // PR60 RT-6
     [`${PROFILE}\n(allow network-outbound)`, "network-open"],
+    // PR60 RT-5: whitespace other than one space (Seatbelt accepts these).
+    [PROFILE.replace("(allow file-read-metadata)", "(allow\tnetwork-outbound)"), "network-open"],
+    [PROFILE.replace("(allow file-read-metadata)", "(  allow\n  network-outbound  )"), "network-open"],
     [`${PROFILE}\n(allow network*)`, "network-open"],
     [`${PROFILE}\n(allow network-outbound (remote unix-socket (path-literal "/srv/synthetic/control.sock")))`, "network-open"],
     // PR60 RT-2: a network operation anywhere in the operation list.

@@ -320,13 +320,17 @@ const NETWORK_ALLOWS = [
 ];
 export function lintProfile(text: string): string[] {
   const problems: string[] = [];
-  // A Windows checkout may carry CRLF line endings; the rules are the same text.
+  // A Windows checkout may carry CRLF line endings; the rules are the same text. Whitespace is
+  // normalised (tabs, runs, space after "(" or before ")"), as Seatbelt reads it (PR60 RT-5).
   const code = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((l) => l.replace(/;.*$/, "").trim())
     .filter(Boolean)
-    .join(" ");
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .replace(/\( /g, "(")
+    .replace(/ \)/g, ")");
   if (!/^\(version 1\) \(deny default\)/.test(code)) problems.push("not-deny-default");
   const allows = code.match(/\(allow [^()]*(?:\([^()]*(?:\([^()]*\)[^()]*)*\)[^()]*)*\)/g) ?? [];
   for (const a of allows) {
@@ -337,7 +341,7 @@ export function lintProfile(text: string): string[] {
       problems.push("signal-outside");
     if (/SecurityServer|securityd|security\.agent|\/usr\/bin\/security|Keychains/.test(a)) problems.push("keychain");
     // The stand-in control sockets (privateSocket) live under /private/tmp: nothing may open it.
-    if (/\/tmp\b|kl-sock/.test(a)) problems.push("socket-dir-open");
+    if (/\/tmp\b|kl-sock|kl-ctl/.test(a)) problems.push("socket-dir-open");
     // A Unix socket connect is network-outbound: only DNS and TCP 443 may be allowed, and only as the
     // exact reviewed rules. Any network operation in an operation list counts (PR60 RT-2).
     const ops = /^\(allow ([^()]*)/.exec(a)?.[1]?.trim().split(/\s+/) ?? [];
