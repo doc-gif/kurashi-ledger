@@ -148,7 +148,7 @@ TypeScriptは`npm test`、Pythonは`.review/tests/test_dispatch_supervisor.py`�
 | 項目 | 状態 |
 | --- | --- |
 | 実機の測定（I001/I008/O2のdoctor・measure、I003/I004/O1の配送と遅延、I009の子孫、PR48-R011の配送の大きさ・トンネル経由で5秒以内か・本文が変わるか） | ownerが[導入手順](review-dispatch-runbook.md)の8・9・13で行い、Issue #50に記録する |
-| PR48-R006 / I003 | 実Webhookの前に、配送のbase.shaとtimeline・updated_atの実際の値を測る（導入手順の13）。結合できなければunknownを保ち、結合の規則を独立レビューで直す |
+| PR48-R006 / I003 | activeの前に、配送のbase.shaとtimeline・updated_atの実際の値を測る（[導入手順](review-dispatch-runbook.md)の13の4。未完了なら14の3が止める）。結合できなければunknownを保ち、結合の規則を独立レビューで直す |
 | I010 | App作成PRのCopilotの応答は任意の補助情報。起動・マージの条件に戻さない |
 | I011 | 共有された従来アカウントの身元移行。結合と照合のコードはある。実repoの`identity`の設定は未検証 |
 | PR48-R014の`unresolvedDesign`の専用の取得元 | activeの前に作らない（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5980777385)） |

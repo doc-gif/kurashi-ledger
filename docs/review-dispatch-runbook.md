@@ -34,6 +34,7 @@ agents="$HOME/Library/LaunchAgents" label=local.kurashi-ledger.dispatch gui="gui
 dispatch=("$node_bin" "$copy/scripts/review-dispatch.ts")
 daemon=("$python_bin" "$copy/tools/review_dispatch/supervisor.py" daemon --root "$root" --)
 kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"; [[ -n $d ]] || { echo "GitHubの時刻を取れない。policyを変えない"; return 1; }; "$node_bin" -e 'const fs = require("fs"); const [f, mode, date] = process.argv.slice(1); const g = Date.parse(date); if (!Number.isFinite(g)) { console.error("GitHubの時刻が読めない。policyを変えない"); process.exit(1); } const t = Math.max(Date.now(), g + 1000); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + t; p.readyAfter = t; fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1" "$d"; }
+kl_stopped() { local st; st="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null)" || { run_id=; echo "statusが失敗した（cycleの実行中なら1分後に）。停止は未確認"; return 1; }; run_id="$(print -r -- "$st" | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|result-ready|uncertain)$/ {print $5; exit}')"; [[ -z $run_id && $st == *"不明な投稿: 0件"* && $st != *"不明な投稿: "[1-9]* ]] && { echo "停止を確認"; return 0; }; echo "停止していない（run=${run_id:-なし}、不明な投稿あり、のどちらか）。16を行う"; return 1; }
 print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} python=${python_bin:-なし} claude=${claude_ver:-なし}"
 ```
 
@@ -92,13 +93,13 @@ claude setup-token
 
 ```zsh
 (
-  umask 077
+  umask 077; trap 'pbcopy < /dev/null' EXIT
   IFS= read -rs 'tok?トークンを貼り付けてEnter: ' || exit 1
   print -r -- "$tok" > "$token_file" && echo && ls -le "$token_file"
 )
 ```
 
-期待: `-rw-------`の1行で、ACLの行がない。⌘Kで画面のトークンを消す。期限が切れたら、この手順をやり直す。
+期待: `-rw-------`の1行で、ACLの行がない。成功でも失敗でもクリップボードは空になる。⌘Kで画面のトークンを消す。期限が切れたら、この手順をやり直す。
 
 ## 4. policyを作る（shadow）
 
@@ -335,13 +336,21 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 ## 13. 最初のshadow
 
 1. CodexのAppの設定 → Advanced → Recent Deliveriesで、`ping`をRedeliverする。期待: 応答`400`（秘密は一致し、`ping`は受け付けない種類）。`401`なら秘密が違う。
-2. cycleを1回動かす。
+2. cycleを1回動かし、今回の起動が終了コード0で終わったことを確かめる。
 
    ```zsh
-   launchctl kickstart "$gui/${label}.cycle"; sleep 60; grep -c -e 'トークンを発行できなかった' -e 'コマンドを実行できなかった' -e '保留しました' "$logs/cycle.err"
+   (
+     runs() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\t'"$1"'" {print $2}'; }
+     before="$(runs runs)"; [[ -n $before ]] || { echo "未完了: cycleが登録されていない（12）"; exit 1; }
+     launchctl kickstart "$gui/${label}.cycle" || { echo "未完了: 起動できない"; exit 1; }
+     for i in {1..120}; do [[ $(runs runs) -gt $before && $(runs state) != running ]] && break; sleep 5; done
+     [[ $(runs runs) -gt $before && $(runs state) != running ]] || { echo "未完了: 10分で終わらない"; exit 1; }
+     code="$(runs 'last exit code')"; [[ $code == 0 ]] || { echo "未完了: 終了コード${code}（tail \"$logs/cycle.err\"）"; exit 1; }
+     echo "照合完了"
+   )
    ```
 
-   期待: `0`（launchdからkeychainのApp鍵を読み、照合が終わった）。1以上なら`tail "$logs/cycle.err"`で読む。
+   期待: `照合完了`。ほかの表示なら13は未完了。終了コード4は[policyの更新](review-dispatch-implementation.md#policyの更新と受け口の503)、125はApp鍵を読めない（launchdからkeychain）。
 3. 状態を見る（[15](#15-statusの読み方)）。
 
    ```zsh
@@ -349,7 +358,36 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
    ```
 
    期待: `PR #…`の行が`未観測`でない。Jobの行がない（shadowはAIを起動しない）。`capability(claude): 記録あり`。
-4. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめる。結果をIssue #50に記録する（PR48-R006・R011、I003の実測）。
+4. 実配送の結合を確かめる（PR48-R006）。mainが動かない間に、対象のPRを実装担当か所有者がDraft→Readyにし、2を行ってから:
+
+   ```zsh
+   (
+     rm -f "$etc/r006-ok"
+     gh api --paginate "repos/${repo_slug}/issues/${target_pr}/timeline" --jq '.[] | select(.event == "ready_for_review") | "\(.id)\t\(.created_at)\t\(.actor.id)"' > "$etc/r006-timeline.tsv" || exit 1
+     main_sha="$(gh api "repos/${repo_slug}/commits/main" --jq .sha)" && head_sha="$(gh api "repos/${repo_slug}/pulls/${target_pr}" --jq .head.sha)" || exit 1
+     "$node_bin" -e '
+       const fs = require("fs"); const { DatabaseSync } = require("node:sqlite");
+       const [db, pol, pr, main, head, tlf, out] = process.argv.slice(1);
+       const p = JSON.parse(fs.readFileSync(pol, "utf8")); const key = p.repoId + ":" + pr;
+       const tl = fs.readFileSync(tlf, "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
+       const d = new DatabaseSync(db, { readOnly: true });
+       const bound = new Set(d.prepare("SELECT id FROM evidence WHERE key = ?").all(key).map((r) => r.id));
+       let ok = false;
+       for (const r of d.prepare("SELECT delivery, policy, payload FROM inbox WHERE event = ? AND payload IS NOT NULL").all("pull_request")) {
+         const b = JSON.parse(r.payload), x = b.pull_request || {};
+         if (b.action !== "ready_for_review" || String(x.number) !== pr) continue;
+         const m = tl.filter(([, at, actor]) => Date.parse(at) === Date.parse(x.updated_at) && Number(actor) === b.sender.id);
+         const c = { revision: r.policy === p.revision, updated_at: m.length === 1, head: x.head.sha === head, base: x.base.sha === main, bound: m.length === 1 && bound.has("ready:" + key + ":timeline:" + m[0][0]) };
+         console.log(r.delivery, JSON.stringify(c));
+         if (Object.values(c).every(Boolean)) { ok = true; fs.writeFileSync(out, r.delivery + "\n", { mode: 0o600 }); }
+       }
+       console.log(ok ? "R006 完了" : "R006 未完了"); process.exit(ok ? 0 : 1);
+     ' "$root/dispatch.sqlite" "$policy" "$target_pr" "$main_sha" "$head_sha" "$etc/r006-timeline.tsv" "$etc/r006-ok"
+   )
+   ```
+
+   期待: 配送ごとの比較（revision・updated_at＝timelineの時刻・head・base＝main・結合）が1行ずつと、`R006 完了`。`R006 未完了`なら結合の規則を独立レビューで直すまでactiveにしない（14の3が止める）。比較の行をIssue #50に記録する。
+5. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめ、Issue #50に記録する（PR48-R011、I003）。
 
 ## 14. 1件のPRをactiveにする
 
@@ -376,6 +414,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
   cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
+  test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
   kl_mode active
 )
 ```
@@ -401,15 +440,15 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 16. release
 
-runが終わったのにleaseが残る（Macの再起動のあと等）ときだけ使う。対象のrunを求める。
+未完了のJob（`launching`・`running`・`result-ready`・`uncertain`）を、終了を証明して外す。
 
 ```zsh
-run_id="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|uncertain)$/ {print $5; exit}')"; print -r -- "run=${run_id:-なし}"
+kl_stopped
 ```
 
-期待: `run=`とID。`なし`なら外すものはない（15のstatusで確かめる）。
+期待: `停止を確認`なら終わり。`停止していない（run=…）`ならIDが`run_id`に入る。`statusが失敗した`なら停止は未確認のまま待つ。
 
-実行中のrunを止めるときだけ、取り消しの印を置き、1分待つ。
+実行中のrunだけ、取り消しの印を置き、1分待つ。
 
 ```zsh
 [[ -n $run_id ]] && : > "$root/cancel-${run_id}"
@@ -421,7 +460,7 @@ run_id="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$polic
 [[ -n $run_id ]] && "${daemon[@]}" "${dispatch[@]}" release --root "$root" --policy "$policy" --install "$install" --run "$run_id"
 ```
 
-期待: `run …のleaseを外しました`。終了コード4は不明な投稿がある。`保留しました`は終了を証明できない。どちらも外さずに待つ。
+期待: `run …のleaseを外しました`。終了コード4は不明な投稿がある（GitHubで投稿を確かめる）。`保留しました`は終了を証明できない。どちらも外さずに待つ。外したら最初の`kl_stopped`に戻り、`停止を確認`まで繰り返す。
 
 ## 17. rollback
 
@@ -433,7 +472,7 @@ PRを戻す（受付は照合だけを続ける）:
 kl_mode shadow
 ```
 
-期待: `shadow start-small-…`。続けて15のstatusで、Jobの行に`launching`・`running`・`result-ready`・`uncertain`がなく、`不明な投稿: 0件`。残れば16。
+期待: `shadow start-small-…`。続けて16の`kl_stopped`が`停止を確認`になるまで16を行う。
 
 全体を止める。まずlaunchdから外す（serveはoffで起動しないので、先に外す）:
 
@@ -447,7 +486,7 @@ for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/nu
 kl_mode off
 ```
 
-期待: `off start-small-…`。15のstatusで、Jobの行に`launching`・`running`がなく、`不明な投稿: 0件`。残れば16。CodexのAppのWebhookのActiveを外す。
+期待: `off start-small-…`。16の`kl_stopped`が`停止を確認`になるまで16を行う。CodexのAppのWebhookのActiveを外す。
 
 ## 18. 広げる前に測る
 
