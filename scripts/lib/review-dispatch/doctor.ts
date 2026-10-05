@@ -27,6 +27,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -313,6 +314,10 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
 
 // Static lint of cli.sb: rules that would hand a worker the supervisor's task port,
 // other processes, the keychain or everything at once. Deny-by-default must stay first.
+const NETWORK_ALLOWS = [
+  '(allow network-outbound (literal "/private/var/run/mDNSResponder"))',
+  '(allow network-outbound (remote tcp "*:443"))',
+];
 export function lintProfile(text: string): string[] {
   const problems: string[] = [];
   // A Windows checkout may carry CRLF line endings; the rules are the same text.
@@ -331,12 +336,17 @@ export function lintProfile(text: string): string[] {
     if (/^\(allow signal\)/.test(a) || (/^\(allow signal/.test(a) && !/target (?:self|same-sandbox)/.test(a)))
       problems.push("signal-outside");
     if (/SecurityServer|securityd|security\.agent|\/usr\/bin\/security|Keychains/.test(a)) problems.push("keychain");
+    // The stand-in control sockets (privateSocket) live under /private/tmp: nothing may open it.
+    if (/\/tmp\b|kl-sock/.test(a)) problems.push("socket-dir-open");
+    // A Unix socket connect is network-outbound: only DNS and TCP 443 may be allowed.
+    if (/^\(allow network/.test(a) && !NETWORK_ALLOWS.includes(a)) problems.push("network-open");
   }
   for (const need of ['(deny mach-lookup (global-name "com.apple.SecurityServer")', '(deny process-exec (literal "/usr/bin/security"))'])
     if (!code.includes(need)) problems.push("keychain-deny-missing");
   if (!code.includes("(deny process-info*) (allow process-info* (target self))")) problems.push("process-info-deny-missing");
   if (!code.includes('(deny network-outbound (remote ip "localhost:*"))')) problems.push("loopback-deny-missing");
   if (/\(allow sysctl-read\)/.test(code)) problems.push("sysctl-unrestricted");
+  if (!code.includes(SOCKET_DENY_LINE)) problems.push("socket-deny-missing");
   return [...new Set(problems)];
 }
 
@@ -518,7 +528,7 @@ type Fixture = {
   envReader: string | null;
   envTarget: { pid: number; nonce: string; kill(): void } | null;
   server: Server;
-  control: Server;
+  control: PrivateSocket;
 };
 
 // A throwaway keychain file with one App-key-shaped item: a generic password whose ACL
@@ -590,11 +600,73 @@ export function profileVariant(text: string, variant: "item-confined" | "item-op
   return rest.join("\n");
 }
 
+// ---- Stand-in control sockets (doctor and measure) ----
+// A macOS sun_path holds 104 bytes including the NUL, so a socket inside a deep run directory
+// (~/.local/share/kurashi-dispatch/runs/measure-<uuid>/trap/...) cannot be bound: listen EINVAL (W4d).
+// The socket goes into a fresh directory under the real path of /tmp (/private/tmp on macOS). cli.sb
+// opens nothing there and denies "kl-sock-" directories explicitly (socket-deny), so the worker can
+// neither read nor connect. The directory must be a real directory of this user with mode 0700, and the
+// whole path must fit, or nothing is bound.
+export const SUN_PATH_MAX = 104;
+export const SOCKET_PREFIX = "kl-sock-";
+export const SOCKET_DENY_LINE = `(deny file-read* file-write* network-outbound (regex #"^/private/tmp/${SOCKET_PREFIX}"))`;
+export function checkSocketPath(path: string): string {
+  const n = Buffer.byteLength(path);
+  if (n >= SUN_PATH_MAX) throw new Error(`unix-socket-path-too-long: ${n} bytes, at most ${SUN_PATH_MAX - 1}`);
+  return path;
+}
+type DirStat = { isDirectory(): boolean; isSymbolicLink(): boolean; uid: number; mode: number };
+export type PrivateSocket = { path: string; dir: string; close(): Promise<void> };
+export async function privateSocket(
+  server: Server,
+  options: { base?: string; stat?: (p: string) => DirStat } = {},
+): Promise<PrivateSocket> {
+  if (process.platform === "win32" || !process.getuid) throw new Error("unix-socket-unsupported");
+  const uid = process.getuid();
+  const dir = mkdtempSync(join(realpathSync(options.base ?? "/tmp"), SOCKET_PREFIX));
+  const path = join(dir, "control.sock");
+  // Only the socket and the directory this call made: never recursive, never through a link.
+  const remove = () => {
+    for (const f of [() => rmSync(path, { force: true }), () => rmdirSync(dir)])
+      try {
+        f();
+      } catch {
+        // Left in place: a non-empty or foreign directory is never removed recursively.
+      }
+  };
+  try {
+    const st = (options.stat ?? lstatSync)(dir);
+    if (!st.isDirectory() || st.isSymbolicLink() || st.uid !== uid || (st.mode & 0o777) !== 0o700)
+      throw new Error("unix-socket-dir-not-private");
+    checkSocketPath(path);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(path, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+  } catch (e) {
+    remove();
+    throw e;
+  }
+  return {
+    path,
+    dir,
+    async close() {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      remove();
+    },
+  };
+}
+
 // Real Seatbelt host. It creates a synthetic fixture tree in a fresh temporary directory,
 // never reads real credentials and never contacts anything but its own loopback port.
+// The control socket lives outside that tree (privateSocket), so a long temporary directory still works.
 export function seatbeltHost(options: {
   cliProfile: string;
   platform?: NodeJS.Platform;
+  base?: string; // where the fixture directory is made (default: the OS temporary directory)
 }): SandboxHost & { close(): Promise<void> } {
   const platform = options.platform ?? process.platform;
   let fixture: Fixture | null = null;
@@ -602,7 +674,7 @@ export function seatbeltHost(options: {
   const nodeRoot = dirname(dirname(node));
   const setup = async (): Promise<Fixture> => {
     if (fixture) return fixture;
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-doctor-")));
+    const root = realpathSync(mkdtempSync(join(options.base ?? tmpdir(), "kl-doctor-")));
     if (within(root, nodeRoot) || within(nodeRoot, root)) throw new Error("fixture overlaps runtime");
     const dir = (...p: string[]) => {
       const d = join(root, ...p);
@@ -619,19 +691,23 @@ export function seatbeltHost(options: {
     const profile = readFileSync(options.cliProfile, "utf8");
     for (const v of ["item-confined", "item-open", "env-open"] as const)
       writeFileSync(join(root, `${v}.sb`), profileVariant(profile, v));
-    const listen = (srv: Server, at: number | string) =>
-      new Promise<void>((resolve, reject) => {
-        srv.once("error", reject);
-        if (typeof at === "number") srv.listen(at, "127.0.0.1", () => resolve());
-        else srv.listen(at, () => resolve());
-      });
     const server = createServer((c) => c.end());
-    await listen(server, 0);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    const socket = join(dir("supervisor"), "control.sock");
-    const control = createServer((c) => c.end());
-    await listen(control, socket);
+    let control: PrivateSocket;
+    try {
+      control = await privateSocket(createServer((c) => c.end()));
+    } catch (e) {
+      // Nothing may keep the process alive or stay on disk when the socket is refused.
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(root, { recursive: true, force: true });
+      throw e;
+    }
+    const socket = control.path;
     const home = dir("home");
     // The env reader: compiled for this run; without a compiler the probe is inconclusive.
     const bin = dir("bin");
@@ -769,7 +845,7 @@ export function seatbeltHost(options: {
       if (f.keychain) removeSyntheticKeychain(f.keychain);
       f.envTarget?.kill();
       await new Promise<void>((resolve) => f.server.close(() => resolve()));
-      await new Promise<void>((resolve) => f.control.close(() => resolve()));
+      await f.control.close();
       rmSync(f.root, { recursive: true, force: true });
     },
   };

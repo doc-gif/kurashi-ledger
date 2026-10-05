@@ -48,12 +48,14 @@ import {
   createSyntheticKeychain,
   measureCli,
   measurementRecord,
+  privateSocket,
   profileHash,
   removeSyntheticKeychain,
   runDoctor,
   type CliExecutor,
   type DoctorResult,
   type Measurement,
+  type PrivateSocket,
   type SandboxHost,
   type TrapLayout,
 } from "./doctor.ts";
@@ -863,12 +865,21 @@ export async function trapLayout(root: string): Promise<TrapLayout & { close(): 
   await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", () => resolve()));
   const address = web.address();
   const port = typeof address === "object" && address ? address.port : 0;
-  const socket = join(dir("control"), "control.sock");
-  const sock = createNetServer((c) => {
-    control++;
-    c.end();
-  });
-  await new Promise<void>((resolve) => sock.listen(socket, () => resolve()));
+  // Not under root: a run directory is too deep for a macOS socket path (W4d). privateSocket refuses a
+  // path of 104 bytes or more instead of failing with EINVAL.
+  let sock: PrivateSocket;
+  try {
+    sock = await privateSocket(
+      createNetServer((c) => {
+        control++;
+        c.end();
+      }),
+    );
+  } catch (e) {
+    await new Promise<void>((resolve) => web.close(() => resolve()));
+    throw e;
+  }
+  const socket = sock.path;
   const keychain = createSyntheticKeychain(dir("keychain"));
   return {
     root,
@@ -886,7 +897,7 @@ export async function trapLayout(root: string): Promise<TrapLayout & { close(): 
     async close() {
       if (keychain) removeSyntheticKeychain(keychain);
       await new Promise<void>((resolve) => web.close(() => resolve()));
-      await new Promise<void>((resolve) => sock.close(() => resolve()));
+      await sock.close();
     },
   };
 }

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { connect } from "node:net";
+import { dirname, join, sep } from "node:path";
 import { test } from "node:test";
 import {
   ActiveError,
@@ -15,6 +16,7 @@ import {
   nextKind,
   parseInstall,
   startSmall,
+  trapLayout,
   type ActiveInstall,
   type SpawnSupervisor,
   type SupervisorChild,
@@ -1095,4 +1097,37 @@ test("Round 6 RT-1: the REAL guard.py accepts a PR's changed plan (ok), refuses 
   assert.deepEqual(redTeamOpen(clear, { ...refused.meta, ledger: [], previousRts: [] }), ["guard-refused"]);
   assert.deepEqual(redTeamOpen(clear, { ...missing.meta, ledger: [], previousRts: [] }), ["guard-unavailable"]);
   assert.deepEqual(redTeamOpen(clear, { ...ok.meta, ledger: [], previousRts: [] }), []);
+});
+
+// W4d: the owner's measure failed with listen EINVAL at
+// ~/.local/share/kurashi-dispatch/runs/measure-<uuid>/trap/control/control.sock (124 bytes; macOS allows 103).
+test("W4d measure: trapLayout under a root over 80 characters binds the control socket outside it, counts a connect, and removes it on close", async (t) => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "kl-w4d-trap-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const root = join(base, ".local", "share", "kurashi-dispatch", "runs", `measure-${"0".repeat(36)}`, "trap");
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  assert.ok(root.length > 80 && Buffer.byteLength(join(root, "control", "control.sock")) > 108, root);
+  if (process.platform === "win32") {
+    // Not a skip: the measurement runs on macOS only; on Windows the trap refuses (no Unix sockets).
+    await assert.rejects(trapLayout(root), /unix-socket-unsupported/);
+    t.diagnostic("Windows: trapLayout refused (no Unix sockets for the measurement)");
+    return;
+  }
+  const layout = await trapLayout(root);
+  const socket = layout.supervisor.socket;
+  try {
+    assert.ok(Buffer.byteLength(socket) < 104, socket);
+    assert.ok(!socket.startsWith(root + sep) && !socket.startsWith(base + sep), socket);
+    assert.equal(layout.supervisor.hits(), 0);
+    await new Promise<void>((resolve, reject) => {
+      const c = connect({ path: socket });
+      c.on("error", reject);
+      c.on("close", () => resolve());
+      c.resume();
+    });
+    assert.equal(layout.supervisor.hits(), 1);
+  } finally {
+    await layout.close();
+  }
+  assert.equal(existsSync(dirname(socket)), false);
 });
