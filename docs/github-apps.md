@@ -255,12 +255,12 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 期待: 2つ目の要求が`HTTP 401`で失敗する。スクリプト自身の失効は401（すでに無効）になり、注意を出さずに終える。
 
-否定（権限の外の書込みが拒まれること。bodyをわざと無効にしてあるので、権限があっても何も作られず422になる。2xxが出たら、すぐに所有者に知らせる）:
+否定（bodyは無効なので、権限があっても作成されない。issuesの要求は本文の検証が先に行われるため、422では権限不足を証明できない。2xxが出たら所有者に知らせる）:
 
 | 確かめること | コマンドの`--`のあと | `review`で期待 | `implement`で期待 |
 | --- | --- | --- | --- |
 | contentsの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000` | 403 | 422 |
-| issuesの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/issues -f title=` | 403 | 422 |
+| issuesの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/issues -f title=` | 422 | 422 |
 | administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
