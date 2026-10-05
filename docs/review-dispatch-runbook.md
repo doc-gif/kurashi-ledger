@@ -33,7 +33,7 @@ claude_ver="$("$claude_exe" --version 2>/dev/null | awk '{print $1}')"
 agents="$HOME/Library/LaunchAgents" label=local.kurashi-ledger.dispatch gui="gui/$(id -u)"
 dispatch=("$node_bin" "$copy/scripts/review-dispatch.ts")
 daemon=("$python_bin" "$copy/tools/review_dispatch/supervisor.py" daemon --root "$root" --)
-kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"; [[ -n $d ]] || { echo "GitHubの時刻を取れない。policyを変えない"; return 1; }; "$node_bin" -e 'const fs = require("fs"); const [f, mode, date] = process.argv.slice(1); const g = Date.parse(date); if (!Number.isFinite(g)) { console.error("GitHubの時刻が読めない。policyを変えない"); process.exit(1); } const t = Math.max(Date.now(), g + 1000); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + t; p.readyAfter = t; fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1" "$d"; }
+kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"; [[ -n $d || $1 != active ]] || { echo "GitHubの時刻を取れない。policyを変えない"; return 1; }; "$node_bin" -e 'const fs = require("fs"); const [f, mode, date] = process.argv.slice(1); let g = Date.parse(date); if (!Number.isFinite(g)) { if (mode === "active") { console.error("GitHubの時刻が読めない。policyを変えない"); process.exit(1); } console.error("GitHubの時刻を取れないので、Macの時刻を使う"); g = 0; } const t = Math.max(Date.now(), g + 1000); const p = JSON.parse(fs.readFileSync(f, "utf8")); p.mode = mode; p.revision = "start-small-" + t; p.readyAfter = t; fs.writeFileSync(f + ".new", JSON.stringify(p, null, 1) + "\n", { mode: 0o600, flag: "wx" }); fs.renameSync(f + ".new", f); console.log(p.mode, p.revision);' "$policy" "$1" "$d"; }
 kl_stopped() { local st; st="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null)" || { run_id=; echo "statusが失敗した（cycleの実行中なら1分後に）。停止は未確認"; return 1; }; run_id="$(print -r -- "$st" | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|result-ready|uncertain)$/ {print $5; exit}')"; [[ -z $run_id && $st == *"不明な投稿: 0件"* && $st != *"不明な投稿: "[1-9]* ]] && { echo "停止を確認"; return 0; }; echo "停止していない（run=${run_id:-なし}、不明な投稿あり、のどちらか）。16を行う"; return 1; }
 print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} python=${python_bin:-なし} claude=${claude_ver:-なし}"
 ```
@@ -311,7 +311,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 12. launchdに登録する
 
-雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。Bを選んだときはトンネルも登録する。
+雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。Bを選んだときはトンネルも登録する。登録済みのものは飛ばすので、やり直してよい。
 
 ```zsh
 (
@@ -326,7 +326,7 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
       -e "s|@CLOUDFLARED@|$(command -v cloudflared)|g" -e "s|@TUNNEL_CONFIG@|${etc}/tunnel.yml|g" \
       "$copy/tools/review_dispatch/launchd/${n}.plist.in" > "$agents/${label}.${n}.plist" && plutil -lint "$agents/${label}.${n}.plist" || exit 1
   done
-  for n in $names; do launchctl bootstrap "$gui" "$agents/${label}.${n}.plist" || exit 1; done
+  for n in $names; do launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 || launchctl bootstrap "$gui" "$agents/${label}.${n}.plist" || exit 1; done
   sleep 5; curl -s -o /dev/null -w '受け口: %{http_code}\n' -X POST "http://127.0.0.1:${port}/webhook"
 )
 ```
@@ -405,6 +405,18 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
    期待: 配送ごとの比較（revision・updated_at＝timelineの時刻・head・base＝main・結合）が1行ずつと、`R006 完了`。`R006 未完了`なら結合の規則を独立レビューで直すまでactiveにしない（14の3が止める）。比較の行をIssue #50に記録する。
 5. 1日以上動かし、Recent Deliveriesの応答が`202`で5秒以内か、配送のあと1分以内に`cycle.log`の時刻が変わるか（`ls -l "$logs"`）を確かめ、Issue #50に記録する（PR48-R011、I003）。
 
+## Bへ移る
+
+activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。
+
+1. 0の`tunnel_host`を入れ、0を貼り直す。
+2. 10のBの2つのブロックを行う。
+3. 12を貼り直す。期待: トンネルだけが新しく登録され、`受け口: 401`。続けて12のBの確認で`B確認`。
+4. 11の1で、Webhook URLだけを`https://${tunnel_host}/webhook`に変える（秘密は変えない）。
+5. Aのターミナルで、Ctrl-Cでクイックトンネルを止める。
+6. 次の配送（またはRecent Deliveriesで直近の`ping`以外のRedeliver）の応答が`202`であることを確かめる。
+7. 13の5を、Bの経路でやり直す。
+
 ## 14. 1件のPRをactiveにする
 
 [切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは2と3。
@@ -431,7 +443,7 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
-  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 && ! pgrep -f 'cloudflared tunnel --url' >/dev/null || { echo "Bのトンネルでない（12のBの確認、クイックトンネルの停止）"; exit 1; }
+  test -e "$etc/tunnel-b-ok" && launchctl print "$gui/${label}.tunnel" >/dev/null 2>&1 && ! pgrep -f 'cloudflared tunnel --url' >/dev/null || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
   kl_mode active
 )
 ```
