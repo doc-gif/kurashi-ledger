@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template. docs/review-dispatch-runbook.md renders the @NAME@ values; do not edit by hand. -->
+<!-- The named Cloudflare Tunnel. Its config forwards only /webhook to the receiver. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@.tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@CLOUDFLARED@</string>
+    <string>tunnel</string>
+    <string>--config</string>
+    <string>@TUNNEL_CONFIG@</string>
+    <string>run</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>@HOME@</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>@LOGS@/tunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOGS@/tunnel.err</string>
+</dict>
+</plist>

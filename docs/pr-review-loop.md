@@ -174,20 +174,20 @@ required_reviewers: <login/App IDの一覧>
 
 ### 切替（PRごと）
 
-前提: Issue #50のW1〜W4がマージ済み。doctorの否定試験とhost検査が合格。Webhookの経路・購読・秘密を設定済み。shadowで現行の判定との差を確かめた。
+前提: [導入手順](review-dispatch-runbook.md)の1〜13が済んでいる（doctorの合格、host検査、Webhook、shadow）。2と3のコマンドは導入手順の14。
 
 初期の範囲（[start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したClaudeだけ、修正は手動。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出たとownerが判断してから広げる。
 
 1. ownerが、そのPRの旧担当（レビュー担当・粗探し・T23の巡回）を止め、終了を確かめる。
 2. ownerが、巡回の設定でそのPRを飛ばし、`OWNER_MERGE_ONLY`に加える。
-3. ownerがpolicyへそのPRを加える（新しいrevision、切替時刻の`readyAfter`）。
+3. ownerがpolicyでそのPRを`targets`に置き、modeをactiveにする（新しいrevision、切替時刻の`readyAfter`）。
 4. 調整係が受領記録を、受付が通知を出す。ownerは、実装担当のReadyの前にどちらかが出ていることを確かめる（周知のため）。
 5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は使わない。
 6. 実装担当が新しくDraft→Readyにする。
 
 ### rollback（PRごと、または全体）
 
-1. ownerがpolicyからそのPRを外す（全体ならmodeを`shadow`か`off`）。
+1. ownerがpolicyからそのPRを外すか、modeを`shadow`か`off`にする。
 2. 受付のJobの終了（process tree）を確かめる。uncertainのOutboxは、GitHub上の投稿を確かめて解消してから戻す。
 3. ownerが巡回の設定を戻す。`OWNER_MERGE_ONLY`には残す。
 4. 実装担当が完了報告を出し直し、上の1〜5節でレビューを続ける。

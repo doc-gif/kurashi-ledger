@@ -52,7 +52,7 @@ dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変
 
 GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路の方式は、設計の提案としてCloudflare Tunnelを挙げ、ownerがW4の導入手順で選ぶ。どの方式でも、localhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの導入手順（Issue #50のW4）に置く。URLはrepoへ書かない。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路の方式は、設計の提案としてCloudflare Tunnelを挙げ、ownerがW4の導入手順で選ぶ。どの方式でも、localhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -183,7 +183,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 
 1. 設計PR #46と基盤PR #48はマージ済み（Issue #45は完了）。仕様の追加・変更は実装の差分と一緒に独立レビューする。
 2. Issue #50でactiveの部品を作る。W0は正本の移行（この文書と[PR書式](pr-review-loop.md#受付がactiveのpr)）。W1は起動器・Seatbelt・doctor、W2は実行結果の署名（PR48-R003）と実Broker、W3はhost検査とR007/R008、W4はactiveのCLI・Webhookの受け口・launchd・ownerの導入手順。
-3. ownerがW1〜W4のマージ、doctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
+3. ownerが[導入手順](review-dispatch-runbook.md)でdoctorとhost検査の合格、URL・購読・秘密の設定を確かめる。shadowでは起動・投稿0。15分照合の遅延を現行5分と比べ、許可なく既存確認頻度を変えない。
 4. ownerがPRごとにactiveへ切り替える。手順とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)が正本。capability不足では人へ案内し、旧巡回を勝手に起動しない。停止中PRの一括再開はしない。
 
 2026-10-04の所有者決定。調整係が受けた所有者の指示の受領記録（Issue #50の[1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)・[2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)・[3](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)・[4](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)・[5](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)・[6](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)・[7](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）が正本:
@@ -203,8 +203,8 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | keychain | 閉じ込めたAIからAppの鍵（または同じACLの合成項目）が読めたら、Appの鍵を専用keychain fileへ移す。それまで自動起動は無効 | 移動はApp手順の変更として別PR | §7 |
 | owner-merge-only | 全PRで、AIは`OWNER_MERGE_ONLY`にあるか読めないPRをマージしない。値はリポジトリ変数の1か所だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)）。AIは自分のAppで読み、doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)） | 読取りは`merge-check`用途（[#55](https://github.com/doc-gif/kurashi-ledger/pull/55)） | [運用規約](github-agent-operations.md#owner-merge-only) |
 | start-small | 初期運用は、対象PR 1件、必要なreviewer 1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出てから広げる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)） | — | [PR書式](pr-review-loop.md#切替prごと) |
-| R009 | 時計の後退を許す幅は5秒 | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
-| R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [導入前チェック](review-dispatch-implementation.md)（W3） |
+| R009 | 時計の後退を許す幅は5秒 | — | [host検査](review-dispatch-implementation.md#host検査pr48-r009r011) |
+| R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [workflowの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008) |
 
 ## 9. 受入試験と導入チェックリスト
 

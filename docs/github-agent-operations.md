@@ -42,7 +42,7 @@
 | 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`だけ。写しを作らない |
 | 書き手 | 所有者だけ。AIのAppは読取りだけ |
 | 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
-| 読み方 | マージの直前に、自分のAppの`merge-check`用途（[App手順](github-apps.md#マージ前の確認merge-check)）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない |
+| 読み方 | マージの直前に、自分のAppの`merge-check`用途（[App手順](github-apps.md#マージ直前にaiが行う確認merge-check)）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない |
 | 判定 | 一覧にある、または読めない（404・認証の失敗・書式の誤り）なら、AIはマージしない |
 | 変更 | 受付がactiveにしたPRは所有者が必ず加え、rollback後も残す。外すのも所有者だけ。受領記録・通知・ラベルでは変わらない |
 

@@ -35,7 +35,7 @@
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
 - [AIのGitHub App（CodexとClaudeの身元、トークンの発行）](docs/github-apps.md)
-- [人・AI共通のレビュー受付の設計](docs/review-dispatch-design.md)と[実装・導入前チェック](docs/review-dispatch-implementation.md)（Issue #45、既定off・本導入前）
+- [人・AI共通のレビュー受付の設計](docs/review-dispatch-design.md)と[実装](docs/review-dispatch-implementation.md)・[導入手順](docs/review-dispatch-runbook.md)（Issue #45・#50、既定off）
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
 - [Claude Code等へ渡す定期確認の指示](docs/external-worker.md)
 - [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)

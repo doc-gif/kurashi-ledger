@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template. docs/review-dispatch-runbook.md renders the @NAME@ values; do not edit by hand. -->
+<!-- The reconcile and one start-small step: every 15 minutes and after each stored delivery (trigger). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@.cycle</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>@COPY@/scripts/github-app-token.ts</string>
+    <string>--agent</string>
+    <string>codex</string>
+    <string>--purpose</string>
+    <string>dispatch-read</string>
+    <string>--app-id</string>
+    <string>@CODEX_APP_ID@</string>
+    <string>--installation-id</string>
+    <string>@CODEX_INSTALLATION_ID@</string>
+    <string>--</string>
+    <string>@PYTHON@</string>
+    <string>@COPY@/tools/review_dispatch/supervisor.py</string>
+    <string>daemon</string>
+    <string>--root</string>
+    <string>@ROOT@</string>
+    <string>--</string>
+    <string>@NODE@</string>
+    <string>@COPY@/scripts/review-dispatch.ts</string>
+    <string>cycle</string>
+    <string>--root</string>
+    <string>@ROOT@</string>
+    <string>--policy</string>
+    <string>@POLICY@</string>
+    <string>--gh</string>
+    <string>@GH@</string>
+    <string>--install</string>
+    <string>@INSTALL@</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>@HOME@</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>WatchPaths</key>
+  <array>
+    <string>@ROOT@/trigger</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>@LOGS@/cycle.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOGS@/cycle.err</string>
+</dict>
+</plist>
