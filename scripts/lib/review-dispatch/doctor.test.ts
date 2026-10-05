@@ -226,6 +226,16 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
     [PROFILE.replace("(target self)", "(target others)"), "allow-not-vetted"],
     [PROFILE.replace('"*:443"', '"*:8443"'), "allow-not-vetted"],
     [PROFILE.replace('"localhost:*"', '"localhost:80"'), "deny-not-vetted"],
+    // Order and number matter: a later rule wins (the localhost deny above the TCP 443 allow opens localhost:443).
+    [
+      PROFILE.replace('(deny network-outbound (remote ip "localhost:*"))', "").replace(
+        '(allow network-outbound (remote tcp "*:443"))',
+        '(deny network-outbound (remote ip "localhost:*"))\n(allow network-outbound (remote tcp "*:443"))',
+      ),
+      "profile-not-vetted",
+    ],
+    [PROFILE.replace("(allow process-fork)", "(allow process-fork)\n(allow process-fork)"), "profile-not-vetted"],
+    [PROFILE.replace("(allow system-socket)", ""), "profile-not-vetted"],
     ...[
       "(allow mach-task-name)",
       "(allow signal)",

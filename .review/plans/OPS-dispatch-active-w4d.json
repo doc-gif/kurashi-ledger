@@ -218,7 +218,7 @@
     },
     {
      "location": "lintProfile",
-     "result": "Seatbeltは規則を式として評価するので、意味を推測しない。S式として構文解析し（文字列・正規表現のliteral・;のコメントは構文ではない）、全ての規則がcli.sbの規則と同じ正準形の審査済みの一覧VETTED_RULESのどれかと完全一致することを求める（allow-not-vetted・deny-not-vetted）。一覧とcli.sbの一致は試験で保つ。解析できない・規則以外のtop-levelの式はprofile-parse・profile-unknown-form。socket-deny・keychain-denyの存在と、その後にallowがないこと（PR60 RT-2〜RT-9、PR60-R001）"
+     "result": "Seatbeltは規則を式として評価するので、意味を推測しない。S式として構文解析し（文字列・正規表現のliteral・;のコメントは構文ではない）、全ての規則がcli.sbの規則と同じ正準形の審査済みの一覧VETTED_RULESと、順序と数まで完全一致することを求める（allow-not-vetted・deny-not-vetted・profile-not-vetted。後の規則が勝つので順序も審査の対象）。一覧とcli.sbの一致は試験で保つ。解析できない・規則以外のtop-levelの式はprofile-parse・profile-unknown-form。socket-deny・keychain-denyの存在と、その後にallowがないこと（PR60 RT-2〜RT-9、PR60-R001）"
     },
     {
      "location": "deny-supervisorの実測（doctorとmeasure）",

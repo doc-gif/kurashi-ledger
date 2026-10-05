@@ -313,10 +313,11 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
 }
 
 // Static lint of cli.sb. Seatbelt evaluates its rules as Scheme, so the lint does not try to model what a
-// rule means (PR60 RT-7..RT-9): every rule must equal, in canonical form, one of the vetted rules below,
-// which are the rules of the shipped cli.sb and are reviewed like code (a test keeps them equal). The
-// profile is parsed as S-expressions (strings, #"regex" literals and ; comments are not structure);
-// anything that does not parse, other top-level forms, or an unvetted rule disables the doctor.
+// rule means (PR60 RT-7..RT-9): the rules must equal, in canonical form, the vetted rules below in the same
+// order and number (a later rule wins, so order matters), which are the rules of the shipped cli.sb and are
+// reviewed like code (a test keeps them equal). The profile is parsed as S-expressions (strings, #"regex"
+// literals and ; comments are not structure); anything that does not parse or differs disables the doctor.
+// The named structural checks below also guard the vetted list itself when it is edited.
 export type SbNode = { t: "list"; items: SbNode[] } | { t: "atom"; v: string } | { t: "str"; raw: string } | { t: "re"; raw: string };
 export class SbParseError extends Error {}
 export function parseSbpl(text: string): SbNode[] {
@@ -398,6 +399,9 @@ export function lintProfile(text: string): string[] {
     if (!h) problems.push("profile-unknown-form");
     else if (!vetted.has(t)) problems.push(`${h}-not-vetted`);
   });
+  // Same rules, same order, no duplicates or extras.
+  const expected = ["(version 1)", ...VETTED_RULES];
+  if (texts.length !== expected.length || texts.some((t, k) => t !== expected[k])) problems.push("profile-not-vetted");
   if (texts[0] !== "(version 1)" || texts[1] !== "(deny default)") problems.push("not-deny-default");
   const has = (prefix: string) => texts.findIndex((t) => t.startsWith(prefix));
   const keychain = has('(deny mach-lookup (global-name "com.apple.SecurityServer")');
