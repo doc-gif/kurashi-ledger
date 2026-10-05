@@ -357,7 +357,7 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
    ```zsh
    (
      setopt pipefail
-     info() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} END {if (r ~ /^[0-9]+$/ && s != "" && c != "") print r "|" s "|" c; else exit 1}'; }
+     info() { launchctl print "$gui/${label}.cycle" 2>/dev/null | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} $1 == "\tlast terminating signal" {g = 1} END {if (r ~ /^[0-9]+$/ && s != "" && c != "" && !g) print r "|" s "|" c; else exit 1}'; }
      r="$(info)" || { echo "未完了: cycleを読めない（12）"; exit 1; }; before="${r%%|*}"
      launchctl kickstart "$gui/${label}.cycle" || { echo "未完了: 起動できない"; exit 1; }
      fin=; for i in {1..120}; do sleep 5; r="$(info)" || continue; IFS='|' read -r n st code <<< "$r"; (( n > before )) && [[ $st == "not running" ]] && { fin=1; break; }; done
@@ -513,11 +513,13 @@ kl_mode shadow
 
 ```zsh
 (
-  for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; ! launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 || { echo "外れていない: ${n}"; exit 1; }; done; echo "外した"
+  for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
+  for i in {1..12}; do left=(); for n in cycle serve tunnel; do launchctl print "$gui/${label}.${n}" >/dev/null 2>&1 && left+=($n); done; (( $#left )) || break; sleep 5; done
+  (( $#left )) && { echo "外れていない: ${left}"; exit 1; }; echo "外した"
 )
 ```
 
-期待: `外した`。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
+期待: `外した`。`外れていない: …`でも、次の`kl_mode off`は必ず行い、残った名前をもう一度このブロックで外す。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
 
 ```zsh
 kl_mode off
