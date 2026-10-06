@@ -154,7 +154,7 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 | 設定の読込み | `--setting-sources user`（projectとlocalを除く）、または`--restricted` | cwdの`.claude/settings*.json`の読込み |
 | 設定 | inlineの`--settings` JSON。`disableAllHooks: true`、pluginsなし、下のRead規則 | hooks・pluginsの実行 |
 | MCP | serverのない`--mcp-config`、`--strict-mcp-config`、`--disallowedTools "mcp__*"` | 他の場所のMCP設定、MCP tool |
-| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す | 書込み・shell・Web |
+| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す。`--json-schema`が足す`StructuredOutput`（最後の結果を返すだけでI/Oをしない。initで観測し、[文書](https://code.claude.com/docs/en/agent-sdk/structured-outputs)は名前を出さない）は、この引数があるときだけ測定の構造の証明で許し、試みの証拠には数えない | 書込み・shell・Web |
 | 読取りの範囲 | allowは資料dirに限った`Read(//<資料>/**)`だけ。denyに`Read(//<config dir>/**)`。Grep・Globも`Read()`の規則で絞る。素の`Read`・`Grep`・`Glob`を許可しない | cwd外・config dirの読取り |
 | 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
 | cwd | 取得資料だけの使い捨て領域。repo・worktreeの外。資料はrepoのpathを保たず、中立の名前で置く。cwdとその祖先に`.claude/`・`.mcp.json`・`CLAUDE.md`・`AGENTS.md`を作らない。あれば起動しない | PRのhooks・MCP・指示の自動ロード |
