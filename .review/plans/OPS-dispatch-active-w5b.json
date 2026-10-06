@@ -17,7 +17,7 @@
   {
    "description": "所有者決定の3（生きていてenvを読めないprocessは不明）を字句どおりに実装すると、macOSは実行ユーザーのprocessの多く（所有者のMacで390件中294件、Apple製の実行ファイル等）のenvを返さないので、走査が常に不明になり、treeEndedにならない。45秒の間にも、launchdが起動したenvを読めないprocessが15件増えた。",
    "state": "resolved",
-   "resolution": "カーネルの一意なID（p_uniqueid・元の親のp_puniqueid。reparentでも変わらないことを実機で確かめた）で系統を分け、外と証明できるprocess（workerより前に作られたか、元の親がworkerより前に作られたか外の生きたprocess）だけを、envを読めなくても数えない。系統が不明でenvを読めないものは決定どおり不明。生きた子孫はenvを問わず終わっていないとする（決定より強い）。設計はPR A（#63）。所有者がPRのレビューでこの読み替えを確かめる。"
+   "resolution": "カーネルの一意なID（p_uniqueid・元の親のp_puniqueid。reparentでも変わらないことを実機で確かめた）で系統を分け、外と証明できるprocess（supervisorより前に作られたか、元の親がsupervisorより前に作られたか外の生きたprocess）だけを、envを読めなくても数えない。系統が不明でenvを読めないものは決定どおり不明。生きた子孫はenvを問わず終わっていないとする（決定より強い）。設計はPR A（#63）。所有者がPRのレビューでこの読み替えを確かめる。"
   }
  ],
  "owner_decisions": [
@@ -217,11 +217,11 @@
      "result": "数えない（このrunの子孫ではない）"
     },
     {
-     "location": "走査: 生きていてenvを読めない（読取りの失敗、またはmacOSがenvを返さない）、系統が不明（元の親がworkerより後に作られて終わった、IDを読めない、Linux）",
+     "location": "走査: 生きていてenvを読めない（読取りの失敗、またはmacOSがenvを返さない）、系統が不明（元の親がsupervisorより後に作られて終わった、IDを読めない、Linux）",
      "result": "不明。treeEnded=false、uncertain"
     },
     {
-     "location": "走査: 生きていてenvを読めない、系統が外（workerより前に作られた、または元の親がworkerより前に作られたか外の生きたprocess）",
+     "location": "走査: 生きていてenvを読めない、系統が外（supervisorより前に作られた、または元の親がsupervisorより前に作られたか外の生きたprocess）",
      "result": "数えない（workerのenvを継げない）"
     },
     {
@@ -229,7 +229,7 @@
      "result": "envを問わず終わっていない。uncertain"
     },
     {
-     "location": "走査: workerのIDを起動直後に読めない",
+     "location": "走査: supervisorのIDを起動の前に読めない",
      "result": "すべての系統が不明（読めないprocessはすべて不明）"
     },
     {
