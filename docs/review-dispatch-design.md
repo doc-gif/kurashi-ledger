@@ -87,7 +87,7 @@ payloadは7日、完了Job詳細は30日で削除/要約する。consumed event/
 1. **停止:** workerは自分のsessionで起動する。終了時と時間切れで、groupごと止め（TERMのあとKILL）、groupが空になるまで待つ。
 2. **印:** supervisorは起動の前にrunごとの128 bitの乱数を作り、workerのenvの`KL_RUN_TAG`にだけ渡す。manifest・結果・ログに書かない。
 3. **走査:** groupが空になったら、実行ユーザーの全processを列挙し、各processの起動時のenvを読む（macOSは`sysctl`の`KERN_PROCARGS2`をctypesで読み、shellを使わない）。下の表で終わっていないものも不明もないときだけ`treeEnded`にする。setsidでgroupを抜けた子もここで見つかる。
-4. **系統（macOS）:** macOSはApple製の実行ファイルなどのenvを返さない（所有者のMacで、実行ユーザーの390件中294件。45秒の間に新しく15件）。読めないことだけを不明にすると、走査は常に不明になる。そこでカーネルの一意なID（`proc_pidinfo`の`p_uniqueid`と、親が変わっても残る元の親の`p_puniqueid`）で、各processをworkerの子孫・外・不明に分ける。外は、workerより前に作られたprocessと、元の親がworkerより前に作られたか外の生きたprocessであるもの。不明は、元の親がworkerより後に作られて終わったものと、IDを読めないもの。Linux（fixtureだけ）にはこのIDがないので、すべて不明として扱う。
+4. **系統（macOS）:** macOSはApple製の実行ファイルなどのenvを返さない（所有者のMacで、実行ユーザーの390件中294件。45秒の間に新しく15件）。読めないことだけを不明にすると、走査は常に不明になる。そこでカーネルの一意なID（`proc_pidinfo`の`p_uniqueid`と、親が変わっても残る元の親の`p_puniqueid`）で、各processをworkerの子孫・外・不明に分ける。起点は、workerを起動するsupervisor自身のID（起動の前に読む）と、読めればworkerのID。外は、supervisorより前に作られたprocessと、元の親がsupervisorより前に作られたか外の生きたprocessであるもの。不明は、元の親がsupervisorより後に作られて終わったもの（IDを読めなかったworkerを含む）と、IDを読めないもの。Linux（fixtureだけ）にはこのIDがないので、すべて不明として扱う。
 
 | 走査で見たもの | 扱い |
 | --- | --- |
@@ -97,7 +97,8 @@ payloadは7日、完了Job詳細は30日で削除/要約する。consumed event/
 | envを読めない、外 | 数えない |
 | envを読めない、系統が不明 | 不明 |
 | 列挙と読取りの間に終わった（存在しない・zombie） | 終わった |
-| 列挙の失敗、workerのIDを読めない | 不明（workerのIDがなければ、すべての系統が不明） |
+| 列挙の失敗 | 不明 |
+| supervisorのIDを読めない | すべての系統が不明 |
 
 終わっていない・不明が残れば2秒まで走査をやり直し、最後の結果で決める。不明を「終わった」にしない。どちらも`treeEnded=false`のuncertainで、leaseを保ち、再起動しない。supervisorが落ちると印は失われ、runはuncertainのまま残る。残余リスクと実CLIでの測定は§7。
 
