@@ -13,7 +13,13 @@
   "scripts/review-dispatch.ts",
   "tools/review_dispatch/supervisor.py"
  ],
- "conflicts": [],
+ "conflicts": [
+  {
+   "description": "所有者決定の3（生きていてenvを読めないprocessは不明）を字句どおりに実装すると、macOSは実行ユーザーのprocessの多く（所有者のMacで390件中294件、Apple製の実行ファイル等）のenvを返さないので、走査が常に不明になり、treeEndedにならない。45秒の間にも、launchdが起動したenvを読めないprocessが15件増えた。",
+   "state": "resolved",
+   "resolution": "カーネルの一意なID（p_uniqueid・元の親のp_puniqueid。reparentでも変わらないことを実機で確かめた）で系統を分け、外と証明できるprocess（workerより前に作られたか、元の親がworkerより前に作られたか外の生きたprocess）だけを、envを読めなくても数えない。系統が不明でenvを読めないものは決定どおり不明。生きた子孫はenvを問わず終わっていないとする（決定より強い）。設計はPR A（#63）。所有者がPRのレビューでこの読み替えを確かめる。"
+  }
+ ],
  "owner_decisions": [
   {
    "date": "2026-10-06",
@@ -165,6 +171,14 @@
    "control": "印の完全一致（前後がNUL）の有無だけを見る。中身を保存・出力しない。読めなければ再確認し、生きていれば不明"
   },
   {
+   "id": "B2b",
+   "direction": "entry",
+   "location": "supervisor.pyの走査: 各processのカーネルの一意なID（macOS: proc_pidinfoのPROC_PIDUNIQIDENTIFIERINFO）",
+   "data": "p_uniqueid・p_puniqueid",
+   "trust": "untrusted",
+   "control": "カーネルが付ける単調な値で、processは変えられない。読めなければ系統は不明。uniqueidが0か、親のIDが自分以上なら読めない扱い"
+  },
+  {
    "id": "B3",
    "direction": "exit",
    "location": "supervisor.py → workerのenv",
@@ -203,8 +217,20 @@
      "result": "数えない（このrunの子孫ではない）"
     },
     {
-     "location": "走査: 生きていてenvを読めない（読取りが失敗し、その後もzombieでない生きたprocess）",
+     "location": "走査: 生きていてenvを読めない（読取りの失敗、またはmacOSがenvを返さない）、系統が不明（元の親がworkerより後に作られて終わった、IDを読めない、Linux）",
      "result": "不明。treeEnded=false、uncertain"
+    },
+    {
+     "location": "走査: 生きていてenvを読めない、系統が外（workerより前に作られた、または元の親がworkerより前に作られたか外の生きたprocess）",
+     "result": "数えない（workerのenvを継げない）"
+    },
+    {
+     "location": "走査: 生きた子孫（IDでworkerにつながる）",
+     "result": "envを問わず終わっていない。uncertain"
+    },
+    {
+     "location": "走査: workerのIDを起動直後に読めない",
+     "result": "すべての系統が不明（読めないprocessはすべて不明）"
     },
     {
      "location": "走査: 列挙と読取りの間に終わった（再確認で存在しない）",
@@ -280,11 +306,11 @@
     },
     {
      "location": "macOSの表（DarwinTable）",
-     "result": "KERN_PROC_UIDの記録の大きさが648の倍数で、自分自身の行のpid・pgid・uidが一致するときだけ使う。違えば不明"
+     "result": "KERN_PROC_UIDの記録の大きさが648の倍数で、自分自身の行のpid・pgid・uidが一致するときだけ使う。違えば不明。各processのIDはproc_pidinfo（PROC_PIDUNIQIDENTIFIERINFO）。KERN_PROCARGS2のargvの後が空ならenvを返さなかったとして読めない扱い"
     },
     {
      "location": "Linuxの表（ProcTable、fixtureとCIだけ）",
-     "result": "/proc/<pid>/statusの実効uidで絞り、environを読めなければstatで再確認する。non-dumpableは読めないので不明"
+     "result": "/proc/<pid>/statusの実効uidで絞り、environを読めなければstatで再確認する。IDがないので系統はすべて不明（決定の字句どおり）。non-dumpableは読めないので不明"
     },
     {
      "location": "そのほかのOS",
