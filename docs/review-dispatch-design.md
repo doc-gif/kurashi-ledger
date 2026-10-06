@@ -86,15 +86,18 @@ payloadは7日、完了Job詳細は30日で削除/要約する。consumed event/
 
 1. **停止:** workerは自分のsessionで起動する。終了時と時間切れで、groupごと止め（TERMのあとKILL）、groupが空になるまで待つ。
 2. **印:** supervisorは起動の前にrunごとの128 bitの乱数を作り、workerのenvの`KL_RUN_TAG`にだけ渡す。manifest・結果・ログに書かない。
-3. **走査:** groupが空になったら、実行ユーザーの全processを列挙し、各processの起動時のenvを読む（macOSは`sysctl`の`KERN_PROCARGS2`をctypesで読み、shellを使わない）。印を持つ生きたprocessが1つもないときだけ`treeEnded`にする。setsidでgroupを抜けた子もここで見つかる。
+3. **走査:** groupが空になったら、実行ユーザーの全processを列挙し、各processの起動時のenvを読む（macOSは`sysctl`の`KERN_PROCARGS2`をctypesで読み、shellを使わない）。下の表で終わっていないものも不明もないときだけ`treeEnded`にする。setsidでgroupを抜けた子もここで見つかる。
+4. **系統（macOS）:** macOSはApple製の実行ファイルなどのenvを返さない（所有者のMacで、実行ユーザーの390件中294件。45秒の間に新しく15件）。読めないことだけを不明にすると、走査は常に不明になる。そこでカーネルの一意なID（`proc_pidinfo`の`p_uniqueid`と、親が変わっても残る元の親の`p_puniqueid`）で、各processをworkerの子孫・外・不明に分ける。外は、workerより前に作られたprocessと、元の親がworkerより前に作られたか外の生きたprocessであるもの。不明は、元の親がworkerより後に作られて終わったものと、IDを読めないもの。Linux（fixtureだけ）にはこのIDがないので、すべて不明として扱う。
 
 | 走査で見たもの | 扱い |
 | --- | --- |
 | 生きていて印がある | 終わっていない |
-| 生きていて印がない | 数えない |
-| 生きていてenvを読めない | 不明 |
+| 生きた子孫（envは問わない） | 終わっていない |
+| 生きていて印がない（子孫でない） | 数えない |
+| envを読めない、外 | 数えない |
+| envを読めない、系統が不明 | 不明 |
 | 列挙と読取りの間に終わった（存在しない・zombie） | 終わった |
-| 列挙の失敗 | 不明 |
+| 列挙の失敗、workerのIDを読めない | 不明（workerのIDがなければ、すべての系統が不明） |
 
 終わっていない・不明が残れば2秒まで走査をやり直し、最後の結果で決める。不明を「終わった」にしない。どちらも`treeEnded=false`のuncertainで、leaseを保ち、再起動しない。supervisorが落ちると印は失われ、runはuncertainのまま残る。残余リスクと実CLIでの測定は§7。
 
@@ -158,7 +161,7 @@ read-only flagはキーチェーン読取りの隔離ではない。Claudeには
 
 doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。measureは、子を作る無害なrun（Grepがripgrepを起動する）で[印](#子孫の終了の証明)の継承を測る。runの間にgroupで観測した子のすべてが印を持つと確かめたときだけ`descendantTag`をtrueにする。確かめる前に終わった子、印のない子、読めない子が1つでもあるか、groupの列挙に1回でも失敗したか、子を観測できなければfalseで、capabilityを記録しない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
-同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。O3により別のOSユーザーは使わない。この残余リスクを受け入れて記録する。envを空にしてexecし、groupも抜けた子（自分のenvの領域を書き換えた子、別のuidになった子も）は[印の走査](#子孫の終了の証明)で見つからない。toolはRead・Grep・Globだけなので、モデルは子のcommandを選べない。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）も防がない。doc-gif（所有者と共用）で`OWNER_MERGE_ONLY`を書き換えられる。そのためactiveのPRは所有者がマージする（§5）。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
+同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。O3により別のOSユーザーは使わない。この残余リスクを受け入れて記録する。[印の走査](#子孫の終了の証明)で見つからないものがある。元の親が終わってからenvを空にしてexecし、groupも抜けた子孫（自分のenvの領域を書き換えた子孫も）、別のuidになった子孫、子孫が外のservice（launchd等）に起動させたprocessである。toolはRead・Grep・Globだけなので、モデルは子のcommandを選べない。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）も防がない。doc-gif（所有者と共用）で`OWNER_MERGE_ONLY`を書き換えられる。そのためactiveのPRは所有者がマージする（§5）。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
 
 **IDと原因の言い換えでも戻らない上限**をDBに持つ。ownerの一つのauto-fix許可につき最大2修正、PRごとrolling 24時間にAI review/faultfinding起動最大6回。launch前に予約し、起動不明も消費扱い。ID/世代/再起動/手動pushでリセットしない。上限でpause/needs-owner、ownerが原因/方針を確認して再許可するまで解除しない。通常の取得はAI回数に数えない。現行の「同原因2回の不成功→設計見直し→残ればneeds-owner」も保持し、各修正前に指摘全体と回帰原因を照合する。
 
