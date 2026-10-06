@@ -165,6 +165,7 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 - `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
 - CLIが443番へ出られることは、所有者が受け入れた残余リスク（net-443）。toolはRead・Grep・Globに保つ。
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
+- envの`CLAUDE_CODE_TMPDIR`をrunのtmpへ向ける。Claudeは自身の一時fileを`TMPDIR`ではなくこの変数の下（既定は`/tmp`）の`claude-<uid>/`に作る（[env-vars](https://code.claude.com/docs/en/env-vars)）。CLI用のprofileは`/tmp`を拒否するので、無いと起動時に止まる（W4e）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
 
 doctorの否定試験に次を加える。1つでも拒否できなければcapabilityをdisabledにする。

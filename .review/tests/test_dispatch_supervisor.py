@@ -444,6 +444,7 @@ class WorkerTests(unittest.TestCase):
                  'args': ['-f', str(self.profile), '-D', 'RUN_HOME=' + str(self.area / 'home'), self.exe, '-c', code],
                  'cwd': str(self.area / 'materials'),
                  'env': {'HOME': str(self.area / 'home'), 'TMPDIR': str(self.area / 'tmp'), 'PATH': '/usr/bin:/bin',
+                         'CLAUDE_CODE_TMPDIR': str(self.area / 'tmp'),
                          'LANG': 'C.UTF-8', 'CLAUDE_CODE_OAUTH_TOKEN': 'synthetic-token-value-0123456789'},
                  'stdin': 'Job kind: review\n'}
         value.update(over)
@@ -526,6 +527,11 @@ class WorkerTests(unittest.TestCase):
             ('home is root', self.plan('pass', env={**json.loads(good)['env'], 'HOME': str(self.root)})),
             ('tmp above root', self.plan('pass', env={**json.loads(good)['env'], 'TMPDIR': str(self.root.parent)})),
             ('config via link', self.plan('pass', env={**json.loads(good)['env'], 'CLAUDE_CONFIG_DIR': str(link / 'cfg')})),
+            # W4e: Claude's own temp files stay in the run tmp.
+            ('claude tmp is /tmp', self.plan('pass', env={**json.loads(good)['env'], 'CLAUDE_CODE_TMPDIR': '/tmp'})),
+            ('claude tmp in root', self.plan('pass', env={**json.loads(good)['env'], 'CLAUDE_CODE_TMPDIR': str(self.root / 't')})),
+            ('both tmps in root', self.plan('pass', env={**json.loads(good)['env'], 'TMPDIR': str(self.root / 't'),
+                                                           'CLAUDE_CODE_TMPDIR': str(self.root / 't')})),
             ('relative cwd', self.plan('pass', cwd='runs/r1')),
             ('extra env', (json.dumps(bad_env) + '\n').encode()),
             ('missing env', (json.dumps(missing) + '\n').encode()),
