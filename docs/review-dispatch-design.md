@@ -136,7 +136,7 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは
 
 shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
 
-read-only flagはキーチェーン読取りの隔離ではない。Claudeには、systemのsandbox-execで固定Seatbelt profile（`cli.sb`）を適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access（すべて）、許可外process/通信を拒否する。macOSは閉じ込めたprocessの中でより厳しいprofileを掛けられないので、toolの子processはCLIのprofileを継承し、**同じ許可**を持つ（外向きTCP 443、そのrunのconfig dir・HOME・tmpへの書込み）。CLIのprofileが読めるのは、資料・runtime・そのrunの`CLAUDE_CONFIG_DIR`・HOME・tmpだけにする。継承を証明できないCLI版や、OS機構が無い環境は起動不可。Codexは自身の`--sandbox read-only`だけで動く。Claudeはtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
+read-only flagはキーチェーン読取りの隔離ではない。Claudeには、systemのsandbox-execで固定Seatbelt profile（`cli.sb`）を適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access（すべて）、許可外process/通信を拒否する。macOSは閉じ込めたprocessの中でより厳しいprofileを掛けられないので、toolの子processはCLIのprofileを継承し、**同じ許可**を持つ（一覧は下の残余リスク）。CLIのprofileが読めるのは、資料・runtime・そのrunの`CLAUDE_CONFIG_DIR`・HOME・tmpだけにする。継承を証明できないCLI版や、OS機構が無い環境は起動不可。Codexは自身の`--sandbox read-only`だけで動く。Claudeはtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
 
 doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
@@ -167,7 +167,7 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
 - envの`CLAUDE_CODE_TMPDIR`をrunのtmpへ向ける。Claudeは自身の一時fileを`TMPDIR`ではなくこの変数の下（既定は`/tmp`）の`claude-<uid>/`に作る（[env-vars](https://code.claude.com/docs/en/env-vars)）。CLI用のprofileは`/tmp`を拒否するので、無いと起動時に止まる（W4e）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
-- 測定の記録（schema 2）は、各`denied`の根拠を`basis`で分ける: CLI自身の構造化したアクセス（`access`）、initの道具一覧だけ（`structural`）、その両方（`mixed`）。子processの実際のアクセスはdoctorの合成のprobe（`:cli-child`）だけ。共有profileの許可（`sharedProfile`: TCP 443・config・HOME・tmpへの書込み）は`denied`と報告しない。`deny-network`はlocalhostと443番以外の拒否の意味。
+- 測定の記録（schema 2）は、各`denied`の根拠を`basis`で分ける: CLI自身の構造化したアクセス（`access`）、initの道具一覧だけ（`structural`）、その両方（`mixed`）。子processの実際のアクセスはdoctorの合成のprobe（`:cli-child`）だけ。共有profileの許可（`sharedProfile`。一覧は下の残余リスク）は`denied`と報告しない。`deny-network`はlocalhostと443番以外の拒否の意味。
 
 doctorの否定試験に次を加える。1つでも拒否できなければcapabilityをdisabledにする。
 
@@ -185,7 +185,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 
 所有者が[2026-10-07に受け入れた](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)残余リスク（Codexの[ISSUE50-P001〜P003](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019834396)）。supervisorはworkerのprocess groupを止めて空を確かめるが（§4）、全子孫の終了は証明しない。
 
-- groupを離れた子（setsid等）は、CLIのprofileの許可（外向きTCP 443、そのrunのconfig dir・HOME・tmpへの書込みを含む）を持ったまま残りうる。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
+- groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
 - 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
 - この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
 - 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。

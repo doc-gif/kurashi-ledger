@@ -28,7 +28,7 @@ import { argvTemplateHash, scanTree, type LaunchInstall } from "./launcher.ts";
 import { hash, type Job, type WorkerResult } from "./model.ts";
 import { runBinding, signedMessage, RunVerifier } from "./provenance.ts";
 import { assess } from "./reducer.ts";
-import { fixtureResult, REQUIRED_PROBES, type Capability, type Runner } from "./runtime.ts";
+import { capabilityReady, fixtureResult, REQUIRED_PROBES, type Capability, type Runner } from "./runtime.ts";
 import { database, policy, snapshot, HEAD, BASE } from "../../../tests/fixtures/review-dispatch.ts";
 import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import { TestSigner } from "../../../tests/fixtures/review-dispatch-run-signer.ts";
@@ -831,6 +831,26 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const dirty = await doctorCommand({ ...base, measurement: file(), inspectConfig: () => ["present:CLAUDE.md"] });
     assert.equal(dirty.state, "disabled");
     assert.ok(dirty.reasons.includes("config-dir:present:CLAUDE.md"));
+    // PR #65 red team: the run area is removed before anything is stored; if it stays, nothing is verified.
+    const { chmodSync } = await import("node:fs");
+    let locked = "";
+    const stuck = await doctorCommand({
+      ...base,
+      measurement: file(),
+      inspectConfig: (dir) => {
+        locked = join(dirname(dir), "materials");
+        writeFileSync(join(locked, "x"), "synthetic\n");
+        chmodSync(locked, 0o500); // its entry cannot be unlinked
+        return [];
+      },
+    });
+    chmodSync(locked, 0o700);
+    assert.equal(stuck.state, "unverified");
+    assert.ok(stuck.reasons.includes("run-area-not-removed"));
+    assert.equal(capabilityReady(stuck.capability), false);
+    assert.equal(d.store.capability("claude"), null);
+    for (const n of readdirSync(runs)) rmSync(join(runs, n), { recursive: true });
+    await doctorCommand({ ...base, measurement: file() });
     // An old measurement file (descendantLock) and a later run without the group-ended evidence remove the
     // stored capability.
     const old = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), external: { schema: true, descendantLock: true } }) });

@@ -532,20 +532,29 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 
 期待: 時刻順に読む。起動回数は`red-team`と`review`の行数（投稿のない起動は15のJobの行で数える）。同じ種類で同じheadの行が2つあれば重複起動。各`ready`から次の`red-team`・`review`までが待ち時間。値と旧巡回との比較をIssue #50に記録し、所有者が広げるかを決める。
 
-最初の1PRでは、Jobが終わるたびに（15のJobの行が`running`でないとき）、受付のrunが残したprocessと資源を見る（[残余リスク](review-dispatch-design.md#groupを離れた子残余リスク)）。envにはtokenがあるので、PIDだけを抜き出して表示する。
+最初の1PRでは、Jobが終わるたびに（15のJobの行が`running`でないとき）、受付のrunが残したprocessと資源を見る（[残余リスク](review-dispatch-design.md#groupを離れた子残余リスク)）。`lsof`で、cwdか開いたfileが`$runs`の下にあるprocessを探す。自分で起こした対照のprocessが見つからないか、出力の形が違えば「確認できない」とする。次の関数を貼り、`kl_left`を実行する（`left_pids`に残るPIDが入る）。
 
 ```zsh
-(
-  pids=( $(KL_R="$runs" ps -A -E -ww -o pid=,command= | awk 'index($0, "CLAUDE_CONFIG_DIR=" ENVIRON["KL_R"] "/") {print $1}') )
-  (( $#pids )) || { echo "残るprocessなし"; exit 0; }
-  ps -o pid=,pgid=,%cpu=,rss=,etime=,comm= -p "${(j:,:)pids}"; du -sk "$runs"
-)
+kl_left() {
+  local d="$runs/.kl-control" out c; left_pids=()
+  mkdir -p "$d" || return 2
+  (cd "$d" && exec /bin/sleep 30) & c=$!; sleep 1
+  out="$(lsof -nP -F p +D "$runs" 2>/dev/null)"
+  kill $c 2>/dev/null; wait $c 2>/dev/null; rmdir "$d"; du -sk "$runs"
+  if [[ $'\n'"$out"$'\n' != *$'\n'"p$c"$'\n'* ]] || print -r -- "$out" | grep -qvE '^(p[0-9]+|f.*)$'; then
+    echo "確認できない（lsofが対照を見つけない・形が違う）。下の停止の手順を行う"; return 2
+  fi
+  left_pids=( ${(f)"$(print -r -- "$out" | sed -n 's/^p//p' | grep -vx "$c")"} )
+  (( $#left_pids )) || { echo "残るprocessなし"; return 0; }
+  ps -o pid=,pgid=,%cpu=,rss=,etime=,comm= -p "${(j:,:)left_pids}"; return 1
+}
+kl_left
 ```
 
-期待: `残るprocessなし`。行が出るか、`$runs`が空でなければ異常。受付を止めてから手で戻す。
+期待: `$runs`の大きさの行と`残るprocessなし`。PIDの行が出る、`確認できない`が出る、`$runs`が空でない（大きさが0でない）のどれかなら異常。受付を止めてから手で戻す。
 
 1. `kl_mode shadow`（新しい起動を止める）。
-2. 上の`pids`を`kill -TERM`し、10秒後に残れば`kill -KILL`する。上のブロックで`残るprocessなし`になるまで繰り返す。
+2. `kl_left && echo 終わり || { kill -TERM $left_pids; sleep 10; kl_left || kill -KILL $left_pids; }`を、`残るprocessなし`になるまで繰り返す（毎回PIDを取り直す）。`確認できない`のままなら止めてIssue #50に記録する。
 3. 16の`kl_stopped`が`停止を確認`になるまで16を行う。`$runs`に残ったrunの領域は、processが無くなってから`rm -rf`で消す。
 4. 出た行（PID・CPU・RSS・経過時間・名前）と原因をIssue #50に記録する。processが残りうる間は、8の測定もactiveへの切替もしない。戻すかは所有者が決める（14の3）。
 

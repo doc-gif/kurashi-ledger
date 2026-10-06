@@ -108,9 +108,28 @@ export const MEASURED_BASIS: Readonly<Record<MeasuredProbe, Basis>> = {
   "deny-hooks-mcp": "structural",
   "tool-child-confined": "mixed",
 };
-// What cli.sb grants the CLI and, by inheritance, every child it starts (VETTED_RULES; a test ties the two).
-// Never reported as denied (ISSUE50-P001): "deny-network" covers loopback and ports other than 443 only.
-export const SHARED_PROFILE_ALLOWS = ["tcp-443", "config-write", "home-write", "tmp-write"] as const;
+// Every allow rule of cli.sb (VETTED_RULES, matched by its canonical prefix) and what it grants the CLI and, by
+// inheritance, every child it starts, including one that leaves the group (design §7, residual risk). A test fails
+// if a vetted allow rule has no entry. Never reported as denied (ISSUE50-P001): "deny-network" covers loopback and
+// ports other than 443 only.
+export const PROFILE_ALLOWS: readonly (readonly [string, string])[] = [
+  ["(allow process-fork)", "process-fork"],
+  ["(allow process-exec (literal (param \"EXECUTABLE\"))", "exec-cli-runtime"],
+  ["(allow signal (target same-sandbox))", "signal-same-sandbox"],
+  ["(allow sysctl-read ", "sysctl-read"],
+  ["(allow file-read-metadata)", "metadata-read-any-path"],
+  ["(allow system-socket)", "system-socket"],
+  ["(allow ipc-posix-shm-read-data ipc-posix-shm-write-data ipc-posix-shm-write-create)", "posix-shm-any-name"],
+  ["(allow file-read* (literal \"/\")", "system-files-read"],
+  ["(allow file-write-data (literal \"/dev/null\"))", "dev-null-write"],
+  ["(allow file-read* (subpath (param \"RUNTIME\")) (subpath (param \"MATERIALS\")))", "runtime-materials-read"],
+  ["(allow file-read* file-write* (subpath (param \"CONFIG_DIR\"))", "run-config-home-tmp-write"],
+  ["(allow mach-lookup ", "mach-dns-directory-notification-trust-log"],
+  ["(allow network-outbound (literal \"/private/var/run/mDNSResponder\"))", "dns"],
+  ["(allow network-outbound (remote tcp \"*:443\"))", "tcp-443"],
+  ["(allow process-info* (target self))", "process-info-self"],
+];
+export const SHARED_PROFILE_ALLOWS: readonly string[] = PROFILE_ALLOWS.map(([, id]) => id);
 // Schema 2 (Issue #50 W5c): adds basis and sharedProfile. A schema 1 record is refused (re-measure).
 export type Measurement = {
   schema: 2;

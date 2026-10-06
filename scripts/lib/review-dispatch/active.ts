@@ -813,49 +813,66 @@ export async function doctorCommand(d: {
 }): Promise<DoctorResult> {
   const job = measurementJob(d.policy);
   const { area, run } = newRunArea(d.install.runs, `doctor-${job.run}`);
+  let result: DoctorResult;
   try {
-    const plan = buildLaunch(d.policy, job, d.install.claude, run, d.launch ?? {});
-    const file = parseMeasurementFile(d.measurement);
-    const configProblems = (d.inspectConfig ?? inspectConfigDir)(run.config);
-    const result = await runDoctor({
-      backend: "claude",
-      version: d.install.claude.version,
-      codeHash: d.executableDigest,
-      profileHash: profileHash(d.profileText),
-      launch: { plan, install: d.install.claude, run, argvHash: argvTemplateHash(d.install.claude) },
-      measurement: file?.measurement ?? null,
-      external: file?.external ?? { schema: false, groupEnded: false },
-      host: d.host,
-      claude: {
-        authStatus: await d.authStatus(buildAuthStatus(d.install.claude, run, d.launch ?? {})),
-        configDir: run.config,
-        configProblems,
-        managedSettings: d.managedSettings,
-      },
-      profileText: d.profileText,
-    });
-    let changed = false;
+    result = await doctorRun(d, job, run);
+  } catch (e) {
+    d.store.saveCapability("claude", null, d.now);
     try {
-      changed = !d.unchanged();
+      removeRunArea(area);
     } catch {
-      changed = true;
+      // The first failure is the one reported.
     }
-    if (changed) {
-      const probes = Object.fromEntries(Object.keys(result.capability.probes).map((k) => [k, false]));
-      const unverified: DoctorResult = {
-        ...result,
-        state: result.state === "disabled" ? "disabled" : "unverified",
-        reasons: [...result.reasons, "bound-file-changed"],
-        capability: { ...result.capability, probes },
-      };
-      d.store.saveCapability("claude", null, d.now);
-      return unverified;
-    }
-    d.store.saveCapability("claude", result.state === "verified" ? result.capability : null, d.now);
-    return result;
-  } finally {
-    removeRunArea(area);
+    throw e;
   }
+  // The run area goes first; a capability is stored only after it is gone (ISSUE50-P003, PR #65 red team).
+  try {
+    removeRunArea(area);
+  } catch {
+    result = { ...result, state: result.state === "disabled" ? "disabled" : "unverified", reasons: [...result.reasons, "run-area-not-removed"] };
+  }
+  if (result.state !== "verified")
+    result = { ...result, capability: { ...result.capability, probes: Object.fromEntries(Object.keys(result.capability.probes).map((k) => [k, false])) } };
+  d.store.saveCapability("claude", result.state === "verified" ? result.capability : null, d.now);
+  return result;
+}
+async function doctorRun(d: Parameters<typeof doctorCommand>[0], job: Job, run: LaunchRun): Promise<DoctorResult> {
+  const plan = buildLaunch(d.policy, job, d.install.claude, run, d.launch ?? {});
+  const file = parseMeasurementFile(d.measurement);
+  const configProblems = (d.inspectConfig ?? inspectConfigDir)(run.config);
+  const result = await runDoctor({
+    backend: "claude",
+    version: d.install.claude.version,
+    codeHash: d.executableDigest,
+    profileHash: profileHash(d.profileText),
+    launch: { plan, install: d.install.claude, run, argvHash: argvTemplateHash(d.install.claude) },
+    measurement: file?.measurement ?? null,
+    external: file?.external ?? { schema: false, groupEnded: false },
+    host: d.host,
+    claude: {
+      authStatus: await d.authStatus(buildAuthStatus(d.install.claude, run, d.launch ?? {})),
+      configDir: run.config,
+      configProblems,
+      managedSettings: d.managedSettings,
+    },
+    profileText: d.profileText,
+  });
+  let changed = false;
+  try {
+    changed = !d.unchanged();
+  } catch {
+    changed = true;
+  }
+  if (changed) {
+    const probes = Object.fromEntries(Object.keys(result.capability.probes).map((k) => [k, false]));
+    return {
+      ...result,
+      state: result.state === "disabled" ? "disabled" : "unverified",
+      reasons: [...result.reasons, "bound-file-changed"],
+      capability: { ...result.capability, probes },
+    };
+  }
+  return result;
 }
 
 // Synthetic trap layout for measureCli (doctor.ts): stand-in credentials outside every worker area, a

@@ -9,6 +9,7 @@ import { test } from "node:test";
 import {
   MEASURED_BASIS,
   MEASURED_PROBES,
+  PROFILE_ALLOWS,
   SHARED_PROFILE_ALLOWS,
   PLAIN_SOCKET_PREFIX,
   PROBE_SOURCE,
@@ -343,7 +344,7 @@ test("doctor: Claude needs setup-token auth, a clean config dir, no managed sett
     { ...measurement(install), schema: 1 },
     schema1,
     { ...measurement(install), basis: { ...MEASURED_BASIS, "deny-network": "access" } },
-    { ...measurement(install), sharedProfile: ["config-write", "home-write", "tmp-write"] },
+    { ...measurement(install), sharedProfile: SHARED_PROFILE_ALLOWS.filter((a) => a !== "posix-shm-any-name") },
     measurement(install, { "deny-network": "maybe" as Outcome }),
     "x",
     1,
@@ -1061,11 +1062,14 @@ test("W4f: measureCli reports each run's diagnostics and its outcomes do not dep
 });
 
 test("W5c (ISSUE50-P001): the shared profile's allowances are reported as allowed, never as denied", async () => {
-  // The list follows the vetted cli.sb rules that every child of the CLI inherits.
-  const rules = parseSbpl(PROFILE).map(sbText);
-  assert.ok(rules.includes('(allow network-outbound (remote tcp "*:443"))'));
-  assert.ok(rules.includes('(allow file-read* file-write* (subpath (param "CONFIG_DIR")) (subpath (param "RUN_HOME")) (subpath (param "RUN_TMP")))'));
-  assert.deepEqual([...SHARED_PROFILE_ALLOWS], ["tcp-443", "config-write", "home-write", "tmp-write"]);
+  // RT-2 (PR #65): every allow rule of the vetted cli.sb, which every child of the CLI inherits, has exactly one
+  // entry, and every entry names exactly one rule. A new allow rule without an entry fails here.
+  const allows = VETTED_RULES.filter((r) => r.startsWith("(allow"));
+  for (const r of allows) assert.equal(PROFILE_ALLOWS.filter(([prefix]) => r.startsWith(prefix)).length, 1, r);
+  for (const [prefix] of PROFILE_ALLOWS) assert.equal(allows.filter((r) => r.startsWith(prefix)).length, 1, prefix);
+  assert.equal(PROFILE_ALLOWS.length, allows.length);
+  for (const id of ["tcp-443", "run-config-home-tmp-write", "posix-shm-any-name", "signal-same-sandbox", "mach-dns-directory-notification-trust-log"])
+    assert.ok(SHARED_PROFILE_ALLOWS.includes(id), id);
   for (const r of [await runDoctor(input()), await runDoctor(claudeInput())]) {
     assert.equal(r.state, "verified", JSON.stringify(r.reasons));
     assert.deepEqual(r.allows, SHARED_PROFILE_ALLOWS);
