@@ -593,6 +593,27 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
       ].join("\n"),
     };
   };
+  // Denials follow the same rule: an entry without a read tool's exact tool_name is no attempt.
+  const denier = (entry: (target: string) => Record<string, unknown>) => async (p: LaunchPlan): Promise<CliRun> => {
+    plans.push(p);
+    return {
+      exitCode: 0,
+      stdout: [
+        line({ type: "system", subtype: "init", tools: ["Read", "Grep", "Glob", "StructuredOutput"], mcp_servers: [] }),
+        line({ type: "result", subtype: "success", permission_denials: steps(p).map((s) => entry(s.target)) }),
+      ].join("\n"),
+    };
+  };
+  for (const [n, entry] of [
+    (t: string) => ({ tool_name: "StructuredOutput", tool_input: { summary: t } }),
+    (t: string) => ({ tool_input: { file_path: t } }),
+    (t: string) => ({ tool_name: ["Read"], tool_input: { file_path: t } }),
+    (t: string) => ({ tool_name: "read", tool_input: { file_path: t } }),
+  ].entries()) {
+    const r = await measureCli(policy(), job(30), ci, layout(`deny-${n}`), denier(entry), o);
+    for (const k of ["deny-keys", "deny-gh-auth", "deny-other-ai-auth", "deny-keychain", "deny-db", "deny-policy-write", "tool-child-confined"] as const)
+      assert.equal(r[k], "inconclusive", `denial ${n} ${k}`);
+  }
   for (const [n, toolName] of ["StructuredOutput", "structuredoutput", "Bash", "mcp__trap__x", "read"].entries()) {
     const r = await measureCli(policy(), job(30), ci, layout(`claim-${n}`), claimer(toolName), o);
     for (const k of ["deny-keys", "deny-gh-auth", "deny-other-ai-auth", "deny-keychain", "deny-db", "deny-policy-write", "tool-child-confined"] as const)
