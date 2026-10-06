@@ -214,7 +214,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 "${dispatch[@]}" measure --root "$root" --policy "$policy" --install "$install" --out "$etc/measurement-$(date +%Y%m%d%H%M%S).json"
 ```
 
-期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantLock=true`。`allowed`なら止める。`inconclusive`・`false`なら原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
+期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantLock=true`。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
 
 ## 9. 否定試験（doctor）
 

@@ -29,6 +29,7 @@ import {
   boundCapability,
   buildMaterials,
   claudeRunner,
+  diagnosticLines,
   doctorCommand,
   fileDigest,
   inspectRun,
@@ -507,6 +508,7 @@ async function measure(
   writeFileSync(values.get("--out") ?? "", `${JSON.stringify(record, null, 1)}\n`, { mode: 0o600, flag: "wx" });
   const outcomes = Object.entries(record.measurement.outcomes).map(([k, v]) => `${k}=${v}`);
   log(`測定: ${outcomes.join("、")}、schema=${record.external.schema}、descendantLock=${record.external.descendantLock}`);
+  if (record.diagnostics) for (const line of diagnosticLines(record.diagnostics)) log(line);
   return 0;
 }
 

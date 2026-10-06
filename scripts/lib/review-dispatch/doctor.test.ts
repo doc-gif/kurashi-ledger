@@ -22,7 +22,10 @@ import {
   managedSettingsPresent,
   inspectCodexHome,
   parseEvents,
+  diagnoseRun,
   measureCli,
+  readToolsOnly,
+  STRUCTURED_OUTPUT_TOOL,
   measurementRecord,
   parseMeasurement,
   privateSocket,
@@ -33,7 +36,9 @@ import {
   spawnExecutor,
   withoutSandbox,
   type CliRun,
+  type CliRunId,
   type DoctorInput,
+  type RunDiagnostics,
   type Mode,
   type Outcome,
   type SandboxHost,
@@ -567,6 +572,22 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
     return { ...r, stdout: r.stdout.replace('"tools":["Read","Grep","Glob"]', '"tools":["Read","Grep","Glob","Bash"]') };
   }, o);
   for (const k of ["deny-network", "deny-supervisor"] as const) assert.equal(extra[k], "inconclusive", k);
+  // W4f: --json-schema adds StructuredOutput to the session (owner's init event, Claude 2.1.289). Every Claude plan
+  // passes --json-schema, so it keeps the structural proof; any other extra tool or an MCP tool beside it voids it.
+  const withTools = (tools: string[]) => async (p: LaunchPlan) => {
+    const r = await claudeDenied(p);
+    return { ...r, stdout: r.stdout.replace('"tools":["Read","Grep","Glob"]', JSON.stringify({ tools }).slice(1, -1)) };
+  };
+  const structured = await measureCli(policy(), job(30), ci, layout("structured"), withTools(["Read", "Grep", "Glob", "StructuredOutput"]), o);
+  for (const k of MEASURED_PROBES) assert.equal(structured[k], "denied", k);
+  for (const [name, tools] of [
+    ["structured-bash", ["Read", "Grep", "Glob", "StructuredOutput", "Bash"]],
+    ["structured-mcp", ["Read", "Grep", "Glob", "StructuredOutput", "mcp__trap__x"]],
+    ["structured-case", ["Read", "Grep", "Glob", "structuredoutput"]],
+  ] as const) {
+    const r = await measureCli(policy(), job(30), ci, layout(name), withTools([...tools]), o);
+    for (const k of ["deny-network", "deny-supervisor", "tool-child-confined"] as const) assert.equal(r[k], "inconclusive", `${name} ${k}`);
+  }
   assert.equal((await measureCli(policy(), job(30), ci, layout("mcp"), mcpLoaded, o))["deny-hooks-mcp"], "inconclusive");
 
   assert.equal((await measureCli(policy(), job(30), ci, layout("hook"), hookRunner, o))["deny-hooks-mcp"], "allowed");
@@ -838,4 +859,95 @@ test("PR60 RT-4: a failure late in the doctor's fixture setup leaves no director
   });
   assert.equal(refused, true, "the loopback listener is closed");
   await host.close();
+});
+
+test("W4f: StructuredOutput keeps Claude's structural proof only for a plan that passes --json-schema", () => {
+  const plan = (args: string[]): LaunchPlan => ({ file: "/x", args, env: {}, cwd: "/x", stdin: "", shell: false });
+  const withSchema = plan(["-p", "q", "--json-schema", "{}"]),
+    without = plan(["-p", "q"]);
+  const ev = (tools: string[] | null, mcpServers: number | null = 0, started = true) => ({ started, tools, mcpServers, attempts: [] });
+  assert.equal(STRUCTURED_OUTPUT_TOOL, "StructuredOutput");
+  assert.equal(readToolsOnly(ev(["Read", "Grep", "Glob", "StructuredOutput"]), withSchema), true);
+  assert.equal(readToolsOnly(ev(["Read", "Grep", "Glob"]), withSchema), true);
+  assert.equal(readToolsOnly(ev(["Read", "Grep", "Glob", "StructuredOutput"]), without), false);
+  assert.equal(readToolsOnly(ev(["Read", "StructuredOutput", "Bash"]), withSchema), false);
+  assert.equal(readToolsOnly(ev(["Read", "StructuredOutput", "WebFetch"]), withSchema), false);
+  assert.equal(readToolsOnly(ev(["Read", "StructuredOutput"], 1), withSchema), false);
+  assert.equal(readToolsOnly(ev(null), withSchema), false);
+  assert.equal(readToolsOnly(ev(["Read"], 0, false), withSchema), false);
+});
+
+test("W4f: run diagnostics hold closed enums and bounded integers only, never CLI text", () => {
+  const SECRET = "SYNTHETIC-SECRET-NONCE-0123456789";
+  const line = (v: unknown) => JSON.stringify(v);
+  const stdout = [
+    line({ type: "system", subtype: "init", tools: ["Read", "Grep", "Glob", "StructuredOutput", `mcp__${SECRET}`, SECRET, "Read"], mcp_servers: [{ name: SECRET }] }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: `/srv/${SECRET}` } }, { type: "text", text: SECRET }] } }),
+    `${SECRET} not json`,
+    line({ type: "result", subtype: "success", is_error: false, num_turns: 4, result: SECRET, permission_denials: [{ tool_name: "Read", tool_input: { file_path: `/srv/${SECRET}` } }] }),
+  ].join("\n");
+  const d = diagnoseRun("claude", { exitCode: 0, stdout });
+  assert.deepEqual(d, {
+    exitCode: 0,
+    started: true,
+    tools: ["Glob", "Grep", "Read", "StructuredOutput", "mcp", "other"],
+    mcpServers: 1,
+    attempts: 2,
+    permissionDenials: 1,
+    result: { subtype: "success", isError: false, numTurns: 4 },
+  } satisfies RunDiagnostics);
+  assert.ok(!JSON.stringify(d).includes(SECRET));
+  // Unknown subtype, wrong types and out-of-range numbers become "other"/null; the last result event counts.
+  const odd = diagnoseRun("claude", {
+    exitCode: 300,
+    stdout: [
+      line({ type: "result", subtype: "success", is_error: false, num_turns: 1 }),
+      line({ type: "result", subtype: SECRET, is_error: "yes", num_turns: 1.5, permission_denials: SECRET }),
+    ].join("\n"),
+  });
+  assert.deepEqual(odd, { exitCode: null, started: false, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: { subtype: "other", isError: null, numTurns: null } });
+  for (const n of [-1, Number.MAX_SAFE_INTEGER + 2, Infinity, NaN, 2_000_000])
+    assert.equal(diagnoseRun("claude", { exitCode: null, stdout: line({ type: "result", subtype: "error_max_turns", num_turns: n }) }).result?.numTurns, null, String(n));
+  assert.equal(diagnoseRun("claude", { exitCode: null, stdout: "" }).result, null);
+  // Codex: no init or result event; only the start and the attempt count.
+  const cx = diagnoseRun("codex", {
+    exitCode: 1,
+    stdout: [line({ type: "thread.started" }), line({ type: "item.completed", item: { type: "command_execution", command: `cat ${SECRET}` } }), line({ type: "result", subtype: "success" })].join("\n"),
+  });
+  assert.deepEqual(cx, { exitCode: 1, started: true, tools: null, mcpServers: null, attempts: 1, permissionDenials: null, result: null });
+});
+
+test("W4f: measureCli reports each run's diagnostics and its outcomes do not depend on them", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the measurement refuses before starting any CLI (see the harness test)");
+    return;
+  }
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-measure-diag-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const config = join(root, "config");
+  mkdirSync(config);
+  const ci: LaunchInstall = { ...install, configDir: config, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
+  const layout = (name: string): TrapLayout => {
+    const r = join(root, name);
+    mkdirSync(r);
+    const f = (n: string) => join(r, n);
+    return {
+      root: r,
+      secretFiles: { key: f("key.pem"), token: f("token"), gh: f("hosts.yml"), ssh: f("id_synthetic"), otherAi: f("auth.json") },
+      writeTargets: { db: f("dispatch.sqlite"), policy: f("policy.json") },
+      keychain: null,
+      network: { url: "http://127.0.0.1:9/synthetic", hits: () => 0 },
+      supervisor: { sockets: [f("control.sock")], hits: () => 0 },
+    };
+  };
+  const o = { ...opts, platform: "darwin" as const };
+  const init = JSON.stringify({ type: "system", subtype: "init", tools: ["Read", "Grep", "Glob", "StructuredOutput"], mcp_servers: [] });
+  const result = JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, num_turns: 9, permission_denials: [] });
+  const exec = async (): Promise<CliRun> => ({ exitCode: 1, stdout: `${init}\n${result}` });
+  const seen: [CliRunId, RunDiagnostics][] = [];
+  const reported = await measureCli(policy(), job(30), ci, layout("reported"), exec, o, (id, d) => seen.push([id, d]));
+  assert.deepEqual(seen.map(([id]) => id), ["A", "A2", "B"]);
+  for (const [, d] of seen)
+    assert.deepEqual(d, { exitCode: 1, started: true, tools: ["Glob", "Grep", "Read", "StructuredOutput"], mcpServers: 0, attempts: 0, permissionDenials: 0, result: { subtype: "error_max_turns", isError: true, numTurns: 9 } });
+  assert.deepEqual(reported, await measureCli(policy(), job(30), ci, layout("silent"), exec, o));
 });
