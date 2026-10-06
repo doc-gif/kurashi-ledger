@@ -76,9 +76,27 @@ payloadは7日、完了Job詳細は30日で削除/要約する。consumed event/
 
 - 受付はDB directoryのOS排他lockを起動から終了まで保持する。初期macOS backendはPython3のfcntl.flockを使う小さいtrusted wrapper。launchdと手動/旧版の二重起動はDBを開く前に拒否する。WALを起動排他の代わりにしない。
 - claimは一つのDB transactionでgeneration、PR lease、全体枠、実行先枠、quotaを確保する。同じPRのreview/faultfinding/fixは同時に1つ。複数reviewerは順番、他PRは並行、AI review/faultfindingは全体最大10。人の標準操作は枠を使わない。
-- run supervisorは受付とは別プロセスで、runごとのwrapperがdurable manifestを作り、run IDのOS lockを保持してからworkerを起動する。process groupで子孫を停止する。PIDだけで生存を判断せず、lock・supervisorのrun情報・PID開始時刻を照合する。
+- run supervisorは受付とは別プロセスで、runごとのwrapperがdurable manifestを作り、run IDのOS lockを保持してからworkerを起動する。lockはleaseの照合用で、workerへ渡さない。PIDだけで生存を判断せず、lock・supervisorのrun情報・PID開始時刻を照合する。
 - 受付だけが落ちた場合は同じsupervisor/runへ制御接続を戻す。AIの会話resumeは使わない。新しい会話/Jobは以前の未起動またはprocess tree終了を確認した後だけ。heartbeat期限切れではleaseを奪わない。
-- wrapper故障時、lockが取れても孤児process treeが残りうる。lock取得は必要条件であり、子孫終了の証明と合わせてleaseを解放する。spawnとmanifest更新の間などで終了を証明できなければuncertainに止め、再起動しない。
+- wrapper故障時、lockが取れても孤児process treeが残りうる。lock取得は必要条件であり、[子孫の終了の証明](#子孫の終了の証明)と合わせてleaseを解放する。spawnとmanifest更新の間などで終了を証明できなければuncertainに止め、再起動しない。
+
+### 子孫の終了の証明
+
+所有者決定（2026-10-06、W5）。実CLI（Claude 2.1.289）はrun lockのfdをtoolの子（ripgrep等）へ渡さない。そのためfdの継承では子孫を証明できず、process groupと印で証明する。
+
+1. **停止:** workerは自分のsessionで起動する。終了時と時間切れで、groupごと止め（TERMのあとKILL）、groupが空になるまで待つ。
+2. **印:** supervisorは起動の前にrunごとの128 bitの乱数を作り、workerのenvの`KL_RUN_TAG`にだけ渡す。manifest・結果・ログに書かない。
+3. **走査:** groupが空になったら、実行ユーザーの全processを列挙し、各processの起動時のenvを読む（macOSは`sysctl`の`KERN_PROCARGS2`をctypesで読み、shellを使わない）。印を持つ生きたprocessが1つもないときだけ`treeEnded`にする。setsidでgroupを抜けた子もここで見つかる。
+
+| 走査で見たもの | 扱い |
+| --- | --- |
+| 生きていて印がある | 終わっていない |
+| 生きていて印がない | 数えない |
+| 生きていてenvを読めない | 不明 |
+| 列挙と読取りの間に終わった（存在しない・zombie） | 終わった |
+| 列挙の失敗 | 不明 |
+
+終わっていない・不明が残れば2秒まで走査をやり直し、最後の結果で決める。不明を「終わった」にしない。どちらも`treeEnded=false`のuncertainで、leaseを保ち、再起動しない。supervisorが落ちると印は失われ、runはuncertainのまま残る。残余リスクと実CLIでの測定は§7。
 
 ### 対象変更と投稿不明
 
@@ -134,13 +152,13 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは
 | 人 | GitHub操作/通知のみ。AI起動なし |
 | デスクトップチャット | 初期の自動起動対象外。既存巡回はownerの切替手順で扱う |
 
-shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
+shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*（supervisorが足す`KL_RUN_TAG`を除く。§4）、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
 
 read-only flagはキーチェーン読取りの隔離ではない。Claudeには、systemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access（すべて）、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。Read（とGlob）はCLIのprocessの中で動くので、tool子processのprofileでは守れない。CLIのprofileが読めるのは、資料・runtime・`CLAUDE_CONFIG_DIR`だけにする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexは自身の`--sandbox read-only`だけで動く。tool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
 
-doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
+doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。measureは、子を作る無害なrun（Grepがripgrepを起動する）で[印](#子孫の終了の証明)の継承を測る。runの間にgroupで観測した子のすべてが印を持つと確かめたときだけ`descendantTag`をtrueにする。確かめる前に終わった子、印のない子、読めない子が1つでもあるか、groupの列挙に1回でも失敗したか、子を観測できなければfalseで、capabilityを記録しない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
-同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。O3により別のOSユーザーは使わない。この残余リスクを受け入れて記録する。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）も防がない。doc-gif（所有者と共用）で`OWNER_MERGE_ONLY`を書き換えられる。そのためactiveのPRは所有者がマージする（§5）。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
+同じOSユーザーの悪意あるhost processや管理者に対する強い分離ではなく、取り違え/不信入力の被害を減らす機構。O3により別のOSユーザーは使わない。この残余リスクを受け入れて記録する。envを空にしてexecし、groupも抜けた子（自分のenvの領域を書き換えた子、別のuidになった子も）は[印の走査](#子孫の終了の証明)で見つからない。toolはRead・Grep・Globだけなので、モデルは子のcommandを選べない。同じアカウントで規則を破るAI（Appやdoc-gifでの記録・承認の偽装）も防がない。doc-gif（所有者と共用）で`OWNER_MERGE_ONLY`を書き換えられる。そのためactiveのPRは所有者がマージする（§5）。implementer Jobは許可worktreeでPRコードを検証するため、現行手作業と同じ実行リスクが残る。未隔離の実装Jobを自動で起動しない。
 
 **IDと原因の言い換えでも戻らない上限**をDBに持つ。ownerの一つのauto-fix許可につき最大2修正、PRごとrolling 24時間にAI review/faultfinding起動最大6回。launch前に予約し、起動不明も消費扱い。ID/世代/再起動/手動pushでリセットしない。上限でpause/needs-owner、ownerが原因/方針を確認して再許可するまで解除しない。通常の取得はAI回数に数えない。現行の「同原因2回の不成功→設計見直し→残ればneeds-owner」も保持し、各修正前に指摘全体と回帰原因を照合する。
 
@@ -236,7 +254,7 @@ PR46-I001〜I007は次へ引き継ぐ。
 | I006 | D001〜D009の全反例を合成イベント/fake adapterで試験。実OS lock/process tree/隔離は対応backendの結合試験 |
 | I007 | dispatcher/Broker/policy adapter/PURPOSESを権限制御変更として独立レビュー。固定版更新はownerだけ。正本移行でT23のpolicy_pathsへ加える |
 
-pure testsは3 OS、SQLiteは実一時DB、macOSのrun lock/process groupは実fixture workerで検証する。実CLI/App/署名配送、host隔離、公開到達経路はownerが許可した導入試験として別記する。未検証backendはdisabledであり、default-off実装の合格を実導入の証拠にしない。受信/判定/AI起動/重複/修正往復を測り、指摘数削減を品質指標にしない。
+pure testsは3 OS、SQLiteは実一時DB、macOSのrun lock/process group/印の走査は実fixture workerで検証する。実CLI/App/署名配送、host隔離、公開到達経路はownerが許可した導入試験として別記する。未検証backendはdisabledであり、default-off実装の合格を実導入の証拠にしない。受信/判定/AI起動/重複/修正往復を測り、指摘数削減を品質指標にしない。
 
 ## 10. 正本と資料
 

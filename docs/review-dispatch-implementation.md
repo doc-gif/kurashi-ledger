@@ -26,7 +26,7 @@ Issue #45の基盤と、Issue #50のstart-smallのactive。**既定はoff。** �
 | 前のRTの数え方 | policyに登録した参加者の記録の本文にある`RT-<番号>`をどこでも数え、記録ごとにも再確認する（`previous`のIDは`record-comment-<ID>`か`record-review-<ID>`で、その回の資料にある記録だけ）。印が1行目にない記録は記録として扱わない。未登録の人の記録は資料にも根拠にも入れない |
 | APPROVEの前の確認 | `accepted()`と同じ止め方（[未解消の指摘](#未解消の指摘pr48-r007)と、登録したほかの参加者の最新のCHANGES_REQUESTED）に当たれば、`decision: needs-owner`のCOMMENTにし、止めたIDを本文に書く |
 | 編集・削除の印 | Webhookの`pull_request_review`（edited・dismissed）、`pull_request_review_comment`・`issue_comment`（edited・deleted）のうち、登録した参加者（実装担当を除く）とownerの項目に、受信と同じtransactionで付く。投稿の前に印があれば照合をやり直し、3回で消えなければ結果とleaseを保ったまま`deferred`にして1回通知する。次の`cycle`は、新しい起動の判定より先に同じJobを投稿する（再起動しない。capabilityの照合より前） |
-| 終了の証明 | supervisorは正常終了のあともprocess groupが空であることを確かめる。run-keyを受けていないかackを送っていないrun、manifestがなくrun lockが空いているrunは未起動として扱う |
+| 終了の証明 | supervisorは正常終了のあともprocess groupが空で、印を持つprocessがないことを確かめる（[設計§4](review-dispatch-design.md#子孫の終了の証明)）。run-keyを受けていないかackを送っていないrun、manifestがなくrun lockが空いているrunは未起動として扱う |
 | `serve` | Webhookの受け口（127.0.0.1、1024〜65535で443以外）。`supervisor.py receiver`の別のlockで1つだけ動き、inboxと印だけを書く。保存したら`<root>/trigger`の時刻を変える（launchdのWatchPaths用）。policyは署名を確かめた配送ごとに読み直す（[policyの更新](#policyの更新と受け口の503)） |
 | `status`・`release` | 状態の表示（IDと件数）。`release`はsupervisorの`inspect`の証明で終わったrunのleaseを外す。不明な投稿があれば外さない |
 | `measure`・`doctor` | ownerだけが実CLIで行う測定と否定試験。CIでは偽物の部品で試験する。代役のcontrol socketはmacOSのパスの上限（104 byte）のため、runの領域ではなく`/private/tmp`の自分の0700のdirに2つ置き（`kl-sock-*`と`kl-ctl-*`）、104 byte以上なら作らずに止める。cli.sbはdeny defaultで両方を拒否し、末尾の`socket-deny`で`kl-sock-*`も明示で拒否する。両方deniedでなければdeny-supervisorは通らない |
@@ -125,7 +125,7 @@ shadowは取得・判定・記録だけで、AIの起動と投稿は0件。
 
 launch/POST不明は`uncertain`に残し、期限切れで再起動・再送しない。Outboxは全ページから身元・commit・marker・本文hashが一致する1件を確認して初めてpostedになる。複数一致はownerへ保留する。
 
-`supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しない。lockが取れるだけ、PIDが存在しないだけではleaseを解放しない。途中のmanifest・起動境界は不明として保持する。正常終了のあとも、workerのprocess groupに残る子があればgroupごと止め、空になったことを確かめてから終了を証明する（setsidで抜けた子孫はrun lockの継承で見つける）。`measure`は子を作るrunで継承を実測し、観測した子のすべてで確かめられたときだけ`descendantLock`をtrueにする。1つでも未検査・失敗・処理中の子があるか、groupの列挙に1回でも失敗したか、子を観測できなければfalse。
+`supervisor.py inspect --root <専用ルート> --run <run ID>`は既存runの状態確認だけで、会話を再開しない。lockが取れるだけ、PIDが存在しないだけではleaseを解放しない。途中のmanifest・起動境界は不明として保持する。`measure`の`descendantTag`の条件は[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)。
 
 DBはWAL/FULL同期、schema 5（W4で`blocked`・`run_keys`・`capability`・`marks`・`run_materials`とjobsの`origin`を足し、W4cでquota・blockedの時刻をserver時刻にし、`holds`とinboxの`policy`を足した）。`PRAGMA secure_delete`とcheckpointでWAL・空きページの旧値を消す。schema 1〜4からの暗黙の変換はせず（停止状態のbackupと独立レビューを受けた移行が要る）、未知schemaは書き込まず停止する。`Store.backup`はleaseと不明Outboxがない停止状態でSQLiteの整合したコピーを作り、既存コピーを上書きしない。ライブDB単体のコピー、稼働中の復元、暗黙のmigrationは提供しない。復元・版更新は全worker停止と不明副作用の解決後に、コピーを別の専用rootで確認してownerが切り替える。以前のDBを消さず、古い配送ID・quota・投稿hashを保つ。schema 5は実機のshadowの前の変更なので、残すべきschema 4のDBはない。あれば新しい専用rootをinitし、対象PRは新しいDraft→Readyにする（配送IDと使用済みの記録は引き継がない）。
 
@@ -135,7 +135,7 @@ DBはWAL/FULL同期、schema 5（W4で`blocked`・`run_keys`・`capability`・`m
 | --- | --- |
 | D01/D04/D05/D06 | reducer: 役割入替え、複数reviewer、base/Ready/履歴、試験mergeの親/tree、CI・独立性・dismissal |
 | D02/D03/D08/D09 | 実SQLite: tombstone、transaction、全種類PR lease、10枠/実行先枠、24時間6回とowner解除まで保持するquota pause、世代の取消、不明POST・通知の重複 |
-| D03/D09/I009 | POSIX fixture: supervisor死亡、setsid子孫の継承lock、取消、同一runへの再接続。Windowsは未対応を検査しskipしない |
+| D03/D09/I009 | POSIX fixture: supervisor死亡、setsid子孫の印の走査、取消、同一runへの再接続。Windowsは未対応を検査しskipしない |
 | D05/D07/I003/I004 | fake ghの全ページ/ETag/rate limit/部分失敗、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
 | D06/D07/D10 | run/身元/pair/結果hashの照合、supervisor署名の相互試験ベクトルと改ざんの拒否、公開前の検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
 | I007 | `dispatch-read`の正確なread-only grant、追加write/missing grantではgh起動0 |
