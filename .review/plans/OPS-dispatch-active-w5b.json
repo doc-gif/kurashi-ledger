@@ -1,0 +1,861 @@
+{
+ "schema_version": 2,
+ "task_id": "OPS-dispatch-active",
+ "base_sha": "ce95c06cde4d9febafb2ee0ad07092400e17abff",
+ "planned_paths": [
+  ".review/tests/test_dispatch_supervisor.py",
+  "docs/review-dispatch-runbook.md",
+  "scripts/lib/review-dispatch/active.test.ts",
+  "scripts/lib/review-dispatch/active.ts",
+  "scripts/lib/review-dispatch/doctor.test.ts",
+  "scripts/lib/review-dispatch/doctor.ts",
+  "scripts/lib/review-dispatch/runtime.ts",
+  "scripts/review-dispatch.ts",
+  "tools/review_dispatch/supervisor.py"
+ ],
+ "conflicts": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-06",
+   "source": "所有者の実機（docs/review-dispatch-runbook.mdの手順8、main ce95c06、Claude 2.1.289）の結果を調整係が伝えた指示（Issue #50 W5）",
+   "decision": "選択肢3: workerのgroupを終了時・時間切れでkillpgし、空になるまで待つ。起動前にworkerの外で128 bitの印をenvのKL_RUN_TAGに入れ、結果に書かない。停止後に実行ユーザーの全processのenvをsysctl KERN_PROCARGS2（ctypes、shellなし）で読み、印を持つ生きたprocessがないときだけtreeEnded。読めない生きたprocess・列挙の失敗は不明でtreeEnded=false。読取りの前に終わったprocessは終わった扱い。measureは、観測した子のすべてが印を持つときだけ証明とし、子1つ以上を求める。残余リスク: envを空にしてexecしgroupも抜けた子は逃れる"
+  },
+  {
+   "date": "2026-10-06",
+   "source": "同じ指示（Issue #50 W5、PR B）",
+   "decision": "benignの解析の失敗に、失敗した段階の閉じた列挙（signed・provenance・result-json・schema-field・verify）と、schemaの失敗では固定のschemaのkeyの名前だけを診断に足す。値は記録しない"
+  }
+ ],
+ "assessments": [
+  {
+   "id": "INV-LOCK",
+   "disposition": "preserve",
+   "reason": "PR A（#63）の設計を実装する。run lockの種類・パス・取得・inspectの照合は変えず、workerへ渡すこと（pass_fds・KL_RUN_LOCK_FD）と、継承に頼った取り直しの検査をやめる。daemon・receiverのlockの受け渡しは変えない。終わったと言える条件は、groupが空で、印の走査がclearのときだけ",
+   "checks": [
+    {
+     "id": "identity",
+     "method": "test_dispatch_supervisor.py: 既存のdaemon・receiverの単一実行とroot交換の試験を変えずに通す。workerのfdに標準入出力のほかがない（run lockのfdがない）こと",
+     "expected": "lockの同一性の規則は同じ。workerはlockのfdを持たない"
+    },
+    {
+     "id": "recovery",
+     "method": "test_dispatch_supervisor.py: setsidで抜けた子が生きている間はtreeEnded=falseで、同じrunの再起動を拒否する。supervisorを殺したrunはinspectがuncertainで再起動を拒否する。TagScanTestsで偽のprocess表の各状態（variant_analysisのINV-LOCKの表）",
+     "expected": "不明・印ありは終わったにならない。再起動しない"
+    }
+   ]
+  },
+  {
+   "id": "INV-PRIVACY",
+   "disposition": "preserve",
+   "reason": "印はworkerのenvにだけ入れ、manifest・stdout・結果・inspectに書かない。走査はenvのbytesを照合に使うだけで保存しない。diagnosticsの段階・欄は閉じた列挙で、値・例外の文を入れない（PR37-R001）",
+   "checks": [
+    {
+     "id": "public",
+     "method": "test_dispatch_supervisor.py: fixtureのworkerが読んだ印の値が、rootのどのfileにもstdoutにもない。active.test.ts: 秘密に似た値・未知のkeyを含む結果からのdiagnosticsに、その値と未知のkey名が入らず、固定のkey名か閉じた列挙だけになる。check-public --staged",
+     "expected": "記録と出力に印・値・外部の文字列が入らない。公開検査が終了0"
+    }
+   ]
+  },
+  {
+   "id": "INV-RELEASE",
+   "disposition": "preserve",
+   "reason": "測定のdescendantLockをdescendantTagに置き換え、doctorのprobeをdescendant-tagにする。古い測定fileと古いcapabilityは形が合わないので、従来どおりfail closed（measurement-invalid、capabilityReady=false）",
+   "checks": [
+    {
+     "id": "update",
+     "method": "active.test.ts・doctor.test.ts: descendantTagがtrueのときだけdescendant-tagがtrue。descendantLockの古い測定fileはmeasurement-invalidでcapabilityを記録しない。REQUIRED_PROBESにdescendant-tagがあり、descendant-lockだけのcapabilityはcapabilityReadyがfalse",
+     "expected": "判定が新しい名前で一貫し、古い記録で起動しない"
+    },
+    {
+     "id": "artifact",
+     "method": "所有者がmerge後に手順8・9を再実行する（deferred）。CIはsandbox-execと実CLIを使わない。macOSの実fixtureで、子が印を持つ・印を消した子（env={}）の両方を測る",
+     "expected": "実機でdescendantTag=trueか、diagnosticsで原因が分かる"
+    }
+   ]
+  },
+  {
+   "id": "INV-REVIEW",
+   "disposition": "preserve",
+   "reason": "doctorの判定はdiagnosticsを読まない（W4fのまま）。足すのはdiagnosticsのstage・fieldだけ",
+   "checks": [
+    {
+     "id": "duplicates",
+     "method": "active.test.ts: diagnosticsの中身だけが違う測定fileでdoctorCommandの結果が同じ（既存の試験を新しい名前で通す）",
+     "expected": "diagnosticsは判定に影響しない"
+    },
+    {
+     "id": "trust",
+     "method": "active.test.ts: externalの余分なkey・古いkeyは拒否する",
+     "expected": "測定fileの形の検査は弱まらない"
+    }
+   ]
+  },
+  {
+   "id": "INV-ROOT",
+   "disposition": "not-applicable",
+   "reason": "保存先のroot・別名・初回作成の規則に触れない。manifestに閉じた列挙のscanを足すだけで、書き方（durable）は同じ",
+   "checks": [
+    {
+     "id": "first-use",
+     "method": "canonical_root・durable・write_newの差分がないことをgit diffで確かめる",
+     "expected": "規則は同じ"
+    },
+    {
+     "id": "aliases",
+     "method": "同上。既存のalias試験を変えずに通す",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-STORAGE",
+   "disposition": "not-applicable",
+   "reason": "DB・schemaに触れない。capabilityのprobeの名前はJSONの中の値で、schemaは同じ",
+   "checks": [
+    {
+     "id": "rollback",
+     "method": "差分にstore.tsの変更がないことを確かめる",
+     "expected": "schemaは同じ"
+    },
+    {
+     "id": "restore",
+     "method": "同上",
+     "expected": "同じ"
+    },
+    {
+     "id": "manifest",
+     "method": "supervisorのmanifestのschemaは1のまま、足すのはscan（閉じた列挙）だけ。inspectは未知の値を読まない",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-TASKS",
+   "disposition": "preserve",
+   "reason": "runbookの手順8・9の出力名をdescendantTagに変える。設計の正本はPR A（#63）で、実装の文書は変えない",
+   "checks": [
+    {
+     "id": "dependencies",
+     "method": "PR A（#63）が先にpushされ、このPRの本文がそれを実装すると書くこと",
+     "expected": "設計と実装の対応が追える"
+    },
+    {
+     "id": "entrypoints",
+     "method": "git grepで、コードと文書（PR Aを含む）にdescendantLock・descendant-lock・KL_RUN_LOCK_FD・lsofが残らないこと",
+     "expected": "古い名前がない"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "id": "B1",
+   "direction": "entry",
+   "location": "supervisor.pyの走査: 実行ユーザーのprocessの一覧（macOS: sysctl KERN_PROC_UID、Linuxのfixture: /proc）",
+   "data": "pid・pgid・状態（zombie）・uid",
+   "trust": "untrusted",
+   "control": "記録の大きさと自分自身の行で形を確かめる。合わなければ不明。列挙の失敗は不明"
+  },
+  {
+   "id": "B2",
+   "direction": "entry",
+   "location": "supervisor.pyの走査: 各processの起動時のenv（macOS: sysctl KERN_PROCARGS2、Linuxのfixture: /proc/<pid>/environ）",
+   "data": "他のprocessのenvのbytes（workerの子が作れる）",
+   "trust": "untrusted",
+   "control": "印の完全一致（前後がNUL）の有無だけを見る。中身を保存・出力しない。読めなければ再確認し、生きていれば不明"
+  },
+  {
+   "id": "B3",
+   "direction": "exit",
+   "location": "supervisor.py → workerのenv",
+   "data": "KL_RUN_TAG（runごとの128 bitの乱数）",
+   "trust": "untrusted",
+   "control": "workerの外で作り、envにだけ入れる。manifest・stdout・結果・ログに書かない。launcherのenvのallowlistは変えない（supervisorが足す）"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "manifest・inspect・測定file（descendantTag、descendants）",
+   "data": "走査の結果の列挙と、観測した子の数",
+   "trust": "trusted",
+   "control": "閉じた列挙と範囲を確かめた整数・真偽だけ。pid・env・印を入れない"
+  },
+  {
+   "id": "B5",
+   "direction": "entry",
+   "location": "active.ts benignSchema・resultField",
+   "data": "実CLIのbenign runの署名付き結果（モデルが作る）",
+   "trust": "untrusted",
+   "control": "段階は固定の順で閉じた列挙に写す。欄は固定のRESULT_FIELDSの名前か、keys・multipleだけ。未知のkey名・値・例外の文を記録しない"
+  }
+ ],
+ "variant_analysis": [
+  {
+   "invariant_id": "INV-LOCK",
+   "pattern": "子孫の終了を証明できないのに終わったとしてleaseを外す（fdの継承のように実CLIで成り立たない前提を含む）",
+   "places": [
+    {
+     "location": "走査: 生きていて印（KL_RUN_TAG=<このrunの値>）がある",
+     "result": "終わっていない。treeEnded=false、uncertain、leaseを保つ"
+    },
+    {
+     "location": "走査: 生きていて印がない",
+     "result": "数えない（このrunの子孫ではない）"
+    },
+    {
+     "location": "走査: 生きていてenvを読めない（読取りが失敗し、その後もzombieでない生きたprocess）",
+     "result": "不明。treeEnded=false、uncertain"
+    },
+    {
+     "location": "走査: 列挙と読取りの間に終わった（再確認で存在しない）",
+     "result": "終わった。数えない"
+    },
+    {
+     "location": "走査: zombie（列挙時・再確認時のどちらでも）",
+     "result": "終わった。数えない"
+    },
+    {
+     "location": "走査: 再確認自体の失敗",
+     "result": "不明"
+    },
+    {
+     "location": "走査: 列挙の失敗（sysctlの失敗、記録の大きさの不一致、自分自身の行のpid・pgid・uidの不一致、/procを読めない、未対応のOS）",
+     "result": "不明"
+    },
+    {
+     "location": "走査: 印のあるprocessと不明が同時にある",
+     "result": "終わっていない（どちらでもuncertain。印を優先して記録する）"
+    },
+    {
+     "location": "走査: 終わっていない・不明が残る",
+     "result": "2秒まで走査をやり直し、最後の結果で決める。不明を終わったにしない"
+    },
+    {
+     "location": "停止: killpgのあとgroupが空にならない、またはgroupの列挙に失敗",
+     "result": "従来どおりuncertain（走査に進まない）"
+    },
+    {
+     "location": "supervisorが走査の前に落ちた",
+     "result": "印はメモリにだけあり失われる。manifestはrunningのままで、inspectはuncertain。再起動しない"
+    },
+    {
+     "location": "run lock",
+     "result": "supervisorが持ち、workerへ渡さない（pass_fdsとKL_RUN_LOCK_FDをやめる）。inspectのlockHeld・leaseの照合は従来どおり。daemon・receiverのlockは従来どおり子へ渡す"
+    },
+    {
+     "location": "測定: runの間にgroupで観測した子が印を持つ",
+     "result": "tagged"
+    },
+    {
+     "location": "測定: 観測した子が読めて印がない",
+     "result": "untagged。証明にならない"
+    },
+    {
+     "location": "測定: 観測した子が確かめる前に終わった、またはenvを読めない",
+     "result": "failed。証明にならない"
+    },
+    {
+     "location": "測定: groupの列挙の失敗",
+     "result": "blindを数える。1回でも証明にならない"
+    },
+    {
+     "location": "測定: 子を1つも観測しない",
+     "result": "証明にならない（seen>=1が必要。Grepがripgrepを子として起動する）"
+    },
+    {
+     "location": "測定: 観測した子のすべてがtaggedで、failed・blindが0、かつtreeEndedでuncertainでない",
+     "result": "descendantTag=true"
+    },
+    {
+     "location": "supervisor.py run（run-fixture・run-worker）",
+     "result": "pass_fdsとKL_RUN_LOCK_FDをやめ、KL_RUN_TAGを足す。scanがclear以外ならuncertain"
+    },
+    {
+     "location": "supervisor.py run（daemon・receiver）",
+     "result": "変更なし（lockを子へ渡す）"
+    },
+    {
+     "location": "supervisor.py inspect",
+     "result": "descendantsの数の名前をtaggedへ。判定は変えない"
+    },
+    {
+     "location": "macOSの表（DarwinTable）",
+     "result": "KERN_PROC_UIDの記録の大きさが648の倍数で、自分自身の行のpid・pgid・uidが一致するときだけ使う。違えば不明"
+    },
+    {
+     "location": "Linuxの表（ProcTable、fixtureとCIだけ）",
+     "result": "/proc/<pid>/statusの実効uidで絞り、environを読めなければstatで再確認する。non-dumpableは読めないので不明"
+    },
+    {
+     "location": "そのほかのOS",
+     "result": "表がなく不明（run-fixtureもuncertain）"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RECORDS",
+   "cause_key": "unknown-narrows-scope",
+   "pattern": "読めない・列挙できない・確かめる前に消えたprocessを、印がない・子がないとして範囲を狭める",
+   "places": [
+    {
+     "location": "走査の読めない生きたprocess",
+     "result": "不明（数えないにしない）"
+    },
+    {
+     "location": "走査の列挙の失敗",
+     "result": "不明（processなしにしない）"
+    },
+    {
+     "location": "測定の確かめる前に終わった子",
+     "result": "failed（taggedにもuntaggedにもしない）"
+    },
+    {
+     "location": "表の関数が例外を投げる",
+     "result": "不明（列挙）・読めない（読取り）として扱う"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RECORDS",
+   "cause_key": "state-classification-precedence",
+   "pattern": "状態が重なるとき（印のあるprocessと不明が同時、zombieで読めない、PIDの再利用）の結果が一意でない",
+   "places": [
+    {
+     "location": "印と不明が同時",
+     "result": "どちらもtreeEnded=false。記録は印を優先"
+    },
+    {
+     "location": "読めないがzombie",
+     "result": "終わった"
+    },
+    {
+     "location": "PIDが再利用され印のない別のprocess",
+     "result": "数えない（印がないので子孫ではない）"
+    },
+    {
+     "location": "benignの失敗の段階",
+     "result": "keyed→signed（封筒なし）→treeEnded→uncertain→parse（stage: signed→provenance→result-json→schema-field）→verifyの順で最初の1つ"
+    },
+    {
+     "location": "schemaの欄",
+     "result": "欠けた固定のkeyの最初→余分なkey（keys）→固定の順で、その欄だけを正しい値にすると通る最初の欄→どれでもなければmultiple"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-PRIVACY",
+   "cause_key": "logged-value-carries-data",
+   "pattern": "印や他のprocessのenvが記録・出力に入る。結果の値・未知のkey名が診断に入る",
+   "places": [
+    {
+     "location": "manifest",
+     "result": "scanはclear・tagged・unknownだけ。印・pid・envを書かない"
+    },
+    {
+     "location": "inspectのdescendants",
+     "result": "seen・checked・tagged・failed・blindの整数とprovenだけ"
+    },
+    {
+     "location": "diagnostics.benign.stage",
+     "result": "signed・provenance・result-json・schema-field・verifyかnull"
+    },
+    {
+     "location": "diagnostics.benign.field",
+     "result": "RESULT_FIELDSの12の名前、keys、multipleかnull"
+    },
+    {
+     "location": "diagnosticLines",
+     "result": "上の列挙と数だけ"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RELEASE",
+   "cause_key": "verification-on-target-runtime",
+   "pattern": "文書や合成の試験の合格を、実CLIでの印の継承の証明と扱う",
+   "places": [
+    {
+     "location": "measureのdescendantTag",
+     "result": "実CLIのbenign runで観測した子だけで決める。CIは偽のprocess表で試験する"
+    },
+    {
+     "location": "所有者の手順8・9の再実行",
+     "result": "PR Bのmerge後に所有者が行う"
+    },
+    {
+     "location": "test_dispatch_supervisor.py（macOSのCI）",
+     "result": "実のsysctlで、印のある子・印を消した子・setsidで抜けた子を測る"
+    },
+    {
+     "location": "test_dispatch_supervisor.py（ubuntuのCI）",
+     "result": "/procの表でfixtureのrunとsetsidの子を測る"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-REVIEW",
+   "pattern": "診断が判定に影響する、または測定fileの形の検査が弱まる",
+   "places": [
+    {
+     "location": "parseMeasurementFile",
+     "result": "externalのkeyはdescendantTag,schemaに完全一致。diagnosticsは捨てる"
+    },
+    {
+     "location": "runDoctor",
+     "result": "probes[descendant-tag]はexternal.descendantTag === trueだけ"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-TASKS",
+   "pattern": "出力名・probe名の変更が文書とずれる",
+   "places": [
+    {
+     "location": "runbookの手順8・9",
+     "result": "descendantTagへ変える"
+    },
+    {
+     "location": "設計・実装の文書",
+     "result": "PR A（#63）で変える。このPRでは変えない"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-ROOT",
+   "pattern": "supervisorのroot・manifestの作り方が変わる",
+   "places": [
+    {
+     "location": "canonical_root・durable・write_new",
+     "result": "変更なし"
+    },
+    {
+     "location": "manifestのscan",
+     "result": "既存のdurableで書く閉じた列挙"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-STORAGE",
+   "pattern": "DB・capabilityの保存形式が変わる",
+   "places": [
+    {
+     "location": "store.ts",
+     "result": "変更なし"
+    },
+    {
+     "location": "capabilityのprobes",
+     "result": "名前の値だけdescendant-tagへ。古い記録はcapabilityReadyがfalseでfail closed"
+    }
+   ]
+  }
+ ],
+ "deferred": [
+  {
+   "item": "所有者の実機での手順8・9の再実行",
+   "reason": "実のCLIとsetup-tokenを使うので所有者だけが行う。CIと試験は合成のfixtureと偽の表だけ"
+  }
+ ],
+ "context": {
+  "INV-LOCK": {
+   "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+   "scenarios": [
+    {
+     "id": "identity",
+     "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+    },
+    {
+     "id": "recovery",
+     "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R007",
+     "invariant_id": "INV-LOCK",
+     "cause_key": "restore-lock-identity",
+     "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+     ]
+    }
+   ]
+  },
+  "INV-PRIVACY": {
+   "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+   "scenarios": [
+    {
+     "id": "public",
+     "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR12-R002",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "public-path-exception-scope",
+     "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+     ]
+    },
+    {
+     "id": "PR42-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "token-scope-fail-open",
+     "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+     ]
+    },
+    {
+     "id": "PR42-R006",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "credential-tool-from-untrusted-checkout",
+     "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR37-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "logged-value-carries-data",
+     "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+     ]
+    }
+   ]
+  },
+  "INV-RELEASE": {
+   "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+   "scenarios": [
+    {
+     "id": "update",
+     "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+    },
+    {
+     "id": "artifact",
+     "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R006",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "artifact-release-coherence",
+     "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+     ]
+    },
+    {
+     "id": "PR12-R001",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "setup-worktree-exclusion",
+     "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+     ]
+    },
+    {
+     "id": "PR12-R101",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "cleanup-failure-path-contract",
+     "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+     ]
+    },
+    {
+     "id": "PR12-R102",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "install-record-verification-scope",
+     "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+     ]
+    },
+    {
+     "id": "PR12-R103",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "verification-on-target-runtime",
+     "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+     ]
+    }
+   ]
+  },
+  "INV-REVIEW": {
+   "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+   "scenarios": [
+    {
+     "id": "duplicates",
+     "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+    },
+    {
+     "id": "trust",
+     "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR4-R001",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "workflow-self-modification",
+     "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR4-R009",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "known-path-routing-gap",
+     "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+     ]
+    },
+    {
+     "id": "PR4-R014",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "multiple-plan-exemption",
+     "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+     ]
+    },
+    {
+     "id": "PR4-R018",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "plan-task-identity",
+     "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+     ]
+    },
+    {
+     "id": "PR4-R020",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "finding-id-normalization",
+     "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R021",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "cause-key-whitespace",
+     "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R023",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "batch-cause-duplication",
+     "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+     ]
+    },
+    {
+     "id": "PR11-R112",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "plan-assessment-drift",
+     "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+     ]
+    },
+    {
+     "id": "PR42-R004",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "credential-fallback-on-mint-failure",
+     "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。 子プロセスに渡す場合も、ghとgitが読む保存済みの資格情報（.netrc、利用者・repoの設定のhelperやheader）を打ち消す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565"
+     ]
+    }
+   ]
+  },
+  "INV-ROOT": {
+   "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+   "scenarios": [
+    {
+     "id": "first-use",
+     "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+    },
+    {
+     "id": "aliases",
+     "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R002",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "first-use-vs-interruption",
+     "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+     ]
+    },
+    {
+     "id": "PR12-R104",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "destructive-op-follows-link",
+     "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+     ]
+    }
+   ]
+  },
+  "INV-STORAGE": {
+   "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+   "scenarios": [
+    {
+     "id": "rollback",
+     "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+    },
+    {
+     "id": "restore",
+     "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+    },
+    {
+     "id": "manifest",
+     "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R001",
+     "invariant_id": "INV-STORAGE",
+     "cause_key": "database-journal-pair",
+     "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+     ]
+    }
+   ]
+  },
+  "INV-TASKS": {
+   "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+   "scenarios": [
+    {
+     "id": "dependencies",
+     "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+    },
+    {
+     "id": "entrypoints",
+     "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R003",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "dependency-before-consumer",
+     "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+     ]
+    },
+    {
+     "id": "PR2-R008",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "entrypoint-order",
+     "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+     ]
+    },
+    {
+     "id": "PR4-R019",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "review-role-spelling",
+     "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R022",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "draft-open-entrypoint-coherence",
+     "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+     ]
+    },
+    {
+     "id": "PR10-R004",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "status-docs-current-state-coherence",
+     "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
+     ]
+    }
+   ]
+  }
+ }
+}
