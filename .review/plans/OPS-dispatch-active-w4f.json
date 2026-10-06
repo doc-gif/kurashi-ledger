@@ -57,7 +57,7 @@
    "checks": [
     {
      "id": "update",
-     "method": "doctor.test.ts: initがRead/Grep/Glob/StructuredOutputで--json-schemaの計画ならrun Bの構造の項目がdenied、--json-schemaを外した計画ではinconclusive、Bash・mcp__*・未知の道具が1つでもあればinconclusive。PR62 RT-1: StructuredOutput（と大小文字違い・Bash・mcp__*・read）のtool_useの入力が全対象のパスを含み、Read/Grep/Globの呼び出しとpermission_denialsがないとき、読取りの項目はinconclusive",
+     "method": "doctor.test.ts: initがRead/Grep/Glob/StructuredOutputで--json-schemaの計画ならrun Bの構造の項目がdenied、--json-schemaを外した計画ではinconclusive、Bash・mcp__*・未知の道具が1つでもあればinconclusive。PR62 RT-1: StructuredOutput（と大小文字違い・Bash・mcp__*・read）のtool_useの入力が全対象のパスを含み、Read/Grep/Globの呼び出しとpermission_denialsがないとき、読取りの項目はinconclusive。permission_denialsの項目のtool_nameがStructuredOutput・なし・配列・readで全対象を含むときも、読取りの項目はinconclusive",
      "expected": "StructuredOutput以外の追加は従来どおりfail closed"
     },
     {
@@ -199,7 +199,7 @@
     },
     {
      "location": "doctor.ts parseEvents",
-     "result": "PR62 RT-1: 試みの証拠はRead・Grep・Globの名前が完全一致するtool_useとpermission_denialsだけ。StructuredOutputや他の道具の入力（自由文）は数えない"
+     "result": "PR62 RT-1: 試みの証拠は、名前がRead・Grep・Globと完全一致するtool_useと、tool_nameが同じく完全一致するpermission_denialsの項目だけ。StructuredOutputや他の道具の入力（自由文）、tool_nameのない・文字列でない項目は数えない"
     },
     {
      "location": "active.ts benign run",
