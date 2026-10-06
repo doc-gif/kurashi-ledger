@@ -56,7 +56,7 @@ test("D08 complete fake-runner cycle posts once and ignores unchanged replay", a
         const result = JSON.stringify(fixtureResult(j));
         return {
           result,
-          treeEnded: true,
+          groupEnded: true,
           uncertain: false,
           origin: endpoint.seal(j, result),
         };
@@ -144,7 +144,7 @@ test("D03 runner uncertainty retains lease after dispatcher restart", async () =
           capability,
           run: async (j) => ({
             result: JSON.stringify(fixtureResult(j)),
-            treeEnded: false,
+            groupEnded: false,
             uncertain: true,
             origin: null,
           }),
@@ -206,7 +206,7 @@ test("PR48-R003 dispatcher never signs: a runner result without run provenance i
             const r = JSON.stringify(fixtureResult(j));
             return {
               result: r,
-              treeEnded: true,
+              groupEnded: true,
               uncertain: false,
               origin: origin(j, r),
             };

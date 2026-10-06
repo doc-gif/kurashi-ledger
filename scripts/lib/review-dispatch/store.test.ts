@@ -62,7 +62,7 @@ test("D09 one PR lease across kinds; unknown launch cannot be stolen", () => {
       d.store.release(j, {
         run: j.run,
         neverStarted: false,
-        treeEnded: false,
+        groupEnded: false,
         uncertain: true,
       }),
     );
@@ -88,7 +88,7 @@ test("D09 invalidation cancels first; generation advances only after proven tree
     d.store.release(j, {
       run: j.run,
       neverStarted: false,
-      treeEnded: true,
+      groupEnded: true,
       uncertain: false,
     });
     assert.equal(d.store.target(j.key)!.generation, 2);
@@ -144,7 +144,7 @@ test("D08 six starts per PR persists across generations and restarts, no clock r
         d.store.release(j, {
           run: j.run,
           neverStarted: true,
-          treeEnded: false,
+          groupEnded: false,
           uncertain: false,
         });
       } else assert.equal(j, null);
@@ -211,7 +211,7 @@ test("I002 unknown schema rejected without write; quiesced backup restores repla
     d.store.release(j, {
       run: j.run,
       neverStarted: true,
-      treeEnded: false,
+      groupEnded: false,
       uncertain: false,
     });
     d.store.db.exec("PRAGMA user_version=99");
@@ -271,7 +271,7 @@ test("R002 quota pause survives the rolling window, generation changes and reope
         d.store.release(j, {
           run: j.run,
           neverStarted: true,
-          treeEnded: false,
+          groupEnded: false,
           uncertain: false,
         });
       } else assert.equal(j, null);
@@ -317,7 +317,7 @@ test("R002 quota pause survives the rolling window, generation changes and reope
       resumed.release(j, {
         run: j.run,
         neverStarted: true,
-        treeEnded: false,
+        groupEnded: false,
         uncertain: false,
       });
     } finally {
@@ -437,7 +437,7 @@ test("W4 row 1: blocked survives reopen and the owner's lease release; only an o
     try {
       assert.deepEqual(store.blocked(j.key), { run: j.run, reason: "publication", at: 200 });
       // The owner releases the ended run (supervisor proof): the PR stays blocked.
-      store.release(j, { run: j.run, neverStarted: false, treeEnded: true, uncertain: false });
+      store.release(j, { run: j.run, neverStarted: false, groupEnded: true, uncertain: false });
       assert.equal(store.observe(assess(p, s, store.target(j.key))), true);
       assert.equal(store.target(j.key)!.reason, "blocked-owner-required");
       const fresh = snapshot();
@@ -631,7 +631,7 @@ test("PR48-R015 holds are timed on the server clock once settled: local skew, an
         const j = d.store.claim(p, s, 30, "review", local + n);
         if (n <= 6) {
           assert.ok(j, `${skew} ${n}`);
-          d.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+          d.store.release(j, { run: j.run, neverStarted: true, groupEnded: false, uncertain: false });
         } else assert.equal(j, null, skew);
       }
       // Pending: no unpause counts, not even one after the pause.

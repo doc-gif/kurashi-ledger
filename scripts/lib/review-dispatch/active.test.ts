@@ -44,7 +44,7 @@ const claude = (root: string): LaunchInstall => ({
   version: "2.1.300",
   runtime: "/opt/synthetic/claude/2.1.300",
   cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb",
-  configDir: "/srv/synthetic/dispatch/claude-config",
+  configDir: null, // per run (W5c)
   tokenFile: "/srv/synthetic/owner-secrets/claude-setup-token",
   protectedRoots: [root, "/srv/synthetic/repo"],
 });
@@ -105,6 +105,7 @@ test("W4 install record: same trusted copy, Claude only, worker areas outside th
     ["install-paths", (v) => (v.supervisor = "/opt/synthetic/copy/supervisor.py")],
     ["install-copy", (v) => (v.broker.wrapper = "/opt/other/scripts/github-app-token.ts")],
     ["install-claude-only", (v) => (v.claude.backend = "codex")],
+    ["install-config-dir", (v) => (v.claude.configDir = "/srv/synthetic/dispatch/claude-config")],
     ["runs-overlap-root", (v) => (v.runs = `${root}/runs`)],
     ["runs-overlap-root", (v) => (v.runs = "/srv/synthetic/dispatch")],
     ["root-not-protected", (v) => (v.claude.protectedRoots = ["/srv/synthetic/repo"])],
@@ -124,10 +125,12 @@ test("W4 doctor hashes are bound to the plan: version, executable, cli.sb and ar
     ["capability-missing", null, i, PROFILE, EXE],
     ["capability-not-ready", { ...capability(i), probes: { ...probes, "deny-keys": false } }, i, PROFILE, EXE],
     ["capability-not-ready", { ...capability(i), backend: "codex" }, i, PROFILE, EXE],
+    // W5c: a capability recorded with the old descendant-lock proof is never ready.
+    ["capability-not-ready", { ...capability(i), probes: { ...Object.fromEntries(Object.entries(probes).filter(([k]) => k !== "group-ended" && k !== "deny-other-run")), "descendant-lock": true } }, i, PROFILE, EXE],
     ["capability-version", capability(i), { ...i, version: "2.1.301" }, PROFILE, EXE],
     ["capability-executable", capability(i), i, PROFILE, "f".repeat(64)],
     ["capability-profile", capability(i), i, `${PROFILE}(allow default)\n`, EXE],
-    ["capability-argv", capability(i), { ...i, configDir: "/srv/synthetic/other-config" }, PROFILE, EXE],
+    ["capability-argv", capability(i), { ...i, cliProfile: "/opt/synthetic/other/cli.sb" }, PROFILE, EXE],
   ];
   for (const [reason, c, inst, text, exe] of cases) {
     const r = boundCapability(c, inst, text, exe);
@@ -292,7 +295,11 @@ type FakeOptions = {
   badKey?: boolean;
   onAck?: () => void;
   exit?: number;
-  descendants?: { seen: number; checked: number; holding: number; pending: number; failed: number; blind: number; proven: boolean };
+  // W5c: what supervisor.py inspect answers (default: group ended, not uncertain), or raw text.
+  inspect?: Record<string, unknown> | string;
+  noResult?: boolean; // e.g. a timeout: no run-result line
+  otherRun?: string; // the envelope is signed for another run
+  raw?: string; // the worker's result text, instead of a valid result
 };
 function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<string, unknown> }[]): SpawnSupervisor {
   return (file, args, env) => {
@@ -335,19 +342,21 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
             causes: [],
             previous: [],
           };
-          const raw = JSON.stringify(result),
-            binding = args[args.indexOf("--binding") + 1]!;
-          emit(
-            JSON.stringify({
-              schema: 1,
-              type: "run-result",
-              run,
-              binding,
-              resultHash: hash(raw),
-              result: raw,
-              signature: signer.sign(signedMessage(run, binding, hash(raw))),
-            }),
-          );
+          const raw = o.raw ?? JSON.stringify(result),
+            binding = args[args.indexOf("--binding") + 1]!,
+            signedRun = o.otherRun ?? run;
+          if (!o.noResult)
+            emit(
+              JSON.stringify({
+                schema: 1,
+                type: "run-result",
+                run: signedRun,
+                binding,
+                resultHash: hash(raw),
+                result: raw,
+                signature: signer.sign(signedMessage(signedRun, binding, hash(raw))),
+              }),
+            );
           close(o.exit ?? 0);
           return true;
         }
@@ -362,7 +371,8 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
       },
     };
     if (mode === "inspect") {
-      emit(JSON.stringify({ run, treeEnded: true, neverStarted: false, uncertain: false, supervisorAlive: false, lockHeld: false, signed: true, ...(o.descendants ? { descendants: o.descendants } : {}) }));
+      const answer = o.inspect ?? { groupEnded: true, allDescendants: "unproven", neverStarted: false, uncertain: false, supervisorAlive: false, lockHeld: false, signed: true };
+      emit(typeof answer === "string" ? answer : JSON.stringify({ run, ...answer }));
       close(0);
     } else if (mode === "redact") close(0);
     return child;
@@ -431,7 +441,7 @@ test("W4 Claude runner: the key is stored before ack, the plan goes only through
     });
     const r = await runner.run(j);
     assert.equal(r.uncertain, false);
-    assert.equal(r.treeEnded, true);
+    assert.equal(r.groupEnded, true);
     assert.equal(storedAtAck, 1);
     const worker = x.calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(!worker.args.some((a) => a.includes(TOKEN)));
@@ -506,6 +516,158 @@ test("W4 Claude runner: a key line for another job is never acknowledged; refuse
   }
 });
 
+// ---- W5c (Issue #50): group-ended is necessary, never sufficient; per-run areas; removal failures ----
+
+test("W5c (ISSUE50-P002): an empty group alone never makes a result, a post or a free lease", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const other = "00000000-0000-4000-8000-000000000099";
+  const cases: [string, FakeOptions][] = [
+    ["a member that could not be stopped, or a failed enumeration", { inspect: { groupEnded: false, neverStarted: false, uncertain: true } }],
+    ["missing end evidence", { inspect: "not json" }],
+    ["an old (schema 1) report", { inspect: { treeEnded: true, neverStarted: false, uncertain: false } }],
+    ["group empty, stdout not finished", { noResult: true, inspect: { groupEnded: false, neverStarted: false, uncertain: true } }],
+    ["a timeout or cancel (group ended, nothing signed)", { noResult: true }],
+    ["a result that breaks the schema", { raw: JSON.stringify({ schema: 1, decision: "accepted" }) }],
+    ["another run's signature", { otherRun: other }],
+  ];
+  for (const [name, o] of cases) {
+    const x = runnerSetup(o);
+    try {
+      let submits = 0;
+      const broker = { submit: async () => (submits++, "posted" as const) };
+      x.d.store.observe(assess(x.p, x.s, null));
+      const step = () => activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner: x.runner, broker, fresh: async () => x.s, now: 100 });
+      assert.match(await step(), /^review:uncertain$/, name);
+      assert.equal(submits, 0, name);
+      const job = x.d.store.status("1:1").jobs[0]!;
+      assert.equal(job.status, "uncertain", name);
+      // The lease is held: nothing relaunches, and a release without the end evidence is refused.
+      assert.doesNotMatch(await step(), /uncertain/, name);
+      assert.equal(x.calls.filter((c) => c.args[1] === "run-worker").length, 1, name);
+      const j = x.d.store.jobByRun(job.run)!;
+      assert.throws(() => x.d.store.release(j, { run: j.run, neverStarted: false, groupEnded: false, uncertain: true }), name);
+      assert.deepEqual(readdirSync(x.runs), [], name);
+    } finally {
+      x.cleanup();
+    }
+  }
+});
+
+test("W5c (ISSUE50-P002): recovery with saved end evidence frees the lease, and the launch quota is kept", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const { inspectRun } = await import("./active.ts");
+  const x = runnerSetup({ noResult: true }); // every launch times out: uncertain, then recovered by the owner
+  try {
+    const broker = { submit: async () => assert.fail("nothing to post") };
+    const command = { python: x.i.python, supervisor: x.i.supervisor, root: x.d.root, spawn: fakeSupervisor({}, []) };
+    for (let n = 1; n <= 7; n++) {
+      x.s.pair.head = n.toString(16).repeat(40);
+      x.s.finalPair = { ...x.s.pair };
+      x.s.testedParents = [x.s.pair.base, x.s.pair.head];
+      x.s.history[1]!.id = `w5c-ready-${n}`;
+      x.s.history[1]!.pair = { ...x.s.pair };
+      x.d.store.observe(assess(x.p, x.s, x.d.store.target("1:1")));
+      const out = await activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner: x.runner, broker, fresh: async () => x.s, now: 100 + n });
+      if (n <= 6) {
+        assert.equal(out, "review:uncertain", String(n));
+        const job = x.d.store.jobByRun(x.d.store.status("1:1").jobs[0]!.run)!;
+        // The owner's release (review-dispatch.ts release): the supervisor's saved report decides.
+        x.d.store.release(job, { run: job.run, ...(await inspectRun(command, job.run)) });
+      } else assert.doesNotMatch(out, /uncertain/);
+    }
+    assert.equal(x.calls.filter((c) => c.args[1] === "run-worker").length, 6);
+    assert.equal(x.d.store.quotaPaused("1:1"), true);
+  } finally {
+    x.cleanup();
+  }
+});
+
+test("W5c (ISSUE50-P001/P003): each run gets new materials, HOME, tmp and config dir; none is reused", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const { newRunArea } = await import("./active.ts");
+  const x = runnerSetup();
+  try {
+    x.d.store.observe(assess(x.p, x.s, null));
+    const a = x.d.store.claim(x.p, x.s, 30, "faultfinding", 100)!;
+    x.d.store.running(a);
+    await x.runner.run(a);
+    await x.runner.run({ ...a, run: "00000000-0000-4000-8000-0000000000bb" });
+    const plans = x.calls.filter((c) => c.args[1] === "run-worker").map((c) => c.plan!);
+    assert.equal(plans.length, 2);
+    const places = (pl: Record<string, unknown>) => {
+      const env = pl["env"] as Record<string, string>;
+      return [String(pl["cwd"]), env["HOME"]!, env["TMPDIR"]!, env["CLAUDE_CONFIG_DIR"]!];
+    };
+    const [first, second] = [places(plans[0]!), places(plans[1]!)];
+    for (const p of [...first, ...second]) assert.ok(p.startsWith(`${x.runs}/`), p);
+    for (const p of first) assert.ok(!second.includes(p), p);
+    assert.equal(new Set(first).size, 4);
+    // The config dir is also the one cli.sb opens (CONFIG_DIR) for that run only.
+    for (const [pl, pls] of [[plans[0]!, first], [plans[1]!, second]] as const)
+      assert.ok((pl["args"] as string[]).includes(`CONFIG_DIR=${pls[3]}`));
+    assert.deepEqual(readdirSync(x.runs), []);
+    // An existing area is never reused.
+    const made = newRunArea(x.runs, "same");
+    assert.throws(() => newRunArea(x.runs, "same"));
+    rmSync(made.area, { recursive: true });
+  } finally {
+    x.cleanup();
+  }
+});
+
+test("W5c (ISSUE50-P003): a run area that cannot be removed is reported, never dropped", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: POSIX modes and links are macOS paths here");
+    return;
+  }
+  const { removeRunArea, newRunArea } = await import("./active.ts");
+  const runs = realpathSync(mkdtempSync(join(tmpdir(), "runs-")));
+  try {
+    const { area } = newRunArea(runs, "a");
+    assert.throws(() => removeRunArea(area, () => {}), /run-area-not-removed/); // "removed" but still there
+    assert.throws(() => removeRunArea(area, () => assert.fail("EACCES")), /run-area-not-removed/);
+    assert.throws(() => removeRunArea(join(runs, "missing")), /run-area-not-removed/);
+    const { symlinkSync } = await import("node:fs");
+    symlinkSync(area, join(runs, "link"));
+    assert.throws(() => removeRunArea(join(runs, "link")), /run-area-not-removed/);
+    assert.ok(existsSync(join(area, "materials"))); // the link was not followed
+    removeRunArea(area);
+    assert.ok(!existsSync(area));
+  } finally {
+    rmSync(runs, { recursive: true, force: true });
+  }
+  // Through the runner: a started run whose area stays is uncertain (lease held) with one owner notice.
+  const { chmodSync } = await import("node:fs");
+  let locked = "";
+  const x = runnerSetup({
+    onAck: () => {
+      const area = readdirSync(x.runs)[0]!;
+      locked = join(x.runs, area, "materials");
+      chmodSync(locked, 0o500); // its entries cannot be unlinked
+    },
+  });
+  try {
+    x.d.store.observe(assess(x.p, x.s, null));
+    const j = x.d.store.claim(x.p, x.s, 30, "faultfinding", 100)!;
+    x.d.store.running(j);
+    const r = await x.runner.run(j);
+    assert.deepEqual([r.uncertain, r.result, r.origin], [true, "", null]);
+    assert.equal(x.d.store.notice(`${j.key}:run-area-not-removed:${j.run}`), false); // already recorded
+  } finally {
+    if (locked) chmodSync(locked, 0o700);
+    x.cleanup();
+  }
+});
+
 // Fixture runner with the Claude capability shape (the real one needs a supervisor; activeCycle checks only the capability).
 // The ledger of these synthetic runs: two causes, both judged by the fake red team unless told otherwise.
 const RUN_LEDGER = ["INV-LOCK/restore-lock-identity", "INV-STORAGE/database-journal-pair"];
@@ -535,7 +697,7 @@ function sealedRunner(
         ...(red ? extra : {}),
       };
       const raw = JSON.stringify(result);
-      return { result: raw, treeEnded: true, uncertain: false, origin: channel.seal(j, raw) };
+      return { result: raw, groupEnded: true, uncertain: false, origin: channel.seal(j, raw) };
     },
   };
 }
@@ -635,15 +797,15 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const p = policy(),
       i = install(d.root, runs);
     const outcomes = Object.fromEntries(MEASURED_PROBES.map((k) => [k, "denied"])) as Parameters<typeof measurementRecord>[3];
-    const file = (external = { schema: true, descendantLock: true }) =>
+    const file = (external = { schema: true, groupEnded: true }) =>
       JSON.stringify({ schema: 1, measurement: measurementRecord(i.claude, EXE, profileHash(PROFILE), outcomes), external });
     const base = {
       policy: p,
       store: d.store,
       install: i,
       host: allowedHost(),
-      authStatus: async () => ({ authMethod: "oauth_token", configDirectory: i.claude.configDir }),
-      configProblems: [],
+      // The doctor's own run config dir (W5c): auth status must report exactly that directory.
+      authStatus: async (plan: { env: Record<string, string> }) => ({ authMethod: "oauth_token", configDirectory: plan.env["CLAUDE_CONFIG_DIR"] }),
       managedSettings: false,
       profileText: PROFILE,
       executableDigest: EXE,
@@ -660,8 +822,23 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     assert.equal(ok.state, "verified", JSON.stringify(ok.reasons));
     assert.equal(boundCapability(d.store.capability("claude"), i.claude, PROFILE, EXE).reason, "bound");
     assert.deepEqual(readdirSync(runs), []);
-    // A later run without the descendant-lock evidence removes the stored capability.
-    const later = await doctorCommand({ ...base, measurement: file({ schema: true, descendantLock: false }) });
+    // W5c: the config dir inspected is the doctor run's own new one, inside its (removed) run area.
+    const seen: string[] = [];
+    const inspected = await doctorCommand({ ...base, measurement: file(), inspectConfig: (dir) => (seen.push(dir), []) });
+    assert.equal(inspected.state, "verified");
+    assert.equal(seen.length, 1);
+    assert.ok(seen[0]!.startsWith(`${runs}/doctor-`) && seen[0]!.endsWith("/config"), seen[0]);
+    const dirty = await doctorCommand({ ...base, measurement: file(), inspectConfig: () => ["present:CLAUDE.md"] });
+    assert.equal(dirty.state, "disabled");
+    assert.ok(dirty.reasons.includes("config-dir:present:CLAUDE.md"));
+    // An old measurement file (descendantLock) and a later run without the group-ended evidence remove the
+    // stored capability.
+    const old = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), external: { schema: true, descendantLock: true } }) });
+    assert.equal(old.state, "unverified");
+    assert.ok(old.reasons.includes("measurement-missing"));
+    assert.equal(d.store.capability("claude"), null);
+    await doctorCommand({ ...base, measurement: file() });
+    const later = await doctorCommand({ ...base, measurement: file({ schema: true, groupEnded: false }) });
     assert.equal(later.state, "unverified");
     assert.equal(d.store.capability("claude"), null);
     // A measurement for another executable is stale.
@@ -676,12 +853,12 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const control = await doctorCommand({ ...base, measurement: file() });
     assert.equal(control.state, "verified");
     // W4f: the doctor ignores diagnostics (even broken ones) but still refuses any other extra key.
-    const withDiagnostics = (diagnostics: unknown, external = { schema: true, descendantLock: true }) =>
+    const withDiagnostics = (diagnostics: unknown, external = { schema: true, groupEnded: true }) =>
       JSON.stringify({ ...JSON.parse(file(external)), diagnostics });
-    for (const diagnostics of [{ A: null, A2: null, B: null, benign: { supervisorExitCode: 0, failed: null, descendants: null } }, "broken", null, { A: { exitCode: "x" } }]) {
+    for (const diagnostics of [{ A: null, A2: null, B: null, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null } }, "broken", null, { A: { exitCode: "x" } }]) {
       const r = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics) });
       assert.deepEqual({ state: r.state, reasons: r.reasons, probes: r.capability.probes }, { state: ok.state, reasons: ok.reasons, probes: ok.capability.probes });
-      const notLock = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics, { schema: true, descendantLock: false }) });
+      const notLock = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics, { schema: true, groupEnded: false }) });
       assert.deepEqual({ state: notLock.state, reasons: notLock.reasons }, { state: later.state, reasons: later.reasons });
     }
     const extraKey = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), notes: "x" }) });
@@ -694,18 +871,17 @@ test("W4 doctor command stores a capability only when verified, bound to this in
   }
 });
 
-test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-lock evidence from one supervised run", async (t) => {
+test("W4 measure command: measured outcomes bound to the hashes, plus schema and group-ended evidence from one supervised run", async (t) => {
   if (process.platform === "win32") {
     t.diagnostic("Windows: the owner's measurement is macOS-only (the plan check refuses Windows paths)");
     return;
   }
-  const { measureCommand } = await import("./active.ts");
+  const { measureCommand, diagnosticLines } = await import("./active.ts");
   const runs = realpathSync(mkdtempSync(join(tmpdir(), "runs-")));
   try {
     const p = policy(),
       i = install("/srv/synthetic/dispatch/root", runs);
     const calls: { args: string[]; plan?: Record<string, unknown> }[] = [];
-    mkdirSync(join(runs, "config"), { mode: 0o700 }); // the dedicated config dir (synthetic)
     const layout = async (root: string) => {
       mkdirSync(root, { recursive: true, mode: 0o700 });
       for (const sub of ["secrets", "targets", "control"]) mkdirSync(join(root, sub), { mode: 0o700 });
@@ -719,73 +895,55 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
         close: async () => {},
       };
     };
-    const record = await measureCommand({
-      policy: p,
-      install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
-      executableDigest: EXE,
-      profileText: PROFILE,
-      executor: async () => ({ exitCode: 0, stdout: "" }),
-      spawn: fakeSupervisor({}, calls),
-      layout,
-      bound: BOUND,
-      unchanged: () => true,
-      launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
-    });
+    const measure = (o: FakeOptions, c: typeof calls = []) =>
+      measureCommand({
+        policy: p,
+        install: i,
+        executableDigest: EXE,
+        profileText: PROFILE,
+        executor: async () => ({ exitCode: 0, stdout: "" }),
+        spawn: fakeSupervisor(o, c),
+        layout,
+        bound: BOUND,
+        unchanged: () => true,
+        launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
+      });
+    const record = await measure({}, calls);
     assert.equal(record.measurement.codeHash, EXE);
     assert.equal(record.measurement.profileHash, profileHash(PROFILE));
-    // A clean exit without an observed child proves no inheritance (PR #56 red team P1).
-    assert.deepEqual(record.external, { schema: true, descendantLock: false });
+    // The supervisor's own report: the group was stopped and seen empty (not "all descendants ended").
+    assert.deepEqual(record.external, { schema: true, groupEnded: true });
     // W4f: diagnostics per run, enums and numbers only; a silent CLI shows it never started.
     const silent = { exitCode: 0, started: false, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: null };
-    assert.deepEqual(record.diagnostics, { A: silent, A2: silent, B: silent, benign: { supervisorExitCode: 0, failed: null, descendants: null } });
+    assert.deepEqual(record.diagnostics, { A: silent, A2: silent, B: silent, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null } });
     assert.ok(!JSON.stringify(record).includes(TOKEN));
-    const { diagnosticLines } = await import("./active.ts");
     assert.deepEqual(diagnosticLines(record.diagnostics!), [
       "診断 A: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 A2: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 B: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
-      "診断 benign: exit=0 failed=なし descendants=-",
+      "診断 benign: exit=0 failed=なし stage=- field=-",
     ]);
-    const refused = await measureCommand({
-      policy: p,
-      install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
-      executableDigest: EXE,
-      profileText: PROFILE,
-      executor: async () => ({ exitCode: 0, stdout: "" }),
-      spawn: fakeSupervisor({ badKey: true, descendants: { seen: 1, checked: 1, holding: 0, pending: 0, failed: 0, blind: 0, proven: false } }, []),
-      layout,
-      bound: BOUND,
-      unchanged: () => true,
-      launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
-    });
-    assert.deepEqual(refused.external, { schema: false, descendantLock: false });
-    assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", descendants: null });
-    assert.equal(diagnosticLines(refused.diagnostics!)[3], "診断 benign: exit=2 failed=keyed descendants=-");
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
-    assert.ok(worker.args.includes("--probe-descendants"));
+    assert.ok(!worker.args.some((a) => /descendant/.test(a)));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
-    const again = async (descendants: { seen: number; checked: number; holding: number; pending: number; failed: number; blind?: number; proven: boolean }) =>
-      (
-        await measureCommand({
-          policy: p,
-          install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
-          executableDigest: EXE,
-          profileText: PROFILE,
-          executor: async () => ({ exitCode: 0, stdout: "" }),
-          spawn: fakeSupervisor({ descendants: { blind: 0, ...descendants } }, []),
-          layout,
-          bound: BOUND,
-          unchanged: () => true,
-          launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
-        })
-      ).external.descendantLock;
-    assert.equal(await again({ seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, proven: true }), true);
+    const refused = await measure({ badKey: true });
+    assert.deepEqual(refused.external, { schema: false, groupEnded: false });
+    assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", stage: null, field: null });
+    assert.equal(diagnosticLines(refused.diagnostics!)[3], "診断 benign: exit=2 failed=keyed stage=- field=-");
+    // ISSUE50-P002: an uncertain, unfinished or unparsable report is never "group ended"; neither is an old one.
+    for (const inspect of [
+      { groupEnded: true, uncertain: true },
+      { groupEnded: false, uncertain: false },
+      { treeEnded: true, uncertain: false },
+      "not json",
+    ])
+      assert.equal((await measure({ inspect })).external.groupEnded, false, JSON.stringify(inspect));
     // Round 4 RT-3: a swap during the measurement writes no record.
     let reads = 0;
     await assert.rejects(
       measureCommand({
         policy: p,
-        install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
+        install: i,
         executableDigest: EXE,
         profileText: PROFILE,
         executor: async () => ({ exitCode: 0, stdout: "" }),
@@ -797,20 +955,9 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       }),
       /bound-file-changed/,
     );
-    // Codex PR56-R001, independent expectations: partial, failed, pending or inconsistent reports are never proof.
-    for (const d of [
-      { seen: 2, checked: 2, holding: 1, pending: 0, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 1, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: true }, // a report that claims too much
-      { seen: 0, checked: 0, holding: 0, pending: 0, failed: 0, proven: true },
-      // A failed group enumeration (an unobserved interval) is never proof, even when every known child held.
-      { seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, blind: 1, proven: true },
-    ])
-      assert.equal(await again(d), false, JSON.stringify(d));
     // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default).
     assert.ok(Object.values(record.measurement.outcomes).every((o) => o === "inconclusive"));
-    assert.deepEqual(readdirSync(runs).filter((n) => n !== "config"), []);
+    assert.deepEqual(readdirSync(runs), []);
   } finally {
     rmSync(runs, { recursive: true, force: true });
   }
@@ -1228,7 +1375,7 @@ test("W4f: the benign run reports the first failed check as a closed step; excep
   const signed = (raw: string) =>
     JSON.stringify({ schema: 1, type: "run-result", run: j.run, binding: runBinding(j), resultHash: hash(raw), result: raw, signature: signer.sign(signedMessage(j.run, runBinding(j), hash(raw))) });
   const good = signed(JSON.stringify(result));
-  const ok = { keyed: true, signed: good, treeEnded: true, uncertain: false };
+  const ok = { keyed: true, signed: good, groupEnded: true, uncertain: false };
   const pass = { verify: () => true },
     reject = { verify: () => false },
     thrower = {
@@ -1236,14 +1383,33 @@ test("W4f: the benign run reports the first failed check as a closed step; excep
         throw new Error("SYNTHETIC-SECRET-IN-ERROR");
       },
     };
-  assert.deepEqual(benignSchema(j, pass, ok), { schema: true, failed: null });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, keyed: false }), { schema: false, failed: "keyed" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: null }), { schema: false, failed: "signed" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, treeEnded: false }), { schema: false, failed: "treeEnded" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, uncertain: true }), { schema: false, failed: "uncertain" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: "SYNTHETIC-SECRET not json" }), { schema: false, failed: "parse" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: signed(JSON.stringify({ ...result, decision: "SYNTHETIC" })) }), { schema: false, failed: "parse" });
-  assert.deepEqual(benignSchema(measurementJob(policy()), pass, ok), { schema: false, failed: "parse" }); // another job's result
-  assert.deepEqual(benignSchema(j, reject, ok), { schema: false, failed: "verify" });
-  assert.deepEqual(benignSchema(j, thrower, ok), { schema: false, failed: "verify" });
+  const none = { stage: null, field: null };
+  assert.deepEqual(benignSchema(j, pass, ok), { schema: true, failed: null, ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, keyed: false }), { schema: false, failed: "keyed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: null }), { schema: false, failed: "signed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, groupEnded: false }), { schema: false, failed: "groupEnded", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, uncertain: true }), { schema: false, failed: "uncertain", ...none });
+  // W5c: the stage inside parse, and for the schema the fixed key name only (never a value or an unknown key).
+  const parse = (stage: string, field: string | null = null) => ({ schema: false, failed: "parse", stage, field });
+  const cases: [string, Parameters<typeof benignSchema>[2]["signed"], ReturnType<typeof parse>][] = [
+    ["envelope not json", "SYNTHETIC-SECRET not json", parse("signed")],
+    ["result not json", signed("SYNTHETIC-SECRET not json"), parse("result-json")],
+    ["result an array", signed(JSON.stringify(["SYNTHETIC-SECRET"])), parse("result-json")],
+    ["result too large (the envelope bounds it)", signed(JSON.stringify({ ...result, summary: "x".repeat(40000) })), parse("signed")],
+    ["bad decision", signed(JSON.stringify({ ...result, decision: "SYNTHETIC-SECRET" })), parse("schema-field", "decision")],
+    ["missing summary", signed(JSON.stringify({ ...result, summary: undefined })), parse("schema-field", "summary")],
+    ["unknown key", signed(JSON.stringify({ ...result, SYNTHETIC_SECRET_KEY: 1 })), parse("schema-field", "keys")],
+    ["secret-shaped summary", signed(JSON.stringify({ ...result, summary: "ghp_SYNTHETICSYNTHETIC0000" })), parse("schema-field", "summary")],
+    ["accepted with findings", signed(JSON.stringify({ ...result, decision: "accepted", findings: [{ id: "PR1-R001", location: "a", impact: "b", completion: "c" }] })), parse("schema-field", "decision")],
+    ["bad pair", signed(JSON.stringify({ ...result, pair: { head: "SYNTHETIC-SECRET", base: "x" } })), parse("schema-field", "pair")],
+    ["two bad keys", signed(JSON.stringify({ ...result, schema: 2, run: "SYNTHETIC-SECRET" })), parse("schema-field", "multiple")],
+  ];
+  for (const [name, env, expected] of cases) {
+    const got = benignSchema(j, pass, { ...ok, signed: env });
+    assert.deepEqual(got, expected, name);
+    assert.ok(!JSON.stringify(got).includes("SYNTHETIC"), name);
+  }
+  assert.deepEqual(benignSchema(measurementJob(policy()), pass, ok), parse("provenance")); // another job's result
+  assert.deepEqual(benignSchema(j, reject, ok), { schema: false, failed: "verify", stage: "verify", field: null });
+  assert.deepEqual(benignSchema(j, thrower, ok), { schema: false, failed: "verify", stage: "verify", field: null });
 });

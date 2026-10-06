@@ -7,7 +7,9 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
+  MEASURED_BASIS,
   MEASURED_PROBES,
+  SHARED_PROFILE_ALLOWS,
   PLAIN_SOCKET_PREFIX,
   PROBE_SOURCE,
   SOCKET_DENY_LINE,
@@ -78,7 +80,7 @@ const install: LaunchInstall = {
   version: "2.1.300",
   runtime: "/opt/synthetic/claude/2.1.300",
   cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb",
-  configDir: "/srv/synthetic/dispatch/claude-config",
+  configDir: null,
   tokenFile: "/srv/synthetic/owner-secrets/claude-setup-token",
   protectedRoots: ["/srv/synthetic/dispatch/policy", "/srv/synthetic/dispatch/db"],
 };
@@ -96,6 +98,7 @@ const run = {
   materials: "/srv/synthetic/runs/r1/materials",
   home: "/srv/synthetic/runs/r1/home",
   tmp: "/srv/synthetic/runs/r1/tmp",
+  config: "/srv/synthetic/runs/r1/config",
   schemaFile: "/srv/synthetic/runs/r1/tmp/s.json",
 };
 const job = (actor: number) => ({
@@ -110,17 +113,19 @@ const launchFor = (i: LaunchInstall) => ({
   argvHash: argvTemplateHash(i),
 });
 const measurement = (i: LaunchInstall, over: Partial<Record<string, Outcome>> = {}) => ({
-  schema: 1,
+  schema: 2,
   backend: i.backend,
   version: i.version,
   codeHash: H,
   profileHash: P,
   argvHash: argvTemplateHash(i),
   outcomes: { ...Object.fromEntries(MEASURED_PROBES.map((k) => [k, "denied"])), ...over },
+  basis: { ...MEASURED_BASIS },
+  sharedProfile: [...SHARED_PROFILE_ALLOWS],
 });
 const facts = (over: Partial<NonNullable<DoctorInput["claude"]>> = {}) => ({
-  authStatus: { authMethod: "oauth_token", configDirectory: install.configDir },
-  configDir: install.configDir,
+  authStatus: { authMethod: "oauth_token", configDirectory: run.config },
+  configDir: run.config,
   configProblems: [],
   managedSettings: false,
   ...over,
@@ -132,7 +137,7 @@ const input = (over: Partial<DoctorInput> = {}): DoctorInput => ({
   profileHash: P,
   launch: null,
   measurement: null,
-  external: { schema: true, descendantLock: true },
+  external: { schema: true, groupEnded: true },
   host: fakeHost(),
   profileText: PROFILE,
   ...over,
@@ -198,7 +203,7 @@ test("doctor: failed control or inconclusive probe leaves the backend unverified
     assert.ok(r.reasons.includes(`explicit-deny-unproven:${id}`));
   }
   assert.equal(child.state, "unverified");
-  assert.equal(await runDoctor(input({ external: { schema: false, descendantLock: true } })).then((r) => r.state), "unverified");
+  assert.equal(await runDoctor(input({ external: { schema: false, groupEnded: true } })).then((r) => r.state), "unverified");
 });
 
 test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
@@ -300,10 +305,10 @@ test("doctor: Claude needs setup-token auth, a clean config dir, no managed sett
   assert.equal((await runDoctor(claudeInput({ claude: null }))).state, "unverified");
   assert.equal((await runDoctor(claudeInput({ claude: facts({ authStatus: null }) }))).state, "unverified");
   for (const [status, reason] of [
-    [{ authMethod: "claude.ai", configDirectory: install.configDir }, "auth-not-setup-token"],
-    [{ authMethod: "api_key", configDirectory: install.configDir }, "auth-not-setup-token"],
-    [{ authMethod: "api_key_helper", configDirectory: install.configDir }, "auth-not-setup-token"],
-    [{ authMethod: "third_party", configDirectory: install.configDir }, "auth-not-setup-token"],
+    [{ authMethod: "claude.ai", configDirectory: run.config }, "auth-not-setup-token"],
+    [{ authMethod: "api_key", configDirectory: run.config }, "auth-not-setup-token"],
+    [{ authMethod: "api_key_helper", configDirectory: run.config }, "auth-not-setup-token"],
+    [{ authMethod: "third_party", configDirectory: run.config }, "auth-not-setup-token"],
     [{ authMethod: "oauth_token", configDirectory: "/srv/synthetic/other" }, "auth-config-dir-mismatch"],
     ["oauth_token", "auth-not-setup-token"],
   ] as const) {
@@ -330,7 +335,19 @@ test("doctor: Claude needs setup-token auth, a clean config dir, no managed sett
   }
   const missing = measurement(install);
   delete (missing.outcomes as Record<string, Outcome>)["deny-supervisor"];
-  for (const m of [{ ...measurement(install), note: "x" }, missing, { ...measurement(install), schema: 2 }, measurement(install, { "deny-network": "maybe" as Outcome }), "x", 1]) {
+  // W5c (ISSUE50-P001): a schema 1 record, or one whose basis or shared-profile list differs, is refused.
+  const { basis: _b, sharedProfile: _s, ...schema1 } = { ...measurement(install), schema: 1 };
+  for (const m of [
+    { ...measurement(install), note: "x" },
+    missing,
+    { ...measurement(install), schema: 1 },
+    schema1,
+    { ...measurement(install), basis: { ...MEASURED_BASIS, "deny-network": "access" } },
+    { ...measurement(install), sharedProfile: ["config-write", "home-write", "tmp-write"] },
+    measurement(install, { "deny-network": "maybe" as Outcome }),
+    "x",
+    1,
+  ]) {
     const r = await runDoctor(claudeInput({ measurement: m }));
     assert.equal(r.state, "unverified");
     assert.ok(r.reasons.includes("measurement-invalid"));
@@ -456,7 +473,7 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
     secrets = join(root, "secrets");
   mkdirSync(config);
   mkdirSync(secrets);
-  const ci: LaunchInstall = { ...install, configDir: config, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
+  const ci: LaunchInstall = { ...install, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
   const cx: LaunchInstall = { ...codexInstall, configDir: config, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
   let netHits = 0,
     controlHits = 0;
@@ -554,7 +571,11 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
   const b = plans[2]!;
   assert.match(b.stdin, /^- read: /m);
   assert.deepEqual(readdirSync(b.cwd), ["readme.txt"]);
-  assert.deepEqual(readdirSync(config), []); // the config-dir trap is removed after the run
+  // W5c: every run has its own config dir inside its own area; run B's trap file is removed after the run.
+  const configs = plans.map((p) => p.env["CLAUDE_CONFIG_DIR"]!);
+  assert.equal(new Set(configs).size, 3);
+  for (const c of configs) assert.ok(c.startsWith(`${root}/`), c);
+  assert.deepEqual(readdirSync(configs[2]!), []);
 
   plans.length = 0;
   const codex = await measureCli(policy(), job(20), cx, layout("codex"), codexDenied, o);
@@ -719,7 +740,7 @@ test("W4 doctor binds the capability to the argv template of the install it was 
   assert.equal(ok.state, "verified", JSON.stringify(ok.reasons));
   assert.equal(ok.capability.argvHash, argvTemplateHash(install));
   // A launch record whose hash is not this install's template disables the backend.
-  const other = { ...install, configDir: "/srv/synthetic/other-config" };
+  const other = { ...install, cliProfile: "/opt/synthetic/other/cli.sb" };
   assert.notEqual(argvTemplateHash(other), argvTemplateHash(install));
   const r = await runDoctor(claudeInput({ launch: { ...launchFor(install), argvHash: argvTemplateHash(other) }, measurement: { ...measurement(install), argvHash: argvTemplateHash(other) } }));
   assert.equal(r.state, "disabled");
@@ -1013,9 +1034,7 @@ test("W4f: measureCli reports each run's diagnostics and its outcomes do not dep
   }
   const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-measure-diag-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const config = join(root, "config");
-  mkdirSync(config);
-  const ci: LaunchInstall = { ...install, configDir: config, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
+  const ci: LaunchInstall = { ...install, protectedRoots: ["/srv/synthetic/dispatch/policy"] };
   const layout = (name: string): TrapLayout => {
     const r = join(root, name);
     mkdirSync(r);
@@ -1039,4 +1058,42 @@ test("W4f: measureCli reports each run's diagnostics and its outcomes do not dep
   for (const [, d] of seen)
     assert.deepEqual(d, { exitCode: 1, started: true, tools: ["Glob", "Grep", "Read", "StructuredOutput"], mcpServers: 0, attempts: 0, permissionDenials: 0, result: { subtype: "error_max_turns", isError: true, numTurns: 9 } });
   assert.deepEqual(reported, await measureCli(policy(), job(30), ci, layout("silent"), exec, o));
+});
+
+test("W5c (ISSUE50-P001): the shared profile's allowances are reported as allowed, never as denied", async () => {
+  // The list follows the vetted cli.sb rules that every child of the CLI inherits.
+  const rules = parseSbpl(PROFILE).map(sbText);
+  assert.ok(rules.includes('(allow network-outbound (remote tcp "*:443"))'));
+  assert.ok(rules.includes('(allow file-read* file-write* (subpath (param "CONFIG_DIR")) (subpath (param "RUN_HOME")) (subpath (param "RUN_TMP")))'));
+  assert.deepEqual([...SHARED_PROFILE_ALLOWS], ["tcp-443", "config-write", "home-write", "tmp-write"]);
+  for (const r of [await runDoctor(input()), await runDoctor(claudeInput())]) {
+    assert.equal(r.state, "verified", JSON.stringify(r.reasons));
+    assert.deepEqual(r.allows, SHARED_PROFILE_ALLOWS);
+    // No capability probe or outcome claims 443 or a config write is denied.
+    for (const k of [...Object.keys(r.capability.probes), ...Object.keys(r.outcomes)])
+      for (const a of SHARED_PROFILE_ALLOWS) assert.ok(!k.startsWith(a), k);
+  }
+  assert.deepEqual((await runDoctor(codexInput())).allows, []);
+  // The measurement record says what each "denied" rests on; only the doctor's ":cli-child" probes are a child's
+  // own accesses.
+  for (const k of ["deny-network", "deny-supervisor", "deny-hooks-mcp"] as const) assert.equal(MEASURED_BASIS[k], "structural", k);
+  for (const k of ["deny-keys", "deny-gh-auth", "deny-other-ai-auth"] as const) assert.equal(MEASURED_BASIS[k], "access", k);
+  const rec = measurementRecord(install, H, P, Object.fromEntries(MEASURED_PROBES.map((k) => [k, "denied"])) as Record<(typeof MEASURED_PROBES)[number], Outcome>);
+  assert.equal(rec.schema, 2);
+  assert.deepEqual(rec.basis, MEASURED_BASIS);
+  assert.deepEqual(rec.sharedProfile, [...SHARED_PROFILE_ALLOWS]);
+  const child = Object.entries(SYNTHETIC_PROBES).filter(([, d]) => d.child).map(([id]) => id);
+  assert.ok(child.includes("next-run-write") && child.includes("db-write") && child.includes("app-key") && child.includes("policy-write"));
+});
+
+test("W5c (ISSUE50-P001): a child that can write another run's area disables the backend", async () => {
+  assert.ok((REQUIRED_PROBES as readonly string[]).includes("deny-other-run"));
+  assert.equal(SYNTHETIC_PROBES["next-run-write"].capability, "deny-other-run");
+  const leak = await runDoctor(claudeInput({ host: fakeHost({ outcome: (c) => (c.mode === "control" ? "allowed" : c.probe === "next-run-write" && c.mode === "cli-child" ? "allowed" : c.mode === "open" ? "allowed" : "denied") }) }));
+  assert.equal(leak.state, "disabled");
+  assert.ok(leak.reasons.includes("probe-allowed:next-run-write:cli-child"));
+  assert.equal(leak.capability.probes["deny-other-run"], false);
+  const unknown = await runDoctor(claudeInput({ host: fakeHost({ outcome: (c) => (c.mode === "control" || c.mode === "open" ? "allowed" : c.probe === "next-run-write" ? "inconclusive" : "denied") }) }));
+  assert.equal(unknown.state, "unverified");
+  assert.equal(capabilityReady(unknown.capability), false);
 });

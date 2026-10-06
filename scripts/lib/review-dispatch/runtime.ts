@@ -43,8 +43,12 @@ export const REQUIRED_PROBES = [
   "deny-supervisor",
   "deny-hooks-mcp",
   "tool-child-confined",
+  // A child of this run cannot write another run's area (W5c; the config dir is per run).
+  "deny-other-run",
   "schema",
-  "descendant-lock",
+  // The supervisor stops the worker's process group and sees it empty (W5c). Not "all descendants ended":
+  // a child that left the group is a residual risk (design §7).
+  "group-ended",
 ] as const;
 export function capabilityReady(c: Capability | null): boolean {
   const required = REQUIRED_PROBES;
@@ -76,7 +80,8 @@ export function workerEnvironment(
 }
 type RunOutcome = {
   result: string;
-  treeEnded: boolean;
+  // The worker's process group was stopped and seen empty (necessary, never sufficient: design §7).
+  groupEnded: boolean;
   uncertain: boolean;
   // The worker was proven never started (materials or plan refused before the supervisor ran it).
   neverStarted?: boolean;
@@ -194,11 +199,11 @@ export class Dispatcher {
       const value = await runner.run(j);
       if (value.neverStarted === true) {
         // Nothing ran: release the lease, keep the job (no relaunch for this generation) and tell the owner once.
-        this.store.release(j, { run: j.run, neverStarted: true, treeEnded: false, uncertain: false });
+        this.store.release(j, { run: j.run, neverStarted: true, groupEnded: false, uncertain: false });
         this.store.notice(`${j.key}:not-started:${value.reason ?? "unknown"}:${j.run}`);
         return `not-started:${/^[a-z-]{1,40}$/.test(value.reason ?? "") ? value.reason : "unknown"}`;
       }
-      if (value.uncertain || !value.treeEnded) {
+      if (value.uncertain || !value.groupEnded) {
         this.store.uncertain(j);
         return "uncertain";
       }
@@ -272,7 +277,7 @@ export class Dispatcher {
       this.store.release(j, {
         run: j.run,
         neverStarted: false,
-        treeEnded: true,
+        groupEnded: true,
         uncertain: false,
       });
       return outcome;

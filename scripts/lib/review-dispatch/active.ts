@@ -25,6 +25,7 @@ import {
   buildAuthStatus,
   buildLaunch,
   canonicalPath,
+  RESULT_SCHEMA,
   RESULT_SCHEMA_JSON,
   within,
   type LaunchInstall,
@@ -45,6 +46,8 @@ import { parseResult, type ReviewBroker } from "./broker.ts";
 import type { ClaudeBrokerInstall } from "./claude-broker.ts";
 import {
   createSyntheticKeychain,
+  existsSafe,
+  inspectConfigDir,
   measureCli,
   measurementRecord,
   controlSockets,
@@ -123,6 +126,8 @@ export function parseInstall(raw: string, root: string): ActiveInstall {
   // Supervisor, token wrapper and relay come from the same trusted copy.
   if (!v.broker || v.broker.wrapper !== `${copy}/scripts/github-app-token.ts`) refuse("install-copy");
   if (!v.claude || v.claude.backend !== "claude") refuse("install-claude-only");
+  // W5c: Claude's config dir is per run (newRunArea). An install record with a shared one is from before.
+  if (v.claude.configDir !== null) refuse("install-config-dir");
   // Worker areas never overlap the dispatcher root, and the root is a protected root of the launcher.
   if (within(v.runs, root) || within(root, v.runs)) refuse("runs-overlap-root");
   if (!Array.isArray(v.claude.protectedRoots) || !v.claude.protectedRoots.some((p) => within(root, p)))
@@ -432,7 +437,8 @@ function lines(child: SupervisorChild, limit: number, onLine: (line: string, ind
 }
 const OUTPUT_LIMIT = 2 * 1024 * 1024;
 
-// A fresh per-run area under the owner's runs directory (materials, the CLI's HOME and TMP).
+// A fresh per-run area under the owner's runs directory (materials, the CLI's HOME, TMP and config dir). Nothing
+// in it is shared with or reused by another run (ISSUE50-P001/P003).
 export function newRunArea(runs: string, name: string): { area: string; run: LaunchRun } {
   const st = lstatSync(runs);
   if (
@@ -448,85 +454,59 @@ export function newRunArea(runs: string, name: string): { area: string; run: Lau
     materials: join(area, "materials"),
     home: join(area, "home"),
     tmp: join(area, "tmp"),
+    config: join(area, "config"),
     schemaFile: join(area, "tmp", "result-schema.json"),
   };
-  for (const dir of [run.materials, run.home, run.tmp]) mkdirSync(dir, { mode: 0o700 });
+  for (const dir of [run.materials, run.home, run.tmp, run.config]) mkdirSync(dir, { mode: 0o700 });
   writeFileSync(run.schemaFile, RESULT_SCHEMA_JSON, { mode: 0o600, flag: "wx" });
   return { area, run };
 }
-// Removes only this run's own directory, checked not to be a link.
-export function removeRunArea(area: string): void {
-  const st = lstatSync(area);
-  if (st.isDirectory() && !st.isSymbolicLink()) rmSync(area, { recursive: true, force: true });
+// Removes only this run's own directory, checked not to be a link. Anything that is not then gone is a failure
+// (ActiveError "run-area-not-removed"), never dropped: the caller reports it (ISSUE50-P003).
+export function removeRunArea(
+  area: string,
+  remove: (path: string) => void = (p) => rmSync(p, { recursive: true, force: true }),
+): void {
+  try {
+    const st = lstatSync(area);
+    if (!st.isDirectory() || st.isSymbolicLink()) refuse("run-area-not-removed");
+    remove(area);
+  } catch {
+    refuse("run-area-not-removed");
+  }
+  if (existsSafe(area)) refuse("run-area-not-removed");
 }
 type Supervised = {
   exitCode: number | null; // supervisor.py's own exit code (diagnostics only)
   keyed: boolean;
   signed: string | null;
-  treeEnded: boolean;
+  groupEnded: boolean;
   neverStarted: boolean;
   uncertain: boolean;
-  descendants?: Descendants;
 };
 export type SupervisorCommand = { python: string; supervisor: string; root: string; spawn: SpawnSupervisor };
 const supervisor = (c: SupervisorCommand, mode: string, extra: string[]) =>
   c.spawn(c.python, [c.supervisor, mode, "--root", c.root, ...extra], { ...SUPERVISOR_ENV });
-export type Descendants = {
-  seen: number;
-  checked: number;
-  holding: number;
-  pending: number;
-  failed: number;
-  blind: number; // failed group enumerations (unobserved intervals)
-  proven: boolean;
-};
+// supervisor.py inspect (manifest schema 2). groupEnded is the process group only; whether every descendant
+// ended is never proven (design §7). Anything missing or unknown stays uncertain.
 export async function inspectRun(
   c: SupervisorCommand,
   run: string,
-): Promise<{ treeEnded: boolean; neverStarted: boolean; uncertain: boolean; descendants?: Descendants }> {
+): Promise<{ groupEnded: boolean; neverStarted: boolean; uncertain: boolean }> {
   let out = "";
   const code = await lines(supervisor(c, "inspect", ["--run", run]), 64 * 1024, (l) => (out += l));
   try {
     const v = JSON.parse(out) as Record<string, unknown>;
-    if (code === 0 && v["run"] === run) {
-      const d = v["descendants"] as Record<string, unknown> | undefined;
+    if (code === 0 && v["run"] === run)
       return {
-        treeEnded: v["treeEnded"] === true,
+        groupEnded: v["groupEnded"] === true,
         neverStarted: v["neverStarted"] === true,
         uncertain: v["uncertain"] !== false,
-        ...(d &&
-        ["seen", "checked", "holding", "pending", "failed", "blind"].every((k) => Number.isSafeInteger(d[k])) &&
-        typeof d["proven"] === "boolean"
-          ? {
-              descendants: {
-                seen: Number(d["seen"]),
-                checked: Number(d["checked"]),
-                holding: Number(d["holding"]),
-                pending: Number(d["pending"]),
-                failed: Number(d["failed"]),
-                blind: Number(d["blind"]),
-                proven: d["proven"] === true,
-              },
-            }
-          : {}),
       };
-    }
   } catch {
     // Unknown state stays uncertain.
   }
-  return { treeEnded: false, neverStarted: false, uncertain: true };
-}
-export function descendantsProven(d: Descendants | undefined): boolean {
-  return (
-    !!d &&
-    d.proven === true &&
-    d.seen >= 1 &&
-    d.holding === d.seen &&
-    d.checked === d.seen &&
-    d.pending === 0 &&
-    d.failed === 0 &&
-    d.blind === 0
-  );
+  return { groupEnded: false, neverStarted: false, uncertain: true };
 }
 // The files the doctor measured, re-checked by the supervisor immediately before the worker starts.
 export type BoundFiles = { profile: string; profileSha256: string; executable: string; executableSha256: string };
@@ -539,7 +519,6 @@ export async function superviseRun(
   timeoutSeconds: number,
   bound: BoundFiles,
   onKey: (record: ReturnType<typeof parseRunKeyLine>) => void,
-  probe = false,
 ): Promise<Supervised> {
   const child = supervisor(c, "run-worker", [
     "--run",
@@ -558,7 +537,6 @@ export async function superviseRun(
     bound.executable,
     "--executable-sha256",
     bound.executableSha256,
-    ...(probe ? ["--probe-descendants"] : []),
   ]);
   child.stdin.on("error", () => {});
   let signed: string | null = null,
@@ -583,7 +561,7 @@ export async function superviseRun(
   const exitCode = await exit;
   // PR #56 red team P3: the supervisor starts the worker only after "ack", which is sent only after the key
   // was stored. Without it the worker provably never started, whatever the manifest says.
-  if (!keyed) return { exitCode, keyed, signed: null, treeEnded: false, neverStarted: true, uncertain: false };
+  if (!keyed) return { exitCode, keyed, signed: null, groupEnded: false, neverStarted: true, uncertain: false };
   const state = await inspectRun(c, j.run);
   return { exitCode, keyed, signed, ...state };
 }
@@ -610,51 +588,59 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
     root: d.root,
     spawn: d.spawn,
   };
+  // The files the capability was matched with must still be the same, before and right before the launch.
+  const unchanged = () => {
+    try {
+      const digest = d.digest ?? fileDigest;
+      return digest(d.bound.profile) === d.bound.profileSha256 && digest(d.bound.executable) === d.bound.executableSha256;
+    } catch {
+      return false;
+    }
+  };
+  type Outcome = Awaited<ReturnType<Runner["run"]>>;
+  const notStarted = (reason: string): Outcome => ({ result: "", groupEnded: false, uncertain: false, neverStarted: true, reason, origin: null });
+  const launch = async (j: Job, run: LaunchRun): Promise<Outcome> => {
+    let plan: ReturnType<typeof buildLaunch>;
+    try {
+      d.store.saveRunMaterials(j.run, await d.materials(j, run.materials));
+      plan = buildLaunch(d.policy, j, d.install.claude, run, d.launch ?? {});
+    } catch (e) {
+      // Refused before any process started (missing or too many materials, a CLI configuration name, an
+      // unreadable token): the job is proven never started.
+      return notStarted(e instanceof ActiveError ? e.message.replace("active refused: ", "") : "launch-refused");
+    }
+    if (!unchanged()) return notStarted("bound-file-changed");
+    // Persist the commitment before the supervisor may start the worker (W4 row 2).
+    const r = await superviseRun(command, j, plan, d.install.workerTimeoutSeconds, d.bound, (record) => {
+      d.store.saveRunKey(j, record, d.now());
+      d.verifier.register(j, record);
+    });
+    if (r.neverStarted && !r.uncertain) return notStarted("not-acknowledged");
+    // A timeout, a cancel or a missing result is never "not started" and never a result (ISSUE50-P002).
+    if (r.signed === null || !r.groupEnded || r.uncertain)
+      return { result: "", groupEnded: r.groupEnded, uncertain: true, origin: null };
+    const { raw, origin } = provenanceOf(j, parseSignedResult(r.signed));
+    return { result: raw, groupEnded: true, uncertain: false, origin };
+  };
   return {
     capability: { ...d.capability, backend: "claude" },
     async run(j) {
-      const digest = d.digest ?? fileDigest;
-      const unchanged = () => {
-        try {
-          return (
-            digest(d.bound.profile) === d.bound.profileSha256 &&
-            digest(d.bound.executable) === d.bound.executableSha256
-          );
-        } catch {
-          return false;
-        }
-      };
-      // The files the capability was matched with must still be the same, before and right before the launch.
-      if (!unchanged())
-        return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "bound-file-changed", origin: null };
+      if (!unchanged()) return notStarted("bound-file-changed");
       const { area, run } = newRunArea(d.install.runs, j.run);
+      let outcome: Outcome | null = null;
       try {
-        let plan: ReturnType<typeof buildLaunch>;
-        try {
-          d.store.saveRunMaterials(j.run, await d.materials(j, run.materials));
-          plan = buildLaunch(d.policy, j, d.install.claude, run, d.launch ?? {});
-        } catch (e) {
-          // Refused before any process started (missing or too many materials, a CLI configuration name, an
-          // unreadable token): the job is proven never started.
-          const reason = e instanceof ActiveError ? e.message.replace("active refused: ", "") : "launch-refused";
-          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason, origin: null };
-        }
-        if (!unchanged())
-          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "bound-file-changed", origin: null };
-        // Persist the commitment before the supervisor may start the worker (W4 row 2).
-        const r = await superviseRun(command, j, plan, d.install.workerTimeoutSeconds, d.bound, (record) => {
-          d.store.saveRunKey(j, record, d.now());
-          d.verifier.register(j, record);
-        });
-        if (r.neverStarted && !r.uncertain)
-          return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "not-acknowledged", origin: null };
-        if (r.signed === null || !r.treeEnded || r.uncertain)
-          return { result: "", treeEnded: r.treeEnded, uncertain: true, origin: null };
-        const { raw, origin } = provenanceOf(j, parseSignedResult(r.signed));
-        return { result: raw, treeEnded: true, uncertain: false, origin };
+        outcome = await launch(j, run);
       } finally {
-        removeRunArea(area);
+        try {
+          removeRunArea(area);
+        } catch {
+          // Reported, never dropped (ISSUE50-P003): one owner notice, and a started run stays uncertain (its lease
+          // is held), since something may still be using the area. The next run gets a new area anyway.
+          d.store.notice(`${j.key}:run-area-not-removed:${j.run}`);
+          if (outcome && !outcome.neverStarted) outcome = { ...outcome, result: "", uncertain: true, origin: null };
+        }
       }
+      return outcome as Outcome;
     },
     async redact(j, resultHash) {
       const code = await lines(
@@ -672,7 +658,7 @@ export function postOnlyRunner(c: SupervisorCommand): Runner {
   return {
     capability: { backend: "claude", version: "", codeHash: "", profileHash: "", probes: {} },
     async run() {
-      return { result: "", treeEnded: false, uncertain: false, neverStarted: true, reason: "post-only", origin: null };
+      return { result: "", groupEnded: false, uncertain: false, neverStarted: true, reason: "post-only", origin: null };
     },
     async redact(j, resultHash) {
       const code = await lines(supervisor(c, "redact", ["--run", j.run, "--result-hash", resultHash]), 64 * 1024, () => {});
@@ -756,21 +742,30 @@ export function measurementJob(p: Policy, kind: "review" | "faultfinding" = "rev
 // ---- Owner tools: measurement record and doctor (real CLI and real Seatbelt; never in CI) ----
 
 // The owner's measurement file (measure CLI): the measured probe outcomes bound to the hashes, plus the
-// two pieces of evidence the doctor takes from outside (result schema, descendant lock), plus diagnostics
+// two pieces of evidence the doctor takes from outside (result schema, process group ended), plus diagnostics
 // for the owner, which the doctor never reads.
 export type MeasurementFile = {
   schema: 1;
   measurement: Measurement;
-  external: { schema: boolean; descendantLock: boolean };
+  external: { schema: boolean; groupEnded: boolean };
   diagnostics?: MeasurementDiagnostics;
 };
 // The first check of the benign run that failed, in order; null when the result schema held.
-export const BENIGN_STEPS = ["keyed", "signed", "treeEnded", "uncertain", "parse", "verify"] as const;
+export const BENIGN_STEPS = ["keyed", "signed", "groupEnded", "uncertain", "parse", "verify"] as const;
 export type BenignStep = (typeof BENIGN_STEPS)[number];
+// For a failed parse or verify, the stage inside it: the supervisor envelope (signed), its run and binding
+// (provenance), the result as bounded JSON (result-json), the fixed result fields (schema-field), verify.
+export const PARSE_STAGES = ["signed", "provenance", "result-json", "schema-field", "verify"] as const;
+export type ParseStage = (typeof PARSE_STAGES)[number];
+// The result's fixed keys (RESULT_SCHEMA). "keys": none is missing but there are others; "multiple": no single
+// key explains the failure. Only these names are ever recorded, never a value or an unknown key.
+export const RESULT_FIELDS = RESULT_SCHEMA.required;
+export type ResultField = (typeof RESULT_FIELDS)[number] | "keys" | "multiple";
 export type BenignDiagnostics = {
   supervisorExitCode: number | null; // 0-255
   failed: BenignStep | null;
-  descendants: Descendants | null; // inspectRun's integer counts (why descendantLock is false)
+  stage: ParseStage | null;
+  field: ResultField | null; // only for stage schema-field
 };
 // Per run: A (synthetic PR under cli.sb), A2 (flag layer only), B (injected instructions), benign (supervised).
 // Closed enums, booleans and bounded integers only (diagnoseRun, benignSchema).
@@ -785,9 +780,9 @@ export function parseMeasurementFile(raw: string | null): MeasurementFile | null
       keys !== "external,measurement,schema" ||
       v.schema !== 1 ||
       !v.external ||
-      Object.keys(v.external).sort().join() !== "descendantLock,schema" ||
+      Object.keys(v.external).sort().join() !== "groupEnded,schema" ||
       typeof v.external.schema !== "boolean" ||
-      typeof v.external.descendantLock !== "boolean"
+      typeof v.external.groupEnded !== "boolean"
     )
       return null;
     // Diagnostics are dropped here: no verdict can depend on them.
@@ -805,7 +800,8 @@ export async function doctorCommand(d: {
   measurement: string | null;
   host: SandboxHost;
   authStatus: (plan: LaunchPlan) => Promise<unknown>;
-  configProblems: string[];
+  // Checks the doctor run's own new config dir before anything ran in it (default inspectConfigDir).
+  inspectConfig?: (dir: string) => string[];
   managedSettings: boolean;
   profileText: string;
   executableDigest: string;
@@ -820,6 +816,7 @@ export async function doctorCommand(d: {
   try {
     const plan = buildLaunch(d.policy, job, d.install.claude, run, d.launch ?? {});
     const file = parseMeasurementFile(d.measurement);
+    const configProblems = (d.inspectConfig ?? inspectConfigDir)(run.config);
     const result = await runDoctor({
       backend: "claude",
       version: d.install.claude.version,
@@ -827,12 +824,12 @@ export async function doctorCommand(d: {
       profileHash: profileHash(d.profileText),
       launch: { plan, install: d.install.claude, run, argvHash: argvTemplateHash(d.install.claude) },
       measurement: file?.measurement ?? null,
-      external: file?.external ?? { schema: false, descendantLock: false },
+      external: file?.external ?? { schema: false, groupEnded: false },
       host: d.host,
       claude: {
         authStatus: await d.authStatus(buildAuthStatus(d.install.claude, run, d.launch ?? {})),
-        configDir: d.install.claude.configDir,
-        configProblems: d.configProblems,
+        configDir: run.config,
+        configProblems,
         managedSettings: d.managedSettings,
       },
       profileText: d.profileText,
@@ -930,7 +927,8 @@ export async function trapLayout(
 // The owner's measurement (measure CLI). Real CLI, real Seatbelt, real setup-token: owner only.
 // 1. measureCli (doctor.ts) through the production argv template.
 // 2. One benign job through supervisor.py run-worker with the production plan: its structured result must
-//    parse as this job's result (schema) and the supervisor must prove the whole tree ended (descendant lock).
+//    parse as this job's result (schema) and the supervisor must stop its process group and see it empty
+//    (groupEnded). That is the group only, never "all descendants ended" (design §7).
 export async function measureCommand(d: {
   policy: Policy;
   install: ActiveInstall;
@@ -960,8 +958,8 @@ export async function measureCommand(d: {
     // A throwaway supervisor root for the benign run (never the dispatcher root).
     const root = join(area, "supervisor");
     mkdirSync(root, { mode: 0o700 });
-    // PR #56 red team P1: the run must start a child (Grep runs ripgrep as a child process) so that the
-    // supervisor's probe can see whether children inherit the run lock. Many files keep the search running.
+    // The run starts children (Grep runs ripgrep as a child process), so the group check sees a real group.
+    // Many files keep the search running.
     const benign = newRunArea(area, "benign");
     for (let n = 0; n < 400; n++)
       writeFileSync(join(benign.run.materials, `file-${String(n).padStart(3, "0")}.txt`), `Synthetic material ${n}.\n`.repeat(200), { mode: 0o600 });
@@ -978,9 +976,8 @@ export async function measureCommand(d: {
       d.install.workerTimeoutSeconds,
       d.bound,
       (record) => verifier.register(job, record),
-      true,
     );
-    const { schema, failed } = benignSchema(job, verifier, r);
+    const { schema, failed, stage, field } = benignSchema(job, verifier, r);
     let same = false;
     try {
       same = d.unchanged();
@@ -991,15 +988,15 @@ export async function measureCommand(d: {
     return {
       schema: 1,
       measurement: measurementRecord(d.install.claude, d.executableDigest, profileHash(d.profileText), outcomes),
-      // Inheritance is proven only when EVERY observed child was seen holding the run lock (Codex PR56-R001):
-      // one unchecked, failed or pending child, or none at all, is not proof. A normal exit proves nothing (I009).
-      external: { schema, descendantLock: r.treeEnded && !r.uncertain && descendantsProven(r.descendants) },
+      // Only the supervisor's own report: the group was stopped and seen empty, and the run is not uncertain.
+      external: { schema, groupEnded: r.groupEnded && !r.uncertain },
       diagnostics: {
         ...cli,
         benign: {
           supervisorExitCode: r.exitCode !== null && Number.isSafeInteger(r.exitCode) && r.exitCode >= 0 && r.exitCode <= 255 ? r.exitCode : null,
           failed,
-          descendants: r.descendants ?? null,
+          stage,
+          field,
         },
       },
     };
@@ -1007,29 +1004,84 @@ export async function measureCommand(d: {
     removeRunArea(area);
   }
 }
-// The benign run's result schema check, with the first failed step for the diagnostics.
+// The benign run's result schema check, with the first failed step (and, for parse and verify, the stage and the
+// failing fixed key) for the diagnostics.
+type BenignCheck = { schema: boolean; failed: BenignStep | null; stage: ParseStage | null; field: ResultField | null };
 export function benignSchema(
   job: Job,
   verifier: Pick<RunVerifier, "verify">,
-  r: Pick<Supervised, "keyed" | "signed" | "treeEnded" | "uncertain">,
-): { schema: boolean; failed: BenignStep | null } {
-  if (!r.keyed) return { schema: false, failed: "keyed" };
-  if (r.signed === null) return { schema: false, failed: "signed" };
-  if (!r.treeEnded) return { schema: false, failed: "treeEnded" };
-  if (r.uncertain) return { schema: false, failed: "uncertain" };
+  r: Pick<Supervised, "keyed" | "signed" | "groupEnded" | "uncertain">,
+): BenignCheck {
+  const fail = (failed: BenignStep, stage: ParseStage | null = null, field: ResultField | null = null): BenignCheck => ({
+    schema: false,
+    failed,
+    stage,
+    field,
+  });
+  if (!r.keyed) return fail("keyed");
+  if (r.signed === null) return fail("signed");
+  if (!r.groupEnded) return fail("groupEnded");
+  if (r.uncertain) return fail("uncertain");
+  let signed: ReturnType<typeof parseSignedResult>;
+  try {
+    signed = parseSignedResult(r.signed);
+  } catch {
+    return fail("parse", "signed");
+  }
   let raw: string, origin: ReturnType<typeof provenanceOf>["origin"];
   try {
-    ({ raw, origin } = provenanceOf(job, parseSignedResult(r.signed)));
+    ({ raw, origin } = provenanceOf(job, signed));
+  } catch {
+    return fail("parse", "provenance");
+  }
+  let parsed: unknown = null;
+  try {
+    parsed = Buffer.byteLength(raw) <= 32768 ? JSON.parse(raw) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fail("parse", "result-json");
+  try {
     parseResult(raw, job);
   } catch {
-    return { schema: false, failed: "parse" };
+    return fail("parse", "schema-field", resultField(parsed as Record<string, unknown>, job));
   }
   try {
-    if (verifier.verify(job, raw, origin)) return { schema: true, failed: null };
+    if (verifier.verify(job, raw, origin)) return { schema: true, failed: null, stage: null, field: null };
   } catch {
     // An exception is a failed verification; its text is never kept.
   }
-  return { schema: false, failed: "verify" };
+  return fail("verify", "verify");
+}
+// The fixed key that alone makes parseResult refuse `r`: the first missing one, "keys" when only other keys
+// differ, else the first key (in RESULT_FIELDS order) whose replacement by a valid value makes the result parse,
+// or "multiple". Only names from the fixed list are returned.
+export function resultField(r: Record<string, unknown>, job: Job): ResultField {
+  const missing = RESULT_FIELDS.find((k) => !Object.hasOwn(r, k));
+  if (missing) return missing;
+  if (Object.keys(r).length !== RESULT_FIELDS.length) return "keys";
+  const valid: Record<(typeof RESULT_FIELDS)[number], unknown> = {
+    schema: 1,
+    run: job.run,
+    actor: job.actor,
+    generation: job.generation,
+    pair: job.pair,
+    decision: "needs-owner",
+    summary: "Synthetic.",
+    findings: [],
+    evidence: [],
+    unverified: [],
+    causes: [],
+    previous: [],
+  };
+  for (const k of RESULT_FIELDS)
+    try {
+      parseResult(JSON.stringify({ ...r, [k]: valid[k] }), job);
+      return k;
+    } catch {
+      // Not this key alone.
+    }
+  return "multiple";
 }
 // One line per run for the measure CLI, after "測定:". Built only from the diagnostics' enums and numbers.
 export function diagnosticLines(d: MeasurementDiagnostics): string[] {
@@ -1040,10 +1092,6 @@ export function diagnosticLines(d: MeasurementDiagnostics): string[] {
     const res = r.result ? `${r.result.subtype}/is_error=${v(r.result.isError)}/turns=${v(r.result.numTurns)}` : "-";
     return `診断 ${id}: exit=${v(r.exitCode)} started=${r.started} tools=${r.tools ? r.tools.join(",") || "なし" : "-"} mcp=${v(r.mcpServers)} attempts=${r.attempts} denials=${v(r.permissionDenials)} result=${res}`;
   });
-  const b = d.benign,
-    n = b.descendants;
-  const desc = n
-    ? `seen=${n.seen}/checked=${n.checked}/holding=${n.holding}/pending=${n.pending}/failed=${n.failed}/blind=${n.blind}/proven=${n.proven}`
-    : "-";
-  return [...cli, `診断 benign: exit=${v(b.supervisorExitCode)} failed=${b.failed ?? "なし"} descendants=${desc}`];
+  const b = d.benign;
+  return [...cli, `診断 benign: exit=${v(b.supervisorExitCode)} failed=${b.failed ?? "なし"} stage=${v(b.stage)} field=${v(b.field)}`];
 }
