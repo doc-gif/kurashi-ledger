@@ -128,6 +128,7 @@ test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, p
     assert.equal(p.env[TOKEN_ENV], TOKEN);
     assert.equal(p.env["CLAUDE_CONFIG_DIR"], claudeInstall().configDir);
     assert.equal(p.env["HOME"], run().home);
+    assert.equal(p.env["CLAUDE_CODE_TMPDIR"], run().tmp);
     const everything = JSON.stringify(p);
     for (const v of Object.values(secrets)) assert.ok(!everything.includes(v));
     // The token is only in the env, never in argv or stdin.
@@ -155,6 +156,7 @@ test("Codex launch: codex exec --sandbox read-only only, no outer Seatbelt, no t
   ]);
   assert.deepEqual(Object.keys(p.env).sort(), [...ENV_KEYS.codex].sort());
   assert.equal(p.env["CODEX_HOME"], codexInstall().configDir);
+  assert.ok(!("CLAUDE_CODE_TMPDIR" in p.env));
   assert.deepEqual(checkPlan(p, codexInstall(), run()), []);
   const wrapped = { ...p, file: SANDBOX_EXEC, args: ["-f", "/opt/x/cli.sb", codexInstall().executable, ...p.args] };
   assert.ok(checkPlan(wrapped, codexInstall(), run()).includes("codex-wrapped"));
@@ -283,6 +285,13 @@ test("checkPlan catches tampered plans independently of the builder", () => {
     assert.ok(edit((p) => (p.env[k] = "synthetic")).includes("credential-env"), k);
   assert.ok(edit((p) => delete p.env[TOKEN_ENV]).includes("no-subscription-token"));
   assert.ok(edit((p) => delete p.env["CLAUDE_CONFIG_DIR"]).includes("env-not-allowlisted"));
+  // W4e: Claude's own temp files must stay in the run tmp (cli.sb denies /tmp).
+  const noTmp = edit((p) => delete p.env["CLAUDE_CODE_TMPDIR"]);
+  assert.ok(noTmp.includes("claude-tmpdir") && noTmp.includes("env-not-allowlisted"));
+  for (const v of ["/tmp", "/private/tmp", "/srv/synthetic/runs/r1", "/srv/synthetic/runs/r2/tmp", `${run().tmp}/sub`, ""]) {
+    const r = edit((p) => (p.env["CLAUDE_CODE_TMPDIR"] = v));
+    assert.ok(r.includes("claude-tmpdir") && r.includes("not-canonical"), v);
+  }
   assert.ok(edit((p) => set(p, "--tools", "default")).includes("tools"));
   assert.ok(edit((p) => set(p, "--allowedTools", "Read")).includes("tools"));
   assert.ok(edit((p) => set(p, "--allowedTools", "Read(//**)")).includes("tools"));
@@ -372,5 +381,8 @@ test("auth status runs under the same profile and env, Claude only", () => {
   assert.deepEqual(p.args.slice(-3), [claudeInstall().executable, "auth", "status"]);
   assert.deepEqual(Object.keys(p.env).sort(), [...ENV_KEYS.claude].sort());
   assert.equal(p.env[TOKEN_ENV], TOKEN);
+  assert.equal(p.env["CLAUDE_CODE_TMPDIR"], run().tmp);
+  const m = buildMeasurementLaunch(policy(), job(30), claudeInstall(), run(), opts);
+  assert.equal(m.env["CLAUDE_CODE_TMPDIR"], run().tmp);
   assert.throws(() => buildAuthStatus(codexInstall(), run(), opts), LaunchError);
 });

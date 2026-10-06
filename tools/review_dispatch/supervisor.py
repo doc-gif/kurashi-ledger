@@ -88,8 +88,8 @@ OUTPUT_LIMIT = 1024 * 1024  # Claude's --output-format json envelope around the 
 PLAN_LIMIT = 256 * 1024
 ACK_TIMEOUT = 30
 # launcher.ts ENV_KEYS.claude: the only names a real worker may receive.
-WORKER_ENV = frozenset(['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CONFIG_DIR',
-                        'DISABLE_AUTOUPDATER', 'HOME', 'LANG', 'NO_COLOR', 'PATH', 'TMPDIR', 'USE_BUILTIN_RIPGREP'])
+WORKER_ENV = frozenset(['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_TMPDIR',
+                        'CLAUDE_CONFIG_DIR', 'DISABLE_AUTOUPDATER', 'HOME', 'LANG', 'NO_COLOR', 'PATH', 'TMPDIR', 'USE_BUILTIN_RIPGREP'])
 HEX64 = re.compile(r'[a-f0-9]{64}')
 
 
@@ -223,7 +223,9 @@ def read_plan(stream, root, expect=None):
             or not all(isinstance(a, str) and '\0' not in a for a in args)
             or not isinstance(env, dict) or not set(env) <= WORKER_ENV or not {'HOME', 'TMPDIR', 'PATH'} <= set(env)
             or not all(isinstance(v, str) and '\0' not in v and '\n' not in v for v in env.values())
-            or not isinstance(text, str) or len(text.encode('utf-8')) > 16384):
+            or not isinstance(text, str) or len(text.encode('utf-8')) > 16384
+            # Claude's own temp files (W4e) go to the run tmp, never elsewhere.
+            or env.get('CLAUDE_CODE_TMPDIR', env['TMPDIR']) != env['TMPDIR']):
         raise RuntimeError('invalid plan')
     places = [cwd, env['HOME'], env['TMPDIR']] + ([env['CLAUDE_CONFIG_DIR']] if 'CLAUDE_CONFIG_DIR' in env else [])
     if any(_overlaps(root, p) for p in places):

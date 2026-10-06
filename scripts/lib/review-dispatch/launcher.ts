@@ -175,6 +175,7 @@ export const ENV_KEYS: Record<Backend, readonly string[]> = {
   claude: [
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
     "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_TMPDIR",
     "CLAUDE_CONFIG_DIR",
     "DISABLE_AUTOUPDATER",
     "HOME",
@@ -446,6 +447,9 @@ function envFor(
     return {
       ...base,
       CLAUDE_CONFIG_DIR: install.configDir,
+      // Claude writes its own temp files under $CLAUDE_CODE_TMPDIR/claude-<uid>/ (default /tmp, not
+      // TMPDIR); cli.sb denies /tmp, so without this the CLI exits at startup with EPERM (W4e).
+      CLAUDE_CODE_TMPDIR: run.tmp,
       [TOKEN_ENV]: token,
       DISABLE_AUTOUPDATER: "1",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -653,6 +657,7 @@ export function checkPlan(plan: LaunchPlan, install: LaunchInstall, run: LaunchR
   const keys = Object.keys(plan.env).sort();
   if (keys.join() !== [...ENV_KEYS[backend]].sort().join())
     problems.push("env-not-allowlisted");
+  if (backend === "claude" && plan.env["CLAUDE_CODE_TMPDIR"] !== run.tmp) problems.push("claude-tmpdir");
   if (Object.values(plan.env).some((v) => /[\r\n\u0000]/.test(v)))
     problems.push("env-value");
   // Explicit, even though the allowlist already excludes them (red team PR51 P3).
