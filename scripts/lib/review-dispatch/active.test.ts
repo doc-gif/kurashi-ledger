@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { connect } from "node:net";
+import { dirname, join, sep } from "node:path";
 import { test } from "node:test";
 import {
   ActiveError,
@@ -15,6 +16,7 @@ import {
   nextKind,
   parseInstall,
   startSmall,
+  trapLayout,
   type ActiveInstall,
   type SpawnSupervisor,
   type SupervisorChild,
@@ -700,7 +702,7 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
         writeTargets: { db: join(root, "targets", "db"), policy: join(root, "targets", "p") },
         keychain: null,
         network: { url: "http://127.0.0.1:9/probe", hits: () => 0 },
-        supervisor: { socket: join(root, "control", "c.sock"), hits: () => 0 },
+        supervisor: { sockets: [join(root, "control", "c.sock")], hits: () => 0 },
         close: async () => {},
       };
     };
@@ -1095,4 +1097,73 @@ test("Round 6 RT-1: the REAL guard.py accepts a PR's changed plan (ok), refuses 
   assert.deepEqual(redTeamOpen(clear, { ...refused.meta, ledger: [], previousRts: [] }), ["guard-refused"]);
   assert.deepEqual(redTeamOpen(clear, { ...missing.meta, ledger: [], previousRts: [] }), ["guard-unavailable"]);
   assert.deepEqual(redTeamOpen(clear, { ...ok.meta, ledger: [], previousRts: [] }), []);
+});
+
+// W4d: the owner's measure failed with listen EINVAL at
+// ~/.local/share/kurashi-dispatch/runs/measure-<uuid>/trap/control/control.sock (124 bytes; macOS allows 103).
+test("W4d measure: trapLayout under a root over 80 characters binds the control socket outside it, counts a connect, and removes it on close", async (t) => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "kl-w4d-trap-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const root = join(base, ".local", "share", "kurashi-dispatch", "runs", `measure-${"0".repeat(36)}`, "trap");
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  assert.ok(root.length > 80 && Buffer.byteLength(join(root, "control", "control.sock")) > 108, root);
+  if (process.platform === "win32") {
+    // Not a skip: the measurement runs on macOS only; on Windows the trap refuses (no Unix sockets).
+    await assert.rejects(trapLayout(root), /unix-socket-unsupported/);
+    t.diagnostic("Windows: trapLayout refused (no Unix sockets for the measurement)");
+    return;
+  }
+  const layout = await trapLayout(root);
+  const sockets = layout.supervisor.sockets;
+  try {
+    // One under the socket-deny prefix, one outside it (PR60 RT-1).
+    assert.deepEqual(sockets.map((p) => /\/(kl-sock|kl-ctl)-[^/]+\/control\.sock$/.exec(p)?.[1]), ["kl-sock", "kl-ctl"]);
+    for (const socket of sockets) {
+      assert.ok(Buffer.byteLength(socket) < 104, socket);
+      assert.ok(!socket.startsWith(root + sep) && !socket.startsWith(base + sep), socket);
+    }
+    assert.equal(layout.supervisor.hits(), 0);
+    for (const socket of sockets)
+      await new Promise<void>((resolve, reject) => {
+        const c = connect({ path: socket });
+        c.on("error", reject);
+        c.on("close", () => resolve());
+        c.resume();
+      });
+    assert.equal(layout.supervisor.hits(), 2);
+  } finally {
+    await layout.close();
+  }
+  for (const socket of sockets) assert.equal(existsSync(dirname(socket)), false);
+});
+
+test("PR60 RT-4: a failure after trapLayout made its listener, sockets and keychain leaves none of them behind", async (t) => {
+  if (process.platform === "win32") {
+    // Not a skip: no Unix sockets on Windows; trapLayout refuses before the hook (covered above).
+    t.diagnostic("Windows: trapLayout refuses before making the sockets");
+    return;
+  }
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt4-trap-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  let made: { port: number; sockets: string[]; keychain: string | null } | null = null;
+  await assert.rejects(
+    trapLayout(root, (m) => {
+      made = m;
+      throw new Error("synthetic-failure");
+    }),
+    /synthetic-failure/,
+  );
+  const m = made as { port: number; sockets: string[]; keychain: string | null } | null;
+  assert.ok(m && m.sockets.length === 2);
+  for (const socket of m.sockets) assert.equal(existsSync(dirname(socket)), false, socket);
+  if (m.keychain) assert.equal(existsSync(m.keychain), false);
+  const refused = await new Promise<boolean>((resolve) => {
+    const c = connect(m.port, "127.0.0.1");
+    c.on("connect", () => {
+      c.destroy();
+      resolve(false);
+    });
+    c.on("error", () => resolve(true));
+  });
+  assert.equal(refused, true, "the loopback listener is closed");
 });

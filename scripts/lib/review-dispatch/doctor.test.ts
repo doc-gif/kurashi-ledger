@@ -1,21 +1,31 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, spawnSync } from "node:child_process";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   MEASURED_PROBES,
+  PLAIN_SOCKET_PREFIX,
+  PROBE_SOURCE,
+  SOCKET_DENY_LINE,
+  SUN_PATH_MAX,
   SYNTHETIC_PROBES,
+  checkSocketPath,
   inspectConfigDir,
   lintProfile,
+  parseSbpl,
+  sbText,
+  VETTED_RULES,
   managedSettingsPresent,
   inspectCodexHome,
   parseEvents,
   measureCli,
   measurementRecord,
   parseMeasurement,
+  privateSocket,
   profileHash,
   readProfile,
   runDoctor,
@@ -190,17 +200,82 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   assert.deepEqual(lintProfile(PROFILE), []);
   // The same rules with CRLF line endings (a Windows checkout) lint the same way.
   assert.deepEqual(lintProfile(PROFILE.replace(/\r?\n/g, "\r\n")), []);
+  // PR60-R001: whitespace variants (tabs, runs, space inside parentheses) parse to the same rules.
+  const spaced = PROFILE.replace(/\n/g, "\n\t  ").replace(/\(allow /g, "(  allow\t").replace(/\)\n/g, " )\n");
+  assert.notEqual(spaced, PROFILE);
+  assert.deepEqual(lintProfile(spaced), []);
+  // The vetted rules are exactly the rules of the shipped cli.sb (PR60 RT-7..9): the two cannot drift.
+  assert.deepEqual(parseSbpl(PROFILE).map(sbText).slice(1), VETTED_RULES);
+  // Parens and ";" inside strings, #"regex" literals and comments are not structure.
+  assert.deepEqual(
+    parseSbpl(';; (allow default) ) ((\n(allow file-read* (literal "/a)b(c;d \\"e\\" (x") (regex #"^(x|y)\\)\\;$")) ; (deny\n').map(sbText),
+    ['(allow file-read* (literal "/a)b(c;d \\"e\\" (x") (regex #"^(x|y)\\)\\;$"))'],
+  );
+  assert.deepEqual(lintProfile(PROFILE.replace(";; BEGIN keychain-deny", ";; (allow network*) ) ((\n;; BEGIN keychain-deny")), []);
+  const before = (rule: string) => PROFILE.replace(";; BEGIN keychain-deny", `${rule}\n;; BEGIN keychain-deny`);
   const bad: [string, string][] = [
     [PROFILE.replace("(deny default)", "(allow default)"), "not-deny-default"],
-    [`${PROFILE}\n(allow process-info* (target others))`, "process-access"],
-    [`${PROFILE}\n(allow mach-task-name)`, "process-access"],
-    [`${PROFILE}\n(allow signal)`, "signal-outside"],
-    [`${PROFILE}\n(allow mach-lookup (global-name "com.apple.SecurityServer"))`, "keychain"],
     [PROFILE.replace('(deny process-exec (literal "/usr/bin/security"))', ""), "keychain-deny-missing"],
     [PROFILE.replace("(deny process-info*)", ""), "process-info-deny-missing"],
     [PROFILE.replace('(deny network-outbound (remote ip "localhost:*"))', ""), "loopback-deny-missing"],
-    [`${PROFILE}\n(allow sysctl-read)`, "sysctl-unrestricted"],
-    [`${PROFILE}\n(allow process-info*)`, "process-access"],
+    [PROFILE.replace(SOCKET_DENY_LINE, ""), "socket-deny-missing"],
+    // No allow after the explicit denies (a later rule wins), even a vetted one (PR60 RT-3).
+    [`${PROFILE}\n(allow file-read-metadata)`, "allow-after-deny"],
+    [PROFILE.replace(";; BEGIN socket-deny", "(allow process-fork)\n;; BEGIN socket-deny"), "allow-after-deny"],
+    // Every rule must be a vetted one; a changed or added rule is refused whatever it means.
+    [PROFILE.replace("(target self)", "(target others)"), "allow-not-vetted"],
+    [PROFILE.replace('"*:443"', '"*:8443"'), "allow-not-vetted"],
+    [PROFILE.replace('"localhost:*"', '"localhost:80"'), "deny-not-vetted"],
+    // Order and number matter: a later rule wins (the localhost deny above the TCP 443 allow opens localhost:443).
+    [
+      PROFILE.replace('(deny network-outbound (remote ip "localhost:*"))', "").replace(
+        '(allow network-outbound (remote tcp "*:443"))',
+        '(deny network-outbound (remote ip "localhost:*"))\n(allow network-outbound (remote tcp "*:443"))',
+      ),
+      "profile-not-vetted",
+    ],
+    [PROFILE.replace("(allow process-fork)", "(allow process-fork)\n(allow process-fork)"), "profile-not-vetted"],
+    [PROFILE.replace("(allow system-socket)", ""), "profile-not-vetted"],
+    ...[
+      "(allow mach-task-name)",
+      "(allow signal)",
+      '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
+      "(allow sysctl-read)",
+      "(allow process-info*)",
+      '(allow file-read* (subpath "/private/tmp"))',
+      '(allow file-write* (regex #"kl-ctl-"))',
+      "(allow network-outbound)",
+      "(allow\tnetwork-outbound)",
+      "(  allow\n  network-outbound  )",
+      "(allow network*)",
+      '(allow file-read* network-outbound (subpath "/private"))',
+      "(allow system-socket network-outbound)",
+      // PR60-R001: depth does not matter.
+      '(allow network-outbound (require-all (require-any (remote tcp "*:8443"))))',
+      '(allow file-write* (require-all (require-any (require-not (require-all (regex #"^/private/tmp/kl-ctl-"))))))',
+      // PR60 RT-7: Seatbelt evaluates the arguments, so an expression can name an operation.
+      "(allow file-read-metadata (begin network-outbound))",
+      "(allow file-read-metadata (or network-outbound))",
+      "(allow file-read-metadata (let ((x network-outbound)) x))",
+      "(allow file-read-metadata ((lambda () network-outbound)))",
+      "(allow file-read-metadata (car (list network-outbound)))",
+      "(allow file-read-metadata (car (list network-outbound file-read-metadata)))",
+      // PR60 RT-8: an operation after a filter.
+      '(allow file-read* (subpath "/private") network-outbound)',
+      // PR60 RT-9: a path built at evaluation time.
+      '(allow file-write* (regex (string-append "^/private/t" "mp/kl-c" "tl-")))',
+    ].map((rule): [string, string] => [before(rule), "allow-not-vetted"]),
+    [before('(deny file-read* (literal "/srv/synthetic/x"))'), "deny-not-vetted"],
+    // Anything the parser does not know fails closed.
+    [before('(allow file-read* (literal "/srv/x")'), "profile-parse"],
+    [before('(allow file-read* (literal "/srv/x"))))'), "profile-parse"],
+    [before('(allow file-read* (literal "/srv/x))'), "profile-parse"],
+    [before("'(allow default)"), "profile-parse"],
+    [before("#| (allow default) |#"), "profile-parse"],
+    [before("(if #t (allow default))"), "profile-parse"],
+    [before("(define x (allow default))"), "profile-unknown-form"],
+    [before("(begin (allow default))"), "profile-unknown-form"],
+    [before("network-outbound"), "profile-unknown-form"],
   ];
   for (const [text, problem] of bad) {
     assert.ok(lintProfile(text).includes(problem), problem);
@@ -365,7 +440,7 @@ test("Seatbelt integration: real sandbox-exec denies every synthetic probe and i
 test("CLI measurement harness: outcomes need attempt evidence from the CLI's events; no evidence is inconclusive", async (t) => {
   if (process.platform === "win32") {
     // Not a skip: workers launch on macOS only; the measurement refuses before starting any CLI.
-    const layout = { root: "C:/x", secretFiles: { key: "", token: "", gh: "", ssh: "", otherAi: "" }, writeTargets: { db: "", policy: "" }, keychain: null, network: { url: "", hits: () => 0 }, supervisor: { socket: "", hits: () => 0 } };
+    const layout = { root: "C:/x", secretFiles: { key: "", token: "", gh: "", ssh: "", otherAi: "" }, writeTargets: { db: "", policy: "" }, keychain: null, network: { url: "", hits: () => 0 }, supervisor: { sockets: [""], hits: () => 0 } };
     await assert.rejects(measureCli(policy(), job(30), install, layout, async () => assert.fail("CLI started")), LaunchError);
     t.diagnostic("Windows: the measurement refused before starting any CLI");
     return;
@@ -392,7 +467,7 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
       writeTargets: { db: f("dispatch.sqlite"), policy: f("policy.json") },
       keychain: { path: f("synthetic.keychain-db"), service: `kl-synthetic-${name}`, account: "doctor", value: `SYNTHETIC-ITEM-${name}` },
       network: { url: "http://127.0.0.1:9/synthetic", hits: () => netHits },
-      supervisor: { socket: f("control.sock"), hits: () => controlHits },
+      supervisor: { sockets: [f("control.sock"), f("plain.sock")], hits: () => controlHits },
     };
   };
   const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
@@ -576,4 +651,191 @@ test("Round 6 RT-3: only ENOENT means absent; an unreadable config file is a pro
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- W4d: stand-in control sockets under long roots (the owner's measure failed with listen EINVAL) ----
+// A root longer than 80 characters, deep enough that root/control/control.sock exceeds every sun_path limit.
+function longRoot(t: { after(fn: () => void): void }, label: string): string {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), `kl-w4d-${label}-`)));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const root = join(base, ".local", "share", "kurashi-dispatch", "runs", `measure-${"0".repeat(36)}`);
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  assert.ok(root.length > 80 && Buffer.byteLength(join(root, "control", "control.sock")) > 108, root);
+  return root;
+}
+const connects = (path: string) =>
+  new Promise<boolean>((resolve) => {
+    const s = connect({ path });
+    s.on("connect", () => {
+      s.destroy();
+      resolve(true);
+    });
+    s.on("error", () => resolve(false));
+  });
+
+test("W4d: the control socket gets a fresh 0700 directory under /tmp, a path of 104 bytes or more is refused before bind, and nothing is left", async (t) => {
+  if (process.platform === "win32") {
+    // Not a skip: there are no Unix sockets for the measurement on Windows; it refuses.
+    await assert.rejects(privateSocket(createServer()), /unix-socket-unsupported/);
+    t.diagnostic("Windows: privateSocket refused (no Unix sockets for the measurement)");
+    return;
+  }
+  // Bytes, not characters: 103 bytes fit, 104 do not.
+  assert.equal(checkSocketPath(`/${"a".repeat(SUN_PATH_MAX - 2)}`).length, SUN_PATH_MAX - 1);
+  assert.throws(() => checkSocketPath(`/${"a".repeat(SUN_PATH_MAX - 1)}`), /unix-socket-path-too-long: 104 bytes/);
+  assert.throws(() => checkSocketPath(`/${"\u00e9".repeat(52)}`), /unix-socket-path-too-long: 105 bytes/);
+
+  const s = await privateSocket(createServer((c) => c.end()));
+  try {
+    assert.ok(Buffer.byteLength(s.path) < SUN_PATH_MAX, s.path);
+    assert.ok(s.dir.startsWith(join(realpathSync("/tmp"), "kl-sock-")), s.dir);
+    const st = lstatSync(s.dir);
+    assert.ok(st.isDirectory() && !st.isSymbolicLink());
+    assert.equal(st.uid, process.getuid?.());
+    assert.equal(st.mode & 0o777, 0o700);
+    assert.equal(await connects(s.path), true);
+  } finally {
+    await s.close();
+  }
+  assert.equal(existsSync(s.dir), false);
+
+  // Too long: a clear error instead of listen EINVAL; nothing bound, no directory left.
+  const root = longRoot(t, "long");
+  const server = createServer();
+  await assert.rejects(privateSocket(server, { base: root }), /unix-socket-path-too-long/);
+  assert.equal(server.listening, false);
+  assert.deepEqual(readdirSync(root), []);
+
+  // Not a private directory of this user: refused before bind, the empty directory removed.
+  const uid = process.getuid?.() ?? 0;
+  const bad: [string, { dir?: boolean; link?: boolean; uid?: number; mode?: number }][] = [
+    ["group/other bits", { mode: 0o40755 }],
+    ["symlink", { link: true }],
+    ["other owner", { uid: uid + 1 }],
+    ["not a directory", { dir: false }],
+  ];
+  for (const [name, b] of bad) {
+    let made = "";
+    const stat = (p: string) => {
+      made = p;
+      const st = lstatSync(p);
+      return { isDirectory: () => b.dir ?? st.isDirectory(), isSymbolicLink: () => b.link ?? st.isSymbolicLink(), uid: b.uid ?? st.uid, mode: b.mode ?? st.mode };
+    };
+    const srv = createServer();
+    await assert.rejects(privateSocket(srv, { stat }), /unix-socket-dir-not-private/, name);
+    assert.equal(srv.listening, false, name);
+    assert.ok(made !== "" && !existsSync(made), name);
+  }
+});
+
+test("W4d Seatbelt: a doctor fixture root over 80 characters still binds the control sockets, and cli.sb denies them by deny default and by its own rule", async (t) => {
+  if (process.platform !== "darwin") {
+    // Not a skip: the doctor needs Seatbelt and disables elsewhere (the integration test above checks that).
+    t.diagnostic(`no Seatbelt on ${process.platform}: the doctor disables before binding any socket`);
+    return;
+  }
+  const base = longRoot(t, "doctor");
+  const host = seatbeltHost({ cliProfile: join(seatbeltDir, "cli.sb"), base });
+  try {
+    assert.equal(await host.run("supervisor-pipe", "control"), "allowed");
+    assert.equal(await host.run("supervisor-pipe", "cli"), "denied");
+    assert.equal(await host.run("supervisor-pipe", "cli-child"), "denied");
+  } finally {
+    await host.close();
+  }
+  assert.deepEqual(readdirSync(base), []);
+
+  // PR60 RT-1: deny default alone (cli.sb without the socket-deny line) still denies every control socket.
+  const plainDir = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt1-")));
+  t.after(() => rmSync(plainDir, { recursive: true, force: true }));
+  assert.ok(PROFILE.includes(SOCKET_DENY_LINE));
+  writeFileSync(join(plainDir, "cli.sb"), PROFILE.replace(SOCKET_DENY_LINE, ""));
+  const plainHost = seatbeltHost({ cliProfile: join(plainDir, "cli.sb") });
+  try {
+    assert.equal(await plainHost.run("supervisor-pipe", "control"), "allowed");
+    assert.equal(await plainHost.run("supervisor-pipe", "cli"), "denied");
+    assert.equal(await plainHost.run("supervisor-pipe", "cli-child"), "denied");
+  } finally {
+    await plainHost.close();
+  }
+
+  // The explicit socket-deny, not only deny-default: with broad allows placed before it the socket stays
+  // denied (both spellings, /private/tmp and /tmp); the same profile without the block lets it through.
+  const work = realpathSync(mkdtempSync(join(tmpdir(), "kl-w4d-sb-")));
+  t.after(() => rmSync(work, { recursive: true, force: true }));
+  const d = (n: string) => {
+    mkdirSync(join(work, n), { mode: 0o700 });
+    return join(work, n);
+  };
+  const materials = d("materials");
+  writeFileSync(join(materials, "probe.mjs"), PROBE_SOURCE);
+  const params = { MATERIALS: materials, CONFIG_DIR: d("config"), RUN_HOME: d("home"), RUN_TMP: d("tmp") };
+  const [head, tail] = PROFILE.split(";; BEGIN socket-deny\n");
+  assert.ok(head && tail?.includes(SOCKET_DENY_LINE));
+  const broad = '(allow file-read* file-write* (subpath "/private/tmp"))\n(allow network-outbound)\n';
+  const profiles = { reviewed: PROFILE, broadWithDeny: `${head}${broad};; BEGIN socket-deny\n${tail}`, broadWithoutDeny: `${head}${broad}` };
+  const node = realpathSync(process.execPath);
+  const s = await privateSocket(createServer((c) => c.end()));
+  const plain = await privateSocket(createServer((c) => c.end()), { prefix: PLAIN_SOCKET_PREFIX });
+  try {
+    const probe = (profile: string, target: string) =>
+      new Promise<string>((resolve) => {
+        const file = join(work, `${profile}.sb`);
+        writeFileSync(file, profiles[profile as keyof typeof profiles]);
+        const args = ["-f", file, "-D", `EXECUTABLE=${node}`, "-D", `RUNTIME=${dirname(dirname(node))}`];
+        for (const [k, v] of Object.entries(params)) args.push("-D", `${k}=${v}`);
+        execFile(SANDBOX_EXEC, [...args, node, join(materials, "probe.mjs"), "unix", target], { timeout: 15000 }, (_e, out) =>
+          resolve(/^\{"r":"(allowed|denied|error)"\}\n$/.exec(String(out))?.[1] ?? "inconclusive"),
+        );
+      });
+    const spellings = [s.path, s.path.replace(/^\/private\/tmp\//, "/tmp/")];
+    for (const target of spellings) {
+      assert.equal(await probe("reviewed", target), "denied", `cli.sb ${target}`);
+      assert.equal(await probe("broadWithDeny", target), "denied", `socket-deny ${target}`);
+      assert.equal(await probe("broadWithoutDeny", target), "allowed", `control ${target}`);
+    }
+    // The second control socket is outside the explicit rule: only deny default denies it (PR60 RT-1).
+    assert.equal(await probe("reviewed", plain.path), "denied", "deny default");
+    assert.equal(await probe("broadWithDeny", plain.path), "allowed", "outside socket-deny");
+  } finally {
+    await s.close();
+    await plain.close();
+  }
+});
+
+test("PR60 RT-4: a failure late in the doctor's fixture setup leaves no directory, listener, socket or child behind", async (t) => {
+  if (process.platform === "win32") {
+    // Not a skip: on Windows the fixture refuses at the control sockets (no Unix sockets), before the hook.
+    t.diagnostic("Windows: the doctor fixture refuses before making the sockets");
+    return;
+  }
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt4-doctor-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  type Made = { root: string; sockets: string[]; port: number; pid: number | null; keychain: string | null };
+  let made: Made | null = null;
+  const host = seatbeltHost({
+    cliProfile: join(seatbeltDir, "cli.sb"),
+    base,
+    inject: (m) => {
+      made = m;
+      throw new Error("synthetic-failure");
+    },
+  });
+  await assert.rejects(host.run("supervisor-pipe", "control"), /synthetic-failure/);
+  const m = made as Made | null;
+  assert.ok(m && m.sockets.length === 2 && m.pid !== null);
+  assert.deepEqual(readdirSync(base), []);
+  for (const socket of m.sockets) assert.equal(existsSync(dirname(socket)), false, socket);
+  if (m.keychain) assert.equal(existsSync(m.keychain), false);
+  assert.throws(() => process.kill(m.pid!, 0), /ESRCH/, "the sleeper child is gone");
+  const refused = await new Promise<boolean>((resolve) => {
+    const c = connect(m.port, "127.0.0.1");
+    c.on("connect", () => {
+      c.destroy();
+      resolve(false);
+    });
+    c.on("error", () => resolve(true));
+  });
+  assert.equal(refused, true, "the loopback listener is closed");
+  await host.close();
 });
