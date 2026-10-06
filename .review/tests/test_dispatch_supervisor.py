@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -93,8 +94,10 @@ class SupervisorTests(unittest.TestCase):
             info = wait_for(self.root / 'run-orphan.json', lambda x: x['state'] == 'running')
             parent.kill()
             parent.wait(timeout=5)
-            with self.assertRaises(RuntimeError):
-                supervisor.lock(self.root / 'run-orphan.lock')
+            # Design §4: the worker never holds the run lock; the manifest left running keeps the run uncertain.
+            proof = supervisor.inspect(self.root, 'orphan')
+            self.assertTrue(proof['uncertain'])
+            self.assertFalse(proof['treeEnded'] or proof['neverStarted'])
             result = subprocess.run(self.command('run-fixture', '--run', 'orphan', '--binding', BINDING, '--', sys.executable, '-c', 'pass'), capture_output=True)
             self.assertEqual(result.returncode, 2)
         finally:
@@ -104,26 +107,41 @@ class SupervisorTests(unittest.TestCase):
             if info:
                 os.killpg(info['worker'], signal.SIGKILL)
 
-    def test_setsid_descendant_inherits_lock_after_wrapper_and_worker_exit(self):
-        if self.disabled_windows():
-            return
-        marker = self.root / 'descendant.json'
+    def escaped(self, run, child_env):
+        """A worker that leaves a setsid child (its own session, outside the worker's group) and exits."""
+        marker = self.root / (run + '-descendant.json')
         child_code = "import os,time,json; open(%r,'w').write(json.dumps({'pid':os.getpid()})); time.sleep(20)" % str(marker)
-        code = "import os,subprocess; fd=int(os.environ['KL_RUN_LOCK_FD']); subprocess.Popen([%r,'-c',%r],pass_fds=(fd,),start_new_session=True)" % (sys.executable, child_code)
-        parent = subprocess.Popen(self.command('run-fixture', '--run', 'escaped', '--binding', BINDING, '--', sys.executable, '-c', code), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        code = "import os,subprocess; subprocess.Popen([%r,'-c',%r],start_new_session=True,env=%s)" % (sys.executable, child_code, child_env)
+        parent = subprocess.Popen(self.command('run-fixture', '--run', run, '--binding', BINDING, '--', sys.executable, '-c', code), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         info = None
         try:
             info = wait_for(marker)
-            self.assertEqual(parent.wait(timeout=8), 2)
-            self.assertFalse(json.loads((self.root / 'run-escaped.json').read_text())['treeEnded'])
-            with self.assertRaises(RuntimeError):
-                supervisor.lock(self.root / 'run-escaped.lock')
+            status = parent.wait(timeout=8)
+            return status, json.loads((self.root / ('run-' + run + '.json')).read_text())
         finally:
             if parent.poll() is None:
                 parent.kill()
                 parent.wait()
             if info:
                 os.kill(info['pid'], signal.SIGKILL)
+
+    def test_setsid_descendant_with_the_tag_keeps_the_tree_alive(self):
+        if self.disabled_windows():
+            return
+        status, manifest = self.escaped('escaped', 'None')  # inherits the worker's environment
+        self.assertEqual(status, 2)
+        self.assertFalse(manifest['treeEnded'])
+        self.assertEqual((manifest['state'], manifest['scan']), ('uncertain', 'tagged'))
+        self.assertTrue(supervisor.inspect(self.root, 'escaped')['uncertain'])
+        again = subprocess.run(self.command('run-fixture', '--run', 'escaped', '--binding', BINDING, '--', sys.executable, '-c', 'pass'), capture_output=True)
+        self.assertEqual(again.returncode, 2)
+
+    def test_setsid_descendant_without_the_tag_is_still_a_descendant_on_macos(self):
+        if sys.platform != 'darwin':
+            return  # Linux has no original-parent ID: such a child is the residual risk (design §7).
+        status, manifest = self.escaped('cleared', "{'PATH':'/usr/bin:/bin'}")
+        self.assertEqual(status, 2)
+        self.assertEqual((manifest['treeEnded'], manifest['scan']), (False, 'tagged'))
 
     def test_alias_incomplete_manifest_and_unknown_pid_fail_closed(self):
         if self.disabled_windows():
@@ -301,16 +319,22 @@ class SigningTests(unittest.TestCase):
                 "for n in os.listdir(%r):\n"
                 "  p=os.path.join(%r,n)\n"
                 "  if os.path.isfile(p): seen+=open(p,'rb').read()\n"
-                "json.dump({'env':sorted(os.environ),'fds':fds,'lock':int(os.environ['KL_RUN_LOCK_FD']),'files':seen.hex()},open(%r,'w'))\n"
+                "json.dump({'env':sorted(os.environ),'fds':fds,'tag':os.environ['KL_RUN_TAG'],'files':seen.hex()},open(%r,'w'))\n"
                 "print('{}')") % (str(self.root), str(self.root), str(report))
         result = self.fixture('isolated', code)
         self.assertEqual(result.returncode, 0)
         seen = json.loads(report.read_text())
         # macOS CoreFoundation adds __CF_USER_TEXT_ENCODING inside the process; nothing else beyond the allowlist.
         self.assertEqual([x for x in seen['env'] if x != '__CF_USER_TEXT_ENCODING'],
-                         ['HOME', 'KL_RUN_LOCK_FD', 'LANG', 'PATH', 'TMPDIR'])
-        # Only the inherited run lock beyond stdio; never the supervisor's control pipe or any key material.
-        self.assertEqual(seen['fds'], [seen['lock']])
+                         ['HOME', 'KL_RUN_TAG', 'LANG', 'PATH', 'TMPDIR'])
+        # Nothing beyond stdio: no run lock (design §4), never the supervisor's control pipe or any key material.
+        self.assertEqual(seen['fds'], [])
+        # The tag is a 128-bit value that the supervisor never writes to the manifest, results or stdout.
+        self.assertRegex(seen['tag'], r'^[0-9a-f]{32}$')
+        self.assertNotIn(seen['tag'].encode('ascii'), result.stdout)
+        for name in os.listdir(self.root):
+            if (self.root / name).is_file() and name != 'report.json':
+                self.assertNotIn(seen['tag'].encode('ascii'), (self.root / name).read_bytes(), name)
         env = lines(result.stdout)[-1]
         sig = bytes.fromhex(env['signature'])
         revealed = [sig[64 * i:64 * i + 32] for i in range(256)]
@@ -325,7 +349,7 @@ class SigningTests(unittest.TestCase):
         manifest = json.loads((self.root / 'run-isolated.json').read_text())
         self.assertEqual(set(manifest) - {'schema', 'run', 'state', 'backend', 'supervisor', 'start', 'treeEnded',
                                           'binding', 'key', 'signed', 'worker', 'workerStart', 'exit', 'resultHash',
-                                          'strays'},
+                                          'strays', 'scan'},
                          set())
 
     def test_worker_output_cannot_forge_a_control_line(self):
@@ -595,7 +619,9 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(seen['home'], str(self.area / 'home'))
         self.assertEqual(os.path.realpath(seen['cwd']), os.path.realpath(self.area / 'materials'))
         self.assertEqual(seen['job'], 'Job kind: review\n')
-        self.assertFalse(any(k.startswith('KL_') or k.startswith('GH_') for k in seen['env']))
+        # Only the supervisor's run tag (design §4); never the launcher's KL_* or any GH_*.
+        self.assertFalse(any((k.startswith('KL_') and k != 'KL_RUN_TAG') or k.startswith('GH_') for k in seen['env']))
+        self.assertIn('KL_RUN_TAG', seen['env'])
         # The token never reaches the supervisor root (manifest, envelope).
         for name in os.listdir(self.root):
             if (self.root / name).is_file():
@@ -615,21 +641,22 @@ class WorkerTests(unittest.TestCase):
             self.assertFalse(marker.exists(), name)
             self.assertTrue(supervisor.inspect(self.root, 'changed-' + name)['neverStarted'], name)
 
-    def test_descendant_probe_measures_whether_children_hold_the_run_lock(self):
+    def test_descendant_probe_measures_whether_children_carry_the_tag(self):
         if sys.platform != 'darwin':
             self.assertEqual(self.worker('no-mac', self.plan('pass'), extra=['--probe-descendants'])[0], 2)
             return
         result = ("print(json.dumps({'type':'result','subtype':'success','is_error':False,"
                   "'structured_output':{'schema':1}}))")
-        # A child that inherits every descriptor (close_fds=False) and one that closes them (the default).
-        for run, close in [('inherits', False), ('closes', True)]:
+        # A child that inherits the environment (the default) and one started with a cleared one.
+        for run, env in [('inherits', 'None'), ('clears', "{'PATH':'/usr/bin:/bin'}")]:
             code = ("import json,subprocess,sys\n"
-                    "subprocess.run([sys.executable,'-c','import time; time.sleep(1.5)'],close_fds=%s)\n" % close) + result
+                    "subprocess.run([sys.executable,'-c','import time; time.sleep(1.5)'],env=%s)\n" % env) + result
             status, _first, _rest = self.worker(run, self.plan(code), extra=['--probe-descendants'])
             self.assertEqual(status, 0, run)
             d = supervisor.inspect(self.root, run)['descendants']
             self.assertGreaterEqual(d['seen'], 1, run)
-            self.assertEqual(d['proven'], not close, (run, d))
+            self.assertEqual(d['proven'], env == 'None', (run, d))
+            self.assertEqual(sorted(d), ['blind', 'checked', 'failed', 'proven', 'seen', 'tagged'])
 
     def test_a_failed_or_unstructured_claude_run_is_never_signed(self):
         if sys.platform != 'darwin':
@@ -727,55 +754,181 @@ class TreeEndTests(unittest.TestCase):
             child.wait()
 
 
-class DescendantProbeTests(unittest.TestCase):
-    """Codex PR56-R001: inheritance is proven only when every observed child was seen holding the run lock."""
+TAG = 'a' * 32  # Synthetic tag; the supervisor makes a random one per run.
+WORKER = 1000  # Synthetic p_uniqueid of the supervisor (origin); its children are the worker tree.
 
-    def probe(self, results, wait=2, enumerations=None):
-        members = list(results)
-        steps = list(enumerations or ['ok'])
 
-        def enumerate_group(_g):
-            step = steps.pop(0) if steps else 'ok'
-            if step == 'none':
-                return None
-            if step == 'timeout':
-                raise subprocess.TimeoutExpired('ps', 5)
-            if step == 'oserror':
-                raise OSError('ps failed')
-            return members
+class FakeTable:
+    """A process table with injected listing and environment readers (design §4 table, plan W5a)."""
 
-        def check(pid, _path):
-            r = results[pid]
-            if r == 'slow':
-                time.sleep(wait + 1)
-                return True
-            if r == 'raise':
-                raise OSError('lsof failed')
-            return r
+    def __init__(self, procs, envs=None, status=None, listing_fails=False):
+        self.procs, self.envs, self.st, self.fails = procs, envs or {}, status or {}, listing_fails
 
-        p = supervisor.DescendantProbe(1, '/nonexistent.lock', members=enumerate_group, check=check, wait=wait)
-        for _ in range(max(1, len(enumerations or []))):
+    def processes(self):
+        if self.fails == 'raise':
+            raise OSError('listing failed')
+        return None if self.fails else list(self.procs)
+
+    def environ(self, pid):
+        v = self.envs.get(pid)
+        if v == 'raise':
+            raise OSError('read failed')
+        return v
+
+    def status(self, pid):
+        v = self.st.get(pid, 'alive')
+        if v == 'raise':
+            raise OSError('status failed')
+        return v
+
+
+TAGGED = b'PATH=/bin\0KL_RUN_TAG=' + TAG.encode() + b'\0'
+UNTAGGED = b'PATH=/bin\0'
+
+
+def proc(pid, unique=None, parent=None, zombie=False, pgid=None):
+    return (pid, pgid or pid, zombie, None if unique is None else (unique, parent))
+
+
+class TagScanTests(unittest.TestCase):
+    """Every process state of the design §4 table, with unique IDs (macOS) and without them (Linux)."""
+
+    def scan(self, procs, envs=None, status=None, fails=False, worker=WORKER, roots=()):
+        return supervisor.scan_tag(FakeTable(procs, envs, status, fails), TAG, worker, roots)
+
+    def test_each_state_maps_to_its_outcome(self):
+        outside = proc(10, 500, 1)  # created before the worker
+        unknown = proc(11)  # no unique IDs (Linux, or unreadable)
+        for name, procs, envs, status, expected in [
+            ('nothing alive', [], {}, {}, 'clear'),
+            ('alive with the tag', [unknown], {11: TAGGED}, {}, 'tagged'),
+            ('alive with the tag, outside by IDs', [outside], {10: TAGGED}, {}, 'tagged'),
+            ('alive without the tag', [unknown, outside], {11: UNTAGGED, 10: UNTAGGED}, {}, 'clear'),
+            ('unreadable, unknown ancestry', [unknown], {}, {}, 'unknown'),
+            ('unreadable read raises', [unknown], {11: 'raise'}, {}, 'unknown'),
+            ('unreadable, created before the worker', [outside], {}, {}, 'clear'),
+            ('exited between listing and read', [unknown], {}, {11: 'gone'}, 'clear'),
+            ('zombie when re-checked', [unknown], {}, {11: 'zombie'}, 'clear'),
+            ('zombie when listed', [proc(11, zombie=True)], {11: TAGGED}, {}, 'clear'),
+            ('re-check fails', [unknown], {}, {11: 'raise'}, 'unknown'),
+            ('re-check unknown', [unknown], {}, {11: None}, 'unknown'),
+            ('tag and unknown together', [unknown, proc(12)], {11: TAGGED}, {}, 'tagged'),
+        ]:
+            self.assertEqual(self.scan(procs, envs, status), expected, name)
+
+    def test_a_failed_listing_is_unknown(self):
+        for fails in (True, 'raise'):
+            self.assertEqual(self.scan([], fails=fails), 'unknown', fails)
+        self.assertEqual(supervisor.scan_tag(None, TAG, WORKER), 'unknown')  # no table on this OS
+
+    def test_ancestry_by_unique_ids(self):
+        child = proc(20, 1001, WORKER)
+        grandchild = proc(21, 1002, 1001)
+        orphan = proc(22, 1005, 1003)  # original parent 1003 created after the worker, now gone
+        launchd_child = proc(23, 1004, 1)  # created during the run by a process older than the worker
+        later_outside = proc(24, 1006, 1004)  # child of a live outside process
+        # A live descendant is not ended whatever its environment says (env cleared, or withheld).
+        self.assertEqual(self.scan([child], {20: UNTAGGED}), 'tagged')
+        self.assertEqual(self.scan([child, grandchild], {20: 'raise', 21: None}), 'tagged')
+        # Its parent 1001 has ended: unknown ancestry, so a readable environment without the tag is not counted.
+        self.assertEqual(self.scan([grandchild], {21: UNTAGGED}), 'clear')
+        # Unknown ancestry: readable without the tag is not counted, unreadable is unknown.
+        self.assertEqual(self.scan([orphan], {22: UNTAGGED}), 'clear')
+        self.assertEqual(self.scan([orphan], {}), 'unknown')
+        # Outside the tree: an unreadable process is not counted; a readable tag still is.
+        self.assertEqual(self.scan([launchd_child, later_outside], {}), 'clear')
+        self.assertEqual(self.scan([launchd_child, later_outside], {24: TAGGED}), 'tagged')
+        # Without the supervisor's own ID every unreadable process is unknown (the literal rule).
+        self.assertEqual(self.scan([launchd_child], {}, worker=None), 'unknown')
+        # The worker itself was reaped: its children are descendants only through its recorded ID (roots).
+        escaped = proc(25, 1010, 1009)
+        self.assertEqual(self.scan([escaped], {25: UNTAGGED}), 'clear')  # unknown ancestry, readable, no tag
+        self.assertEqual(self.scan([escaped], {25: UNTAGGED}, roots=(1009,)), 'tagged')
+        self.assertEqual(self.scan([escaped], {}), 'unknown')
+
+    def test_tree_scan_retries_then_keeps_the_last_result(self):
+        steps = iter([None, None, [proc(11)]])
+
+        class Flaky(FakeTable):
+            def processes(self_inner):
+                return next(steps, [])
+
+        self.assertEqual(supervisor.tree_scan(Flaky([]), TAG, WORKER, wait=1), 'clear')
+        self.assertEqual(supervisor.tree_scan(FakeTable([proc(11)]), TAG, WORKER, wait=0.1), 'unknown')
+
+    def test_withheld_or_malformed_procargs_is_unreadable(self):
+        head = struct.pack('i', 2) + b'/bin/x\0\0\0/bin/x\0arg\0'
+        self.assertIsNone(supervisor.procargs_env(head))  # ends with argv: withheld
+        self.assertIsNone(supervisor.procargs_env(head + b'\0\0'))
+        self.assertIsNone(supervisor.procargs_env(b'\x02'))
+        self.assertIsNone(supervisor.procargs_env(struct.pack('i', 5) + b'/bin/x\0a\0'))  # fewer args than argc
+        self.assertEqual(supervisor.procargs_env(head + b'KL_RUN_TAG=' + TAG.encode() + b'\0ptr_munge=\0'),
+                         b'KL_RUN_TAG=' + TAG.encode() + b'\0ptr_munge=\0')
+        self.assertTrue(supervisor.carries(supervisor.procargs_env(head + b'KL_RUN_TAG=' + TAG.encode() + b'\0'),
+                                           supervisor.tag_needle(TAG)))
+        # A longer value or another variable that merely contains the tag is not the tag.
+        self.assertFalse(supervisor.carries(b'KL_RUN_TAG=' + TAG.encode() + b'0\0', supervisor.tag_needle(TAG)))
+        self.assertFalse(supervisor.carries(b'X_KL_RUN_TAG=' + TAG.encode() + b'\0', supervisor.tag_needle(TAG)))
+
+    def test_the_real_table_sees_a_tagged_child(self):
+        table = supervisor.process_table()
+        if table is None:
+            self.assertFalse(sys.platform == 'darwin' or sys.platform.startswith('linux'))
+            return
+        tag = 'b' * 32
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(5)'],
+                                 env={**os.environ, 'KL_RUN_TAG': tag}, start_new_session=True)
+        try:
+            deadline = time.monotonic() + 3
+            while supervisor.scan_tag(table, tag) != 'tagged' and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(supervisor.scan_tag(table, tag), 'tagged')
+        finally:
+            child.kill()
+            child.wait()
+        me = table.ident(os.getpid())
+        self.assertEqual(supervisor.tree_scan(table, tag, me[0] if me else None), 'clear')
+
+
+class TagProbeTests(unittest.TestCase):
+    """Codex PR56-R001: inheritance is proven only when every observed child was seen carrying the tag."""
+
+    def probe(self, envs, enumerations=('ok',), extra=()):
+        members = [proc(pid, pgid=7) for pid in envs] + [proc(7, pgid=7)] + list(extra)
+        steps = list(enumerations)
+
+        class Table(FakeTable):
+            def processes(self_inner):
+                step = steps.pop(0) if steps else 'ok'
+                if step == 'none':
+                    return None
+                if step == 'raise':
+                    raise OSError('listing failed')
+                return members
+
+        p = supervisor.TagProbe(7, TAG, Table([], {k: v for k, v in envs.items()}))
+        for _ in range(max(1, len(enumerations))):
             p.sample()
         return p.report()
 
     def test_a_failed_enumeration_is_never_proof(self):
-        # Codex PR56-R001 (re-review): an interval that could not be observed is unknown, not "no children".
-        self.assertTrue(self.probe({11: True}, enumerations=['ok', 'ok'])['proven'])  # control
-        for failure in ('none', 'timeout', 'oserror'):
-            r = self.probe({11: True, 12: True}, enumerations=['ok', failure, 'ok'])
+        self.assertTrue(self.probe({11: TAGGED}, ('ok', 'ok'))['proven'])  # control
+        for failure in ('none', 'raise'):
+            r = self.probe({11: TAGGED, 12: TAGGED}, ('ok', failure, 'ok'))
             self.assertFalse(r['proven'], (failure, r))
             self.assertEqual(r['blind'], 1, failure)
-            self.assertEqual(r['holding'], r['seen'], failure)  # every known child held the lock
+            self.assertEqual(r['tagged'], r['seen'], failure)
 
-    def test_every_observed_child_must_hold_the_lock(self):
-        self.assertTrue(self.probe({11: True, 12: True})['proven'])
-        # Independent expectations: one unproven child is never proof, whatever the others say.
-        for name, results in [('partial', {11: True, 12: None}),
-                              ('not holding', {11: True, 12: False}),
-                              ('lsof failed', {11: True, 12: 'raise'}),
-                              ('slow lsof', {11: True, 12: 'slow'}),
-                              ('no child', {})]:
-            r = self.probe(results, wait=0.3)
+    def test_every_observed_child_must_carry_the_tag(self):
+        self.assertTrue(self.probe({11: TAGGED, 12: TAGGED})['proven'])
+        for name, envs in [('untagged', {11: TAGGED, 12: UNTAGGED}),
+                           ('gone or withheld', {11: TAGGED, 12: None}),
+                           ('read raises', {11: TAGGED, 12: 'raise'}),
+                           ('no child', {})]:
+            r = self.probe(envs)
             self.assertFalse(r['proven'], (name, r))
-        r = self.probe({11: True, 12: 'slow'}, wait=0.3)
-        self.assertEqual((r['seen'], r['holding'], r['pending']), (2, 1, 1))
+        r = self.probe({11: TAGGED, 12: UNTAGGED, 13: None})
+        self.assertEqual((r['seen'], r['checked'], r['tagged'], r['failed']), (3, 2, 1, 1))
+        # The leader and other groups are not children; a zombie member is failed (exited before the check).
+        r = self.probe({11: TAGGED}, extra=[proc(30, pgid=8), proc(12, zombie=True, pgid=7)])
+        self.assertEqual((r['seen'], r['tagged'], r['failed'], r['proven']), (2, 1, 1, False))

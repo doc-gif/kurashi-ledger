@@ -132,7 +132,7 @@ const input = (over: Partial<DoctorInput> = {}): DoctorInput => ({
   profileHash: P,
   launch: null,
   measurement: null,
-  external: { schema: true, descendantLock: true },
+  external: { schema: true, descendantTag: true },
   host: fakeHost(),
   profileText: PROFILE,
   ...over,
@@ -150,6 +150,9 @@ test("doctor: verified only when every control succeeds and every confined probe
   assert.equal(r.state, "verified", JSON.stringify(r.reasons));
   assert.equal(capabilityReady(r.capability), true);
   assert.deepEqual(Object.keys(r.capability.probes).sort(), [...REQUIRED_PROBES].sort());
+  // W5: a capability recorded with the FD-lock probe instead of the tag probe is not ready.
+  const { "descendant-tag": _tag, ...rest } = r.capability.probes;
+  assert.equal(capabilityReady({ ...r.capability, probes: { ...rest, "descendant-lock": true } }), false);
   for (const id of probeIds) {
     assert.ok(host.calls.some((c) => c.probe === id && c.mode === "control"), id);
     assert.ok(host.calls.some((c) => c.probe === id && c.mode === "cli"), id);
@@ -198,7 +201,11 @@ test("doctor: failed control or inconclusive probe leaves the backend unverified
     assert.ok(r.reasons.includes(`explicit-deny-unproven:${id}`));
   }
   assert.equal(child.state, "unverified");
-  assert.equal(await runDoctor(input({ external: { schema: false, descendantLock: true } })).then((r) => r.state), "unverified");
+  assert.equal(await runDoctor(input({ external: { schema: false, descendantTag: true } })).then((r) => r.state), "unverified");
+  // W5: the descendant-tag evidence is required on its own.
+  const untagged = await runDoctor(input({ external: { schema: true, descendantTag: false } }));
+  assert.equal(untagged.state, "unverified");
+  assert.equal(untagged.capability.probes["descendant-tag"], false);
 });
 
 test("doctor: cli.sb lint refuses rules that open the boundary", async () => {

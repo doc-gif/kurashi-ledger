@@ -123,8 +123,8 @@ export type DoctorInput = {
   // template hash. W4 binds argvHash to the install it launches with.
   launch: { plan: LaunchPlan; install: LaunchInstall; run: LaunchRun; argvHash: string } | null;
   measurement: unknown;
-  // Evidence owned elsewhere (result schema check, supervisor descendant lock).
-  external: { schema: boolean; descendantLock: boolean };
+  // Evidence owned elsewhere (result schema check, supervisor descendant tag: design §4).
+  external: { schema: boolean; descendantTag: boolean };
   host: SandboxHost;
   claude?: ClaudeFacts | null;
   // Codex: problems found in the dedicated CODEX_HOME (inspectCodexHome).
@@ -308,7 +308,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
   probes["tool-child-confined"] =
     (input.backend === "codex" || inherited) && viaCli("tool-child-confined") && claudeOk;
   probes["schema"] = input.external.schema === true;
-  probes["descendant-lock"] = input.external.descendantLock === true;
+  probes["descendant-tag"] = input.external.descendantTag === true;
   return result();
 }
 

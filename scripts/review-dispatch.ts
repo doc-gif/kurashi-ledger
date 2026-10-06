@@ -507,7 +507,7 @@ async function measure(
   // Never overwrites an earlier record; owner-only.
   writeFileSync(values.get("--out") ?? "", `${JSON.stringify(record, null, 1)}\n`, { mode: 0o600, flag: "wx" });
   const outcomes = Object.entries(record.measurement.outcomes).map(([k, v]) => `${k}=${v}`);
-  log(`測定: ${outcomes.join("、")}、schema=${record.external.schema}、descendantLock=${record.external.descendantLock}`);
+  log(`測定: ${outcomes.join("、")}、schema=${record.external.schema}、descendantTag=${record.external.descendantTag}`);
   if (record.diagnostics) for (const line of diagnosticLines(record.diagnostics)) log(line);
   return 0;
 }

@@ -292,7 +292,7 @@ type FakeOptions = {
   badKey?: boolean;
   onAck?: () => void;
   exit?: number;
-  descendants?: { seen: number; checked: number; holding: number; pending: number; failed: number; blind: number; proven: boolean };
+  descendants?: Record<string, unknown>;
 };
 function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<string, unknown> }[]): SpawnSupervisor {
   return (file, args, env) => {
@@ -635,7 +635,7 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const p = policy(),
       i = install(d.root, runs);
     const outcomes = Object.fromEntries(MEASURED_PROBES.map((k) => [k, "denied"])) as Parameters<typeof measurementRecord>[3];
-    const file = (external = { schema: true, descendantLock: true }) =>
+    const file = (external: Record<string, boolean> = { schema: true, descendantTag: true }) =>
       JSON.stringify({ schema: 1, measurement: measurementRecord(i.claude, EXE, profileHash(PROFILE), outcomes), external });
     const base = {
       policy: p,
@@ -660,8 +660,8 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     assert.equal(ok.state, "verified", JSON.stringify(ok.reasons));
     assert.equal(boundCapability(d.store.capability("claude"), i.claude, PROFILE, EXE).reason, "bound");
     assert.deepEqual(readdirSync(runs), []);
-    // A later run without the descendant-lock evidence removes the stored capability.
-    const later = await doctorCommand({ ...base, measurement: file({ schema: true, descendantLock: false }) });
+    // A later run without the descendant-tag evidence removes the stored capability.
+    const later = await doctorCommand({ ...base, measurement: file({ schema: true, descendantTag: false }) });
     assert.equal(later.state, "unverified");
     assert.equal(d.store.capability("claude"), null);
     // A measurement for another executable is stale.
@@ -676,25 +676,31 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const control = await doctorCommand({ ...base, measurement: file() });
     assert.equal(control.state, "verified");
     // W4f: the doctor ignores diagnostics (even broken ones) but still refuses any other extra key.
-    const withDiagnostics = (diagnostics: unknown, external = { schema: true, descendantLock: true }) =>
+    const withDiagnostics = (diagnostics: unknown, external = { schema: true, descendantTag: true }) =>
       JSON.stringify({ ...JSON.parse(file(external)), diagnostics });
-    for (const diagnostics of [{ A: null, A2: null, B: null, benign: { supervisorExitCode: 0, failed: null, descendants: null } }, "broken", null, { A: { exitCode: "x" } }]) {
+    for (const diagnostics of [{ A: null, A2: null, B: null, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null, descendants: null } }, "broken", null, { A: { exitCode: "x" } }]) {
       const r = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics) });
       assert.deepEqual({ state: r.state, reasons: r.reasons, probes: r.capability.probes }, { state: ok.state, reasons: ok.reasons, probes: ok.capability.probes });
-      const notLock = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics, { schema: true, descendantLock: false }) });
-      assert.deepEqual({ state: notLock.state, reasons: notLock.reasons }, { state: later.state, reasons: later.reasons });
+      const notTagged = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics, { schema: true, descendantTag: false }) });
+      assert.deepEqual({ state: notTagged.state, reasons: notTagged.reasons }, { state: later.state, reasons: later.reasons });
     }
     const extraKey = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), notes: "x" }) });
     assert.equal(extraKey.state, "unverified");
     assert.ok(extraKey.reasons.includes("measurement-missing"));
     assert.equal(d.store.capability("claude"), null);
+    // W5: a measurement made before the tag proof (descendantLock) or with both names is refused, not upgraded.
+    for (const external of [{ schema: true, descendantLock: true }, { schema: true, descendantLock: true, descendantTag: true }]) {
+      const old = await doctorCommand({ ...base, measurement: file(external) });
+      assert.equal(old.state, "unverified", JSON.stringify(external));
+      assert.equal(d.store.capability("claude"), null);
+    }
   } finally {
     d.cleanup();
     rmSync(runs, { recursive: true, force: true });
   }
 });
 
-test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-lock evidence from one supervised run", async (t) => {
+test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-tag evidence from one supervised run", async (t) => {
   if (process.platform === "win32") {
     t.diagnostic("Windows: the owner's measurement is macOS-only (the plan check refuses Windows paths)");
     return;
@@ -734,17 +740,17 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
     assert.equal(record.measurement.codeHash, EXE);
     assert.equal(record.measurement.profileHash, profileHash(PROFILE));
     // A clean exit without an observed child proves no inheritance (PR #56 red team P1).
-    assert.deepEqual(record.external, { schema: true, descendantLock: false });
+    assert.deepEqual(record.external, { schema: true, descendantTag: false });
     // W4f: diagnostics per run, enums and numbers only; a silent CLI shows it never started.
     const silent = { exitCode: 0, started: false, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: null };
-    assert.deepEqual(record.diagnostics, { A: silent, A2: silent, B: silent, benign: { supervisorExitCode: 0, failed: null, descendants: null } });
+    assert.deepEqual(record.diagnostics, { A: silent, A2: silent, B: silent, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null, descendants: null } });
     assert.ok(!JSON.stringify(record).includes(TOKEN));
     const { diagnosticLines } = await import("./active.ts");
     assert.deepEqual(diagnosticLines(record.diagnostics!), [
       "診断 A: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 A2: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 B: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
-      "診断 benign: exit=0 failed=なし descendants=-",
+      "診断 benign: exit=0 failed=なし stage=- field=- descendants=-",
     ]);
     const refused = await measureCommand({
       policy: p,
@@ -752,19 +758,19 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       executableDigest: EXE,
       profileText: PROFILE,
       executor: async () => ({ exitCode: 0, stdout: "" }),
-      spawn: fakeSupervisor({ badKey: true, descendants: { seen: 1, checked: 1, holding: 0, pending: 0, failed: 0, blind: 0, proven: false } }, []),
+      spawn: fakeSupervisor({ badKey: true, descendants: { seen: 1, checked: 1, tagged: 0, failed: 0, blind: 0, proven: false } }, []),
       layout,
       bound: BOUND,
       unchanged: () => true,
       launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
     });
-    assert.deepEqual(refused.external, { schema: false, descendantLock: false });
-    assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", descendants: null });
-    assert.equal(diagnosticLines(refused.diagnostics!)[3], "診断 benign: exit=2 failed=keyed descendants=-");
+    assert.deepEqual(refused.external, { schema: false, descendantTag: false });
+    assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", stage: null, field: null, descendants: null });
+    assert.equal(diagnosticLines(refused.diagnostics!)[3], "診断 benign: exit=2 failed=keyed stage=- field=- descendants=-");
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(worker.args.includes("--probe-descendants"));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
-    const again = async (descendants: { seen: number; checked: number; holding: number; pending: number; failed: number; blind?: number; proven: boolean }) =>
+    const again = async (descendants: Record<string, unknown>) =>
       (
         await measureCommand({
           policy: p,
@@ -778,8 +784,8 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
           unchanged: () => true,
           launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
         })
-      ).external.descendantLock;
-    assert.equal(await again({ seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, proven: true }), true);
+      ).external.descendantTag;
+    assert.equal(await again({ seen: 2, checked: 2, tagged: 2, failed: 0, proven: true }), true);
     // Round 4 RT-3: a swap during the measurement writes no record.
     let reads = 0;
     await assert.rejects(
@@ -797,15 +803,18 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       }),
       /bound-file-changed/,
     );
-    // Codex PR56-R001, independent expectations: partial, failed, pending or inconsistent reports are never proof.
+    // Codex PR56-R001, independent expectations: partial, failed, untagged or inconsistent reports are never proof.
     for (const d of [
-      { seen: 2, checked: 2, holding: 1, pending: 0, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 1, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: true }, // a report that claims too much
-      { seen: 0, checked: 0, holding: 0, pending: 0, failed: 0, proven: true },
-      // A failed group enumeration (an unobserved interval) is never proof, even when every known child held.
-      { seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, blind: 1, proven: true },
+      { seen: 2, checked: 2, tagged: 1, failed: 0, proven: false }, // one child without the tag
+      { seen: 2, checked: 1, tagged: 1, failed: 1, proven: false }, // one child gone before the check
+      { seen: 2, checked: 1, tagged: 1, failed: 1, proven: true }, // a report that claims too much
+      { seen: 2, checked: 1, tagged: 2, failed: 0, proven: true }, // inconsistent counts
+      { seen: 0, checked: 0, tagged: 0, failed: 0, proven: true },
+      { seen: 2, checked: 2, tagged: 2, failed: -1, proven: true }, // a negative count drops the report
+      // The FD-lock report shape (holding/pending) is not read at all.
+      { seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, blind: 0, proven: true },
+      // A failed group enumeration (an unobserved interval) is never proof, even when every known child had it.
+      { seen: 2, checked: 2, tagged: 2, failed: 0, blind: 1, proven: true },
     ])
       assert.equal(await again(d), false, JSON.stringify(d));
     // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default).
@@ -1236,14 +1245,33 @@ test("W4f: the benign run reports the first failed check as a closed step; excep
         throw new Error("SYNTHETIC-SECRET-IN-ERROR");
       },
     };
-  assert.deepEqual(benignSchema(j, pass, ok), { schema: true, failed: null });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, keyed: false }), { schema: false, failed: "keyed" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: null }), { schema: false, failed: "signed" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, treeEnded: false }), { schema: false, failed: "treeEnded" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, uncertain: true }), { schema: false, failed: "uncertain" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: "SYNTHETIC-SECRET not json" }), { schema: false, failed: "parse" });
-  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: signed(JSON.stringify({ ...result, decision: "SYNTHETIC" })) }), { schema: false, failed: "parse" });
-  assert.deepEqual(benignSchema(measurementJob(policy()), pass, ok), { schema: false, failed: "parse" }); // another job's result
-  assert.deepEqual(benignSchema(j, reject, ok), { schema: false, failed: "verify" });
-  assert.deepEqual(benignSchema(j, thrower, ok), { schema: false, failed: "verify" });
+  const none = { stage: null, field: null };
+  assert.deepEqual(benignSchema(j, pass, ok), { schema: true, failed: null, ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, keyed: false }), { schema: false, failed: "keyed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: null }), { schema: false, failed: "signed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, treeEnded: false }), { schema: false, failed: "treeEnded", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, uncertain: true }), { schema: false, failed: "uncertain", ...none });
+  // W5: the stage inside parse, and for the schema the fixed field name only (never a value or unknown key).
+  const parse = (stage: string, field: string | null = null) => ({ schema: false, failed: "parse", stage, field });
+  const cases: [string, Parameters<typeof benignSchema>[2]["signed"], ReturnType<typeof parse>][] = [
+    ["envelope not json", "SYNTHETIC-SECRET not json", parse("signed")],
+    ["result not json", signed("SYNTHETIC-SECRET not json"), parse("result-json")],
+    ["result an array", signed(JSON.stringify(["SYNTHETIC-SECRET"])), parse("result-json")],
+    ["result too large (the envelope bounds it)", signed(JSON.stringify({ ...result, summary: "x".repeat(40000) })), parse("signed")],
+    ["bad decision", signed(JSON.stringify({ ...result, decision: "SYNTHETIC-SECRET" })), parse("schema-field", "decision")],
+    ["missing summary", signed(JSON.stringify({ ...result, summary: undefined })), parse("schema-field", "summary")],
+    ["unknown key", signed(JSON.stringify({ ...result, SYNTHETIC_SECRET_KEY: 1 })), parse("schema-field", "keys")],
+    ["secret-shaped summary", signed(JSON.stringify({ ...result, summary: "ghp_SYNTHETICSYNTHETIC0000" })), parse("schema-field", "summary")],
+    ["accepted with findings", signed(JSON.stringify({ ...result, decision: "accepted", findings: [{ id: "PR1-R001", location: "a", impact: "b", completion: "c" }] })), parse("schema-field", "decision")],
+    ["bad pair", signed(JSON.stringify({ ...result, pair: { head: "SYNTHETIC-SECRET", base: "x" } })), parse("schema-field", "pair")],
+    ["two bad fields", signed(JSON.stringify({ ...result, schema: 2, run: "SYNTHETIC-SECRET" })), parse("schema-field", "multiple")],
+  ];
+  for (const [name, env, expected] of cases) {
+    const got = benignSchema(j, pass, { ...ok, signed: env });
+    assert.deepEqual(got, expected, name);
+    assert.ok(!JSON.stringify(got).includes("SYNTHETIC"), name);
+  }
+  assert.deepEqual(benignSchema(measurementJob(policy()), pass, ok), parse("provenance")); // another job's result
+  assert.deepEqual(benignSchema(j, reject, ok), { schema: false, failed: "verify", stage: "verify", field: null });
+  assert.deepEqual(benignSchema(j, thrower, ok), { schema: false, failed: "verify", stage: "verify", field: null });
 });

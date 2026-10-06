@@ -44,7 +44,7 @@ export const REQUIRED_PROBES = [
   "deny-hooks-mcp",
   "tool-child-confined",
   "schema",
-  "descendant-lock",
+  "descendant-tag",
 ] as const;
 export function capabilityReady(c: Capability | null): boolean {
   const required = REQUIRED_PROBES;

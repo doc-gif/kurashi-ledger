@@ -214,7 +214,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 "${dispatch[@]}" measure --root "$root" --policy "$policy" --install "$install" --out "$etc/measurement-$(date +%Y%m%d%H%M%S).json"
 ```
 
-期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantLock=true`。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
+期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantTag=true`。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階と、解析なら段階と欄の名前）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
 
 ## 9. 否定試験（doctor）
 
@@ -232,7 +232,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 
 | 理由 | 行うこと |
 | --- | --- |
-| 理由なしのunverified、`measurement-missing`・`-stale`・`-invalid` | 8をやり直す（`schema`・`descendantLock`がfalseの測定も含む） |
+| 理由なしのunverified、`measurement-missing`・`-stale`・`-invalid` | 8をやり直す（`schema`・`descendantTag`がfalseの測定も含む） |
 | `control-failed:…`・`explicit-deny-unproven:…` | 合成のprobeが比較のための許可の実行で失敗した。`process-env`なら1のCommand Line Toolsを入れる。ほかは記録して止める |
 | `auth-status-missing`・`auth-not-setup-token`・`auth-config-dir-mismatch` | 3をやり直す |
 | `config-dir:…` | `$config`から、理由に出たファイルを除く |

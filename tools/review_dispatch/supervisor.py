@@ -18,6 +18,7 @@ import re
 import secrets
 import select
 import signal
+import struct
 import subprocess
 import sys
 import threading
@@ -328,89 +329,308 @@ def clear_group(pgid):
     return False, True
 
 
-def lsof_holds(pid, lock_path):
-    """True if the process holds the run lock open, False if it provably does not, None if unknown."""
-    try:
-        p = subprocess.run(['/usr/sbin/lsof', '-t', '-a', '-p', str(pid), '--', str(lock_path)],
-                           capture_output=True, text=True, check=False, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
+# ---- Descendant proof (design §4 子孫の終了の証明): a per-run env tag and a scan of the user's processes ----
+# The real Claude CLI does not pass inherited descriptors to its tool children, so a run lock inherited by
+# descendants proves nothing. Instead every worker gets KL_RUN_TAG=<128-bit hex> in its environment, and
+# after the group was stopped no live process of this uid may still carry it. Unknown is never "ended".
+#
+# macOS withholds the environment of most of a user's processes (Apple and hardened binaries: about three
+# in four on the owner's Mac), so "unreadable" alone cannot mean "unknown" there. The kernel's 64-bit unique
+# process IDs (p_uniqueid, and p_puniqueid of the original parent, kept when a process is reparented) place
+# each process relative to this supervisor: an unreadable process created before it, or whose original
+# parent is older or a live process outside the tree, cannot have inherited the tag and is not counted.
+TAG_ENV = 'KL_RUN_TAG'
+SZOMB = 5  # <sys/proc.h>
+DESCENDANT, OUTSIDE, UNKNOWN = 'descendant', 'outside', 'unknown'
+
+
+def tag_needle(tag):
+    return b'\0' + TAG_ENV.encode('ascii') + b'=' + tag.encode('ascii') + b'\0'
+
+
+def carries(env, needle):
+    """True/False for a readable environment block, None when it could not be read."""
+    if env is None:
         return None
-    if str(pid) in p.stdout.split():
-        return True
-    # lsof exits 1 with no output both when the file is not open and when the process is gone. Only a process
-    # still alive in the group afterwards proves "not holding"; anything else stays unknown.
-    return False if p.returncode == 1 and p.stdout.strip() == '' and _alive(pid) else None
+    return needle in b'\0' + env  # A leading NUL so the first entry matches too (Linux /proc).
 
 
-def _alive(pid):
+def procargs_env(raw):
+    """The part of a KERN_PROCARGS2 block after argv, or None when it is withheld or malformed.
+
+    Every process macOS shows has strings there (the environment, then the loader's apple[] strings, even with
+    an empty environment); a block that ends with argv is one whose environment the kernel withheld.
+    """
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        argc = struct.unpack_from('i', raw, 0)[0]
+        i = raw.index(b'\0', 4)  # end of the executable path
+        while i < len(raw) and raw[i] == 0:
+            i += 1
+        for _ in range(argc):
+            i = raw.index(b'\0', i) + 1
+    except (struct.error, ValueError, TypeError):
+        return None
+    rest = raw[i:]
+    return rest if rest.strip(b'\0') else None
 
 
-class DescendantProbe:
-    """Owner measurement only (--probe-descendants): do the worker's children inherit the run lock?
+class DarwinTable:
+    """macOS process table through sysctl and libproc (ctypes, no shell, no ps/lsof). Only this uid."""
 
-    Samples the worker's process group; for each new member asks lsof whether it holds the run lock file.
-    Each observed child ends in one state: holding, not-holding, or unknown (lsof failed, timed out, or the
-    child was gone first). report() waits for every check. Inheritance is proven only when EVERY observed
-    child was seen holding the lock (Codex PR56-R001); one unchecked, failed or pending child is not proof.
+    KINFO = 648  # sizeof(struct kinfo_proc) on LP64 macOS (arm64 and x86_64)
+    # offsetof in struct kinfo_proc: kp_proc.p_stat, kp_proc.p_pid, kp_eproc.e_ucred.cr_uid, kp_eproc.e_pgid
+    STAT, PID, UID, PGID = 36, 40, 420, 564
+    CTL_KERN, KERN_ARGMAX, KERN_PROC, KERN_PROC_PID, KERN_PROC_UID, KERN_PROCARGS2 = 1, 8, 14, 1, 5, 49
+    PROC_PIDUNIQIDENTIFIERINFO, UNIQ_SIZE = 17, 56  # struct proc_uniqidentifierinfo: uuid[16], uniqueid, puniqueid
+
+    def __init__(self):
+        import ctypes
+        self.ctypes = ctypes
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.sysctl.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_void_p,
+                                     ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p, ctypes.c_size_t]
+        self.libc.sysctl.restype = ctypes.c_int
+        self.libproc = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
+        self.libproc.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p,
+                                              ctypes.c_int]
+        self.libproc.proc_pidinfo.restype = ctypes.c_int
+        raw = self._sysctl([self.CTL_KERN, self.KERN_ARGMAX], 4)
+        self.argmax = struct.unpack('i', raw)[0] if raw is not None and len(raw) == 4 else 0
+        if not 0 < self.argmax <= 64 * 1024 * 1024:
+            raise RuntimeError('process table unavailable')
+
+    def _sysctl(self, mib, size):
+        c = self.ctypes
+        name = (c.c_int * len(mib))(*mib)
+        buf = c.create_string_buffer(size)
+        n = c.c_size_t(size)
+        if self.libc.sysctl(name, len(mib), buf, c.byref(n), None, 0) != 0:
+            return None
+        return buf.raw[:n.value]
+
+    def _size(self, mib):
+        c = self.ctypes
+        name = (c.c_int * len(mib))(*mib)
+        n = c.c_size_t(0)
+        if self.libc.sysctl(name, len(mib), None, c.byref(n), None, 0) != 0:
+            return None
+        return n.value
+
+    def _record(self, raw, i):
+        return (struct.unpack_from('i', raw, i + self.PID)[0], struct.unpack_from('i', raw, i + self.PGID)[0],
+                raw[i + self.STAT], struct.unpack_from('I', raw, i + self.UID)[0])
+
+    def ident(self, pid):
+        """(p_uniqueid, p_puniqueid) or None."""
+        buf = self.ctypes.create_string_buffer(self.UNIQ_SIZE)
+        if self.libproc.proc_pidinfo(pid, self.PROC_PIDUNIQIDENTIFIERINFO, 0, buf, self.UNIQ_SIZE) != self.UNIQ_SIZE:
+            return None
+        unique, parent = struct.unpack_from('QQ', buf.raw, 16)
+        return (unique, parent) if unique > 0 and parent < unique else None
+
+    def processes(self):
+        """[(pid, pgid, zombie, ident)] of this effective uid, or None when the listing cannot be trusted."""
+        uid = os.geteuid()
+        mib = [self.CTL_KERN, self.KERN_PROC, self.KERN_PROC_UID, uid]
+        for _ in range(3):
+            size = self._size(mib)
+            if size is None:
+                return None
+            raw = self._sysctl(mib, size + 64 * self.KINFO)
+            if raw is not None:
+                break
+        else:
+            return None
+        if not raw or len(raw) % self.KINFO:
+            return None
+        rows = [self._record(raw, i) for i in range(0, len(raw), self.KINFO)]
+        # The layout is checked against this process itself; any mismatch makes the listing unknown.
+        me = [r for r in rows if r[0] == os.getpid()]
+        if len(me) != 1 or me[0][1] != os.getpgrp() or me[0][3] != uid or any(r[3] != uid for r in rows):
+            return None
+        return [(pid, pgid, stat == SZOMB, None if stat == SZOMB else self.ident(pid)) for pid, pgid, stat, _ in rows]
+
+    def environ(self, pid):
+        raw = self._sysctl([self.CTL_KERN, self.KERN_PROCARGS2, pid], self.argmax)
+        return None if raw is None else procargs_env(raw)
+
+    def status(self, pid):
+        """'gone', 'zombie' or 'alive'; None when unknown."""
+        raw = self._sysctl([self.CTL_KERN, self.KERN_PROC, self.KERN_PROC_PID, pid], self.KINFO)
+        if raw is None:
+            return None
+        if len(raw) == 0:
+            return 'gone'
+        if len(raw) != self.KINFO or self._record(raw, 0)[0] != pid:
+            return None
+        return 'zombie' if raw[self.STAT] == SZOMB else 'alive'
+
+
+class ProcTable:
+    """Linux /proc, for the POSIX fixture tests only (the real worker backend is macOS-only). Linux has no
+    original-parent ID, so every process has unknown ancestry: any unreadable live process is unknown."""
+
+    def _stat(self, pid):
+        with open('/proc/%d/stat' % pid, 'rb') as f:
+            data = f.read()
+        rest = data[data.rindex(b')') + 2:].split()
+        return rest[0].decode('ascii'), int(rest[2])
+
+    def _euid(self, pid):
+        with open('/proc/%d/status' % pid, 'rb') as f:
+            for line in f:
+                if line.startswith(b'Uid:'):
+                    return int(line.split()[2])
+        raise ValueError('no uid')
+
+    def ident(self, _pid):
+        return None
+
+    def processes(self):
+        uid = os.geteuid()
+        out = []
+        for name in os.listdir('/proc'):
+            if not name.isdigit():
+                continue
+            pid = int(name)
+            try:
+                if self._euid(pid) != uid:
+                    continue
+                state, pgid = self._stat(pid)
+            except (FileNotFoundError, ProcessLookupError):
+                continue  # Ended while listed.
+            out.append((pid, pgid, state in ('Z', 'X'), None))
+        return out
+
+    def environ(self, pid):
+        try:
+            with open('/proc/%d/environ' % pid, 'rb') as f:
+                return f.read()
+        except OSError:
+            return None
+
+    def status(self, pid):
+        try:
+            state, _pgid = self._stat(pid)
+        except (FileNotFoundError, ProcessLookupError):
+            return 'gone'
+        except (OSError, ValueError, IndexError):
+            return None
+        return 'zombie' if state in ('Z', 'X') else 'alive'
+
+
+def process_table():
+    """The OS process table, or None (unknown) where there is none."""
+    try:
+        if sys.platform == 'darwin':
+            return DarwinTable()
+        if sys.platform.startswith('linux'):
+            return ProcTable()
+    except Exception:  # noqa: BLE001 - no table means every scan is unknown, never "ended"
+        return None
+    return None
+
+
+def _call(fn, *args):
+    try:
+        return fn(*args)
+    except Exception:  # noqa: BLE001 - any failure is unknown
+        return None
+
+
+def ancestry(procs, origin, roots=()):
+    """pid -> descendant/outside/unknown from the unique IDs.
+
+    `origin` is this supervisor's p_uniqueid (read before the worker starts); its children (the worker) and
+    `roots` (the worker's own ID, when it could be read) are the tree. Parents are created before their
+    children, so one pass in unique-ID order sees every live parent first. Without `origin` all is unknown.
+    """
+    known = sorted((p for p in procs if p[3] is not None), key=lambda p: p[3][0])
+    by_unique = {}
+    out = {}
+    for pid, _pgid, _zombie, (unique, parent) in known:
+        if origin is None:
+            state = UNKNOWN
+        elif unique <= origin:
+            state = OUTSIDE  # Created before this supervisor.
+        elif parent == origin or parent in roots:
+            state = DESCENDANT
+        elif parent in by_unique:
+            state = by_unique[parent]
+        else:
+            state = OUTSIDE if parent < origin else UNKNOWN  # Ended parent: older than this supervisor, or not known.
+        by_unique[unique] = state
+        out[pid] = state
+    return out
+
+
+def scan_tag(table, tag, origin=None, roots=()):
+    """One scan of this uid's processes: 'clear', 'tagged' (something of the tree is alive) or 'unknown'.
+
+    Design §4: a live process with the tag, or a live descendant by the kernel IDs, is not ended. A live
+    process of unknown ancestry whose env cannot be read, or a failed listing, is unknown. A process that ended
+    between the listing and the read (gone or zombie) is ended.
+    """
+    procs = _call(table.processes) if table is not None else None
+    if procs is None:
+        return 'unknown'
+    places = ancestry(procs, origin, roots)
+    needle = tag_needle(tag)
+    alive = unknown = False
+    for pid, _pgid, zombie, _ident in procs:
+        if zombie:
+            continue
+        where = places.get(pid, UNKNOWN)
+        found = carries(_call(table.environ, pid), needle)
+        if found is None and _call(table.status, pid) in ('gone', 'zombie'):
+            continue
+        if found is True or where == DESCENDANT:
+            alive = True
+        elif found is None and where == UNKNOWN:
+            unknown = True
+    return 'tagged' if alive else 'unknown' if unknown else 'clear'
+
+
+def tree_scan(table, tag, origin=None, roots=(), wait=2.0):
+    """Repeats the scan for up to `wait` seconds while it is not clear; the last result decides."""
+    deadline = time.monotonic() + wait
+    while True:
+        result = scan_tag(table, tag, origin, roots)
+        if result == 'clear' or time.monotonic() >= deadline:
+            return result
+        time.sleep(0.05)
+
+
+class TagProbe:
+    """Owner measurement only (--probe-descendants): do the worker's children carry the run tag?
+
+    Samples the worker's process group and reads each new member's environment at once. Each observed child
+    ends in one state: tagged, untagged, or failed (gone, withheld or unreadable before it was checked).
+    Inheritance is proven only when EVERY observed child carried the tag (Codex PR56-R001); one untagged or
+    failed child, a failed enumeration, or no child at all is not proof.
     """
 
-    def __init__(self, pgid, lock_path, members=None, check=None, wait=10):
-        self.pgid, self.lock_path = pgid, str(lock_path)
-        self.members = members or group_members
-        self.check = check or lsof_holds
-        self.wait = wait
+    def __init__(self, pgid, tag, table):
+        self.pgid, self.needle, self.table = pgid, tag_needle(tag), table
         self.state = {}
-        self.threads = []
         self.blind = 0  # enumerations that failed: an unobserved interval (Codex PR56-R001, re-review)
-        self.lock = threading.Lock()
 
     def sample(self):
-        try:
-            members = self.members(self.pgid)
-        except Exception:  # noqa: BLE001 - a failed enumeration is unknown, never "no children"
-            members = None
-        if members is None:
-            with self.lock:
-                self.blind += 1
+        procs = _call(self.table.processes) if self.table is not None else None
+        if procs is None:
+            self.blind += 1
             return
-        for pid in members:
-            with self.lock:
-                if pid in self.state:
-                    continue
-                self.state[pid] = 'pending'
-            t = threading.Thread(target=self._check, args=(pid,), daemon=True)
-            self.threads.append(t)
-            t.start()
-
-    def _check(self, pid):
-        try:
-            held = self.check(pid, self.lock_path)
-        except Exception:  # noqa: BLE001 - any failure is "unknown", never proof
-            held = None
-        with self.lock:
-            self.state[pid] = 'holding' if held is True else 'not-holding' if held is False else 'failed'
+        for pid, pgid, zombie, _ident in procs:
+            if pgid != self.pgid or pid == self.pgid or pid in self.state:
+                continue
+            found = None if zombie else carries(_call(self.table.environ, pid), self.needle)
+            self.state[pid] = 'tagged' if found is True else 'untagged' if found is False else 'failed'
 
     def report(self):
-        deadline = time.monotonic() + self.wait
-        for t in list(self.threads):
-            t.join(max(0, deadline - time.monotonic()))
-        with self.lock:
-            states = list(self.state.values())
-            blind = self.blind
-        seen = len(states)
-        holding = states.count('holding')
-        pending = states.count('pending')
-        failed = states.count('failed')
-        return {'seen': seen, 'checked': seen - pending - failed, 'holding': holding,
-                'pending': pending, 'failed': failed, 'blind': blind,
-                'proven': seen >= 1 and holding == seen and pending == 0 and failed == 0 and blind == 0}
+        states = list(self.state.values())
+        seen, tagged, failed = len(states), states.count('tagged'), states.count('failed')
+        return {'seen': seen, 'checked': seen - failed, 'tagged': tagged, 'failed': failed, 'blind': self.blind,
+                'proven': seen >= 1 and tagged == seen and failed == 0 and self.blind == 0}
 
 
 def claude_structured(raw):
@@ -448,7 +668,7 @@ def start_stamp(pid):
         return ''
 
 
-def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=None, probe=False):
+def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=None, probe=False, table=None):
     plan = None
     if mode == 'run-worker':
         # Real backends sign on macOS only (W4 row 4); the dispatcher runs on the owner's Mac.
@@ -486,13 +706,23 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
     # Per-run one-time key: memory only, never in files, env or descriptors given to the worker.
     seed = bytearray(secrets.token_bytes(32)) if manifest else bytearray()
     capture = None
-    lock_env = {'daemon': 'KL_DISPATCH_LOCK_FD', 'receiver': 'KL_RECEIVER_LOCK_FD'}.get(mode, 'KL_RUN_LOCK_FD')
-    env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root),
-           'LANG': 'C.UTF-8', lock_env: str(fd)}
+    env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root), 'LANG': 'C.UTF-8'}
     if plan:
-        # The real worker gets exactly the launcher's env (its own HOME/TMPDIR outside this root). It still
-        # inherits the run lock descriptor (pass_fds) for the descendant proof, but not its number.
+        # The real worker gets exactly the launcher's env (its own HOME/TMPDIR outside this root).
         env = dict(plan['env'])
+    tag = ''
+    if manifest:
+        # Design §4: the run lock stays here (lease, inspect); the worker gets only a per-run tag, made outside
+        # the worker boundary and never written to the manifest, results or logs.
+        tag = secrets.token_hex(16)
+        env[TAG_ENV] = tag
+        if table is None:
+            table = process_table()
+    else:
+        # The daemon and receiver keep their lifetime lock in the child (singleton across a supervisor crash).
+        env['KL_DISPATCH_LOCK_FD' if mode == 'daemon' else 'KL_RECEIVER_LOCK_FD'] = str(fd)
+    # This supervisor's unique ID, read before the worker exists: the origin of the tree for tree_scan.
+    origin = _call(table.ident, os.getpid()) if manifest and table is not None else None
     # Only the trusted daemon receives its reduced read token; worker/fixture environments never inherit it.
     if mode == 'daemon' and os.environ.get('GH_TOKEN'):
         env['GH_TOKEN'] = os.environ['GH_TOKEN']
@@ -522,7 +752,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
                     value.update(state='finished', treeEnded=True, neverStarted=True)
                     durable(manifest, value)
                     return 2
-        child = subprocess.Popen(command, env=env, pass_fds=(fd,), start_new_session=True,
+        child = subprocess.Popen(command, env=env, pass_fds=() if manifest else (fd,), start_new_session=True,
                                  cwd=plan['cwd'] if plan else None,
                                  stdin=subprocess.PIPE if plan else subprocess.DEVNULL,
                                  stdout=subprocess.PIPE if manifest else None,
@@ -536,10 +766,12 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
         if manifest:
             capture = Capture(child.stdout.fileno(), OUTPUT_LIMIT if plan else RESULT_LIMIT)
         started = time.monotonic()
+        # The worker's own unique ID (it may already have exited; then its children have unknown ancestry).
+        worker_id = _call(table.ident, child.pid) if origin else None
         value.update(state='running', worker=child.pid, workerStart=start_stamp(child.pid))
         if manifest:
             durable(manifest, value)
-        probing = DescendantProbe(child.pid, lock_path) if probe and plan else None
+        probing = TagProbe(child.pid, tag, table) if probe and plan else None
         # Daemons are reaped normally. A run's worker is only observed until it is a zombie, so the group check
         # below runs while its PID and process group ID are still reserved.
         alive = (lambda: child.poll() is None) if not manifest else (lambda: not exited(child.pid))
@@ -568,7 +800,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
                     while alive() and time.monotonic() < deadline:
                         time.sleep(0.03)
                 break
-            time.sleep(0.03)
+            time.sleep(0.005 if probing else 0.03)
         if mode in ('daemon', 'receiver'):
             return child.returncode
         # PR #56 red team P1: the leader ended (zombie, not yet reaped). Every other member of its process group
@@ -583,21 +815,17 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
             durable(manifest, value)
             return 2
         child.wait(timeout=5)  # reap the leader only now
-        value.update(strays=strays)
-        # A descendant that left the process group (setsid) is caught here instead: it inherited this
-        # descriptor, so the lock cannot be taken again while it lives (measure checks the inheritance).
-        os.close(fd)
-        fd = -1
-        try:
-            probe = lock(lock_path)
-        except RuntimeError:
+        # A descendant that left the process group (setsid) still carries the tag: no live process of this uid
+        # may carry it, and an unreadable one or a failed listing is unknown (design §4).
+        scan = tree_scan(table, tag, origin[0] if origin else None, (worker_id[0],) if worker_id else ())
+        value.update(strays=strays, scan=scan)
+        if scan != 'clear':
             value.update(state='uncertain', treeEnded=False)
             durable(manifest, value)
             return 2
-        os.close(probe)
         # Sign only a complete, bounded, UTF-8 result of a run whose whole tree ended normally and was not cancelled.
         if not capture.done.wait(2):
-            # A process outside the lock proof still holds the worker's stdout: the tree did not provably end.
+            # A process outside the tag proof still holds the worker's stdout: the tree did not provably end.
             value.update(state='uncertain', treeEnded=False)
             durable(manifest, value)
             return 2
@@ -636,8 +864,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
     finally:
         for i in range(len(seed)):
             seed[i] = 0
-        if fd >= 0:
-            os.close(fd)
+        os.close(fd)  # The run lock is released only after the manifest has its final state.
 
 
 def inspect(root, run_id):
@@ -673,7 +900,7 @@ def inspect(root, run_id):
     # 'signed' only reports the manifest; the signature itself is checked against the launch-recorded key.
     report = {}
     d = value.get('descendants')
-    keys = ('seen', 'checked', 'holding', 'pending', 'failed', 'blind')
+    keys = ('seen', 'checked', 'tagged', 'failed', 'blind')
     if isinstance(d, dict) and all(isinstance(d.get(k), int) for k in keys) and isinstance(d.get('proven'), bool):
         report = {'descendants': {**{k: d[k] for k in keys}, 'proven': d['proven']}}
     return {**report, 'run': run_id, 'treeEnded': ended and not never, 'neverStarted': never,
