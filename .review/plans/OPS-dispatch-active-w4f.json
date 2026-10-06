@@ -4,6 +4,7 @@
  "base_sha": "c867d4492995cacc49b19692bd8ce53a57643f6d",
  "planned_paths": [
   ".review/plans/OPS-dispatch-active-w4f.json",
+  "docs/review-dispatch-design.md",
   "docs/review-dispatch-runbook.md",
   "scripts/lib/review-dispatch/active.test.ts",
   "scripts/lib/review-dispatch/active.ts",
@@ -56,7 +57,7 @@
    "checks": [
     {
      "id": "update",
-     "method": "doctor.test.ts: initがRead/Grep/Glob/StructuredOutputで--json-schemaの計画ならrun Bの構造の項目がdenied、--json-schemaを外した計画ではinconclusive、Bash・mcp__*・未知の道具が1つでもあればinconclusive",
+     "method": "doctor.test.ts: initがRead/Grep/Glob/StructuredOutputで--json-schemaの計画ならrun Bの構造の項目がdenied、--json-schemaを外した計画ではinconclusive、Bash・mcp__*・未知の道具が1つでもあればinconclusive。PR62 RT-1: StructuredOutput（と大小文字違い・Bash・mcp__*・read）のtool_useの入力が全対象のパスを含み、Read/Grep/Globの呼び出しとpermission_denialsがないとき、読取りの項目はinconclusive",
      "expected": "StructuredOutput以外の追加は従来どおりfail closed"
     },
     {
@@ -125,7 +126,7 @@
   {
    "id": "INV-TASKS",
    "disposition": "preserve",
-   "reason": "runbookの手順8に、inconclusive・falseのときdiagnosticsを見ることを1文で足す。diagnosticsの項目の説明はコード（doctor.tsの型のコメント）だけに置く",
+   "reason": "runbookの手順8に、inconclusive・falseのときdiagnosticsを見ることを1文で足す。StructuredOutputを許す条件は正本の設計§7のtoolの行に1回だけ書き、コードの注釈はそこを指す。diagnosticsの項目の説明はコード（型のコメント）だけに置く",
    "checks": [
     {
      "id": "dependencies",
@@ -134,7 +135,7 @@
     },
     {
      "id": "entrypoints",
-     "method": "runbookの追記がコードの項目名と一致し、他の文書に同じ説明がないことをgit grepで確かめる",
+     "method": "runbook・設計§7の追記がコードの項目名・条件と一致し、他の文書に同じ説明がないことをgit grepで確かめる",
      "expected": "説明の置き場所は1つ"
     }
    ]
@@ -198,11 +199,15 @@
     },
     {
      "location": "doctor.ts parseEvents",
-     "result": "toolsをそのまま集める。変更なし（判定は呼び出し側）"
+     "result": "PR62 RT-1: 試みの証拠はRead・Grep・Globの名前が完全一致するtool_useとpermission_denialsだけ。StructuredOutputや他の道具の入力（自由文）は数えない"
     },
     {
      "location": "active.ts benign run",
      "result": "toolsを見ない。変更なし"
+    },
+    {
+     "location": "doctor.ts trapPrRun・diagnoseRun",
+     "result": "attemptsを判定に使わない（diagnoseRunは件数だけ）。parseEventsの変更で件数は読取りの道具だけになる"
     }
    ]
   },
