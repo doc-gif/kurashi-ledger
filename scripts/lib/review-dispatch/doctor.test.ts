@@ -3,7 +3,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
@@ -558,7 +558,9 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
 
   plans.length = 0;
   const codex = await measureCli(policy(), job(20), cx, layout("codex"), codexDenied, o);
-  for (const k of MEASURED_PROBES) assert.equal(codex[k], "denied", k);
+  // PR62-R001: a Codex command item is shell text, not a structured access, so it proves no attempt. Only the
+  // session start (run A) is evidence; Codex stays disabled in this release anyway.
+  for (const k of MEASURED_PROBES) assert.equal(codex[k], k === "deny-hooks-mcp" ? "denied" : "inconclusive", k);
   assert.deepEqual(plans.map((p) => p.file), [codexInstall.executable, codexInstall.executable]);
 
   // "Did not try" is never "denied".
@@ -614,6 +616,54 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
     for (const k of ["deny-keys", "deny-gh-auth", "deny-other-ai-auth", "deny-keychain", "deny-db", "deny-policy-write", "tool-child-confined"] as const)
       assert.equal(r[k], "inconclusive", `denial ${n} ${k}`);
   }
+  // PR62-R001: only the access field of Read (file_path) and Grep (path) is evidence, compared exactly after
+  // normalisation, from a tool_use or a denial. Search patterns, other fields, prefixes and Glob prove nothing.
+  const READ_PROBES = ["deny-keys", "deny-gh-auth", "deny-other-ai-auth", "deny-keychain", "deny-db", "deny-policy-write", "tool-child-confined"] as const;
+  const materials = (p: LaunchPlan) => p.cwd;
+  const accessor =
+    (calls: (t: string, p: LaunchPlan) => { name: string; input: Record<string, unknown> }[], as: "use" | "denial" | "both", leakIt = false) =>
+    async (p: LaunchPlan): Promise<CliRun> => {
+      plans.push(p);
+      const made = steps(p)
+        .filter((s) => s.kind === "read")
+        .flatMap((s) => calls(s.target, p));
+      return {
+        exitCode: 0,
+        stdout: [
+          line({ type: "system", subtype: "init", tools: ["Read", "Grep", "Glob", "StructuredOutput"], mcp_servers: [] }),
+          ...(as !== "denial" ? made.map((c) => line({ type: "assistant", message: { content: [{ type: "tool_use", ...c }] } })) : []),
+          ...(leakIt ? steps(p).filter((s) => s.kind === "read").map((s) => line({ type: "user", text: read(s.target) })) : []),
+          line({ type: "result", subtype: "success", permission_denials: as !== "use" ? made.map((c) => ({ tool_name: c.name, tool_input: c.input })) : [] }),
+        ].join("\n"),
+      };
+    };
+  const noEvidence: [string, Parameters<typeof accessor>[0], "use" | "denial" | "both"][] = [
+    ["grep-pattern", (t, p) => [{ name: "Grep", input: { pattern: t, path: materials(p) } }], "use"],
+    ["grep-pattern-denial", (t, p) => [{ name: "Grep", input: { pattern: t, path: materials(p) } }], "denial"],
+    ["description-only", (t, p) => [{ name: "Read", input: { file_path: join(materials(p), "readme.txt"), description: t } }], "both"],
+    ["prefix-file", (t) => [{ name: "Read", input: { file_path: `${t}.bak` } }, { name: "Grep", input: { pattern: "x", path: `${t}-other` } }], "both"],
+    ["parent-dir", (t) => [{ name: "Grep", input: { pattern: "x", path: dirname(t) } }], "both"],
+    ["glob-name", (t) => [{ name: "Glob", input: { pattern: t } }, { name: "Glob", input: { pattern: basename(t), path: dirname(t) } }], "both"],
+    ["relative", (t) => [{ name: "Read", input: { file_path: t.slice(1) } }], "both"],
+    ["non-string", (t) => [{ name: "Read", input: { file_path: [t] } }, { name: "Grep", input: { path: { p: t } } }], "both"],
+  ];
+  for (const [name, calls, as] of noEvidence) {
+    const r = await measureCli(policy(), job(30), ci, layout(`none-${name}`), accessor(calls, as), o);
+    for (const k of READ_PROBES) assert.equal(r[k], "inconclusive", `${name} ${k}`);
+  }
+  // The exact access (also written with "." / ".." / a trailing slash) is evidence: denied without a leak.
+  for (const [name, calls, as] of [
+    ["read-file-path", (t: string) => [{ name: "Read", input: { file_path: t } }], "use"],
+    ["read-denial", (t: string) => [{ name: "Read", input: { file_path: t } }], "denial"],
+    ["grep-path", (t: string) => [{ name: "Grep", input: { pattern: "x", path: t } }], "use"],
+    ["normalised", (t: string) => [{ name: "Read", input: { file_path: `${dirname(t)}/./sub/../${basename(t)}/` } }], "use"],
+  ] as const) {
+    const r = await measureCli(policy(), job(30), ci, layout(`exact-${name}`), accessor(calls, as), o);
+    for (const k of MEASURED_PROBES) assert.equal(r[k], "denied", `${name} ${k}`);
+  }
+  // ... and allowed when the content leaks.
+  const leaked = await measureCli(policy(), job(30), ci, layout("exact-leak"), accessor((t) => [{ name: "Read", input: { file_path: t } }], "use", true), o);
+  for (const k of READ_PROBES) assert.equal(leaked[k], "allowed", k);
   for (const [n, toolName] of ["StructuredOutput", "structuredoutput", "Bash", "mcp__trap__x", "read"].entries()) {
     const r = await measureCli(policy(), job(30), ci, layout(`claim-${n}`), claimer(toolName), o);
     for (const k of ["deny-keys", "deny-gh-auth", "deny-other-ai-auth", "deny-keychain", "deny-db", "deny-policy-write", "tool-child-confined"] as const)
@@ -643,8 +693,8 @@ test("CLI measurement harness: outcomes need attempt evidence from the CLI's eve
   assert.ok(!JSON.stringify(record).includes(TOKEN));
   // Event parsing ignores noise and unknown shapes.
   const ev = parseEvents("claude", `noise\n{"type":"system","subtype":"init","tools":["Read"],"mcp_servers":[]}\n[1]\n`);
-  assert.deepEqual(ev, { started: true, tools: ["Read"], mcpServers: 0, attempts: [] });
-  assert.deepEqual(parseEvents("codex", '{"type":"item.completed","item":{"type":"agent_message","text":"/x"}}').attempts, []);
+  assert.deepEqual(ev, { started: true, tools: ["Read"], mcpServers: 0, accesses: [] });
+  assert.deepEqual(parseEvents("codex", '{"type":"item.completed","item":{"type":"command_execution","command":"cat /x"}}').accesses, []);
 });
 
 test("spawnExecutor runs a plan without a shell, with its env and stdin", async (t) => {
@@ -904,7 +954,7 @@ test("W4f: StructuredOutput keeps Claude's structural proof only for a plan that
   const plan = (args: string[]): LaunchPlan => ({ file: "/x", args, env: {}, cwd: "/x", stdin: "", shell: false });
   const withSchema = plan(["-p", "q", "--json-schema", "{}"]),
     without = plan(["-p", "q"]);
-  const ev = (tools: string[] | null, mcpServers: number | null = 0, started = true) => ({ started, tools, mcpServers, attempts: [] });
+  const ev = (tools: string[] | null, mcpServers: number | null = 0, started = true) => ({ started, tools, mcpServers, accesses: [] });
   assert.equal(STRUCTURED_OUTPUT_TOOL, "StructuredOutput");
   assert.equal(readToolsOnly(ev(["Read", "Grep", "Glob", "StructuredOutput"]), withSchema), true);
   assert.equal(readToolsOnly(ev(["Read", "Grep", "Glob"]), withSchema), true);
@@ -953,7 +1003,7 @@ test("W4f: run diagnostics hold closed enums and bounded integers only, never CL
     exitCode: 1,
     stdout: [line({ type: "thread.started" }), line({ type: "item.completed", item: { type: "command_execution", command: `cat ${SECRET}` } }), line({ type: "result", subtype: "success" })].join("\n"),
   });
-  assert.deepEqual(cx, { exitCode: 1, started: true, tools: null, mcpServers: null, attempts: 1, permissionDenials: null, result: null });
+  assert.deepEqual(cx, { exitCode: 1, started: true, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: null });
 });
 
 test("W4f: measureCli reports each run's diagnostics and its outcomes do not depend on them", async (t) => {
