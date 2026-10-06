@@ -854,7 +854,7 @@ class EndGroupTests(unittest.TestCase):
     def test_a_successful_killpg_alone_is_never_empty(self):
         self.kill()
         self.assertEqual(supervisor.end_group(7, self.answers([8])), (False, True))  # wait limit
-        self.assertEqual(self.sent, [signal.SIGTERM, signal.SIGKILL])
+        self.assertEqual(self.sent, [supervisor.SIGTERM, supervisor.SIGKILL])
         self.kill(ProcessLookupError())
         self.assertEqual(supervisor.end_group(7, self.answers([8])), (False, True))
 

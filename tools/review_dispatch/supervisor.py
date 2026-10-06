@@ -289,7 +289,7 @@ def exited(pid):
 def stop_worker(pgid, still_alive):
     """The same stop as a cancel (TERM, then KILL, to the whole group) for a worker the loop no longer
     supervises; the run stays uncertain whatever happens (PR #56 red team round 2 P3)."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    for sig in (SIGTERM, SIGKILL):
         try:
             os.killpg(pgid, sig)
         except (ProcessLookupError, PermissionError):
@@ -303,6 +303,10 @@ def stop_worker(pgid, still_alive):
 
 GROUP_LINE = re.compile(r'\s*(\d+)\s+(\d+)\s+(\S+)\s*')
 GROUP_WAIT = 2  # seconds per signal before the group check gives up (uncertain)
+# POSIX numbers where the platform lacks the name: Windows has no SIGKILL. No backend runs there (the pure checks
+# below are still tested on every OS); the values are the POSIX ones the macOS supervisor sends.
+SIGTERM = getattr(signal, 'SIGTERM', 15)
+SIGKILL = getattr(signal, 'SIGKILL', 9)
 
 
 def group_members(pgid):
@@ -335,7 +339,7 @@ def group_members(pgid):
 
 
 def _killpg(pgid, sig):
-    os.killpg(pgid, sig)
+    getattr(os, 'killpg')(pgid, sig)  # POSIX only; never reached on Windows (no backend)
 
 
 def end_group(pgid, members=None):
@@ -355,7 +359,7 @@ def end_group(pgid, members=None):
         except Exception:  # noqa: BLE001 - an enumeration that raised is unknown, never "empty"
             return None
     strays = False
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    for sig in (SIGTERM, SIGKILL):
         live = look()
         if live is None:
             return False, strays
