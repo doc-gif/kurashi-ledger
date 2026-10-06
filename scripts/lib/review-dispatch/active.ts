@@ -52,8 +52,10 @@ import {
   removeSyntheticKeychain,
   runDoctor,
   type CliExecutor,
+  type CliRunId,
   type DoctorResult,
   type Measurement,
+  type RunDiagnostics,
   type SandboxHost,
   type TrapLayout,
 } from "./doctor.ts";
@@ -458,6 +460,7 @@ export function removeRunArea(area: string): void {
   if (st.isDirectory() && !st.isSymbolicLink()) rmSync(area, { recursive: true, force: true });
 }
 type Supervised = {
+  exitCode: number | null; // supervisor.py's own exit code (diagnostics only)
   keyed: boolean;
   signed: string | null;
   treeEnded: boolean;
@@ -577,12 +580,12 @@ export async function superviseRun(
   child.stdin.write(
     `${JSON.stringify({ file: plan.file, args: plan.args, env: plan.env, cwd: plan.cwd, stdin: plan.stdin })}\n`,
   );
-  await exit;
+  const exitCode = await exit;
   // PR #56 red team P3: the supervisor starts the worker only after "ack", which is sent only after the key
   // was stored. Without it the worker provably never started, whatever the manifest says.
-  if (!keyed) return { keyed, signed: null, treeEnded: false, neverStarted: true, uncertain: false };
+  if (!keyed) return { exitCode, keyed, signed: null, treeEnded: false, neverStarted: true, uncertain: false };
   const state = await inspectRun(c, j.run);
-  return { keyed, signed, ...state };
+  return { exitCode, keyed, signed, ...state };
 }
 
 export type ClaudeRunnerDeps = {
@@ -753,19 +756,33 @@ export function measurementJob(p: Policy, kind: "review" | "faultfinding" = "rev
 // ---- Owner tools: measurement record and doctor (real CLI and real Seatbelt; never in CI) ----
 
 // The owner's measurement file (measure CLI): the measured probe outcomes bound to the hashes, plus the
-// two pieces of evidence the doctor takes from outside (result schema, descendant lock).
+// two pieces of evidence the doctor takes from outside (result schema, descendant lock), plus diagnostics
+// for the owner, which the doctor never reads.
 export type MeasurementFile = {
   schema: 1;
   measurement: Measurement;
   external: { schema: boolean; descendantLock: boolean };
+  diagnostics?: MeasurementDiagnostics;
 };
+// The first check of the benign run that failed, in order; null when the result schema held.
+export const BENIGN_STEPS = ["keyed", "signed", "treeEnded", "uncertain", "parse", "verify"] as const;
+export type BenignStep = (typeof BENIGN_STEPS)[number];
+export type BenignDiagnostics = {
+  supervisorExitCode: number | null; // 0-255
+  failed: BenignStep | null;
+  descendants: Descendants | null; // inspectRun's integer counts (why descendantLock is false)
+};
+// Per run: A (synthetic PR under cli.sb), A2 (flag layer only), B (injected instructions), benign (supervised).
+// Closed enums, booleans and bounded integers only (diagnoseRun, benignSchema).
+export type MeasurementDiagnostics = Record<CliRunId, RunDiagnostics | null> & { benign: BenignDiagnostics };
 export function parseMeasurementFile(raw: string | null): MeasurementFile | null {
   if (raw === null) return null;
   try {
     const v = JSON.parse(raw) as MeasurementFile;
+    const keys = v && typeof v === "object" ? Object.keys(v).filter((k) => k !== "diagnostics").sort().join() : "";
     if (
       !v ||
-      Object.keys(v).sort().join() !== "external,measurement,schema" ||
+      keys !== "external,measurement,schema" ||
       v.schema !== 1 ||
       !v.external ||
       Object.keys(v.external).sort().join() !== "descendantLock,schema" ||
@@ -773,7 +790,8 @@ export function parseMeasurementFile(raw: string | null): MeasurementFile | null
       typeof v.external.descendantLock !== "boolean"
     )
       return null;
-    return v;
+    // Diagnostics are dropped here: no verdict can depend on them.
+    return { schema: v.schema, measurement: v.measurement, external: v.external };
   } catch {
     return null;
   }
@@ -931,8 +949,11 @@ export async function measureCommand(d: {
   try {
     const layout = await d.layout(join(area, "trap"));
     let outcomes: Awaited<ReturnType<typeof measureCli>>;
+    const cli: Record<CliRunId, RunDiagnostics | null> = { A: null, A2: null, B: null };
     try {
-      outcomes = await measureCli(d.policy, job, d.install.claude, layout, d.executor, d.launch ?? {});
+      outcomes = await measureCli(d.policy, job, d.install.claude, layout, d.executor, d.launch ?? {}, (id, diag) => {
+        cli[id] = diag;
+      });
     } finally {
       await layout.close();
     }
@@ -959,16 +980,7 @@ export async function measureCommand(d: {
       (record) => verifier.register(job, record),
       true,
     );
-    let schema = false;
-    if (r.keyed && r.signed !== null && r.treeEnded && !r.uncertain) {
-      try {
-        const { raw, origin } = provenanceOf(job, parseSignedResult(r.signed));
-        parseResult(raw, job);
-        schema = verifier.verify(job, raw, origin);
-      } catch {
-        schema = false;
-      }
-    }
+    const { schema, failed } = benignSchema(job, verifier, r);
     let same = false;
     try {
       same = d.unchanged();
@@ -982,8 +994,56 @@ export async function measureCommand(d: {
       // Inheritance is proven only when EVERY observed child was seen holding the run lock (Codex PR56-R001):
       // one unchecked, failed or pending child, or none at all, is not proof. A normal exit proves nothing (I009).
       external: { schema, descendantLock: r.treeEnded && !r.uncertain && descendantsProven(r.descendants) },
+      diagnostics: {
+        ...cli,
+        benign: {
+          supervisorExitCode: r.exitCode !== null && Number.isSafeInteger(r.exitCode) && r.exitCode >= 0 && r.exitCode <= 255 ? r.exitCode : null,
+          failed,
+          descendants: r.descendants ?? null,
+        },
+      },
     };
   } finally {
     removeRunArea(area);
   }
+}
+// The benign run's result schema check, with the first failed step for the diagnostics.
+export function benignSchema(
+  job: Job,
+  verifier: Pick<RunVerifier, "verify">,
+  r: Pick<Supervised, "keyed" | "signed" | "treeEnded" | "uncertain">,
+): { schema: boolean; failed: BenignStep | null } {
+  if (!r.keyed) return { schema: false, failed: "keyed" };
+  if (r.signed === null) return { schema: false, failed: "signed" };
+  if (!r.treeEnded) return { schema: false, failed: "treeEnded" };
+  if (r.uncertain) return { schema: false, failed: "uncertain" };
+  let raw: string, origin: ReturnType<typeof provenanceOf>["origin"];
+  try {
+    ({ raw, origin } = provenanceOf(job, parseSignedResult(r.signed)));
+    parseResult(raw, job);
+  } catch {
+    return { schema: false, failed: "parse" };
+  }
+  try {
+    if (verifier.verify(job, raw, origin)) return { schema: true, failed: null };
+  } catch {
+    // An exception is a failed verification; its text is never kept.
+  }
+  return { schema: false, failed: "verify" };
+}
+// One line per run for the measure CLI, after "測定:". Built only from the diagnostics' enums and numbers.
+export function diagnosticLines(d: MeasurementDiagnostics): string[] {
+  const v = (x: unknown) => (x === null || x === undefined ? "-" : String(x));
+  const cli = (["A", "A2", "B"] as const).map((id) => {
+    const r = d[id];
+    if (!r) return `診断 ${id}: 未実行`;
+    const res = r.result ? `${r.result.subtype}/is_error=${v(r.result.isError)}/turns=${v(r.result.numTurns)}` : "-";
+    return `診断 ${id}: exit=${v(r.exitCode)} started=${r.started} tools=${r.tools ? r.tools.join(",") || "なし" : "-"} mcp=${v(r.mcpServers)} attempts=${r.attempts} denials=${v(r.permissionDenials)} result=${res}`;
+  });
+  const b = d.benign,
+    n = b.descendants;
+  const desc = n
+    ? `seen=${n.seen}/checked=${n.checked}/holding=${n.holding}/pending=${n.pending}/failed=${n.failed}/blind=${n.blind}/proven=${n.proven}`
+    : "-";
+  return [...cli, `診断 benign: exit=${v(b.supervisorExitCode)} failed=${b.failed ?? "なし"} descendants=${desc}`];
 }
