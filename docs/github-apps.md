@@ -84,7 +84,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 ```
 
 - `--agent`（必須）: どのAIのAppか。キーチェーンのserviceの既定と、IDを読む環境変数（上の表）を決める。IDは`--app-id`・`--installation-id`でも渡せる（環境変数より優先）。数字だけを受け付ける。
-- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どれも`repositories: ["kurashi-ledger"]`に縮小する。
+- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どれも`--repo`で選んだ1つのrepoに縮小する。
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
@@ -95,6 +95,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ直前にAIが行う確認」） |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
+- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認も選んだrepoに従う（`extraheader`は`--repo`によらず3つのrepoのURLのすべてを空にする）。ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。`merge-check`も、選んだrepoの`OWNER_MERGE_ONLY`だけを読む。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
 - 子に渡してはいけないコマンド: `env`・`printenv`、`gh auth token`、`gh auth status --show-token`等、環境変数やトークンを表示するもの。子の環境の`GH_TOKEN`は、子が動いている間、同じmacOSユーザーの`ps eww`等からも見える（下の「限界」）。
 - 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ログイン名> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、通常のファイルでないもの（symlink・FIFO・ディレクトリ）を開く前に拒み、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒む。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない。このときコマンドには標準入力を渡さない）。
@@ -104,7 +105,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境は次のようにする（試験で確かめた範囲）。
      - 外す: `GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、`GH_DEBUG`、gitの資格情報・SSH・設定・trace（`GIT_TRACE*`・`GIT_CURL_VERBOSE`）に関わる変数、`NODE_OPTIONS`。`GIT_TRACE_REDACT=1`にする。
      - ghには、空の一時の設定ディレクトリ（`GH_CONFIG_DIR`。所有者だけが使える権限）を渡す。`HOME`も同じディレクトリにし、環境変数`NETRC`を外す。gitのlibcurlは、資格情報のhelperより前に`.netrc`（`_netrc`）を読む（curl 8.16.0以降は、`NETRC`が指すファイルを`HOME`より前に読む）ので、利用者の`.netrc`に所有者の資格情報があっても使わない。127.0.0.1の合成のサーバーで、親の環境ではHOMEの`.netrc`の資格情報が送られ、子の環境では（親に`NETRC`があっても）送られないことを、CIの3つのOSのgitで確かめた。`NETRC`を読む新しいlibcurlでの対照は、CIのgitの版によっては確かめていない。
-     - gitは、利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や利用者の`url.*.insteadOf`を使わない）。repoの設定（`.git/config`）は読まれるので、資格情報のhelperの一覧を空に戻し、`https://github.com/`と`https://github.com/doc-gif/kurashi-ledger.git`の`http.*.extraheader`を空にし、`core.askPass`を空にする（一時のrepoの設定に置いた値が使われないことを、実際のgitで確かめた）。repoの設定の`url.*.insteadOf`は外せないので、pushの前に確かめる（下の「push」）。
+     - gitは、利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や利用者の`url.*.insteadOf`を使わない）。repoの設定（`.git/config`）は読まれるので、資格情報のhelperの一覧を空に戻し、`https://github.com/`と許可リストの3つのrepoのpushのURL（`https://github.com/doc-gif/<repo>.git`。`--repo`によらず全部）の`http.*.extraheader`を空にし、`core.askPass`を空にする（一時のrepoの設定に置いた値が使われないことを、実際のgitで確かめた）。repoの設定の`url.*.insteadOf`は外せないので、pushの前に確かめる（下の「push」）。
      - SSHを使えない（`GIT_SSH_COMMAND=false`）。端末に聞かない（`GIT_TERMINAL_PROMPT=0`）。`https://github.com`への資格情報としてだけ、`GH_TOKEN`を返すhelperを使う。
   4. 子が終わったら、一時の設定ディレクトリを消し、トークンを失効させる（失敗したら標準エラーに伝える。トークンは1時間で失効する）。失効の応答の401は、すでに無効なので成功と同じに扱う。
 - シグナル: 発行の直前から失効が終わるまで、SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK（OSが受けられるもの）を受ける。子が動いていれば同じシグナルを子へ送り（SIGINTも）、子の終了を待つ。確認の要求は中断する。発行の要求は中断せず（中断すると、発行されたトークンを受け取れず失効できない）、15秒の上限の中で受け取ったトークンを失効させる。トークンがあれば失効させてから、128+番号で終える。SIGKILL・強制終了・電源断では失効できない（トークンは1時間で失効する）。
@@ -150,7 +151,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh api 'repos/doc-gif/kurashi-ledger/activity?ref=refs/heads/<branch>&per_page=1' --jq '.[0].actor.login + " " + .[0].after'
 ```
 
-1つ目の出力が、スクリプトが設定した次の5行だけ（順は問わない）であることを確かめる: `credential.helper`（空）、`credential.https://github.com.helper !f() …`、`http.https://github.com/.extraheader`（空）、`http.https://github.com/doc-gif/kurashi-ledger.git.extraheader`（空）、`core.askpass`（空）。`url.`で始まる行や、ほかの値があれば、pushしない（repoの設定を直すか、所有者に知らせる）。
+1つ目の出力が、スクリプトが設定した次の7行だけ（順は問わない）であることを確かめる: `credential.helper`（空）、`credential.https://github.com.helper !f() …`、`http.https://github.com/.extraheader`（空）、`http.https://github.com/doc-gif/kurashi-ledger.git.extraheader`・`http.https://github.com/doc-gif/mekiki.git.extraheader`・`http.https://github.com/doc-gif/mekiki-claude.git.extraheader`（空）、`core.askpass`（空）。`url.`で始まる行や、ほかの値があれば、pushしない（repoの設定を直すか、所有者に知らせる）。
 最後の出力が`<claudeのAppの名前>[bot] <pushしたcommitのSHA>`であることを確かめる（pushした身元の確認）。URLを直接指定したpushは`origin/<branch>`の追跡の参照を更新しないので、続けて`git fetch origin --prune`を実行する。
 
 **PR・コメント・マージ:**
