@@ -377,3 +377,25 @@ test("Sweep: findings that were not collected are unknown, not none (no accepted
   assert.equal(accepted(p, s, t), false);
   assert.deepEqual(approvalBlockers(p, s, 30), ["findings-unknown"]);
 });
+test("W10 a held cycle leaves the previous target as it was; a genuinely new Ready after Draft→Ready still bumps the generation", () => {
+  const p = policy(),
+    s = snapshot(),
+    t = assess(p, s, null),
+    consumed = new Set(["ready1"]); // the faultfinding job consumed it
+  // The held cycle writes nothing, so the next complete observation is assessed against t itself.
+  const again = assess(p, s, t, consumed);
+  assert.equal(again.status, "eligible");
+  assert.equal(again.ready, "ready1");
+  assert.equal(again.generation, t.generation);
+  // What the held cycle used to save (ready: null) made the consumed Ready unusable.
+  assert.equal(assess(p, s, { ...t, ready: null, status: "waiting", reason: "unknown-evidence" }, consumed).reason, "new-ready-required");
+  // Draft then a new Ready, both after the stored observation (held or not): the old Ready is behind the draft
+  // boundary and the new one bumps the generation, as without the held cycle.
+  s.history.push({ id: "draft1", kind: "draft", actor: 20, at: 3, pair: null });
+  assert.equal(assess(p, s, again, consumed).reason, "new-ready-required");
+  s.history.push({ id: "ready2", kind: "ready", policy: "p1", actor: 20, at: 4, pair: s.pair });
+  const next = assess(p, s, again, consumed);
+  assert.equal(next.status, "eligible");
+  assert.equal(next.ready, "ready2");
+  assert.equal(next.generation, t.generation + 1);
+});
