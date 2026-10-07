@@ -79,7 +79,7 @@ class SupervisorTests(unittest.TestCase):
         result = subprocess.run(self.command('run-fixture', '--run', 'synthetic-1', '--binding', BINDING, '--', sys.executable, '-c', 'print("{}")'), capture_output=True)
         self.assertEqual(result.returncode, 0)
         manifest = json.loads((self.root / 'run-synthetic-1.json').read_text())
-        self.assertTrue(manifest['treeEnded'])
+        self.assertEqual((manifest['schema'], manifest['groupEnded'], manifest['allDescendants']), (2, True, 'unproven'))
         again = subprocess.run(self.command('run-fixture', '--run', 'synthetic-1', '--binding', BINDING, '--', sys.executable, '-c', 'pass'), capture_output=True)
         self.assertEqual(again.returncode, 2)
 
@@ -93,8 +93,10 @@ class SupervisorTests(unittest.TestCase):
             info = wait_for(self.root / 'run-orphan.json', lambda x: x['state'] == 'running')
             parent.kill()
             parent.wait(timeout=5)
-            with self.assertRaises(RuntimeError):
-                supervisor.lock(self.root / 'run-orphan.lock')
+            # The run lock was the supervisor's only (W5c): it is free now, but a free lock alone never ends the run.
+            state = supervisor.inspect(self.root, 'orphan')
+            self.assertEqual((state['lockHeld'], state['uncertain'], state['groupEnded'], state['neverStarted']),
+                             (False, True, False, False))
             result = subprocess.run(self.command('run-fixture', '--run', 'orphan', '--binding', BINDING, '--', sys.executable, '-c', 'pass'), capture_output=True)
             self.assertEqual(result.returncode, 2)
         finally:
@@ -104,26 +106,85 @@ class SupervisorTests(unittest.TestCase):
             if info:
                 os.killpg(info['worker'], signal.SIGKILL)
 
-    def test_setsid_descendant_inherits_lock_after_wrapper_and_worker_exit(self):
+    def test_a_child_that_left_the_group_is_group_ended_with_descendants_unproven(self):
+        # ISSUE50-P003: a setsid child that closed stdout is invisible to the group check. The run is recorded as
+        # "group ended" while "all descendants ended" stays unproven; the lock is not inherited.
         if self.disabled_windows():
             return
-        marker = self.root / 'descendant.json'
+        marker = self.root.parent / (self.root.name + '-left.json')
         child_code = "import os,time,json; open(%r,'w').write(json.dumps({'pid':os.getpid()})); time.sleep(20)" % str(marker)
-        code = "import os,subprocess; fd=int(os.environ['KL_RUN_LOCK_FD']); subprocess.Popen([%r,'-c',%r],pass_fds=(fd,),start_new_session=True)" % (sys.executable, child_code)
-        parent = subprocess.Popen(self.command('run-fixture', '--run', 'escaped', '--binding', BINDING, '--', sys.executable, '-c', code), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        code = ("import subprocess,sys,time\n"
+                "subprocess.Popen([%r,'-c',%r],start_new_session=True,stdout=subprocess.DEVNULL,close_fds=False)\n"
+                "while True:\n"
+                "  try:\n"
+                "    open(%r).read(); break\n"
+                "  except OSError: time.sleep(0.02)\n"
+                "print('{}')") % (sys.executable, child_code, str(marker))
         info = None
         try:
-            info = wait_for(marker)
-            self.assertEqual(parent.wait(timeout=8), 2)
-            self.assertFalse(json.loads((self.root / 'run-escaped.json').read_text())['treeEnded'])
-            with self.assertRaises(RuntimeError):
-                supervisor.lock(self.root / 'run-escaped.lock')
+            r = subprocess.run(self.command('run-fixture', '--run', 'left', '--binding', BINDING, '--', sys.executable, '-c', code),
+                               capture_output=True, timeout=30)
+            info = json.loads(marker.read_text())
+            os.kill(info['pid'], 0)  # still alive outside the group
+            self.assertEqual(r.returncode, 0)
+            manifest = json.loads((self.root / 'run-left.json').read_text())
+            self.assertEqual((manifest['state'], manifest['groupEnded'], manifest['allDescendants'], manifest['signed']),
+                             ('finished', True, 'unproven', True))
+            state = supervisor.inspect(self.root, 'left')
+            self.assertEqual((state['groupEnded'], state['allDescendants'], state['uncertain']), (True, 'unproven', False))
+            # The run lock was never passed on: it is free once the supervisor ended, whatever the child does.
+            os.close(supervisor.lock(self.root / 'run-left.lock'))
         finally:
-            if parent.poll() is None:
-                parent.kill()
-                parent.wait()
             if info:
-                os.kill(info['pid'], signal.SIGKILL)
+                try:
+                    os.kill(info['pid'], signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if marker.exists():
+                marker.unlink()
+
+    def test_a_child_outside_the_group_holding_stdout_keeps_the_run_uncertain(self):
+        # ISSUE50-P002: an empty group is necessary, never sufficient. Without stdout EOF nothing is signed.
+        if self.disabled_windows():
+            return
+        marker = self.root.parent / (self.root.name + '-holder.json')
+        child_code = "import os,time,json; open(%r,'w').write(json.dumps({'pid':os.getpid()})); time.sleep(20)" % str(marker)
+        code = ("import subprocess,sys,time\n"
+                "subprocess.Popen([%r,'-c',%r],start_new_session=True)\n"
+                "while True:\n"
+                "  try:\n"
+                "    open(%r).read(); break\n"
+                "  except OSError: time.sleep(0.02)\n"
+                "print('{}')") % (sys.executable, child_code, str(marker))
+        info = None
+        try:
+            r = subprocess.run(self.command('run-fixture', '--run', 'holder', '--binding', BINDING, '--', sys.executable, '-c', code),
+                               capture_output=True, timeout=30)
+            info = json.loads(marker.read_text())
+            self.assertEqual(r.returncode, 2)
+            manifest = json.loads((self.root / 'run-holder.json').read_text())
+            self.assertEqual((manifest['state'], manifest['groupEnded'], manifest['stdoutOpen'], manifest['signed']),
+                             ('uncertain', True, True, False))
+            self.assertFalse((self.root / 'run-holder-result.json').exists())
+            self.assertTrue(supervisor.inspect(self.root, 'holder')['uncertain'])
+        finally:
+            if info:
+                try:
+                    os.kill(info['pid'], signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if marker.exists():
+                marker.unlink()
+
+    def test_a_schema_1_manifest_is_never_end_evidence(self):
+        if self.disabled_windows():
+            return
+        (self.root / 'run-old.json').write_text(json.dumps({'schema': 1, 'run': 'old', 'state': 'finished', 'backend': 'fixture',
+                                                             'supervisor': 1, 'start': 'x', 'treeEnded': True}))
+        with self.assertRaises(RuntimeError):
+            supervisor.inspect(self.root, 'old')
+        r = subprocess.run(self.command('inspect', '--run', 'old'), capture_output=True)
+        self.assertEqual((r.returncode, r.stdout), (2, b''))
 
     def test_alias_incomplete_manifest_and_unknown_pid_fail_closed(self):
         if self.disabled_windows():
@@ -144,8 +205,9 @@ class SupervisorTests(unittest.TestCase):
         try:
             wait_for(self.root / 'run-cancel.json', lambda x: x['state'] == 'running')
             (self.root / 'cancel-cancel').touch()
-            parent.wait(timeout=8)
-            self.assertTrue(json.loads((self.root / 'run-cancel.json').read_text())['treeEnded'])
+            self.assertNotEqual(parent.wait(timeout=8), 0)
+            manifest = json.loads((self.root / 'run-cancel.json').read_text())
+            self.assertEqual((manifest['groupEnded'], manifest['signed']), (True, False))
         finally:
             if parent.poll() is None:
                 parent.kill()
@@ -163,7 +225,7 @@ class SupervisorTests(unittest.TestCase):
             self.assertTrue(proof['uncertain'])
             (self.root / 'cancel-reconnect').touch()
             parent.wait(timeout=8)
-            self.assertTrue(supervisor.inspect(self.root, 'reconnect')['treeEnded'])
+            self.assertTrue(supervisor.inspect(self.root, 'reconnect')['groupEnded'])
         finally:
             if parent.poll() is None:
                 parent.kill()
@@ -284,7 +346,7 @@ class SigningTests(unittest.TestCase):
         self.assertEqual(json.loads(stored.read_text()), env)
         self.assertEqual(stored.stat().st_mode & 0o777, 0o600)
         manifest = json.loads((self.root / 'run-signed.json').read_text())
-        self.assertTrue(manifest['signed'] and manifest['treeEnded'])
+        self.assertTrue(manifest['signed'] and manifest['groupEnded'])
         self.assertEqual(manifest['key'], first['key'])
         self.assertEqual(manifest['resultHash'], env['resultHash'])
         self.assertTrue(supervisor.inspect(self.root, 'signed')['signed'])
@@ -301,16 +363,16 @@ class SigningTests(unittest.TestCase):
                 "for n in os.listdir(%r):\n"
                 "  p=os.path.join(%r,n)\n"
                 "  if os.path.isfile(p): seen+=open(p,'rb').read()\n"
-                "json.dump({'env':sorted(os.environ),'fds':fds,'lock':int(os.environ['KL_RUN_LOCK_FD']),'files':seen.hex()},open(%r,'w'))\n"
+                "json.dump({'env':sorted(os.environ),'fds':fds,'files':seen.hex()},open(%r,'w'))\n"
                 "print('{}')") % (str(self.root), str(self.root), str(report))
         result = self.fixture('isolated', code)
         self.assertEqual(result.returncode, 0)
         seen = json.loads(report.read_text())
         # macOS CoreFoundation adds __CF_USER_TEXT_ENCODING inside the process; nothing else beyond the allowlist.
         self.assertEqual([x for x in seen['env'] if x != '__CF_USER_TEXT_ENCODING'],
-                         ['HOME', 'KL_RUN_LOCK_FD', 'LANG', 'PATH', 'TMPDIR'])
-        # Only the inherited run lock beyond stdio; never the supervisor's control pipe or any key material.
-        self.assertEqual(seen['fds'], [seen['lock']])
+                         ['HOME', 'LANG', 'PATH', 'TMPDIR'])
+        # Nothing beyond stdio: not the run lock (Issue #50 W5c), the control pipe or any key material.
+        self.assertEqual(seen['fds'], [])
         env = lines(result.stdout)[-1]
         sig = bytes.fromhex(env['signature'])
         revealed = [sig[64 * i:64 * i + 32] for i in range(256)]
@@ -323,7 +385,7 @@ class SigningTests(unittest.TestCase):
             self.assertNotIn(part, visible)
             self.assertNotIn(part.hex().encode('ascii'), visible)
         manifest = json.loads((self.root / 'run-isolated.json').read_text())
-        self.assertEqual(set(manifest) - {'schema', 'run', 'state', 'backend', 'supervisor', 'start', 'treeEnded',
+        self.assertEqual(set(manifest) - {'schema', 'run', 'state', 'backend', 'supervisor', 'start', 'groupEnded', 'allDescendants',
                                           'binding', 'key', 'signed', 'worker', 'workerStart', 'exit', 'resultHash',
                                           'strays'},
                          set())
@@ -427,8 +489,9 @@ class WorkerTests(unittest.TestCase):
         self.root = base / 'root'
         self.root.mkdir(mode=0o700)
         self.area = base / 'runs' / 'r1'
-        for d in ('materials', 'home', 'tmp'):
+        for d in ('materials', 'home', 'tmp', 'config'):
             (self.area / d).mkdir(parents=True, mode=0o700)
+            os.chmod(self.area / d, 0o700)
         # A permissive synthetic profile: these tests check the supervisor, not the Seatbelt rules (doctor does).
         self.profile = base / 'cli.sb'
         self.profile.write_text('(version 1)\n(allow default)\n')
@@ -444,16 +507,16 @@ class WorkerTests(unittest.TestCase):
                  'args': ['-f', str(self.profile), '-D', 'RUN_HOME=' + str(self.area / 'home'), self.exe, '-c', code],
                  'cwd': str(self.area / 'materials'),
                  'env': {'HOME': str(self.area / 'home'), 'TMPDIR': str(self.area / 'tmp'), 'PATH': '/usr/bin:/bin',
-                         'CLAUDE_CODE_TMPDIR': str(self.area / 'tmp'),
+                         'CLAUDE_CODE_TMPDIR': str(self.area / 'tmp'), 'CLAUDE_CONFIG_DIR': str(self.area / 'config'),
                          'LANG': 'C.UTF-8', 'CLAUDE_CODE_OAUTH_TOKEN': 'synthetic-token-value-0123456789'},
                  'stdin': 'Job kind: review\n'}
         value.update(over)
         return (json.dumps(value) + '\n').encode('utf-8')
 
-    def worker(self, run, plan, ack=True, extra=(), expect=None):
+    def worker(self, run, plan, ack=True, extra=(), expect=None, timeout=60):
         e = expect or self.expect
         cmd = [sys.executable, str(SCRIPT), 'run-worker', '--root', str(self.root), '--run', run,
-               '--binding', BINDING, '--extract', 'claude-json', '--timeout', '60',
+               '--binding', BINDING, '--extract', 'claude-json', '--timeout', str(timeout),
                '--profile', e['profile'], '--profile-sha256', e['profileSha256'],
                '--executable', e['executable'], '--executable-sha256', e['executableSha256'], *extra]
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -535,6 +598,7 @@ class WorkerTests(unittest.TestCase):
             ('relative cwd', self.plan('pass', cwd='runs/r1')),
             ('extra env', (json.dumps(bad_env) + '\n').encode()),
             ('missing env', (json.dumps(missing) + '\n').encode()),
+            ('no config dir', (json.dumps({**json.loads(good), 'env': {k: v for k, v in json.loads(good)['env'].items() if k != 'CLAUDE_CONFIG_DIR'}}) + '\n').encode()),
             ('large stdin', self.plan('pass', stdin='x' * 20000)),
             ('extra key', self.plan('pass', shell=False)),
             ('no newline', good.rstrip(b'\n')),
@@ -601,7 +665,7 @@ class WorkerTests(unittest.TestCase):
             if (self.root / name).is_file():
                 self.assertNotIn(b'synthetic-token-value', (self.root / name).read_bytes(), name)
         state = supervisor.inspect(self.root, 'acked')
-        self.assertTrue(state['treeEnded'] and state['signed'])
+        self.assertTrue(state['groupEnded'] and state['signed'])
 
     def test_a_changed_cli_or_profile_never_starts(self):
         if sys.platform != 'darwin':
@@ -615,21 +679,45 @@ class WorkerTests(unittest.TestCase):
             self.assertFalse(marker.exists(), name)
             self.assertTrue(supervisor.inspect(self.root, 'changed-' + name)['neverStarted'], name)
 
-    def test_descendant_probe_measures_whether_children_hold_the_run_lock(self):
+    def test_a_used_shared_or_linked_config_dir_never_starts(self):
+        # ISSUE50-P001: each run has its own new config dir; nothing written by another run is ever loaded.
         if sys.platform != 'darwin':
-            self.assertEqual(self.worker('no-mac', self.plan('pass'), extra=['--probe-descendants'])[0], 2)
+            self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
             return
-        result = ("print(json.dumps({'type':'result','subtype':'success','is_error':False,"
-                  "'structured_output':{'schema':1}}))")
-        # A child that inherits every descriptor (close_fds=False) and one that closes them (the default).
-        for run, close in [('inherits', False), ('closes', True)]:
-            code = ("import json,subprocess,sys\n"
-                    "subprocess.run([sys.executable,'-c','import time; time.sleep(1.5)'],close_fds=%s)\n" % close) + result
-            status, _first, _rest = self.worker(run, self.plan(code), extra=['--probe-descendants'])
-            self.assertEqual(status, 0, run)
-            d = supervisor.inspect(self.root, run)['descendants']
-            self.assertGreaterEqual(d['seen'], 1, run)
-            self.assertEqual(d['proven'], not close, (run, d))
+        marker = self.area / 'tmp' / 'started'
+        code = 'open(%r, "w").write("x")' % str(marker)
+        config = self.area / 'config'
+        other = self.area.parent / 'other-config'
+        other.mkdir(mode=0o700)
+        cases = [('used', lambda: (config / '.claude.json').write_text('{}'), lambda: (config / '.claude.json').unlink()),
+                 ('open', lambda: os.chmod(config, 0o755), lambda: os.chmod(config, 0o700)),
+                 ('linked', lambda: (config.rename(self.area / 'config-real'), config.symlink_to(other)),
+                  lambda: (config.unlink(), (self.area / 'config-real').rename(config))),
+                 ('missing', lambda: config.rename(self.area / 'config-real'), lambda: (self.area / 'config-real').rename(config))]
+        for name, change, undo in cases:
+            change()
+            try:
+                status, first, rest = self.worker('config-' + name, self.plan(code))
+            finally:
+                undo()
+            self.assertEqual(status, 2, name)
+            self.assertFalse(marker.exists(), name)
+            self.assertTrue(supervisor.inspect(self.root, 'config-' + name)['neverStarted'], name)
+
+    def test_a_timeout_is_never_signed_and_never_not_started(self):
+        # ISSUE50-P002: a timeout stops the group but is neither a result nor "not launched".
+        if sys.platform != 'darwin':
+            self.assertEqual(self.worker('no-mac', self.plan('pass'))[0], 2)
+            return
+        code = ("import json,time\n"
+                "print(json.dumps({'type':'result','subtype':'success','is_error':False,'structured_output':{'schema':1}}), flush=True)\n"
+                "time.sleep(30)")
+        status, first, rest = self.worker('slow', self.plan(code), timeout=1)
+        self.assertNotEqual(status, 0)
+        self.assertEqual(rest, b'')
+        self.assertFalse((self.root / 'run-slow-result.json').exists())
+        state = supervisor.inspect(self.root, 'slow')
+        self.assertEqual((state['neverStarted'], state['signed']), (False, False))
 
     def test_a_failed_or_unstructured_claude_run_is_never_signed(self):
         if sys.platform != 'darwin':
@@ -643,8 +731,8 @@ class WorkerTests(unittest.TestCase):
             self.assertFalse((self.root / ('run-' + run + '-result.json')).exists(), run)
 
 
-class TreeEndTests(unittest.TestCase):
-    """PR #56 red team P1: a normal exit proves nothing while the process group still has members."""
+class GroupEndTests(unittest.TestCase):
+    """A normal exit proves nothing while the process group still has members (PR #56 red team P1, ISSUE50-P002)."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -653,12 +741,12 @@ class TreeEndTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_a_stray_group_member_is_stopped_before_the_tree_is_called_ended(self):
+    def test_a_lingering_group_member_is_stopped_before_the_group_is_called_ended(self):
         if os.name == 'nt':
             self.assertIsNone(supervisor.fcntl)
             return
         pidfile = self.root.parent / (self.root.name + '-stray.pid')
-        # The worker leaves a child in its own process group that closed the run lock (close_fds) and lives on.
+        # The worker leaves a child in its own process group that lives on.
         code = ("import subprocess,sys\n"
                 "c=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],stdout=subprocess.DEVNULL)\n"
                 "open(%r,'w').write(str(c.pid))\n"
@@ -670,7 +758,7 @@ class TreeEndTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0)
             manifest = json.loads((self.root / 'run-stray.json').read_text())
             self.assertTrue(manifest['strays'])
-            self.assertTrue(manifest['treeEnded'])
+            self.assertTrue(manifest['groupEnded'])
             stray = int(pidfile.read_text())
             with self.assertRaises(ProcessLookupError):
                 os.kill(stray, 0)
@@ -697,7 +785,7 @@ class TreeEndTests(unittest.TestCase):
             self.assertIsNone(supervisor.fcntl)
             return
         state = supervisor.inspect(self.root, 'absent')
-        self.assertEqual((state['neverStarted'], state['treeEnded'], state['uncertain']), (True, False, False))
+        self.assertEqual((state['neverStarted'], state['groupEnded'], state['uncertain']), (True, False, False))
         held = supervisor.lock(self.root / 'run-busy.lock')
         try:
             state = supervisor.inspect(self.root, 'busy')
@@ -727,55 +815,89 @@ class TreeEndTests(unittest.TestCase):
             child.wait()
 
 
-class DescendantProbeTests(unittest.TestCase):
-    """Codex PR56-R001: inheritance is proven only when every observed child was seen holding the run lock."""
+class EndGroupTests(unittest.TestCase):
+    """ISSUE50-P002: only an enumeration that shows no live member ends the group; anything else is uncertain."""
 
-    def probe(self, results, wait=2, enumerations=None):
-        members = list(results)
-        steps = list(enumerations or ['ok'])
+    def setUp(self):
+        self.real = (supervisor._killpg, supervisor.GROUP_WAIT, supervisor._ps, supervisor.group_members)
+        self.sent = []
+        supervisor.GROUP_WAIT = 0.2
 
-        def enumerate_group(_g):
-            step = steps.pop(0) if steps else 'ok'
-            if step == 'none':
-                return None
-            if step == 'timeout':
-                raise subprocess.TimeoutExpired('ps', 5)
-            if step == 'oserror':
-                raise OSError('ps failed')
-            return members
+    def tearDown(self):
+        supervisor._killpg, supervisor.GROUP_WAIT, supervisor._ps, supervisor.group_members = self.real
 
-        def check(pid, _path):
-            r = results[pid]
-            if r == 'slow':
-                time.sleep(wait + 1)
-                return True
-            if r == 'raise':
-                raise OSError('lsof failed')
-            return r
+    def kill(self, error=None):
+        def f(pgid, sig):
+            self.sent.append(sig)
+            if error:
+                raise error
+        supervisor._killpg = f
 
-        p = supervisor.DescendantProbe(1, '/nonexistent.lock', members=enumerate_group, check=check, wait=wait)
-        for _ in range(max(1, len(enumerations or []))):
-            p.sample()
-        return p.report()
+    def answers(self, *steps):
+        steps = list(steps)
 
-    def test_a_failed_enumeration_is_never_proof(self):
-        # Codex PR56-R001 (re-review): an interval that could not be observed is unknown, not "no children".
-        self.assertTrue(self.probe({11: True}, enumerations=['ok', 'ok'])['proven'])  # control
-        for failure in ('none', 'timeout', 'oserror'):
-            r = self.probe({11: True, 12: True}, enumerations=['ok', failure, 'ok'])
-            self.assertFalse(r['proven'], (failure, r))
-            self.assertEqual(r['blind'], 1, failure)
-            self.assertEqual(r['holding'], r['seen'], failure)  # every known child held the lock
+        def members(_pgid):
+            step = steps.pop(0) if len(steps) > 1 else steps[0]
+            if isinstance(step, Exception):
+                raise step
+            return step
+        return members
 
-    def test_every_observed_child_must_hold_the_lock(self):
-        self.assertTrue(self.probe({11: True, 12: True})['proven'])
-        # Independent expectations: one unproven child is never proof, whatever the others say.
-        for name, results in [('partial', {11: True, 12: None}),
-                              ('not holding', {11: True, 12: False}),
-                              ('lsof failed', {11: True, 12: 'raise'}),
-                              ('slow lsof', {11: True, 12: 'slow'}),
-                              ('no child', {})]:
-            r = self.probe(results, wait=0.3)
-            self.assertFalse(r['proven'], (name, r))
-        r = self.probe({11: True, 12: 'slow'}, wait=0.3)
-        self.assertEqual((r['seen'], r['holding'], r['pending']), (2, 1, 1))
+    def test_empty_needs_an_enumeration_that_shows_no_live_member(self):
+        self.kill()
+        self.assertEqual(supervisor.end_group(7, self.answers([])), (True, False))
+        self.assertEqual(self.sent, [])  # nothing live: no signal (macOS answers EPERM for a zombie-only group)
+        self.assertEqual(supervisor.end_group(7, self.answers([8], [])), (True, True))
+        self.kill(ProcessLookupError())
+        self.assertEqual(supervisor.end_group(7, self.answers([8], [])), (True, True))
+
+    def test_a_successful_killpg_alone_is_never_empty(self):
+        self.kill()
+        self.assertEqual(supervisor.end_group(7, self.answers([8])), (False, True))  # wait limit
+        self.assertEqual(self.sent, [supervisor.SIGTERM, supervisor.SIGKILL])
+        self.kill(ProcessLookupError())
+        self.assertEqual(supervisor.end_group(7, self.answers([8])), (False, True))
+
+    def test_enumeration_and_permission_failures_stay_uncertain(self):
+        self.kill()
+        for name, members in [('none', self.answers(None)), ('raises', self.answers(OSError('ps'))),
+                              ('timeout', self.answers(subprocess.TimeoutExpired('ps', 5))),
+                              ('lost while waiting', self.answers([8], None, []))]:
+            self.assertFalse(supervisor.end_group(7, members)[0], name)
+        self.kill(PermissionError())
+        self.assertEqual(supervisor.end_group(7, self.answers([8], [])), (False, True))
+
+    def test_an_invalid_or_partial_ps_answer_is_unknown(self):
+        def ps(out, code=0):
+            supervisor._ps = lambda args: subprocess.CompletedProcess(args, code, out, '')
+        ps('  7     7 Z\n  9     7 S\n 12    12 S\n')
+        self.assertEqual(supervisor.group_members(7), [9])
+        ps('  7     7 Z\n')
+        self.assertEqual(supervisor.group_members(7), [])
+        for name, out, code in [('ps failed', '', 1), ('garbage', '  7 7 Z\nnot a row\n', 0),
+                                ('missing column', '  7 7\n', 0), ('no leader row', '  9     7 S\n', 0), ('empty', '', 0)]:
+            ps(out, code)
+            self.assertIsNone(supervisor.group_members(7), name)
+
+    def test_a_member_that_cannot_be_stopped_keeps_the_run_uncertain(self):
+        # The lease is kept: the manifest stays uncertain and inspect never reports the group ended.
+        if os.name == 'nt':
+            self.assertIsNone(supervisor.fcntl)
+            return
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            supervisor.group_members = lambda _pgid: [999999]
+            self.kill()
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = supervisor.run(root, 'run-fixture', 'linger', [sys.executable, '-c', "print('{}')"], BINDING)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+            self.assertEqual(code, 2)
+            manifest = json.loads((root / 'run-linger.json').read_text())
+            self.assertEqual((manifest['state'], manifest['groupEnded'], manifest['strays']), ('uncertain', False, True))
+            self.assertFalse((root / 'run-linger-result.json').exists())
+            state = supervisor.inspect(root, 'linger')
+            self.assertEqual((state['uncertain'], state['groupEnded'], state['neverStarted']), (True, False, False))

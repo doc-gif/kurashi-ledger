@@ -25,7 +25,9 @@ export type LaunchInstall = {
   version: string; // pinned version, checked by the doctor
   runtime: string; // read-only install root of that CLI (its bundled tools live here)
   cliProfile: string | null; // Claude: reviewed copy of cli.sb. Codex: null (no outer Seatbelt)
-  configDir: string; // CLAUDE_CONFIG_DIR or CODEX_HOME, dedicated to the dispatcher
+  // Codex: CODEX_HOME, dedicated to the dispatcher. Claude: null; its config dir is per run (LaunchRun.config,
+  // Issue #50 W5c), so no run shares a writable config with another.
+  configDir: string | null;
   tokenFile: string | null; // Claude: owner-only file with the setup-token. Codex: null
   protectedRoots: string[]; // policy, dispatcher DB, repository, credential areas
 };
@@ -34,6 +36,8 @@ export type LaunchRun = {
   materials: string; // cwd: only the fetched materials
   home: string;
   tmp: string;
+  // Claude's CLAUDE_CONFIG_DIR: new and empty, inside the run area, never reused (Codex ignores it).
+  config: string;
   schemaFile: string; // Codex --output-schema; must sit inside `tmp`
 };
 export type LaunchPlan = {
@@ -154,7 +158,7 @@ export function claudeSettings(install: LaunchInstall, run: LaunchRun) {
         "NotebookEdit",
         "WebFetch",
         "WebSearch",
-        readRule(install.configDir),
+        readRule(run.config),
         readRule(install.runtime),
         readRule(run.home),
         readRule(run.tmp),
@@ -325,9 +329,11 @@ function validate(
   const claude = install.backend === "claude";
   if (claude ? install.cliProfile === null || install.tokenFile === null : install.cliProfile !== null || install.tokenFile !== null)
     fail("profile or token file does not match backend");
+  if (claude !== (install.configDir === null)) fail("Claude's config dir is per run; Codex needs CODEX_HOME");
   const profile = install.cliProfile === null ? [] : [install.cliProfile];
-  const fixed = [install.executable, install.runtime, ...profile, install.configDir];
-  const own = [run.materials, run.home, run.tmp];
+  const config = configOf(install, run);
+  const fixed = [install.executable, install.runtime, ...profile, ...(claude ? [] : [config])];
+  const own = [run.materials, run.home, run.tmp, ...(claude ? [config] : [])];
   const token = install.tokenFile === null ? [] : [install.tokenFile];
   const all = [...fixed, ...own, run.schemaFile, ...token];
   if (!all.every(canonicalPath)) fail("paths must be canonical and absolute");
@@ -349,7 +355,7 @@ function validate(
     for (const r of [...fixed, ...own])
       if (overlaps(t, r)) fail("token file is inside a worker area");
   // Writable and readable areas stay apart: no self-modifying CLI, no config in materials.
-  const writable = [install.configDir, run.home, run.tmp];
+  const writable = [config, run.home, run.tmp];
   const readOnly = [install.runtime, ...profile, run.materials];
   for (let i = 0; i < writable.length; i++) {
     for (let k = i + 1; k < writable.length; k++)
@@ -372,6 +378,16 @@ function validate(
   const forbidden = FORBIDDEN_KEYS();
   if (tree.some((e) => forbidden.has(nameKey(e.name))))
     fail("materials contain CLI configuration");
+  // The per-run config dir starts empty: nothing another run (or anyone) wrote is loaded.
+  if (claude) {
+    let entries: ScanEntry[];
+    try {
+      entries = scan(config);
+    } catch {
+      return fail("config dir cannot be listed");
+    }
+    if (entries.length) fail("config dir is not new and empty");
+  }
   for (let d = dirname(run.materials); ; d = dirname(d)) {
     for (const name of [...new Set(ANCESTOR_FORBIDDEN.flatMap((n) => [n, n.toLowerCase()]))])
       if (exists(d === "/" ? `/${name}` : `${d}/${name}`))
@@ -379,6 +395,9 @@ function validate(
     if (d === "/") break;
   }
 }
+
+const configOf = (install: LaunchInstall, run: LaunchRun): string =>
+  install.backend === "claude" ? run.config : (install.configDir ?? "");
 
 function argsFor(install: LaunchInstall, run: LaunchRun): string[] {
   if (install.backend === "claude")
@@ -446,7 +465,7 @@ function envFor(
   if (install.backend === "claude")
     return {
       ...base,
-      CLAUDE_CONFIG_DIR: install.configDir,
+      CLAUDE_CONFIG_DIR: run.config,
       // Claude writes its own temp files under $CLAUDE_CODE_TMPDIR/claude-<uid>/ (default /tmp, not
       // TMPDIR); cli.sb denies /tmp, so without this the CLI exits at startup with EPERM (W4e).
       CLAUDE_CODE_TMPDIR: run.tmp,
@@ -455,7 +474,7 @@ function envFor(
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       USE_BUILTIN_RIPGREP: "1",
     };
-  return { ...base, CODEX_HOME: install.configDir };
+  return { ...base, CODEX_HOME: configOf(install, run) };
 }
 
 function profileParams(install: LaunchInstall, run: LaunchRun): string[] {
@@ -463,7 +482,7 @@ function profileParams(install: LaunchInstall, run: LaunchRun): string[] {
     ["EXECUTABLE", install.executable],
     ["RUNTIME", install.runtime],
     ["MATERIALS", run.materials],
-    ["CONFIG_DIR", install.configDir],
+    ["CONFIG_DIR", run.config],
     ["RUN_HOME", run.home],
     ["RUN_TMP", run.tmp],
   ];
@@ -534,7 +553,7 @@ export function buildMeasurementLaunch(
 
 // `claude auth status` under the same profile and env. With the setup-token the
 // documented authMethod is "oauth_token" (not "api_key"/"api_key_helper"); the doctor
-// also requires configDirectory to equal the dedicated config dir.
+// also requires configDirectory to equal the run's config dir.
 export function buildAuthStatus(
   install: LaunchInstall,
   run: LaunchRun,
@@ -755,6 +774,7 @@ export function argvTemplateHash(install: LaunchInstall): string {
     materials: "/RUN/materials",
     home: "/RUN/home",
     tmp: "/RUN/tmp",
+    config: "/RUN/config",
     schemaFile: "/RUN/tmp/result-schema.json",
   };
   // The token value is replaced: it never enters a hash, record or log.

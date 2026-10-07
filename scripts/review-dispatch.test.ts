@@ -104,7 +104,7 @@ async function cliSetup(mutate: (p: ReturnType<typeof import("../tests/fixtures/
       version: "2.1.300",
       runtime: "/opt/synthetic/claude/2.1.300",
       cliProfile: "/opt/synthetic/copy/tools/review_dispatch/seatbelt/cli.sb",
-      configDir: "/srv/synthetic/dispatch/claude-config",
+      configDir: null,
       tokenFile: "/srv/synthetic/owner-secrets/claude-setup-token",
       protectedRoots: [d.root],
     },

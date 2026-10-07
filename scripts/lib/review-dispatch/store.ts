@@ -669,14 +669,14 @@ export class Store {
     proof: {
       run: string;
       neverStarted: boolean;
-      treeEnded: boolean;
+      groupEnded: boolean;
       uncertain: boolean;
     },
   ): void {
     if (
       proof.run !== j.run ||
       proof.uncertain ||
-      (!proof.neverStarted && !proof.treeEnded)
+      (!proof.neverStarted && !proof.groupEnded)
     )
       throw new Error("Termination not proven");
     this.atomic(() => {

@@ -33,7 +33,7 @@ const claudeInstall = (): LaunchInstall => ({
   version: "2.1.300",
   runtime: "/opt/synthetic/claude/2.1.300",
   cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb",
-  configDir: "/srv/synthetic/dispatch/claude-config",
+  configDir: null, // per run (Issue #50 W5c)
   tokenFile: "/srv/synthetic/owner-secrets/claude-setup-token",
   protectedRoots: [
     "/srv/synthetic/dispatch/policy",
@@ -56,6 +56,7 @@ const run = (): LaunchRun => ({
   materials: "/srv/synthetic/runs/r1/materials",
   home: "/srv/synthetic/runs/r1/home",
   tmp: "/srv/synthetic/runs/r1/tmp",
+  config: "/srv/synthetic/runs/r1/config",
   schemaFile: "/srv/synthetic/runs/r1/tmp/result-schema.json",
 });
 const job = (actor: number): Job => ({
@@ -98,7 +99,7 @@ test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, p
       "-D", `EXECUTABLE=${claudeInstall().executable}`,
       "-D", `RUNTIME=${claudeInstall().runtime}`,
       "-D", `MATERIALS=${run().materials}`,
-      "-D", `CONFIG_DIR=${claudeInstall().configDir}`,
+      "-D", `CONFIG_DIR=${run().config}`,
       "-D", `RUN_HOME=${run().home}`,
       "-D", `RUN_TMP=${run().tmp}`,
     ]);
@@ -122,11 +123,11 @@ test("Claude launch: sandbox-exec + cli.sb, documented flags, setup-token env, p
     // Path rules are Read() rules only (Claude applies them to Grep and Glob).
     for (const r of [...settings.permissions.allow, ...settings.permissions.deny])
       assert.ok(!/^(?:Grep|Glob)\(/.test(r), r);
-    assert.ok(settings.permissions.deny.includes(`Read(/${claudeInstall().configDir}/**)`));
+    assert.ok(settings.permissions.deny.includes(`Read(/${run().config}/**)`));
     assert.ok(!("hooks" in settings) && !("apiKeyHelper" in settings) && !("env" in settings));
     assert.deepEqual(Object.keys(p.env).sort(), [...ENV_KEYS.claude].sort());
     assert.equal(p.env[TOKEN_ENV], TOKEN);
-    assert.equal(p.env["CLAUDE_CONFIG_DIR"], claudeInstall().configDir);
+    assert.equal(p.env["CLAUDE_CONFIG_DIR"], run().config);
     assert.equal(p.env["HOME"], run().home);
     assert.equal(p.env["CLAUDE_CODE_TMPDIR"], run().tmp);
     const everything = JSON.stringify(p);
@@ -175,7 +176,14 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     ["materials in protected", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), materials: "/srv/synthetic/repo/materials" }, opts)],
     ["protected in home", () => buildLaunch(policy(), job(30), { ...claudeInstall(), protectedRoots: ["/srv/synthetic/runs/r1/home/.ssh"] }, run(), opts)],
     ["no protected roots", () => buildLaunch(policy(), job(30), { ...claudeInstall(), protectedRoots: [] }, run(), opts)],
-    ["config in materials", () => buildLaunch(policy(), job(30), { ...claudeInstall(), configDir: "/srv/synthetic/runs/r1/materials/cfg" }, run(), opts)],
+    ["config in materials", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), config: "/srv/synthetic/runs/r1/materials/cfg" }, opts)],
+    ["config is home", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), config: run().home }, opts)],
+    ["config in protected", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), config: "/srv/synthetic/repo/cfg" }, opts)],
+    // W5c (ISSUE50-P001): no shared Claude config dir; Codex keeps its CODEX_HOME.
+    ["claude with a shared config dir", () => buildLaunch(policy(), job(30), { ...claudeInstall(), configDir: "/srv/synthetic/dispatch/claude-config" }, run(), opts)],
+    ["codex without CODEX_HOME", () => buildMeasurementLaunch(policy(), job(20), { ...codexInstall(), configDir: null }, run(), opts)],
+    ["used config dir", () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: (d: string) => (d === run().config ? [file(".claude.json")] : []) })],
+    ["unlistable config dir", () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: (d: string) => { if (d === run().config) throw new Error("x"); return []; } })],
     ["home overlaps tmp", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), tmp: "/srv/synthetic/runs/r1/home/tmp", schemaFile: "/srv/synthetic/runs/r1/home/tmp/s.json" }, opts)],
     ["writable runtime", () => buildLaunch(policy(), job(30), claudeInstall(), { ...run(), home: "/opt/synthetic/claude/2.1.300/home" }, opts)],
     ["executable outside runtime", () => buildLaunch(policy(), job(30), { ...claudeInstall(), executable: "/usr/local/bin/claude" }, run(), opts)],
@@ -184,7 +192,7 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     ["claude without profile", () => buildLaunch(policy(), job(30), { ...claudeInstall(), cliProfile: null }, run(), opts)],
     ["codex with profile", () => buildMeasurementLaunch(policy(), job(20), { ...codexInstall(), cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb" }, run(), opts)],
     ["codex with token", () => buildMeasurementLaunch(policy(), job(20), { ...codexInstall(), tokenFile: "/srv/synthetic/owner-secrets/t" }, run(), opts)],
-    ["token in config", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/dispatch/claude-config/token" }, run(), opts)],
+    ["token in config", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/config/token" }, run(), opts)],
     ["token in materials", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/materials/token" }, run(), opts)],
     ["token in home", () => buildLaunch(policy(), job(30), { ...claudeInstall(), tokenFile: "/srv/synthetic/runs/r1/home/token" }, run(), opts)],
     ["bad token", () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, readToken: () => "short" })],
@@ -208,7 +216,7 @@ test("launch refusals fail closed with fixed messages that never echo a path or 
     assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [file(name)] }), LaunchError, name);
   assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "a", kind: "other", nlink: 1 }] }), LaunchError);
   assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "a", kind: "file", nlink: 2 }] }), LaunchError);
-  assert.doesNotThrow(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => [{ name: "src", kind: "dir", nlink: 3 }, file("main.ts")] }));
+  assert.doesNotThrow(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: (d: string) => (d === run().materials ? [{ name: "src", kind: "dir", nlink: 3 }, file("main.ts")] : []) }));
   assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => { throw new Error("ENOENT"); } }), LaunchError);
   for (const p of ["/srv/synthetic/runs/r1/CLAUDE.md", "/srv/synthetic/AGENTS.md", "/.git"])
     assert.throws(() => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, exists: (x) => x === p }), LaunchError, p);
@@ -327,6 +335,13 @@ test("argv template hash ignores per-run paths and the token, and binds the inst
   assert.notEqual(argvTemplateHash({ ...claudeInstall(), executable: "/opt/synthetic/claude/2.1.300/bin/other" }), a);
   assert.notEqual(argvTemplateHash({ ...claudeInstall(), cliProfile: "/opt/synthetic/other/cli.sb" }), a);
   assert.notEqual(argvTemplateHash(codexInstall()), a);
+  // W5c: each run has its own config dir; the plan follows the run, the template does not change.
+  const other = { ...run(), materials: "/srv/synthetic/runs/r2/materials", home: "/srv/synthetic/runs/r2/home", tmp: "/srv/synthetic/runs/r2/tmp", config: "/srv/synthetic/runs/r2/config", schemaFile: "/srv/synthetic/runs/r2/tmp/result-schema.json" };
+  const p1 = buildLaunch(policy(), job(30), claudeInstall(), run(), opts);
+  const p2 = buildLaunch(policy(), job(30), claudeInstall(), other, opts);
+  assert.equal(p1.env["CLAUDE_CONFIG_DIR"], run().config);
+  assert.equal(p2.env["CLAUDE_CONFIG_DIR"], other.config);
+  assert.ok(p2.args.includes(`CONFIG_DIR=${other.config}`) && !p2.args.some((x) => x.includes(run().config)));
   assert.equal(claudeVersionSupported("2.1.268"), true);
   assert.equal(claudeVersionSupported("2.1.267"), false);
   assert.equal(claudeVersionSupported("2.2.0"), true);
@@ -340,7 +355,7 @@ test("synthetic PR tree: CLI configuration anywhere in the materials refuses the
   // Real directory tree listed by the real scanTree; the launch paths stay synthetic.
   const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-launch-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const plan = () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: () => scanTree(root) });
+  const plan = () => buildLaunch(policy(), job(30), claudeInstall(), run(), { ...opts, scan: (d: string) => (d === run().config ? [] : scanTree(root)) });
   mkdirSync(join(root, "pr", "src"), { recursive: true });
   writeFileSync(join(root, "pr", "src", "main.ts"), "export {};\n");
   writeFileSync(join(root, "diff.txt"), "synthetic diff\n");

@@ -20,7 +20,7 @@ port=8787       # 受け口のport。1024〜65535で443以外
 tunnel_host=''  # 10のB（名前付きトンネル）を選んだときのホスト名。Aなら空
 repo_slug=doc-gif/kurashi-ledger
 base="$HOME/.local/share/kurashi-dispatch"
-root="$base/root" etc="$base/etc" secrets="$base/secrets" runs="$base/runs" config="$base/claude-config" logs="$base/log"
+root="$base/root" etc="$base/etc" secrets="$base/secrets" runs="$base/runs" logs="$base/log"
 policy="$etc/policy.json" install="$etc/install.json"
 token_file="$secrets/claude-token" secret_file="$secrets/webhook-secret"
 sha="$(cat "$etc/copy-sha" 2>/dev/null)"
@@ -68,7 +68,7 @@ print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} p
 ```zsh
 (
   umask 077
-  mkdir -p "$root" "$etc" "$secrets" "$runs" "$config" "$logs" && chmod 700 "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" || exit 1
+  mkdir -p "$root" "$etc" "$secrets" "$runs" "$logs" && chmod 700 "$base" "$root" "$etc" "$secrets" "$runs" "$logs" || exit 1
   src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
   git clone --quiet --no-checkout "https://github.com/${repo_slug}.git" "$src/repo" || exit 1
   new="$(git -C "$src/repo" rev-parse origin/main)" && (( ${#new} == 40 )) || exit 1
@@ -144,7 +144,7 @@ EOF
 
 ## 5. install記録を作る
 
-起動器・Broker・supervisorの場所。policyと同じ検査を受ける。
+起動器・Broker・supervisorの場所。policyと同じ検査を受ける。Claudeの設定dirは置かない（`configDir`は`null`。runごとに`$runs`の中へ新しく作る）。前に作った記録に設定dirのパスがあれば、`rm "$install"`のあとこの手順をやり直す。
 
 ```zsh
 (
@@ -161,7 +161,7 @@ EOF
   "version": "${claude_ver}",
   "runtime": "${claude_exe:h}",
   "cliProfile": "${copy}/tools/review_dispatch/seatbelt/cli.sb",
-  "configDir": "${config}",
+  "configDir": null,
   "tokenFile": "${token_file}",
   "protectedRoots": ["${root}", "${etc}", "${secrets}", "${logs}", "$HOME/.ssh", "$HOME/.config/gh", "$HOME/.codex", "$HOME/.cloudflared", "$HOME/Library/Keychains", "$HOME/.local/share/kurashi-ledger-app-token"]
  },
@@ -201,20 +201,20 @@ EOF
 受付のhost検査はmacOSのACLを見ない（[host検査](review-dispatch-implementation.md#host検査pr48-r009r011)）。
 
 ```zsh
-ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$install" "$token_file" "$root"/dispatch.sqlite*(N) "$base"/.kurashi-dispatch-*.lock(N)
+ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$logs" "$policy" "$install" "$token_file" "$root"/dispatch.sqlite*(N) "$base"/.kurashi-dispatch-*.lock(N)
 ```
 
 期待: すべて`drwx------`か`-rw-------`。`0: … allow …`のようなACLの行がない。
 
 ## 8. 実CLIで測る（measure）
 
-実際のClaudeを、閉じ込めた状態で数回起動する（購読の利用枠を使う。数分かかる）。#56より前の測定は使えない（9で`measurement-stale`）。
+実際のClaudeを、閉じ込めた状態で数回起動する（購読の利用枠を使う。数分かかる）。W5cより前の測定は使えない（9で`measurement-invalid`か`measurement-missing`）。
 
 ```zsh
 "${dispatch[@]}" measure --root "$root" --policy "$policy" --install "$install" --out "$etc/measurement-$(date +%Y%m%d%H%M%S).json"
 ```
 
-期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験）がすべて`denied`、`schema=true`、`descendantLock=true`。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
+期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験。括弧は根拠の種類）がすべて`denied`、`schema=true`、`groupEnded=true`。続く`子processにも許す`の行は、共有profileで許す操作で、拒否の結果ではない。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
 
 ## 9. 否定試験（doctor）
 
@@ -232,10 +232,10 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$config" "$logs" "$policy" "$
 
 | 理由 | 行うこと |
 | --- | --- |
-| 理由なしのunverified、`measurement-missing`・`-stale`・`-invalid` | 8をやり直す（`schema`・`descendantLock`がfalseの測定も含む） |
+| 理由なしのunverified、`measurement-missing`・`-stale`・`-invalid` | 8をやり直す（`schema`・`groupEnded`がfalseの測定も含む） |
 | `control-failed:…`・`explicit-deny-unproven:…` | 合成のprobeが比較のための許可の実行で失敗した。`process-env`なら1のCommand Line Toolsを入れる。ほかは記録して止める |
 | `auth-status-missing`・`auth-not-setup-token`・`auth-config-dir-mismatch` | 3をやり直す |
-| `config-dir:…` | `$config`から、理由に出たファイルを除く |
+| `config-dir:…` | doctorのrunの新しい設定dirにファイルがあった。止めてIssue #50に記録する |
 | `managed-settings-present` | Claude Codeの管理設定を外す。外せなければ止める |
 | `bound-file-changed` | 試験中にcli.sbか実行ファイルが変わった。やり直す |
 | `plan:…`・`argv-hash-mismatch`・`no-launch-plan` | install記録が起動器の検査に通らない。5を見直す |
@@ -456,7 +456,7 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
 | 行 | 読み方 |
 | --- | --- |
 | `PR #N: 状態（理由、世代G）` | 状態は`waiting`・`eligible`・`finished`。主な理由: `draft`、`new-ready-required`（新しいDraft→Readyが要る）、`ci-not-proven`、`base-not-incorporated`（mainを取り込む）、`unknown-identity`（branchの作成から身元を証明できない。新しいPRにするか、[shadowの照合](review-dispatch-implementation.md#shadowの照合)の`identity`を設定する）、`unknown-evidence`（取得の欠け、[CIの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008)の未記録）、`paused`、`blocked-owner-required`、`quota-owner-required` |
-| `blocked` | 公開前の検査で止めた結果。内容を確かめ、PRに`review:paused`を付けてから外すと消える |
+| `blocked` | 公開前の検査で止めた結果（`publication`）か、消せなかったrun領域（`run-area-not-removed`。18の確認を行う）。内容を確かめ、PRに`review:paused`を付けてから外すと消える |
 | `上限での停止` | 24時間に6回の起動の上限。原因を確かめ、`review:paused`の付け外しで解く |
 | `停止の時刻が未確定` | 出ているあいだの`review:paused`の解除は数えない。消えてから付け外しする（[R015](review-dispatch-implementation.md#pr48-r013r016w4c58)） |
 | `未処理の編集の印` | 指摘の編集・削除の配送。次のcycleの照合で消える |
@@ -531,6 +531,42 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 ```
 
 期待: 時刻順に読む。起動回数は`red-team`と`review`の行数（投稿のない起動は15のJobの行で数える）。同じ種類で同じheadの行が2つあれば重複起動。各`ready`から次の`red-team`・`review`までが待ち時間。値と旧巡回との比較をIssue #50に記録し、所有者が広げるかを決める。
+
+最初の1PRでは、Jobが終わるたびに（15のJobの行が`running`でないとき）、受付のrunが残したかもしれないprocessと資源を**表示**する（[残余リスク](review-dispatch-design.md#groupを離れた子残余リスク)）。判断は所有者が行う。候補は2種類: (a) cwdか開いたfileが`$runs`の下にあるprocess、(b) 消したrun領域のfile（削除済み）を開いたままのprocess（`lsof +L1`）。どちらも、この関数が自分で起こした対照のprocessを見つけたときだけ結果を信じる。`lsof +D`は見つけたときも終了1を返すので使わない。次の関数を貼り、`kl_left`を実行する。
+
+```zsh
+kl_left() {
+  local d="$runs/.kl-control" a b all del pa pb s1 s2 s3 s4 s5 bad=""
+  mkdir -p "$d" && : > "$d/held" || { echo "確認できない（対照を作れない）"; return 2; }
+  (cd "$d" && exec /bin/sleep 60) &! a=$!
+  (exec /bin/sleep 60 < "$d/held") &! b=$!
+  sleep 1; rm "$d/held"
+  all="$(lsof -nP -F pn)"; s1=$?
+  del="$(lsof -nP -F pn +L1)"; s2=$?
+  kill $a $b; rmdir "$d"
+  kl_pick() { print -r -- "$1" | awk -v r="$runs" '/^p[0-9]+$/ {p = substr($0, 2); next} /^f/ {next} /^n/ {n = substr($0, 2); if (n == r || index(n, r "/") == 1) print p; next} {bad = 1} END {exit bad}'; }
+  pa="$(kl_pick "$all")"; s3=$?
+  pb="$(kl_pick "$del")"; s4=$?
+  du -sk "$runs"; s5=$?
+  (( s1 )) && bad+=" lsof=$s1"; (( s2 )) && bad+=" lsof+L1=$s2"; (( s3 || s4 )) && bad+=" 出力の形"; (( s5 )) && bad+=" du=$s5"
+  [[ $'\n'"$pa"$'\n' == *$'\n'"$a"$'\n'* ]] || bad+=" 対照(a)なし"
+  [[ $'\n'"$pb"$'\n' == *$'\n'"$b"$'\n'* ]] || bad+=" 対照(b)なし"
+  [[ -z $bad ]] || { echo "確認できない（${bad# }）"; return 2; }
+  pa=( ${(u)${(f)pa}} ); pb=( ${(u)${(f)pb}} ); pa=( ${pa:#($a|$b)} ); pb=( ${pb:#($a|$b)} )
+  (( $#pa + $#pb )) || { echo "候補なし（全子孫の終了の証明ではない）"; return 0; }
+  echo "候補 (a) cwdか開いたfileが\$runsの下: ${pa:-なし}"; echo "候補 (b) 消したrun領域のfileを開いたまま: ${pb:-なし}"
+  local both=( $pa $pb )
+  ps -o pid=,pgid=,%cpu=,rss=,etime=,comm= -p "${(j:,:)${(u)both}}" || { echo "確認できない（ps=$?）"; return 2; }
+  return 1
+}
+kl_left; echo "戻り値 $?"
+```
+
+期待: `$runs`の大きさ（`du`の行）と`候補なし（全子孫の終了の証明ではない）`、`戻り値 0`。これは候補が見えないことだけを示す。戻り値ごとに分ける。
+
+- **0**: `$runs`の大きさが0なら、次のJobへ進んでよい。0でなければ1と同じに扱う。
+- **1**（候補あり）: `kl_mode shadow`で新しい起動を止める。出たPIDとCPU・RSS・経過時間を確かめ、所有者が`kill -TERM <PID>`で止める（残れば`kill -KILL <PID>`）。`kl_left`をやり直し、0になるまで再開しない。16の`kl_stopped`が`停止を確認`になるまで16を行い、空でない`$runs`のrun領域は、processが無くなってから消す。出た行と原因をIssue #50に記録する。再開（14の3）は所有者が決める。
+- **2**（確認できない）: `kl_mode shadow`で止め、表示をIssue #50に記録する。signalは送らず、再開しない。8の測定もしない。
 
 ## 更新したとき
 

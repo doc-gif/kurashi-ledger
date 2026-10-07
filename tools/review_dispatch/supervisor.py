@@ -18,6 +18,7 @@ import re
 import secrets
 import select
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -231,6 +232,9 @@ def read_plan(stream, root, expect=None):
     if any(_overlaps(root, p) for p in places):
         raise RuntimeError('worker area overlaps the supervisor root')
     if expect is not None:
+        # A real Claude worker always has its own config dir (fresh_config checks it right before the start).
+        if 'CLAUDE_CONFIG_DIR' not in env:
+            raise RuntimeError('invalid plan')
         # Defence in depth (PR #56 red team P3): the shape is fixed here too, not only in launcher.ts:
         # sandbox-exec -f <the bound cli.sb> -D NAME=value ... <the bound executable> <CLI args>.
         i = 2
@@ -247,6 +251,15 @@ def check_bound_files(expect):
     if (file_sha256(expect['profile']) != expect['profileSha256']
             or file_sha256(expect['executable']) != expect['executableSha256']):
         raise RuntimeError('bound file changed')
+
+
+def fresh_config(path):
+    """Issue #50 W5c (ISSUE50-P001): the worker's CLAUDE_CONFIG_DIR is this run's own new directory: not a link,
+    owned by this user, mode 0700 and empty right before the worker starts. Nothing is shared with another run."""
+    st = os.lstat(path)
+    if (not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) != 0o700
+            or os.listdir(path)):
+        raise RuntimeError('config dir is not fresh')
 
 
 def _ps(args):
@@ -276,7 +289,7 @@ def exited(pid):
 def stop_worker(pgid, still_alive):
     """The same stop as a cancel (TERM, then KILL, to the whole group) for a worker the loop no longer
     supervises; the run stays uncertain whatever happens (PR #56 red team round 2 P3)."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    for sig in (SIGTERM, SIGKILL):
         try:
             os.killpg(pgid, sig)
         except (ProcessLookupError, PermissionError):
@@ -288,129 +301,86 @@ def stop_worker(pgid, still_alive):
             return
 
 
+GROUP_LINE = re.compile(r'\s*(\d+)\s+(\d+)\s+(\S+)\s*')
+GROUP_WAIT = 2  # seconds per signal before the group check gives up (uncertain)
+# POSIX numbers where the platform lacks the name: Windows has no SIGKILL. No backend runs there (the pure checks
+# below are still tested on every OS); the values are the POSIX ones the macOS supervisor sends.
+SIGTERM = getattr(signal, 'SIGTERM', 15)
+SIGKILL = getattr(signal, 'SIGKILL', 9)
+
+
 def group_members(pgid):
-    """Live members of the worker's process group other than the (zombie) leader; None if unknown."""
+    """Live members of the worker's process group, the leader included unless it is a zombie.
+
+    None when unknown: ps failed, a line did not parse, or the leader's own row (pid == pgid) is missing,
+    so the answer cannot be shown to cover the group. [] means only the unreaped (zombie) leader is left.
+    """
     try:
         p = _ps(['-A', '-o', 'pid=', '-o', 'pgid=', '-o', 'stat='])
     except (OSError, subprocess.TimeoutExpired):
         return None
     if p.returncode != 0:
         return None
-    out = []
+    out, leader = [], False
     for line in p.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[1] == str(pgid) and parts[0] != str(pgid) and not parts[2].startswith('Z'):
-            out.append(int(parts[0]))
-    return out
+        if not line.strip():
+            continue
+        m = GROUP_LINE.fullmatch(line)
+        if not m:
+            return None
+        pid, group, state = int(m.group(1)), int(m.group(2)), m.group(3)
+        if group != pgid:
+            continue
+        if pid == pgid:
+            leader = True
+        if not state.startswith('Z'):
+            out.append(pid)
+    return out if leader else None
 
 
-def clear_group(pgid):
-    """PR #56 red team P1: after the leader ended, its process group must be empty. Stray members are stopped
-    (TERM, then KILL) and the group must then be seen empty. Returns (empty, strays)."""
-    members = group_members(pgid)
-    if members is None:
-        return False, False
-    if not members:
-        return True, False
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(pgid, sig)
-        except ProcessLookupError:
-            return True, True
-        except PermissionError:
-            return False, True
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
-            members = group_members(pgid)
-            if members == []:
-                return True, True
-            time.sleep(0.05)
-    return False, True
+def _killpg(pgid, sig):
+    getattr(os, 'killpg')(pgid, sig)  # POSIX only; never reached on Windows (no backend)
 
 
-def lsof_holds(pid, lock_path):
-    """True if the process holds the run lock open, False if it provably does not, None if unknown."""
-    try:
-        p = subprocess.run(['/usr/sbin/lsof', '-t', '-a', '-p', str(pid), '--', str(lock_path)],
-                           capture_output=True, text=True, check=False, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if str(pid) in p.stdout.split():
-        return True
-    # lsof exits 1 with no output both when the file is not open and when the process is gone. Only a process
-    # still alive in the group afterwards proves "not holding"; anything else stays unknown.
-    return False if p.returncode == 1 and p.stdout.strip() == '' and _alive(pid) else None
+def end_group(pgid, members=None):
+    """Issue #50 W5c (ISSUE50-P002): stop the worker's process group and see it empty. Returns (ended, strays).
 
-
-def _alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-class DescendantProbe:
-    """Owner measurement only (--probe-descendants): do the worker's children inherit the run lock?
-
-    Samples the worker's process group; for each new member asks lsof whether it holds the run lock file.
-    Each observed child ends in one state: holding, not-holding, or unknown (lsof failed, timed out, or the
-    child was gone first). report() waits for every check. Inheritance is proven only when EVERY observed
-    child was seen holding the lock (Codex PR56-R001); one unchecked, failed or pending child is not proof.
+    The caller has not reaped the leader, so its PID and process group ID cannot be reused meanwhile. Only an
+    enumeration that shows no live member proves the group empty; a successful killpg alone never does. A failed
+    or invalid enumeration, PermissionError and the wait limit are "not ended" (the run stays uncertain). The group
+    is signalled only while the enumeration shows live members: macOS answers EPERM for a group whose only member
+    is the zombie leader. A child that left the group is not seen here (design §7, residual risk).
     """
+    members = members or group_members
 
-    def __init__(self, pgid, lock_path, members=None, check=None, wait=10):
-        self.pgid, self.lock_path = pgid, str(lock_path)
-        self.members = members or group_members
-        self.check = check or lsof_holds
-        self.wait = wait
-        self.state = {}
-        self.threads = []
-        self.blind = 0  # enumerations that failed: an unobserved interval (Codex PR56-R001, re-review)
-        self.lock = threading.Lock()
-
-    def sample(self):
+    def look():
         try:
-            members = self.members(self.pgid)
-        except Exception:  # noqa: BLE001 - a failed enumeration is unknown, never "no children"
-            members = None
-        if members is None:
-            with self.lock:
-                self.blind += 1
-            return
-        for pid in members:
-            with self.lock:
-                if pid in self.state:
-                    continue
-                self.state[pid] = 'pending'
-            t = threading.Thread(target=self._check, args=(pid,), daemon=True)
-            self.threads.append(t)
-            t.start()
-
-    def _check(self, pid):
+            return members(pgid)
+        except Exception:  # noqa: BLE001 - an enumeration that raised is unknown, never "empty"
+            return None
+    strays = False
+    for sig in (SIGTERM, SIGKILL):
+        live = look()
+        if live is None:
+            return False, strays
+        if not live:
+            return True, strays
+        strays = True
         try:
-            held = self.check(pid, self.lock_path)
-        except Exception:  # noqa: BLE001 - any failure is "unknown", never proof
-            held = None
-        with self.lock:
-            self.state[pid] = 'holding' if held is True else 'not-holding' if held is False else 'failed'
-
-    def report(self):
-        deadline = time.monotonic() + self.wait
-        for t in list(self.threads):
-            t.join(max(0, deadline - time.monotonic()))
-        with self.lock:
-            states = list(self.state.values())
-            blind = self.blind
-        seen = len(states)
-        holding = states.count('holding')
-        pending = states.count('pending')
-        failed = states.count('failed')
-        return {'seen': seen, 'checked': seen - pending - failed, 'holding': holding,
-                'pending': pending, 'failed': failed, 'blind': blind,
-                'proven': seen >= 1 and holding == seen and pending == 0 and failed == 0 and blind == 0}
+            _killpg(pgid, sig)
+        except ProcessLookupError:
+            pass  # The enumeration below decides.
+        except PermissionError:
+            return False, strays
+        deadline = time.monotonic() + GROUP_WAIT
+        while time.monotonic() < deadline:
+            live = look()
+            if live is None:
+                return False, strays
+            if not live:
+                return True, strays
+            time.sleep(0.05)
+    return False, strays
 
 
 def claude_structured(raw):
@@ -448,7 +418,7 @@ def start_stamp(pid):
         return ''
 
 
-def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=None, probe=False):
+def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=None):
     plan = None
     if mode == 'run-worker':
         # Real backends sign on macOS only (W4 row 4); the dispatcher runs on the owner's Mac.
@@ -478,20 +448,26 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
     if manifest and (manifest.exists() or signed_path.exists() or signed_path.is_symlink()):
         os.close(fd)
         raise RuntimeError("existing run requires reconciliation, never relaunch")
-    value = {'schema': 1, 'run': run_id, 'state': 'launching', 'backend': 'claude' if plan else 'fixture',
-             'supervisor': os.getpid(), 'start': start_stamp(os.getpid()), 'treeEnded': False}
+    # Manifest schema 2 (Issue #50 W5c): groupEnded is the worker's process group, seen empty after the stop.
+    # Whether every descendant ended is never proven (a child may leave the group): allDescendants stays
+    # "unproven" (design §7, residual risk).
+    value = {'schema': 2, 'run': run_id, 'state': 'launching', 'backend': 'claude' if plan else 'fixture',
+             'supervisor': os.getpid(), 'start': start_stamp(os.getpid()), 'groupEnded': False,
+             'allDescendants': 'unproven'}
     if not value['start']:
         os.close(fd)
         raise RuntimeError('supervisor identity unavailable')
     # Per-run one-time key: memory only, never in files, env or descriptors given to the worker.
     seed = bytearray(secrets.token_bytes(32)) if manifest else bytearray()
     capture = None
-    lock_env = {'daemon': 'KL_DISPATCH_LOCK_FD', 'receiver': 'KL_RECEIVER_LOCK_FD'}.get(mode, 'KL_RUN_LOCK_FD')
-    env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root),
-           'LANG': 'C.UTF-8', lock_env: str(fd)}
+    # The daemon and the receiver hold their lock through their child. A run's lock stays with this process only
+    # (the lease's "supervisor alive" evidence); the worker never inherits it.
+    lock_env = {'daemon': 'KL_DISPATCH_LOCK_FD', 'receiver': 'KL_RECEIVER_LOCK_FD'}.get(mode)
+    env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root), 'LANG': 'C.UTF-8'}
+    if lock_env:
+        env[lock_env] = str(fd)
     if plan:
-        # The real worker gets exactly the launcher's env (its own HOME/TMPDIR outside this root). It still
-        # inherits the run lock descriptor (pass_fds) for the descendant proof, but not its number.
+        # The real worker gets exactly the launcher's env (its own HOME/TMPDIR/config outside this root).
         env = dict(plan['env'])
     # Only the trusted daemon receives its reduced read token; worker/fixture environments never inherit it.
     if mode == 'daemon' and os.environ.get('GH_TOKEN'):
@@ -512,17 +488,18 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
             emit({'schema': 1, 'type': 'run-key', 'run': run_id, 'binding': binding, 'key': key})
             if plan and not wait_ack(sys.stdin.buffer, ACK_TIMEOUT):
                 # The launcher did not confirm that it stored the key: never start the worker.
-                value.update(state='finished', treeEnded=True, neverStarted=True)
+                value.update(state='finished', neverStarted=True)
                 durable(manifest, value)
                 return 2
             if plan:
                 try:
                     check_bound_files(expect)
+                    fresh_config(plan['env']['CLAUDE_CONFIG_DIR'])
                 except (RuntimeError, OSError):
-                    value.update(state='finished', treeEnded=True, neverStarted=True)
+                    value.update(state='finished', neverStarted=True)
                     durable(manifest, value)
                     return 2
-        child = subprocess.Popen(command, env=env, pass_fds=(fd,), start_new_session=True,
+        child = subprocess.Popen(command, env=env, pass_fds=(fd,) if lock_env else (), start_new_session=True,
                                  cwd=plan['cwd'] if plan else None,
                                  stdin=subprocess.PIPE if plan else subprocess.DEVNULL,
                                  stdout=subprocess.PIPE if manifest else None,
@@ -539,13 +516,10 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
         value.update(state='running', worker=child.pid, workerStart=start_stamp(child.pid))
         if manifest:
             durable(manifest, value)
-        probing = DescendantProbe(child.pid, lock_path) if probe and plan else None
         # Daemons are reaped normally. A run's worker is only observed until it is a zombie, so the group check
         # below runs while its PID and process group ID are still reserved.
         alive = (lambda: child.poll() is None) if not manifest else (lambda: not exited(child.pid))
         while alive():
-            if probing:
-                probing.sample()
             current = root.stat()
             if (identity.st_dev, identity.st_ino) != (current.st_dev, current.st_ino):
                 cancel = True
@@ -571,36 +545,24 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
             time.sleep(0.03)
         if mode in ('daemon', 'receiver'):
             return child.returncode
-        # PR #56 red team P1: the leader ended (zombie, not yet reaped). Every other member of its process group
-        # must be gone, or is stopped and then seen gone, before anything here claims the tree ended.
-        empty, strays = clear_group(child.pid) if not alive() else (False, False)
-        if probing:
-            value.update(descendants=probing.report())
-        if not empty:
+        # At the end and after a timeout or cancel alike: stop the whole group and see it empty, before the leader
+        # is reaped. The group being empty is necessary, never sufficient: stdout EOF, a normal exit, no cancel and
+        # the result checks below still decide (ISSUE50-P002).
+        ended, strays = end_group(child.pid) if not alive() else (False, False)
+        if not ended:
             if alive():
                 stop_worker(child.pid, alive)
-            value.update(state='uncertain', treeEnded=False, strays=strays)
+            value.update(state='uncertain', groupEnded=False, strays=strays)
             durable(manifest, value)
             return 2
         child.wait(timeout=5)  # reap the leader only now
-        value.update(strays=strays)
-        # A descendant that left the process group (setsid) is caught here instead: it inherited this
-        # descriptor, so the lock cannot be taken again while it lives (measure checks the inheritance).
-        os.close(fd)
-        fd = -1
-        try:
-            probe = lock(lock_path)
-        except RuntimeError:
-            value.update(state='uncertain', treeEnded=False)
-            durable(manifest, value)
-            return 2
-        os.close(probe)
-        # Sign only a complete, bounded, UTF-8 result of a run whose whole tree ended normally and was not cancelled.
+        value.update(groupEnded=True, strays=strays)
         if not capture.done.wait(2):
-            # A process outside the lock proof still holds the worker's stdout: the tree did not provably end.
-            value.update(state='uncertain', treeEnded=False)
+            # A process outside the group still holds the worker's stdout: the result is not complete.
+            value.update(state='uncertain', stdoutOpen=True)
             durable(manifest, value)
             return 2
+        # Sign only a complete, bounded, UTF-8 result of a run whose group ended after a normal exit, not cancelled.
         raw = None
         if not cancel and child.returncode == 0 and not capture.overflow and capture.data:
             try:
@@ -610,7 +572,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
             if raw is not None and plan:
                 raw = claude_structured(raw)
         if raw is None:
-            value.update(state='finished', treeEnded=True, exit=child.returncode)
+            value.update(state='finished', exit=child.returncode)
             durable(manifest, value)
             return child.returncode if child.returncode != 0 else 2
         result_hash = hashlib.sha256(raw.encode('utf-8')).hexdigest()
@@ -618,7 +580,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
                     'resultHash': result_hash, 'result': raw,
                     'signature': sign(seed, value['key'], signed_message(run_id, binding, result_hash))}
         write_new(signed_path, envelope)  # Never overwrites; a pre-existing file makes the run uncertain.
-        value.update(state='finished', treeEnded=True, exit=0, resultHash=result_hash, signed=True)
+        value.update(state='finished', exit=0, resultHash=result_hash, signed=True)
         durable(manifest, value)
         try:
             emit(envelope)
@@ -627,7 +589,7 @@ def run(root, mode, run_id, command, binding='', extract='', timeout=0, expect=N
         return 0
     except BaseException:
         if manifest:
-            value.update(state='uncertain', treeEnded=False)
+            value.update(state='uncertain')
             try:
                 durable(manifest, value)
             except OSError:
@@ -650,15 +612,16 @@ def inspect(root, run_id):
         try:
             fd = lock(root / ('run-' + run_id + '.lock'))
         except RuntimeError:
-            return {'run': run_id, 'treeEnded': False, 'neverStarted': False, 'uncertain': True,
-                    'supervisorAlive': False, 'lockHeld': True, 'signed': False}
+            return {'run': run_id, 'groupEnded': False, 'allDescendants': 'unproven', 'neverStarted': False,
+                    'uncertain': True, 'supervisorAlive': False, 'lockHeld': True, 'signed': False}
         os.close(fd)
-        return {'run': run_id, 'treeEnded': False, 'neverStarted': True, 'uncertain': False,
-                'supervisorAlive': False, 'lockHeld': False, 'signed': False}
+        return {'run': run_id, 'groupEnded': False, 'allDescendants': 'unproven', 'neverStarted': True,
+                'uncertain': False, 'supervisorAlive': False, 'lockHeld': False, 'signed': False}
     if path.is_symlink() or path.stat().st_size > 16384:
         raise RuntimeError('invalid manifest')
     value = json.loads(path.read_text())
-    if value.get('schema') != 1 or value.get('run') != run_id or value.get('backend') not in ('fixture', 'claude'):
+    # Schema 1 (the descendant-lock proof) is unknown here: such a run stays uncertain.
+    if value.get('schema') != 2 or value.get('run') != run_id or value.get('backend') not in ('fixture', 'claude'):
         raise RuntimeError('unknown manifest')
     live = bool(value.get('start')) and start_stamp(value.get('supervisor', -1)) == value['start']
     locked = True
@@ -668,16 +631,12 @@ def inspect(root, run_id):
         locked = False
     except RuntimeError:
         pass
-    ended = value.get('state') == 'finished' and value.get('treeEnded') is True and not locked and not live
-    never = ended and value.get('neverStarted') is True
+    done = value.get('state') == 'finished' and not locked and not live
+    never = done and value.get('neverStarted') is True
+    ended = done and not never and value.get('groupEnded') is True
     # 'signed' only reports the manifest; the signature itself is checked against the launch-recorded key.
-    report = {}
-    d = value.get('descendants')
-    keys = ('seen', 'checked', 'holding', 'pending', 'failed', 'blind')
-    if isinstance(d, dict) and all(isinstance(d.get(k), int) for k in keys) and isinstance(d.get('proven'), bool):
-        report = {'descendants': {**{k: d[k] for k in keys}, 'proven': d['proven']}}
-    return {**report, 'run': run_id, 'treeEnded': ended and not never, 'neverStarted': never,
-            'uncertain': not ended, 'supervisorAlive': live, 'lockHeld': locked,
+    return {'run': run_id, 'groupEnded': ended, 'allDescendants': 'unproven', 'neverStarted': never,
+            'uncertain': not (ended or never), 'supervisorAlive': live, 'lockHeld': locked,
             'signed': ended and value.get('signed') is True}
 
 
@@ -722,7 +681,6 @@ def main():
     parser.add_argument('--profile-sha256', default='')
     parser.add_argument('--executable', default='')
     parser.add_argument('--executable-sha256', default='')
-    parser.add_argument('--probe-descendants', action='store_true')
     args, command = parser.parse_known_args()
     if command and command[0] == '--':
         command = command[1:]
@@ -736,7 +694,7 @@ def main():
         expect = {'profile': args.profile, 'profileSha256': args.profile_sha256,
                   'executable': args.executable, 'executableSha256': args.executable_sha256}
         return run(root, args.mode, args.run, command, args.binding, args.extract, args.timeout,
-                   expect if args.mode == 'run-worker' else None, args.probe_descendants)
+                   expect if args.mode == 'run-worker' else None)
     except (RuntimeError, OSError, ValueError):
         # Never echo arbitrary command/output or keys.
         print('dispatcher supervisor unavailable or ownership uncertain', file=sys.stderr)

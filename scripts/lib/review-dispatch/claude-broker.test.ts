@@ -707,7 +707,7 @@ test("dispatcher checks before storing: a leaking result keeps only its hash, bl
           capability,
           run: async (j) => {
             raw = JSON.stringify({ ...fixtureResult(j), summary: `値 ${leak}` });
-            return { result: raw, treeEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
+            return { result: raw, groupEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
           },
           // N2(a): the run endpoint is asked to reduce its signed envelope to the hash (supervisor.py redact).
           redact: async (j, resultHash) => {
@@ -767,7 +767,7 @@ async function cycleWith(
       raw = mutate(j);
       key = j.key;
       run = j.run;
-      return { result: raw, treeEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
+      return { result: raw, groupEnded: true, uncertain: false, origin: endpoint.seal(j, raw) };
     },
     redact: async (j: Job, h: string) => {
       calls.push([j.run, h]);
