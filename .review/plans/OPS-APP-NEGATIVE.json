@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "6aa72646c9c22d6eab1f5f6f7a73c6643e8cc07a",
+  "base_sha": "3a4b037824783680b02159eb16cbb0766e02d826",
   "task_id": "OPS-APP-NEGATIVE",
   "planned_paths": [
     "docs/github-apps.md"
@@ -10,12 +10,17 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "期待するHTTP状態の文書訂正だけ。実鍵での否定確認は所有者に残す。",
+      "reason": "RT-1を修正する。issuesの422は否定確認の合格に数えず、reviewのissues:writeの欠如は発行応答の権限の完全一致照合を根拠にする。API側での拒否は未確認として残す。実鍵での否定確認は所有者に残す。",
       "checks": [
         {
           "id": "public",
           "method": "staged公開検査と差分の目視。",
           "expected": "終了0。秘密、実データ、個人のパスを加えない。"
+        },
+        {
+          "id": "scope",
+          "method": "否定確認の表の注記、発行手順2の完全一致照合、確かめていないことの一覧を照合する。",
+          "expected": "issuesの422を合格に数えない。reviewのissues:writeがない根拠とAPI側の拒否が未確認である限界を区別する。"
         }
       ]
     },
@@ -27,12 +32,17 @@
         {
           "id": "dependencies",
           "method": "否定確認の表と前置きを照合する。",
-          "expected": "issuesの行は両用途とも422。コマンドと他の行は不変。"
+          "expected": "issuesの行は両用途とも422だが参考結果。コマンドと他の行は不変。完全一致照合を根拠にする注記とAPI側の未確認を追加する。"
         },
         {
           "id": "entrypoints",
           "method": "変更範囲とPR引継ぎを確認する。",
-          "expected": "文書の変更は前置きとissuesの行のみ。Claudeと所有者のレビュー待ちで止まる。"
+          "expected": "文書の変更は否定確認の前置き・issues行・注記と未確認一覧。新head/baseでCI成功後にReadyと引継ぎを出し、Claudeの受付の粗探し・レビュー待ちで止まる。"
+        },
+        {
+          "id": "coherence",
+          "method": "docs、README.md、SECURITY.md、.githubの文書と.reviewの計画・台帳を403・422・issues:writeで検索し、該当行と周辺を読む。",
+          "expected": "INV-TASKS/status-docs-current-state-coherence: 現行の差分外の文書にissuesのPOSTを403とする期待はない。docs/github-apps.mdの残る403はcontents・administration・merge-check等の別要求。OPS-github-app-reviewer.jsonの403記述は当時の修正履歴で、現行issues行の合格条件ではない。"
         }
       ]
     }
@@ -44,7 +54,7 @@
       "location": "docs/github-apps.md:否定確認",
       "data": "所有者が確認したHTTP 422",
       "trust": "trusted",
-      "control": "422では権限不足を証明できないと明記し、実鍵での再確認は行わない。"
+      "control": "422を否定確認の合格に数えない。reviewのissues:writeがない根拠は発行時の権限の完全一致照合とし、API側の拒否は未確認に残す。実鍵での再確認は行わない。"
     }
   ],
   "variant_analysis": [
@@ -54,8 +64,8 @@
       "pattern": "本文の検証結果を権限の検証と取り違える。",
       "places": [
         {
-          "location": "否定確認の前置き・issuesの行",
-          "result": "422を記載し、権限不足を証明できないことを明記する。トークンの権限検査は変更しない。"
+          "location": "否定確認の前置き・issuesの行・注記、発行手順2、確かめていないこと",
+          "result": "RT-1の修正: issuesの422は参考結果で合格に数えない。reviewにissues:writeがないことは発行応答と要求権限の完全一致照合を根拠にする。API側での拒否は未確認に追加する。実鍵での再現やスクリプトの変更は行わない。"
         }
       ]
     },
@@ -65,7 +75,18 @@
       "places": [
         {
           "location": "否定確認の3行・PR引継ぎ",
-          "result": "他の行・コマンドは維持する。Readyは所有者が依頼したshadow試運転の対象とし、独立レビューは未完了として引き継ぐ。"
+          "result": "他の行・コマンドは維持する。Readyは所有者が依頼したactiveの対象とし、独立した粗探し・レビューはClaudeの受付へ引き継ぐ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "期待値の訂正後も別の文書にissuesの403期待が残る。",
+      "places": [
+        {
+          "location": "docs、README.md、SECURITY.md、.githubの文書と.reviewの計画・台帳",
+          "result": "検索と該当箇所の目視で確認済み。差分外の現行文書にissues行の403期待はない。docs/github-apps.mdの他の403は別要求。OPS-github-app-reviewer.jsonの一般的な403の記載は過去の修正履歴で、現行のissues行の期待ではない。"
         }
       ]
     }
