@@ -109,6 +109,23 @@ export function linkTargetsAllowed(text: string): boolean {
     for (const m of n.matchAll(re)) if (!allowedLink(m[1] ?? "")) return false;
   return true;
 }
+// Run lengths of two rules below, shared with the worker's instructions (PUBLICATION_RULES).
+const PERCENT_ESCAPES = 3;
+const OPAQUE_LENGTH = 32;
+const PERCENT_RUN = new RegExp(`(?:%[0-9A-Fa-f]{2}){${PERCENT_ESCAPES},}`);
+const OPAQUE_RUN = new RegExp(`[A-Za-z0-9+/=_-]{${OPAQUE_LENGTH},}`, "g");
+// Every finding publicationFindings reports, with the words jobText (launcher.ts) gives the worker for it, so a
+// finished review is not refused for a rule nobody stated (W9, PR #71 RT-1). launcher.test.ts checks that each
+// rule is in jobText and that a synthetic breach of each one yields that finding. The textFindings
+// labels of public-policy.ts (secret shapes, personal paths, e-mail) are covered by "keys, tokens" and "@".
+export const PUBLICATION_RULES: Readonly<Record<string, string>> = Object.freeze({
+  "format character": "no invisible format characters (zero-width and similar)",
+  "key/token": "no keys, tokens or passwords",
+  "local absolute path": "no local paths",
+  "link not allowed": `links only as full https URLs with a path on ${LINK_HOSTS.join(", ")} (a host alone such as https://github.com is refused), never relative link targets, also in Markdown links, no bare www. host names, and no "//" followed directly by a character other than a space or "/" outside such a URL (write "// note", not "//note")`,
+  "percent-encoded data": `no ${PERCENT_ESCAPES} or more %XX escapes in a row: write URL anchors and paths with their raw characters (Japanese stays Japanese)`,
+  "opaque key-like string": `no unbroken run of ${OPAQUE_LENGTH} or more letters, digits or +/=_- that mixes letters and digits (such as another commit's full SHA), except this pull request's own head, base and commit SHAs and the run ID: shorten any other SHA to 7 characters`,
+});
 export function publicationFindings(text: string, allowed: Allowed): string[] {
   const findings = new Set<string>();
   // Zero-width and other format characters can split a secret past every rule below. Reject, never strip.
@@ -127,12 +144,12 @@ export function publicationFindings(text: string, allowed: Allowed): string[] {
   // A bare host name (www.example.org) outside an allowed link is a link too.
   if (/\bwww\./i.test(n.replace(ANY_URL, (url) => (allowedLink(url) ? " " : url))))
     findings.add("link not allowed");
-  if (/(?:%[0-9A-Fa-f]{2}){3,}/.test(n)) findings.add("percent-encoded data");
+  if (PERCENT_RUN.test(n)) findings.add("percent-encoded data");
   // Opaque runs (keys, hex chunks, base64 with "/"). GitHub links are split into their segments first, so a
   // secret in a path or query is still seen; then this job's own IDs are removed.
   let scan = n.replace(ANY_URL, (url) => (allowedLink(url) ? url.split(/[/#?=&.]/).join(" ") : url));
   for (const id of allowed) scan = scan.split(id).join(" ");
-  for (const run of scan.match(/[A-Za-z0-9+/=_-]{32,}/g) ?? [])
+  for (const run of scan.match(OPAQUE_RUN) ?? [])
     if (/[0-9]/.test(run) && /[A-Za-z]/.test(run) && !wordLike(run))
       findings.add("opaque key-like string");
   return [...findings];

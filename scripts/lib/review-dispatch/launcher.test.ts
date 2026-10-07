@@ -27,7 +27,8 @@ import {
 } from "./launcher.ts";
 import type { Job, WorkerResult } from "./model.ts";
 import { parseResult } from "./broker.ts";
-import { EVIDENCE_SHAPE } from "./publication.ts";
+import { EVIDENCE_SHAPE, PUBLICATION_RULES, publicationFindings } from "./publication.ts";
+import { textFindings } from "../public-policy.ts";
 import { policy } from "../../../tests/fixtures/review-dispatch.ts";
 
 // Synthetic paths only. Nothing here is spawned.
@@ -534,11 +535,44 @@ test("W5d jobText states the rules the schema cannot express: evidence forms of 
   assert.match(stdin, /Unverified: what you could not check, one line each/);
   assert.ok(stdin.includes(`${RESULT_LIMITS.text} characters`) && stdin.includes(`${RESULT_LIMITS.cell} per table cell`));
   assert.match(stdin, /no "<" or "@" \(full-width forms count as the same\)/);
-  // W9 (PR #66 P3): the link rules of safeProse and publicationFindings, so a finished review is not refused for them.
-  assert.match(stdin, /no invisible format characters/);
-  assert.match(stdin, /no relative or scheme-less \(\/\/\) link targets, also in Markdown links, and no bare www\. host names/);
+  // W9 (PR #66 P3, PR #71 RT-1): every publication rule is stated, in the words kept next to the rule.
+  for (const [finding, words] of Object.entries(PUBLICATION_RULES)) assert.ok(stdin.includes(words), finding);
   // Never a line the owner's measurement reads as a probe step (doctor.test.ts).
   assert.ok(!/^- /m.test(stdin));
   const ff = buildLaunch(policy(), ffJob(), claudeInstall(), run(), opts).stdin;
   assert.match(ff, /Evidence: only links/);
+});
+
+test("W9 every finding publicationFindings reports has its words in PUBLICATION_RULES, and following the words passes", () => {
+  // One synthetic breach per rule (PR #71 RT-1: the encoded anchor and another commit's SHA blocked a review).
+  const breaches: [string, string][] = [
+    ["format character", "a\u200bb"],
+    ["key/token", "ghp_" + "A".repeat(20)],
+    ["local absolute path", "see " + ["", "Us" + "ers", "alice", "x"].join("/")], // assembled: no path literal in this file
+    ["link not allowed", "https://example.com/x"],
+    ["link not allowed", "https://github.com"],
+    ["link not allowed", "[design](docs/review-dispatch-design.md)"],
+    ["link not allowed", "www.example.org"],
+    ["link not allowed", "x = 1; //TODO"],
+    ["percent-encoded data", "https://github.com/doc-gif/kurashi-ledger/blob/main/docs/a.md#18-%E5%BA%83%E3%81%92"],
+    ["opaque key-like string", "main is 8270f63cfebb83f939d210eafa1b6fcb0de12345 now"],
+  ];
+  const seen = new Set<string>();
+  for (const [finding, text] of breaches) {
+    const found = publicationFindings(text, new Set());
+    assert.ok(found.includes(finding), `${finding}: ${JSON.stringify(found)}`);
+    // Anything else it reports is a public-policy label, covered by "keys, tokens" or "@".
+    for (const f of found) assert.ok(f in PUBLICATION_RULES || textFindings(text).includes(f), f);
+    seen.add(finding);
+  }
+  assert.deepEqual([...seen].sort(), Object.keys(PUBLICATION_RULES).sort());
+  // What the words ask for instead passes.
+  for (const text of [
+    "https://github.com/doc-gif/kurashi-ledger/blob/main/docs/a.md#18-広げる",
+    "https://github.com/",
+    "main is 8270f63 now",
+    "x = 1; // note",
+    "the head 8270f63cfebb83f939d210eafa1b6fcb0de12345 of this pull request",
+  ])
+    assert.deepEqual(publicationFindings(text, new Set(["8270f63cfebb83f939d210eafa1b6fcb0de12345"])), [], text);
 });

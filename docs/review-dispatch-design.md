@@ -190,6 +190,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 
 - groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きのIPv4のTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
 - Tailscale Funnelが`*:443`で待ち受けても、Mac自身のアドレスの443番は上の規則で拒否される（「443番で届く先」）。CLIとその子が届くのは、インターネットの誰とも同じく、Funnelの公開URLだけ。そこでは受け口が`/webhook`へのPOST以外を404にし（[webhook.ts L209-L212](../scripts/lib/review-dispatch/webhook.ts#L209-L212)）、署名が合わなければpolicyも読まずに401にする（headerの形は[L213-L222](../scripts/lib/review-dispatch/webhook.ts#L213-L222)、HMACは[L256-L264](../scripts/lib/review-dispatch/webhook.ts#L256-L264)。経路は§3）。HMACの秘密なしには何も保存できない（[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
+- 形だけ正しい偽の署名header（`sha256=`と64桁の16進）は早い401を通り、HMACの検査で401になるまで、最大25 MiBを最大5秒受信させる（memoryは`MAX_BODY`で頭打ち。接続数の上限はない）。これが受け口に残るDoSの費用（W9）。
 - 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
 - この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
 - 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。
