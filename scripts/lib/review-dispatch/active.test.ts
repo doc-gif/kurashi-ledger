@@ -977,6 +977,14 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(!worker.args.some((a) => /descendant/.test(a)));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
+    // W5d RT-1: the benign run gets the same job text as a real review (its evidence and unverified rules) and
+    // only the minimal measurement ask; it never tells the model to leave evidence or unverified empty.
+    const benignStdin = String(worker.plan!["stdin"]);
+    assert.match(benignStdin, /^Job kind: review$/m);
+    assert.match(benignStdin, /Evidence: only links of these forms, otherwise an empty list/);
+    assert.match(benignStdin, /Unverified: what you could not check, one line each/);
+    assert.match(benignStdin, /Measurement: .*decision needs-owner and no findings\.$/m);
+    assert.doesNotMatch(benignStdin, /empty (?:findings, )?evidence|evidence[^\n]*empty[^\n]*unverified|leave[^\n]*(?:evidence|unverified)/i);
     const refused = await measure({ badKey: true });
     assert.deepEqual(refused.external, { schema: false, groupEnded: false });
     assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", stage: null, field: null });
