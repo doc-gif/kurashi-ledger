@@ -96,10 +96,11 @@ const body = (v: unknown): string => {
   if (typeof v !== "string") throw new EvidenceError();
   return v;
 };
-// Line-start IDs only (optionally after "- " or "* "). Quoted lines ("> ") and mid-line mentions are prose.
+// Line-start IDs only (optionally after "- ", "* " or a Markdown heading "### ", the structured finding format of
+// pr-review-loop.md#指摘の書式). Quoted lines ("> ") and mid-line mentions are prose.
 export function findingIds(pr: number, text: string): string[] {
   const pattern = new RegExp(
-    `^[ \\t]*(?:[-*][ \\t]+)?(PR${pr}-R[0-9]{3,})(?![0-9])`,
+    `^[ \\t]*(?:[-*][ \\t]+|#{1,6}[ \\t]+)?(PR${pr}-R[0-9]{3,})(?![0-9])`,
     "gm",
   );
   return [...new Set([...text.matchAll(pattern)].map((m) => m[1]!))];

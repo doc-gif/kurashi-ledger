@@ -6,6 +6,8 @@ import { test } from "node:test";
 import {
   CAUSE_KEY,
   ENV_KEYS,
+  FINDING_FIELDS,
+  FINDING_PROSE,
   FIXED_QUERY,
   LaunchError,
   RESULT_LIMITS,
@@ -458,7 +460,17 @@ const result = (j: Job, extra: Partial<WorkerResult> = {}): WorkerResult => ({
   previous: [],
   ...extra,
 });
-const finding = (id: string, text = "x") => ({ id, location: text, impact: text, completion: text });
+const finding = (id: string, text = "x"): WorkerResult["findings"][number] => ({
+  id,
+  title: "題名",
+  severity: "P2",
+  timing: "このPRで直す",
+  location: text,
+  problem: text,
+  example: text,
+  action: text,
+  completion: text,
+});
 const row = (cause: string, where = "x") => ({ cause, judgement: "該当なし" as const, where });
 
 test("W5d result schema: the limits parseResult enforces come from the same constants, the evidence shape included", () => {
@@ -470,6 +482,18 @@ test("W5d result schema: the limits parseResult enforces come from the same cons
   for (const k of ["findings", "evidence", "unverified", "causes", "previous"] as const)
     assert.equal(props[k]!["maxItems"], RESULT_LIMITS[k], k);
   assert.equal(props["summary"]!["maxLength"], RESULT_LIMITS.text);
+  // W11: the structured finding (pr-review-loop.md#指摘の書式); impact is gone.
+  const f = props["findings"]!["items"] as Schema,
+    fp = f["properties"] as Record<string, Schema>;
+  assert.deepEqual(f["required"], [...FINDING_FIELDS]);
+  assert.deepEqual(Object.keys(fp).sort(), [...FINDING_FIELDS].sort());
+  assert.deepEqual(fp["severity"]!["enum"], ["P1", "P2", "P3"]);
+  assert.equal(fp["title"]!["maxLength"], RESULT_LIMITS.title);
+  assert.equal(fp["timing"]!["maxLength"], RESULT_LIMITS.timing);
+  for (const k of FINDING_PROSE) assert.equal(fp[k]!["maxLength"], RESULT_LIMITS.text, k);
+  // 検証 and 未検証 are at most 3 lines each in the post.
+  assert.equal(RESULT_LIMITS.evidence, 3);
+  assert.equal(RESULT_LIMITS.unverified, 3);
   // The argv carries this schema, so the measured argv hash binds it (an older measurement becomes stale).
   const p = buildLaunch(policy(), job(30), claudeInstall(), run(), opts);
   assert.equal(flagValue(p, "--json-schema"), JSON.stringify(RESULT_SCHEMA));
@@ -485,6 +509,8 @@ test("W5d result schema is never stricter than parseResult, and what it refuses 
     [r, result(r, { summary: "x".repeat(RESULT_LIMITS.text), unverified: ["y".repeat(RESULT_LIMITS.text)] })],
     [r, result(r, { decision: "changes-requested", findings: Array.from({ length: RESULT_LIMITS.findings }, (_, n) => finding(`PR1-R${String(n + 1).padStart(3, "0")}`)) })],
     [r, result(r, { decision: "changes-requested", findings: [finding("PR1-R001", "z".repeat(RESULT_LIMITS.text))] })],
+    [r, result(r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), title: "題".repeat(RESULT_LIMITS.title), timing: "t".repeat(RESULT_LIMITS.timing), severity: "P1" }] })],
+    [r, result(r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), severity: "P3" }] })],
     [r, result(r, { evidence: Array.from({ length: RESULT_LIMITS.evidence }, (_, n) => `${REPO}/actions/runs/${n + 1}`) })],
     [r, result(r, { unverified: Array.from({ length: RESULT_LIMITS.unverified }, (_, n) => `項目${n}`) })],
     [ff, result(ff, { decision: "changes-requested", findings: [finding("RT-1")], causes: [row("INV-LOCK/restore-lock-identity", "w".repeat(RESULT_LIMITS.cell)), row("INV-ROOT")], previous: [{ id: RECORD, status: "未解消", reason: "r".repeat(RESULT_LIMITS.cell) }, { id: "RT-2", status: "解消", reason: "直った" }] })],
@@ -512,6 +538,19 @@ test("W5d result schema is never stricter than parseResult, and what it refuses 
     [r, { decision: "changes-requested", findings: [finding("R-1")] }],
     [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), location: "x\ny" }] }],
     [r, { decision: "changes-requested", findings: [finding("PR1-R001", "x".repeat(RESULT_LIMITS.text + 1))] }],
+    // W11: the structured finding's fields.
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), title: "題".repeat(RESULT_LIMITS.title + 1) }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), title: "" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), title: "a\nb" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), timing: "t".repeat(RESULT_LIMITS.timing + 1) }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), severity: "P4" as "P1" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), severity: "p1" as "P1" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), problem: "x".repeat(RESULT_LIMITS.text + 1) }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), example: "" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), action: "a\nb" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), completion: "@someone" }] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), impact: "x" } as WorkerResult["findings"][number]] }],
+    [r, { decision: "changes-requested", findings: [(({ example: _e, ...rest }) => rest)(finding("PR1-R001")) as WorkerResult["findings"][number]] }],
     [r, { decision: "changes-requested", findings: Array.from({ length: RESULT_LIMITS.findings + 1 }, (_, n) => finding(`PR1-R${String(n + 1).padStart(3, "0")}`)) }],
     [ff, { causes: [row("bad key!")] }],
     [ff, { causes: [row("INV-LOCK", "a|b")] }],
@@ -534,6 +573,10 @@ test("W5d jobText states the rules the schema cannot express: evidence forms of 
   assert.match(stdin, /Evidence: only links of these forms, otherwise an empty list/);
   assert.match(stdin, /Unverified: what you could not check, one line each/);
   assert.ok(stdin.includes(`${RESULT_LIMITS.text} characters`) && stdin.includes(`${RESULT_LIMITS.cell} per table cell`));
+  // W11: the structured finding's fields and their limits, briefly (pr-review-loop.md#指摘の書式).
+  assert.match(stdin, /Summary: the conclusion in 1-2 sentences\. Each finding: id; title .*; severity P1, P2 or P3; timing .*; location; problem .*; example .*; action .*; completion /);
+  assert.ok(stdin.includes(`${RESULT_LIMITS.title} per title, ${RESULT_LIMITS.timing} per timing`));
+  assert.ok(stdin.includes(`${RESULT_LIMITS.evidence} evidence links, ${RESULT_LIMITS.unverified} unverified items`));
   assert.match(stdin, /no "<" or "@" \(full-width forms count as the same\)/);
   // W9 (PR #66 P3, PR #71 RT-1): every publication rule is stated, in the words kept next to the rule.
   for (const [finding, words] of Object.entries(PUBLICATION_RULES)) assert.ok(stdin.includes(words), finding);
@@ -541,6 +584,10 @@ test("W5d jobText states the rules the schema cannot express: evidence forms of 
   assert.ok(!/^- /m.test(stdin));
   const ff = buildLaunch(policy(), ffJob(), claudeInstall(), run(), opts).stdin;
   assert.match(ff, /Evidence: only links/);
+  // PR #73: 該当 stays open (redTeamOpen), so the worker is told what it means; a review job has no causes.
+  const applies = "該当 means a defect of that class is still present in this head, and a class that is relevant but has no defect, or whose defect is fixed, is 該当なし";
+  assert.ok(ff.includes(applies));
+  assert.ok(!stdin.includes(applies));
 });
 
 test("W9 every finding publicationFindings reports has its words in PUBLICATION_RULES, and following the words passes", () => {

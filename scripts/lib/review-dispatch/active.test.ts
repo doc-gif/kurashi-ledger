@@ -341,7 +341,7 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
             findings:
               (o.decision ?? "accepted") === "accepted"
                 ? []
-                : [{ id: field("Job kind") === "faultfinding" ? "RT-1" : "PR1-R001", location: "合成", impact: "合成", completion: "合成" }],
+                : [{ id: field("Job kind") === "faultfinding" ? "RT-1" : "PR1-R001", title: "合成", severity: "P2" as const, timing: "合成", location: "合成", problem: "合成", example: "合成", action: "合成", completion: "合成" }],
             evidence: [],
             unverified: [],
             causes: [],
@@ -727,7 +727,7 @@ function sealedRunner(
       const result: WorkerResult = {
         ...fixtureResult(j),
         decision,
-        findings: decision === "accepted" ? [] : [{ id: red ? "RT-1" : "PR1-R001", location: "合成", impact: "合成", completion: "合成" }],
+        findings: decision === "accepted" ? [] : [{ id: red ? "RT-1" : "PR1-R001", title: "合成", severity: "P2" as const, timing: "合成", location: "合成", problem: "合成", example: "合成", action: "合成", completion: "合成" }],
         unverified: [],
         causes: red ? RUN_LEDGER.map((cause) => ({ cause, judgement: "該当なし" as const, where: "合成の箇所を確かめた" })) : [],
         previous: [],
@@ -765,10 +765,11 @@ test("W4 active step: faultfinding first (a red-team COMMENT), then one review o
     assert.equal(posts[0]!.event, "COMMENT");
     assert.match(posts[0]!.body, /^<!-- kurashi-ledger:red-team:v1 -->/);
     assert.doesNotMatch(posts[0]!.body, /^(?:role|decision):/m);
-    // The canonical red-team format (pr-review-loop.md#提出前の粗探し): plan, ledger count, per-cause table.
+    // The canonical red-team format (pr-review-loop.md#提出前の粗探し): plan and the ledger count; the per-cause
+    // judgement stays in the stored result, not in the post (W11).
     assert.match(posts[0]!.body, /^plan_path: \.review\/plans\/T99\.json$/m);
-    assert.match(posts[0]!.body, /^ledger_causes: 2件のうち2件を判定した$/m);
-    assert.match(posts[0]!.body, /^\| INV-LOCK\/restore-lock-identity \| 該当なし \| 合成の箇所を確かめた \|$/m);
+    assert.match(posts[0]!.body, /^原因台帳: 2件を判定（該当0・確認できない0）$/m);
+    assert.doesNotMatch(posts[0]!.body, /INV-LOCK|合成の箇所を確かめた|^\|/m);
     // The next cycle sees the posted record and runs the review.
     const next = await fresh();
     assert.deepEqual(next.faultfinding, { actor: 30, pair: s.pair, unresolved: [] });
@@ -1078,6 +1079,51 @@ function stepSetup(extra: Partial<WorkerResult> = {}, decisions: Record<string, 
   return { d, p, s, posts, launches, step, setFresh: (f: typeof fresh) => (fresh = f) };
 }
 
+test("PR #73 RT-2: a 該当 cause or a 確認できない cause outside the ledger keeps the record open, even with accepted and no finding", async () => {
+  for (const [name, causes, open] of [
+    ["applies and unconfirmed outside", [
+      { cause: RUN_LEDGER[0]!, judgement: "該当" as const, where: "合成" },
+      { cause: RUN_LEDGER[1]!, judgement: "該当なし" as const, where: "合成" },
+      { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "合成" },
+    ], [`applies:${RUN_LEDGER[0]}`, "unconfirmed:INV-EXTRA"]],
+    ["unconfirmed outside only", [
+      ...RUN_LEDGER.map((cause) => ({ cause, judgement: "該当なし" as const, where: "合成" })),
+      { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "合成" },
+    ], ["unconfirmed:INV-EXTRA"]],
+  ] as const) {
+    const x = stepSetup({ causes: [...causes], findings: [] }, { faultfinding: "accepted" });
+    try {
+      assert.equal(await x.step(), "faultfinding:posted", name);
+      assert.match(x.posts[0]!.body, /^結論: 未解消あり（/m, name);
+      const ff = x.d.store.faultfinding("1:1", x.s.pair, "p1")!;
+      assert.deepEqual(ff.unresolved, open, name);
+      assert.equal(nextKind(x.d.store, x.p, { ...x.s, faultfinding: ff }).reason, "faultfinding-open", name);
+    } finally {
+      x.d.cleanup();
+    }
+  }
+});
+
+test("PR #73 RT-1: the whole red-team judgement outlives the 30-day clearing of jobs.result", async () => {
+  const x = stepSetup({
+    causes: RUN_LEDGER.map((cause) => ({ cause, judgement: "該当なし" as const, where: "合成の箇所を確かめた" })),
+    previous: [{ id: "RT-3", status: "解消" as const, reason: "直った" }],
+  });
+  try {
+    assert.equal(await x.step(), "faultfinding:posted");
+    const run = x.d.store.status("1:1").jobs.find((j) => j.kind === "faultfinding")!.run;
+    const before = x.d.store.redTeamRecord(run);
+    assert.deepEqual(before!.causes.map((c) => [c.cause, c.judgement, c.where]), RUN_LEDGER.map((c) => [c, "該当なし", "合成の箇所を確かめた"]));
+    assert.deepEqual(before!.previous, [{ id: "RT-3", status: "解消", reason: "直った" }]);
+    x.d.store.retain(100 + 31 * 86400000);
+    const row = x.d.store.db.prepare("SELECT result FROM jobs WHERE run=?").get(run) as { result: string | null };
+    assert.equal(row.result, null); // the plaintext result is cleared as before
+    assert.deepEqual(x.d.store.redTeamRecord(run), before); // the judgement is not
+  } finally {
+    x.d.cleanup();
+  }
+});
+
 test("W4 red team: an unjudged ledger cause or an earlier RT still open keeps the record unresolved", async () => {
   const x = stepSetup({
     causes: [{ cause: "INV-LOCK/restore-lock-identity", judgement: "該当なし", where: "確かめた" }],
@@ -1086,9 +1132,9 @@ test("W4 red team: an unjudged ledger cause or an earlier RT still open keeps th
   try {
     assert.equal(await x.step(), "faultfinding:posted");
     const body = x.posts[0]!.body;
-    assert.match(body, /^ledger_causes: 2件のうち1件を判定した$/m);
-    assert.match(body, /^判定がない原因: INV-STORAGE\/database-journal-pair$/m);
-    assert.match(body, /^- RT-3: 未解消 — まだ直っていない$/m);
+    assert.match(body, /^原因台帳: 2件のうち1件を判定（該当0・確認できない0）$/m);
+    assert.match(body, /^前のRT: 解消なし$/m);
+    assert.match(body, /^- RT-3 未解消: まだ直っていない$/m);
     assert.deepEqual(x.d.store.faultfinding("1:1", x.s.pair, "p1")!.unresolved, ["RT-1", "RT-3", "ledger-incomplete"]);
   } finally {
     x.d.cleanup();
@@ -1489,7 +1535,7 @@ test("W4f: the benign run reports the first failed check as a closed step; excep
     ["missing summary", signed(JSON.stringify({ ...result, summary: undefined })), parse("schema-field", "summary")],
     ["unknown key", signed(JSON.stringify({ ...result, SYNTHETIC_SECRET_KEY: 1 })), parse("schema-field", "keys")],
     ["secret-shaped summary", signed(JSON.stringify({ ...result, summary: "ghp_SYNTHETICSYNTHETIC0000" })), parse("schema-field", "summary")],
-    ["accepted with findings", signed(JSON.stringify({ ...result, decision: "accepted", findings: [{ id: "PR1-R001", location: "a", impact: "b", completion: "c" }] })), parse("schema-field", "decision")],
+    ["accepted with findings", signed(JSON.stringify({ ...result, decision: "accepted", findings: [{ id: "PR1-R001", title: "t", severity: "P2", timing: "t", location: "a", problem: "b", example: "b", action: "b", completion: "c" }] })), parse("schema-field", "decision")],
     ["bad pair", signed(JSON.stringify({ ...result, pair: { head: "SYNTHETIC-SECRET", base: "x" } })), parse("schema-field", "pair")],
     ["two bad keys", signed(JSON.stringify({ ...result, schema: 2, run: "SYNTHETIC-SECRET" })), parse("schema-field", "multiple")],
   ];

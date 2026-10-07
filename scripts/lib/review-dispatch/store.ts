@@ -12,6 +12,7 @@ import {
   type Policy,
   type Snapshot,
   type Target,
+  type WorkerResult,
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
 import { runBinding, type RunKey } from "./provenance.ts";
@@ -712,6 +713,15 @@ export class Store {
     });
     return id;
   }
+  // PR #73 RT-1: the whole red-team judgement of a run, from its Outbox row (retain never clears it), or null.
+  redTeamRecord(run: string): Pick<WorkerResult, "causes" | "previous"> | null {
+    const r = this.db
+      .prepare("SELECT o.value FROM outbox o JOIN jobs j ON j.id=o.job WHERE j.run=? AND o.kind='faultfinding'")
+      .get(run) as Row | undefined;
+    if (!r) return null;
+    const v = JSON.parse(String(r["value"])) as Partial<WorkerResult>;
+    return Array.isArray(v.causes) && Array.isArray(v.previous) ? { causes: v.causes, previous: v.previous } : null;
+  }
   outboxState(id: string): string {
     const r = this.db.prepare("SELECT state FROM outbox WHERE id=?").get(id) as
       | Row
@@ -943,15 +953,20 @@ export class Store {
     // PR48-R015: holds of this PR whose server time is not settled yet (an unpause does not count before).
     pending: string[];
     marked: boolean;
+    // PR48-R013 / W10 RT-1: since when (stored local clock) the reconcile of this PR is held; null if not held.
+    // While held, `target` is the last complete observation, not the current state.
+    held: number | null;
     jobs: { kind: string; run: string; status: string; generation: number }[];
     uncertainOutbox: number;
   } {
+    const hold = this.db.prepare("SELECT since FROM holds WHERE key=?").get(key) as Row | undefined;
     return {
       target: this.target(key),
       blocked: this.blocked(key),
       quota: this.quotaPaused(key),
       pending: HOLD_TABLES.filter((x) => this.unsettledHolds().has(`${x}:${key}`)),
       marked: this.marked(key),
+      held: hold ? Number(hold["since"]) : null,
       jobs: (
         this.db
           .prepare(

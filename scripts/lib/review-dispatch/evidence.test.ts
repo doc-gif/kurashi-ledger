@@ -1139,6 +1139,14 @@ test("PR48-R014 a human reviewer's manual red-team record is compared only (neve
     ["implementer's record", [redTeam(81, 20, "| INV-REVIEW/x | 該当なし | - |\n")], null],
     ["other pair", [redTeam(81, 40, "| INV-REVIEW/x | 該当なし | - |\n", 4, "f".repeat(40))], null],
     ["marker not on the first line", [{ ...redTeam(81, 40, ""), body: `引用\n${redTeam(81, 40, "").body}` }], null],
+    // W11 line format (pr-review-loop.md#提出前の粗探し): only 該当 and 確認できない causes are listed.
+    ["line format: listed causes are open", [redTeam(81, 40, "\n原因台帳: 55件を判定（該当1・確認できない1）\n- 該当: INV-REVIEW/plan-task-identity\n- 確認できない: INV-TASKS/entrypoint-order\n")], ["cause:INV-REVIEW/plan-task-identity", "cause:INV-TASKS/entrypoint-order"]],
+    ["line format: nothing listed", [redTeam(81, 40, "\n原因台帳: 55件を判定（該当0・確認できない0）\n- 該当: なし\n")], []],
+    ["line format: malformed cause stays open", [redTeam(81, 40, "\n- 該当: INV-REVIEW/x（RT-1）\n")], ["RT-1", "cause:unparsed"]],
+    ["line format: earlier RT resolved", [earlier(), redTeam(81, 40, "\n前のRT: 解消 RT-2\n")], []],
+    ["line format: earlier RT not needed, full-width separators", [earlier(), redTeam(81, 40, "\n前のRT：解消 RT-9 ／ 対応不要 RT-2\n")], []],
+    ["line format: earlier RT unresolved", [earlier(), redTeam(81, 40, "\n前のRT: 解消なし\n- RT-2 未解消: まだ\n")], ["RT-2"]],
+    ["line format: 未解消 is not 解消", [earlier(), redTeam(81, 40, "\n前のRT: 未解消 RT-2\n")], ["RT-2"]],
   ];
   for (const [name, conversation, unresolved] of cases) {
     const d = database(),

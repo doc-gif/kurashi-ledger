@@ -8,9 +8,17 @@ import {
 } from "./model.ts";
 import { approvalBlockers, assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
-import { canonicalBody } from "./github.ts";
+import { canonicalBody, EvidenceError } from "./github.ts";
 import type { ResultVerifier } from "./provenance.ts";
-import { CAUSE_KEY, RECORD_ID, RESULT_LIMITS as L, RT_ID } from "./launcher.ts";
+import {
+  CAUSE_KEY,
+  FINDING_FIELDS,
+  FINDING_PROSE,
+  RECORD_ID,
+  RESULT_LIMITS as L,
+  RT_ID,
+  SEVERITIES,
+} from "./launcher.ts";
 import {
   EVIDENCE_SHAPE,
   blockedNotice,
@@ -25,6 +33,9 @@ import {
 // Rejected because of WHAT the result says (secret shapes, format characters, look-alikes, injection, links),
 // as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
 export class ResultContentError extends Error {}
+// fetchFresh: the re-check reconcile was held (transiently incomplete, PR48-R013). submit() defers, never "stale"
+// (and likewise on an EvidenceError of the re-check, RT-3).
+export class HeldSnapshotError extends Error {}
 
 // `records`: the whole-record IDs (record-<comment|review>-<id>) of this job's materials (store.runMaterials).
 // A red team may re-check such a record as a whole; any other record ID is refused (red team round 5).
@@ -138,28 +149,29 @@ export function parseResult(raw: string, j: Job, records: readonly string[] = []
     [...r.causes.map((c) => c.where), ...r.previous.map((v) => v.reason)].some((v) => !safeProse(v))
   )
     throw new ResultContentError("Unsafe table prose");
+  // One line, not blank, at most `max` UTF-16 units.
+  const line = (v: unknown, max: number): boolean =>
+    typeof v === "string" && !!v.trim() && v.length <= max && singleLine(v);
+  const fieldKeys = [...FINDING_FIELDS].sort().join();
   for (const f of r.findings)
     if (
       !f ||
-      Object.keys(f).sort().join() !== "completion,id,impact,location" ||
+      Object.keys(f).sort().join() !== fieldKeys ||
       // A review uses PR<N>-R<3 digits> only; a red-team record uses the PR-local RT-<number> of the
       // canonical format (pr-review-loop.md#提出前の粗探し), which findings.ts never reads as an R ID.
       !(j.kind === "faultfinding"
         ? RT_ID
         : new RegExp(`^PR${j.key.split(":")[1]}-R[0-9]{3}$`)
       ).test(f.id) ||
-      [f.location, f.impact, f.completion].some(
-        (v) =>
-          typeof v !== "string" ||
-          !v.trim() ||
-          v.length > L.text ||
-          !singleLine(v),
-      )
+      !(SEVERITIES as readonly string[]).includes(f.severity) ||
+      !line(f.title, L.title) ||
+      !line(f.timing, L.timing) ||
+      FINDING_PROSE.some((k) => !line(f[k], L.text))
     )
       throw new Error("Invalid finding");
   if (
     r.findings.some((f) =>
-      [f.location, f.impact, f.completion].some((v) => !safeProse(v)),
+      [f.title, f.timing, ...FINDING_PROSE.map((k) => f[k])].some((v) => !safeProse(v)),
     )
   )
     throw new ResultContentError("Unsafe finding prose");
@@ -246,8 +258,19 @@ export class ReviewBroker {
     // W4 row 8 / PR #56 red team P2: an edit/delete/dismiss delivery for this PR that no reconcile has processed
     // yet. Keep the result and reconcile again (fetchFresh reconciles and clears processed marks); if a mark is
     // still there after three tries, defer: the job keeps its result and lease and the next cycle posts it.
-    let s = await fetchFresh();
-    for (let n = 0; n < 2 && this.store.marked(j.key); n++) s = await fetchFresh();
+    // Issue #50 W10: a held re-check is unknown, not stale. Defer like a mark: releasing the lease as stale would
+    // spend this generation's job on a fetch gap (no relaunch, so the next job never starts).
+    let s: Snapshot;
+    try {
+      s = await fetchFresh();
+      for (let n = 0; n < 2 && this.store.marked(j.key); n++) s = await fetchFresh();
+    } catch (e) {
+      // W10 RT-3: a failed GitHub read (429, rate limit, 5xx, deadline, a gh failure: EvidenceError) is the same
+      // transient gap. Nothing is posted before the Outbox row below, so deferring cannot double-post.
+      // Any other error (identity change, revision without a new readyAfter, ...) stays with the caller.
+      if (e instanceof HeldSnapshotError || e instanceof EvidenceError) return "deferred";
+      throw e;
+    }
     if (this.store.marked(j.key)) return "deferred";
     const prior = this.store.target(j.key);
     const t = assess(p, s, prior, this.store.consumed());
@@ -325,6 +348,10 @@ export class ReviewBroker {
         decision: blockers.length ? "needs-owner" : result.decision,
         // IDs only (no prose): store.faultfinding() reads them as the unresolved RTs.
         findings: j.kind === "faultfinding" ? unresolved : result.findings.map((f) => f.id),
+        // PR #73 RT-1: the whole judgement (every cause and earlier RT, with its reason; checked by
+        // resultFindings above). The post lists only part of it and jobs.result is cleared after 30 days
+        // (store.retain); the Outbox row is kept (store.redTeamRecord).
+        ...(j.kind === "faultfinding" ? { causes: result.causes, previous: result.previous } : {}),
       }),
     );
     const recover = async (): Promise<"posted" | "uncertain"> => {
@@ -393,7 +420,8 @@ function identityOf(p: Policy, actor: number): BrokerIdentity {
   const agent = configured.executor as "codex" | "claude";
   return { role: `${agent}-reviewer`, agent };
 }
-// Called only after strict parseResult. Worker prose is quoted; metadata is trusted installation/run data.
+// Called only after strict parseResult. Worker prose is quoted or follows a fixed label; metadata is trusted
+// installation/run data.
 export function render(
   r: WorkerResult,
   marker: string,
@@ -406,19 +434,29 @@ export function render(
     ? `受付の確認: ほかの変更要求・未解消の指摘があるため、APPROVEにせずCOMMENTにした（${blockers.join(", ")}）。\n\n`
     : "";
   return (
-    `<!-- kurashi-ledger:review:v1 -->\n<!-- ${marker} -->\nrole: ${identity.role}\nagent_id: ${identity.agent}/${run}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\ndecision: ${decision}\n\n${held}${r.summary
-      .split(/\r?\n/)
-      .map((line) => `> ${line}`)
-      .join("\n")}\n` +
-    r.findings
-      .map(
-        (f) =>
-          `\n- ${f.id} — ${f.location}: ${f.impact} 完了条件: ${f.completion}`,
-      )
-      .join("") +
-    (r.evidence.length ? `\n\n検証: ${r.evidence.join(" ")}\n` : "") +
-    (r.unverified.length ? `\n未検証: ${r.unverified.join(" / ")}\n` : "")
+    `<!-- kurashi-ledger:review:v1 -->\n<!-- ${marker} -->\nrole: ${identity.role}\nagent_id: ${identity.agent}/${run}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\ndecision: ${decision}\n\n${held}${quote(r.summary)}\n` +
+    r.findings.map(findingBlock).join("") +
+    checkedLines(r)
   );
+}
+const quote = (text: string): string =>
+  text
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+// One finding in the structured format (pr-review-loop.md#指摘の書式). The heading holds the checked ID and the
+// one-line title; every other worker field follows a fixed label, so none of it starts a line (findingIds and the
+// record fields read line starts only).
+function findingBlock(f: WorkerResult["findings"][number]): string {
+  return (
+    `\n### ${f.id} ${f.title}\n- 重さ: ${f.severity} ／ 時期: ${f.timing}\n- 場所: ${f.location}\n` +
+    `- 問題: ${f.problem}\n- 例: ${f.example}\n- やってほしいこと: ${f.action}\n- 完了条件: ${f.completion}\n`
+  );
+}
+// 検証 and 未検証: one line per item, at most RESULT_LIMITS.evidence / .unverified (3) each.
+function checkedLines(r: WorkerResult): string {
+  const lines = [...r.evidence.map((x) => `検証: ${x}`), ...r.unverified.map((x) => `未検証: ${x}`)];
+  return lines.length ? `\n${lines.join("\n")}\n` : "";
 }
 
 export const recordIds = (meta: { previousRts?: string[] } | null): string[] =>
@@ -434,7 +472,8 @@ export type RunMaterials = {
   guard?: "ok" | "refused" | "unavailable" | "none";
 };
 // Codex PR56-R004: clear only when every required ledger cause was judged and none of them is 確認できない,
-// and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear.
+// and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear. PR #73 RT-2: every
+// 該当 and every 確認できない cause stays open, inside the ledger or not, whatever the decision and findings say.
 export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[] {
   const judged = new Map(r.causes.map((c) => [c.cause, c.judgement]));
   const rechecked = new Set(r.previous.map((v) => v.id));
@@ -443,7 +482,8 @@ export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[
     ...r.findings.map((f) => f.id),
     ...r.previous.filter((v) => v.status === "未解消").map((v) => v.id),
     ...(meta === null || ledger.some((c) => !judged.has(c)) ? ["ledger-incomplete"] : []),
-    ...ledger.filter((c) => judged.get(c) === "確認できない").map((c) => `unconfirmed:${c}`),
+    ...r.causes.filter((c) => c.judgement === "該当").map((c) => `applies:${c.cause}`),
+    ...r.causes.filter((c) => c.judgement === "確認できない").map((c) => `unconfirmed:${c.cause}`),
     ...(meta?.previousRts ?? []).filter((id) => !rechecked.has(id)).map((id) => `unchecked:${id}`),
     // A plan whose trusted guard check is missing or failed (RT-4): the red team had no guard output to start from.
     ...(meta !== null && meta.guard === "refused" ? ["guard-refused"] : []),
@@ -455,8 +495,10 @@ export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[
 }
 // Red-team record in the canonical format (pr-review-loop.md#提出前の粗探し) for a faultfinding job. No `role:` or
 // `decision:` line, so it is never read as a review record. The plan path and the ledger size are the dispatcher's
-// own record of the materials (store.runMaterials); the table, the earlier RTs and the RTs are the worker's,
-// quoted cell by cell (parseResult forbids line breaks and "|").
+// own record of the materials (store.runMaterials). The post lists only the causes judged 該当 or 確認できない, the
+// ledger causes without a judgement (未判定) and a count. submit computes the open IDs (redTeamOpen) from the
+// parsed result and keeps them and the whole judgement in the Outbox row (store.redTeamRecord, PR #73 RT-1).
+// Earlier RTs: the resolved IDs on one line, details only for the unresolved ones.
 export function renderRedTeam(
   r: WorkerResult,
   marker: string,
@@ -469,24 +511,59 @@ export function renderRedTeam(
   const judged = new Set(r.causes.map((c) => c.cause));
   const missing = (meta?.ledger ?? []).filter((c) => !judged.has(c));
   const verdict = open.length ? `未解消あり（${open.join(", ")}）` : "未解消のRTなし";
+  const ids = (j: string) => r.causes.filter((c) => c.judgement === j).map((c) => c.cause);
+  const hit = ids("該当"),
+    unsure = ids("確認できない");
+  const tally = `該当${hit.length}・確認できない${unsure.length}`;
+  // Causes judged outside the ledger are counted apart, so the tally matches the listed IDs (PR #73 P3).
+  const outside = meta ? r.causes.filter((c) => !meta.ledger.includes(c.cause)).length : 0;
+  const ledger = !meta
+    ? `原因台帳: 資料の記録がない（${r.causes.length}件を判定、${tally}）`
+    : `原因台帳: ${missing.length ? `${meta.ledger.length}件のうち${meta.ledger.length - missing.length}件` : `${meta.ledger.length}件`}${outside ? `＋台帳外${outside}件` : ""}を判定（${tally}）`;
+  const prev = (st: string) => r.previous.filter((v) => v.status === st).map((v) => v.id);
+  const resolved = (["解消", "対応不要"] as const)
+    .filter((st) => prev(st).length)
+    .map((st) => `${st} ${prev(st).join(", ")}`);
   return (
-    `<!-- kurashi-ledger:red-team:v1 -->\n<!-- ${marker} -->\nauditor_id: ${identity.agent}/${run}\nimplementer_id: github-actor/${implementer}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\nplan_path: ${meta?.planPath ?? "なし（このPRに計画の変更がない）"}\nledger_causes: ${meta ? `${meta.ledger.length}件のうち${meta.ledger.length - missing.length}件を判定した` : "資料の記録がない"}\n\n結果: ${verdict}\n\n${r.summary
-      .split(/\r?\n/)
-      .map((line) => `> ${line}`)
-      .join("\n")}\n` +
-    (r.causes.length
-      ? "\n| 原因（invariant_id/cause_key）または不変条件 | 判定 | 確かめた箇所と結果 |\n| --- | --- | --- |\n" +
-        r.causes.map((c) => `| ${c.cause} | ${c.judgement} | ${c.where} |`).join("\n") +
-        "\n"
-      : "") +
-    (missing.length ? `\n判定がない原因: ${missing.join(", ")}\n` : "") +
+    `<!-- kurashi-ledger:red-team:v1 -->\n<!-- ${marker} -->\nauditor_id: ${identity.agent}/${run}\nimplementer_id: github-actor/${implementer}\nhead_sha: ${r.pair.head}\nbase_sha: ${r.pair.base}\nplan_path: ${meta?.planPath ?? "なし（このPRに計画の変更がない）"}\n\n結論: ${verdict}\n${quote(r.summary)}\n` +
+    `\n${ledger}\n` +
+    (hit.length ? `- 該当: ${hit.join(", ")}\n` : "") +
+    (unsure.length ? `- 確認できない: ${unsure.join(", ")}\n` : "") +
+    (missing.length ? `- 未判定: ${missing.join(", ")}\n` : "") +
     (r.previous.length
-      ? `\n前のRT:\n${r.previous.map((v) => `- ${v.id}: ${v.status} — ${v.reason}`).join("\n")}\n`
+      ? `\n前のRT: ${resolved.join(" ／ ") || "解消なし"}\n` +
+        r.previous
+          .filter((v) => v.status === "未解消")
+          .map((v) => `- ${v.id} 未解消: ${v.reason}\n`)
+          .join("")
       : "") +
-    r.findings
-      .map((f) => `\n${f.id}: ${f.location}: ${f.impact} 直す条件: ${f.completion}`)
-      .join("") +
-    (r.evidence.length ? `\n\n検証: ${r.evidence.join(" ")}\n` : "") +
-    (r.unverified.length ? `\n未検証: ${r.unverified.join(" / ")}\n` : "")
+    r.findings.map(findingBlock).join("") +
+    checkedLines(r)
   );
+}
+// The machine-read lines of the format above, for a record written by hand (evidence.ts manualFaultfinding):
+// `- 該当: <IDs>`, `- 確認できない: <IDs>` and `- 未判定: <IDs>` are open causes, `前のRT: 解消 <IDs> ／ 対応不要
+// <IDs>` resolves.
+// Lines are read after NFKC (so "：" and "／" are ":" and "/") and trimmed. An ID of another shape is
+// `cause:unparsed`, so a malformed line never clears anything.
+export function redTeamLines(lines: readonly string[]): { open: string[]; resolved: string[] } {
+  const open: string[] = [],
+    resolved: string[] = [];
+  for (const row of lines) {
+    const cause = /^(?:[-*]\s*)?(?:該当|確認できない|未判定)\s*:\s*(.*)$/.exec(row);
+    if (cause)
+      for (const id of cause[1]!.split(/[,、\s]+/).filter((x) => x && x !== "なし"))
+        open.push(/^[A-Za-z0-9._/-]{1,120}$/.test(id) ? `cause:${id}` : "cause:unparsed");
+    // Each RT ID takes the status word last written before it (解消 / 対応不要 resolve; 未解消, 解消なし or
+    // anything else does not), so `解消 RT-1, 未解消 RT-2` resolves RT-1 only (PR #73 P3).
+    const previous = /^前のRT\s*:\s*(.*)$/.exec(row);
+    if (previous) {
+      let clears = false;
+      for (const word of previous[1]!.split(/[\s,、/]+/).filter(Boolean))
+        if (/^RT-[1-9][0-9]{0,2}$/.test(word)) {
+          if (clears) resolved.push(word);
+        } else if (!/^record-(?:comment|review)-[0-9]+$/.test(word)) clears = word === "解消" || word === "対応不要";
+    }
+  }
+  return { open, resolved };
 }

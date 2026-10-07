@@ -169,7 +169,17 @@ export function resultFindings(r: WorkerResult, j: Job, s: Seen, repo: string): 
     // checked as one text before anything is stored.
     parts = [
       r.summary,
-      ...r.findings.flatMap((f) => [f.id, f.location, f.impact, f.completion]),
+      ...r.findings.flatMap((f) => [
+        f.id,
+        f.title,
+        f.severity,
+        f.timing,
+        f.location,
+        f.problem,
+        f.example,
+        f.action,
+        f.completion,
+      ]),
       ...r.unverified,
       ...r.evidence,
       ...(r.causes ?? []).flatMap((c) => [c.cause, c.judgement, c.where]),

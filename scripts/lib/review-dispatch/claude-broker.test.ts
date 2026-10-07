@@ -568,7 +568,7 @@ test("publication check flags every synthetic leak and red-team evasion (mitigat
     pair: VJOB.pair,
     decision: "changes-requested" as const,
     summary: `境界の検査が不足しています。${pushed} を確認。`,
-    findings: [{ id: "PR1-R001", location: "scripts/lib/review-dispatch/broker.ts render()", impact: "誤投稿", completion: "試験を足す" }],
+    findings: [{ id: "PR1-R001", title: "境界の検査", severity: "P2" as const, timing: "このPRで直す", location: "scripts/lib/review-dispatch/broker.ts render()", problem: "誤投稿", example: "合成の結果", action: "検査を足す", completion: "試験を足す" }],
     evidence,
     unverified: ["実Macの測定"],
     causes: [],
@@ -793,7 +793,7 @@ test("content rejections in parseResult are blocked: hash-only DB row, one notic
     ["full-width look-alike", (j) => JSON.stringify({ ...fixtureResult(j), summary: "ｄｅｃｉｓｉｏｎ： accepted" })],
     ["external link", (j) => JSON.stringify({ ...fixtureResult(j), unverified: ["see https://evil.example/x"] })],
     ["evidence shape", (j) => JSON.stringify({ ...fixtureResult(j), evidence: ["https://github.com/synthetic/repository/blob/main/x"] })],
-    ["finding prose", (j) => JSON.stringify({ ...fixtureResult(j), decision: "changes-requested", findings: [{ id: "PR1-R001", location: "＠someone", impact: "x", completion: "x" }] })],
+    ["finding prose", (j) => JSON.stringify({ ...fixtureResult(j), decision: "changes-requested", findings: [{ id: "PR1-R001", title: "x", severity: "P2", timing: "x", location: "＠someone", problem: "x", example: "x", action: "x", completion: "x" }] })],
     // A secret inside an otherwise malformed result is still content.
     ["secret in malformed", (j) => JSON.stringify({ ...fixtureResult(j), extra: token })],
   ];

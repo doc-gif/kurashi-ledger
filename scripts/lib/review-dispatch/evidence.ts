@@ -21,6 +21,7 @@ import {
 } from "./model.ts";
 import { accepted, assess, reviewerEligible } from "./reducer.ts";
 import { RED_TEAM_MARK, RT_ID } from "./active.ts";
+import { redTeamLines } from "./broker.ts";
 import {
   changeKey,
   type ChangeRecord,
@@ -244,8 +245,9 @@ function legacyAccepted(c: Collection, p: Policy): boolean {
 // side (the whole ledger, a re-check of every earlier record, readyAfter). It counts only from an assigned,
 // independent human reviewer, with the marker on the first line and this exact head/base. In its tables
 // (header rows skipped): a cause whose judgement does not start with `該当なし` is open; an RT row is resolved
-// only by `解消`, or `対応不要` with a reason. Every RT ID in any registered participant's record is open
-// unless resolved so. null: no such record.
+// only by `解消`, or `対応不要` with a reason. In the line format (broker.ts redTeamLines, W11): the listed
+// 該当 and 確認できない causes are open; the 解消 and 対応不要 IDs of the `前のRT:` line are resolved. Every RT
+// ID in any registered participant's record is open unless resolved so. null: no such record.
 const RT_CELL = /^RT-[1-9][0-9]{0,2}$/,
   TABLE_RULE = /^\|?\s*:?-{3,}/;
 export function manualFaultfinding(p: Policy, c: Collection): string[] | null {
@@ -281,6 +283,9 @@ export function manualFaultfinding(p: Policy, c: Collection): string[] | null {
     } else if (!judgement.startsWith("該当なし"))
       open.add(/^[A-Za-z0-9._/-]{1,120}$/.test(first) ? `cause:${first}` : "cause:unparsed");
   });
+  const listed = redTeamLines(lines);
+  for (const id of listed.open) open.add(id);
+  for (const id of listed.resolved) resolved.add(id);
   for (const r of all)
     for (const m of r.body.normalize("NFKC").matchAll(RT_ID))
       if (!resolved.has(`RT-${m[1]}`)) open.add(`RT-${m[1]}`);
