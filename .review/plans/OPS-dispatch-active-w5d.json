@@ -53,8 +53,8 @@
         },
         {
           "id": "artifact",
-          "method": "broker.test.ts: proseのevidenceを持つ結果は引き続きparseResultで拒否される。active.test.ts: benignのstdinがevidenceとunverifiedを空にする依頼を含む",
-          "expected": "検証器は弱まらず、benignの依頼は通る結果を求める"
+          "method": "broker.test.ts: proseのevidenceを持つ結果は引き続きparseResultで拒否される。active.test.ts: benignのstdinは本番のreviewと同じjobText（evidenceとunverifiedの規則）と最小の測定の依頼だけで、evidence・unverifiedを空にする指示を含まない（RT-1）",
+          "expected": "検証器は弱まらず、benignは本番のreviewと同じ指示の下でparseResultを通るかを確かめる"
         }
       ]
     },
@@ -129,7 +129,7 @@
       "location": "active.ts measureCommandのbenign runの依頼",
       "data": "所有者の測定の固定文",
       "trust": "trusted",
-      "control": "parseResultを通る結果（needs-owner、findings・evidence・unverifiedは空、1行の要約）を求める。argvとFIXED_QUERYは本番のまま"
+      "control": "本番のreviewと同じjobTextに、Grepとneeds-owner・findingsなしの最小の依頼だけを足す。evidence・unverifiedはschemaとjobTextの規則の下でモデルが埋める（RT-1）。argvとFIXED_QUERYは本番のまま"
     }
   ],
   "variant_analysis": [
@@ -188,7 +188,7 @@
         },
         {
           "location": "active.ts benign runの依頼",
-          "result": "evidenceとunverifiedを空にし、findingsなし、1行の要約を求める"
+          "result": "依頼はneeds-owner・findingsなしのまま変えない。evidence・unverifiedは本番と同じjobTextの規則に任せる（RT-1）"
         },
         {
           "location": "doctor.ts trapPrRun・injectionRunの依頼",

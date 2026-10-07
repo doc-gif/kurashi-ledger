@@ -989,7 +989,7 @@ export async function measureCommand(d: {
     const base = buildLaunch(d.policy, job, d.install.claude, benign.run, d.launch ?? {});
     const plan = {
       ...base,
-      stdin: `${base.stdin}\nMeasurement: use the Grep tool three times on the working directory (patterns: Synthetic, material 3, nothing-matches), then return the result object with decision needs-owner, a one-line summary, and empty findings, evidence, unverified, causes and previous.\n`,
+      stdin: `${base.stdin}\nMeasurement: use the Grep tool three times on the working directory (patterns: Synthetic, material 3, nothing-matches), then return the result object with decision needs-owner and no findings.\n`,
     };
     const verifier = new RunVerifier();
     const r = await superviseRun(
