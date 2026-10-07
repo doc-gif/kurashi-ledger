@@ -6,8 +6,11 @@
   ".review/plans/OPS-dispatch-active-w5e.json",
   "docs/review-dispatch-design.md",
   "docs/review-dispatch-runbook.md",
+  "scripts/lib/review-dispatch/active.test.ts",
+  "scripts/lib/review-dispatch/active.ts",
   "scripts/lib/review-dispatch/doctor.test.ts",
   "scripts/lib/review-dispatch/doctor.ts",
+  "scripts/lib/review-dispatch/runtime.ts",
   "scripts/review-dispatch.ts"
  ],
  "conflicts": [],
@@ -16,6 +19,11 @@
    "date": "2026-10-07",
    "source": "https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6030270452（所有者の回答の受領記録）",
    "decision": "測定のrun Bでモデルの試みを根拠にする項目（basisがaccess・mixed）は合否に使わず情報として記録する。allowed（漏えい・変更・接続）は従来どおりdisabled。合否は確実に判定できるもの（doctorの合成probe、構造の確認、run A、benign runのschema、groupの終了）だけ。run Bの各対象に同じcli.sbで同じアクセスを確かめる合成probeがあることを確かめ、なければ足す。run Bの再試行・合算はしない"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #67 red team RT-1（調整係の指示）",
+   "decision": "run自身のconfig dir・HOME・tmpはcli.sbが許すので、許可だけを被覆に数えない。測定のrun A・A2・B・benignの後に、その3つへtokenの値と既知の資格情報のファイル名が無いことを走査する決定的な合否 config-holds-no-secret を足す（hit=allowed→disabled、走査の失敗=inconclusive→unverified）"
   }
  ],
  "assessments": [
@@ -39,11 +47,11 @@
   {
    "id": "INV-PRIVACY",
    "disposition": "preserve",
-   "reason": "出力は従来どおりprobe ID・閉じた結果・根拠の種類と固定の「情報」の印だけ。合成probeの追加はfixtureのtmpの合成ファイルだけを読む",
+   "reason": "出力は従来どおりprobe ID・閉じた結果・根拠の種類と固定の「情報」の印だけ。合成probeの追加はfixtureのtmpの合成ファイルだけを読む。runの後の走査はtokenを比べるだけで、記録・診断は数だけ",
    "checks": [
     {
      "id": "public",
-     "method": "doctor.test.ts: 測定の行とdoctorの結果にpath・合成の値がない（既存の試験を保つ）。check-public --staged",
+     "method": "doctor.test.ts: 測定の行とdoctorの結果にpath・合成の値がない（既存の試験を保つ）。check-public --staged。doctor.test.ts・active.test.ts: 走査の結果・診断・測定記録にtokenもpathも入らない",
      "expected": "出力・公開差分に秘密や実データがない"
     }
    ]
@@ -51,12 +59,12 @@
   {
    "id": "INV-RELEASE",
    "disposition": "preserve",
-   "reason": "判定の意味が変わる（run Bの情報項目のinconclusiveでverifiedになりうる）。測定のschema 2・basisは変えないので測り直しは不要。手順書8の期待と設計§7を合わせる",
+   "reason": "判定の意味が変わる（run Bの情報項目のinconclusiveでverifiedになりうる。config-holds-no-secretが必須の合否に加わる）。測定をschema 3にし、旧記録はmeasurement-invalidで拒否して測り直させる。手順書8の期待と設計§7を合わせる",
    "checks": [
     {
      "id": "update",
      "method": "doctor.test.ts: 情報項目のinconclusiveと他の条件が揃えばverified、run Bのallowedはdisabled、構造の項目とrun Aのinconclusiveはunverified。runbook 8の期待を新しい読み方にする",
-     "expected": "既存の測定fileをそのまま新しい判定で読める"
+     "expected": "schema 2の記録・config-holds-no-secretのないcapabilityでは起動しない。所有者の手順8・9で作り直せる"
     },
     {
      "id": "artifact",
@@ -77,7 +85,7 @@
     },
     {
      "id": "trust",
-     "method": "doctor.test.ts: run Bの全項目について、allowedならdisabled。対応表の合成probeが1つでも欠けると被覆の試験が失敗し、doctorもcoverage-gapでunverified",
+     "method": "doctor.test.ts: run Bの全項目について、allowedならdisabled。対応表の合成probeが1つでも欠けると被覆の試験が失敗し、doctorもcoverage-gapでunverified。tokenか資格情報のファイルを残すfakeのCLI・benignはallowedでdisabled、走査できないfileはinconclusiveでunverified、許可だけの対応はgap",
      "expected": "モデルの試みの有無で合否が変わらず、OSの境界の確認は欠けない"
     }
    ]
@@ -146,7 +154,7 @@
    "location": "doctor.ts parseMeasurement・runDoctor",
    "data": "所有者の測定file（run A・Bの結果）",
    "trust": "partially-trusted",
-   "control": "schema 2とbasis・sharedProfileの一致は従来どおり。basisがaccess・mixedの項目はallowedだけを見て（disabled）、denied・inconclusiveはoutcomesにmeasured:<項目>として記録する。structuralの項目は従来どおりdeniedが必要"
+   "control": "schema 2とbasis・sharedProfileの一致は従来どおり。basisがaccess・mixedの項目はallowedだけを見て（disabled）、denied・inconclusiveはoutcomesにmeasured:<項目>として記録する。structuralの項目は従来どおりdeniedが必要。schema 3だけを受け付ける（config-holds-no-secretのない旧記録は拒否）"
   },
   {
    "id": "B2",
@@ -163,6 +171,14 @@
    "data": "run Bの対象（測定者が作る合成のpath・URL・socket）",
    "trust": "trusted",
    "control": "依頼の各行を対象IDの表から作り、対象IDの集合がRUN_B_COVERAGEのkeyと一致することを試験で確かめる。依頼の文面・FIXED_QUERY・argvは変えない"
+  },
+  {
+   "id": "B4",
+   "direction": "entry",
+   "location": "doctor.ts scanRunArea・measureCli、active.ts measureCommand（benign）",
+   "data": "測定した各runのconfig dir・HOME・tmpの中身",
+   "trust": "untrusted",
+   "control": "lstatで辿り、linkは辿らず走査不能に数える。tokenのbytesをメモリで比べ、既知の資格情報の名前を照合する。記録は数（files・hits・unreadable）とallowed・denied・inconclusiveだけ。値・中身・pathを出さない。run領域を消す前に走査する"
   }
  ],
  "variant_analysis": [
@@ -223,6 +239,18 @@
     {
      "location": "doctor.ts RUN_B_COVERAGE・coverageGaps",
      "result": "run Bの全対象に同じ種類のアクセスの合成probe。ssh・DBの読取り・policyの読取り・別のrunのconfigの読取りを追加"
+    },
+    {
+     "location": "doctor.ts coverageGaps（allow）",
+     "result": "許可だけでは通さず、basis scanの合否が要る"
+    },
+    {
+     "location": "active.ts measureCommand・doctor.ts measureCli",
+     "result": "run A・A2・B・benignの全部を走査し、1つでもhitならallowed、走査の失敗はinconclusive"
+    },
+    {
+     "location": "runtime.ts REQUIRED_PROBES",
+     "result": "config-holds-no-secretを必須に追加"
     }
    ]
   },
@@ -293,10 +321,9 @@
    "run_b_target": "config",
    "measured": "deny-keys",
    "access": "read",
-   "synthetic": [
-    "next-run-read"
-   ],
-   "note": "追加。run自身のconfig dirはcli.sbが読み書きを許す（PROFILE_ALLOWSのrun-config-home-tmp-write、denyと報告しない）。拒否はflagの層（Readの規則）だけ。合成probeは別のrunのconfig dirの読取り"
+   "synthetic": [],
+   "note": "run自身のconfig dir・HOME・tmpはcli.sbが読み書きを許す（run-config-home-tmp-write）ので合成のprobeでは拒否を示せない。runの後の走査（tokenの値・資格情報のファイル名）を合否にする。許可だけの対応は被覆の欠落",
+   "gate": "config-holds-no-secret"
   },
   {
    "run_b_target": "gh",

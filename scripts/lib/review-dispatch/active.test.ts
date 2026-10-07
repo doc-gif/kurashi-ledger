@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { connect } from "node:net";
 import { dirname, join, sep } from "node:path";
@@ -24,7 +24,7 @@ import {
 import { ReviewBroker } from "./broker.ts";
 import { profileHash } from "./doctor.ts";
 import { GhReader, type Transport } from "./github.ts";
-import { argvTemplateHash, scanTree, type LaunchInstall } from "./launcher.ts";
+import { argvTemplateHash, scanTree, TOKEN_ENV, type LaunchInstall } from "./launcher.ts";
 import { hash, type Job, type WorkerResult } from "./model.ts";
 import { runBinding, signedMessage, RunVerifier } from "./provenance.ts";
 import { assess } from "./reducer.ts";
@@ -300,6 +300,7 @@ type FakeOptions = {
   noResult?: boolean; // e.g. a timeout: no run-result line
   otherRun?: string; // the envelope is signed for another run
   raw?: string; // the worker's result text, instead of a valid result
+  plant?: (plan: Record<string, unknown>) => void; // W5e: what the worker leaves in its own areas
 };
 function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<string, unknown> }[]): SpawnSupervisor {
   return (file, args, env) => {
@@ -361,6 +362,7 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
           return true;
         }
         call.plan = JSON.parse(chunk) as Record<string, unknown>;
+        o.plant?.(call.plan);
         const binding = args[args.indexOf("--binding") + 1]!;
         emit(JSON.stringify({ schema: 1, type: "run-key", run, binding: o.badKey ? "0".repeat(64) : binding, key: signer.publicKey() }));
         return true;
@@ -966,14 +968,37 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
     assert.deepEqual(record.external, { schema: true, groupEnded: true });
     // W4f: diagnostics per run, enums and numbers only; a silent CLI shows it never started.
     const silent = { exitCode: 0, started: false, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: null };
-    assert.deepEqual(record.diagnostics, { A: silent, A2: silent, B: silent, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null } });
+    // W5e (PR67 RT-1): every run's own config dir, HOME and tmp were scanned (counts only): the result schema in
+    // each tmp, and run B's config trap file (a nonce, not the token).
+    const scanned = (files: number) => ({ files, hits: 0, unreadable: 0 });
+    assert.deepEqual(record.diagnostics, {
+      A: silent,
+      A2: silent,
+      B: silent,
+      scan: { A: scanned(1), A2: scanned(1), B: scanned(2), benign: scanned(1) },
+      benign: { supervisorExitCode: 0, failed: null, stage: null, field: null },
+    });
+    assert.equal(record.measurement.outcomes["config-holds-no-secret"], "denied");
     assert.ok(!JSON.stringify(record).includes(TOKEN));
     assert.deepEqual(diagnosticLines(record.diagnostics!), [
       "診断 A: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 A2: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 B: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
       "診断 benign: exit=0 failed=なし stage=- field=-",
+      "診断 走査: A=files=1/hits=0/unreadable=0 A2=files=1/hits=0/unreadable=0 B=files=2/hits=0/unreadable=0 benign=files=1/hits=0/unreadable=0",
     ]);
+    // The benign run leaving the token or a credential file in its own areas fails the gate; so does a file the
+    // scan cannot check. Nothing of it is written to the record.
+    const env = (plan: Record<string, unknown>) => plan["env"] as Record<string, string>;
+    for (const [name, plant, want] of [
+      ["token", (plan: Record<string, unknown>) => writeFileSync(join(env(plan)["CLAUDE_CONFIG_DIR"]!, "state.json"), `{"t":"${env(plan)[TOKEN_ENV]}"}`), "allowed"],
+      ["credentials", (plan: Record<string, unknown>) => writeFileSync(join(env(plan)["HOME"]!, ".credentials.json"), "{}"), "allowed"],
+      ["link", (plan: Record<string, unknown>) => symlinkSync("/etc/hosts", join(env(plan)["TMPDIR"]!, "x")), "inconclusive"],
+    ] as const) {
+      const r = await measure({ plant });
+      assert.equal(r.measurement.outcomes["config-holds-no-secret"], want, name);
+      assert.ok(!JSON.stringify(r).includes(TOKEN), name);
+    }
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(!worker.args.some((a) => /descendant/.test(a)));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
@@ -1006,8 +1031,9 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       }),
       /bound-file-changed/,
     );
-    // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default).
-    assert.ok(Object.values(record.measurement.outcomes).every((o) => o === "inconclusive"));
+    // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default), except the
+    // post-run scan, which needs no attempt (W5e).
+    for (const [k, o] of Object.entries(record.measurement.outcomes)) assert.equal(o, k === "config-holds-no-secret" ? "denied" : "inconclusive", k);
     assert.deepEqual(readdirSync(runs), []);
   } finally {
     rmSync(runs, { recursive: true, force: true });
