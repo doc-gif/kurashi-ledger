@@ -50,6 +50,7 @@ print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} p
   autoload -Uz is-at-least
   command -v mise >/dev/null || { echo "miseがない（docs/development.md）"; exit 1; }
   [[ -n $gh_bin ]] || { echo "ghがない"; exit 1; }
+  gh_ver="$("$gh_bin" --version 2>/dev/null | sed -n '1s/^gh version \([0-9][0-9.]*\).*/\1/p')"; [[ -n $gh_ver ]] && is-at-least 2.97.0 "$gh_ver" || { echo "ghが古い（2.97.0以上。job logの取得に要る）: ${gh_ver:-不明}"; exit 1; }
   command -v cloudflared >/dev/null || { echo "cloudflaredがない: brew install cloudflared"; exit 1; }
   xcode-select -p >/dev/null 2>&1 || { echo "Command Line Toolsがない: xcode-select --install"; exit 1; }
   [[ -n $claude_exe && $claude_exe != *' '* ]] || { echo "Claude Codeのネイティブ版を、空白のないパスに入れる"; exit 1; }
@@ -555,4 +556,5 @@ kl_left; echo "戻り値 $?"
 | 写し（新しいmain） | 17のlaunchdから外すブロックで`外した`まで（`kl_mode off`はしない）、2、0、`rm "$install"`のあと5、8、9、12。modeとrevisionは変えない。新しい写しで古いDBが拒否されたら（schemaの変更）、新しいrootで手順6のinitからやり直し、そのときだけ今のmodeで`kl_mode`を実行する（shadowなら`kl_mode shadow`、activeなら14の3） |
 | setup-token（期限） | 3、9 |
 | policy | `kl_mode`（revisionと`readyAfter`を新しくする）か手で変える。手で変えるときも`readyAfter`を切替の時刻にする。受け口は配送ごとに読み直すので再起動は要らない。Readyのやり直しが要る |
+| rootに`dispatch-gh-*`・`dispatch-broker-*`のdirが残る（W9より前の写しのghのテレメトリの子が作り直したもの。中身は`.local/state/gh/device-id`だけ） | W9を含む写しへ更新したあと1回、`find "$root" -maxdepth 1 -type d \( -name 'dispatch-gh-*' -o -name 'dispatch-broker-*' \) -mmin +5 -print -exec rm -rf {} +`（5分より新しいものは実行中のghの分なので残す）。以後は増えない |
 | cycleが終了コード4、受け口が503を返し続ける | [policyの更新と受け口の503](review-dispatch-implementation.md#policyの更新と受け口の503) |

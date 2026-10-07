@@ -8,6 +8,7 @@ import {
   bindReview,
   ghTransport,
   ghReviewTransport,
+  ghEnv,
   canonicalBody,
   REQUIRED_JOBS,
   type GhResult,
@@ -663,4 +664,87 @@ test("W6 shadow case: CI is proven when the gate log (with escapes) names the te
     collect(new GhReader("synthetic/repository", ghTransport("synthetic-token", "/synthetic/gh", refusing)), p, 1, options),
     EvidenceError,
   );
+});
+
+// ---- W9: gh's telemetry child recreated the removed temp HOME (leftover dispatch-gh-* dirs in the root) ----
+
+test("W9 every gh gets the same closed environment with telemetry and the update check off", async () => {
+  const want = ["GH_CONFIG_DIR", "GH_NO_UPDATE_NOTIFIER", "GH_PAGER", "GH_TELEMETRY", "GH_TOKEN", "HOME", "NO_COLOR", "PATH"];
+  const env = ghEnv("synthetic-token", "/synthetic/home");
+  assert.deepEqual(Object.keys(env).sort(), want);
+  assert.equal(env["GH_TELEMETRY"], "false");
+  assert.equal(env["GH_NO_UPDATE_NOTIFIER"], "1");
+  assert.equal(env["HOME"], "/synthetic/home");
+  assert.equal(env["GH_CONFIG_DIR"], "/synthetic/home");
+  const seen: Record<string, string>[] = [];
+  const t = ghTransport("synthetic-token", "/synthetic/gh", (_args, e) => {
+    seen.push(e);
+    return ok(http("200 OK", {}, "{}"));
+  });
+  await t("/repos/synthetic/repository/pulls/1", {});
+  assert.equal(seen.length, 1);
+  assert.deepEqual(Object.keys(seen[0]!).sort(), want);
+  assert.equal(seen[0]!["GH_TELEMETRY"], "false");
+});
+
+// A fake gh that behaves like gh 2.97 with telemetry on (cli/cli internal/telemetry): it answers at once and leaves
+// a detached child (own process group, never awaited) that later creates $HOME/.local/state/gh/device-id with
+// MkdirAll, recreating a HOME that was removed in the meantime. GH_TELEMETRY's falsey values turn it off.
+const TELEMETRY_GH = (marker: string) => `#!${process.execPath}
+const fs = require("node:fs"), { spawn } = require("node:child_process");
+const t = process.env.GH_TELEMETRY;
+const off = t !== undefined ? ["", "0", "false", "no", "disabled", "off"].includes(t.toLowerCase()) : ["1", "true"].includes(process.env.DO_NOT_TRACK ?? "");
+if (!off) {
+  const code = "setTimeout(() => { const fs = require('node:fs'), d = require('node:path').join(process.env.HOME, '.local', 'state', 'gh'); fs.mkdirSync(d, { recursive: true, mode: 0o755 }); fs.writeFileSync(d + '/device-id', 'synthetic'); fs.writeFileSync(process.argv[1], 'done'); }, 300);";
+  spawn(process.execPath, ["-e", code, ${JSON.stringify(marker)}], { detached: true, stdio: "ignore", env: process.env }).unref();
+}
+const args = process.argv.slice(2);
+if (args.includes("POST")) {
+  const body = JSON.parse(fs.readFileSync(0, "utf8"));
+  process.stdout.write(JSON.stringify({ id: 1, user: { id: 30 }, commit_id: body.commit_id }));
+} else process.stdout.write("HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n[]");
+`;
+
+test("W9 no temp HOME is left behind: gh's telemetry child is never started (control: it recreates a removed HOME)", async () => {
+  if (process.platform === "win32") {
+    // The dispatcher and its gh run on macOS only; a script cannot stand in for gh.exe. The environment is the same.
+    assert.equal(ghEnv("synthetic-token", "C:\\synthetic")["GH_TELEMETRY"], "false");
+    return;
+  }
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, readdirSync, rmSync, realpathSync, statSync } = await import("node:fs"),
+    { spawnSync } = await import("node:child_process"),
+    { tmpdir } = await import("node:os"),
+    { join } = await import("node:path");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "w9-gh-")));
+  const saved = process.env["TMPDIR"];
+  const settle = () => new Promise((r) => setTimeout(r, 900));
+  try {
+    const gh = join(dir, "gh"),
+      control = join(dir, "control-home"),
+      root = join(dir, "root");
+    writeFileSync(gh, TELEMETRY_GH(join(dir, "child-ran")));
+    chmodSync(gh, 0o700);
+    // Control: without GH_TELEMETRY the fake's child recreates the HOME after it was removed (the soak's leftover).
+    mkdirSync(control, { mode: 0o700 });
+    const r = spawnSync(gh, ["api", "/zen"], { env: { HOME: control, PATH: "/usr/bin:/bin" }, encoding: "utf8" });
+    assert.equal(r.status, 0);
+    rmSync(control, { recursive: true, force: true });
+    await settle();
+    assert.equal(existsSync(join(control, ".local", "state", "gh", "device-id")), true, "control: the child recreates HOME");
+    assert.equal(statSync(control).mode & 0o777, 0o755);
+    rmSync(join(dir, "child-ran"), { force: true });
+    // The dispatcher's gh calls, with tmpdir() pointed at a private root as the daemon's TMPDIR does.
+    mkdirSync(root, { mode: 0o700 });
+    process.env["TMPDIR"] = root;
+    const read = ghTransport("synthetic-token", gh);
+    assert.equal((await read("/repos/synthetic/repository/pulls/1", {})).status, 200);
+    await ghReviewTransport("synthetic-token", gh, "synthetic/repository", 30).post(1, "COMMENT", HEAD, "synthetic");
+    await settle();
+    assert.deepEqual(readdirSync(root), []);
+    assert.equal(existsSync(join(dir, "child-ran")), false, "no telemetry child ran");
+  } finally {
+    if (saved === undefined) delete process.env["TMPDIR"];
+    else process.env["TMPDIR"] = saved;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

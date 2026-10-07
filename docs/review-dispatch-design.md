@@ -50,9 +50,9 @@ CIはQuality gateと支持ジョブ、試験mergeの親/head/base・treeを確�
 
 dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変更として独立レビューする。1回の取得batchの間だけ縮小tokenを再利用し、全必要ページを同じ子プロセスで読む。期限を超えるbatchは破棄して再取得し、終了時に失効する。JWT/キーチェーン読取りをAPI要求ごとに繰り返さず、batch間でtokenを保存しない。
 
-GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
+GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。ghのテレメトリ（gh 2.91以降の既定）と更新確認は、`gh help environment`の変数（`GH_TELEMETRY=false`・`GH_NO_UPDATE_NOTIFIER=1`）で切る。テレメトリはGitHub API以外へ送り、切り離した子`gh send-telemetry`が消した一時HOMEを作り直す（W9。[github.ts](../scripts/lib/review-dispatch/github.ts)の`ghEnv`）。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路は、shadowだけに使うA（Cloudflareのクイックトンネル。全pathが受け口に届く）と、activeに要るB（Tailscale Funnel。固定の`<host>.<tailnet>.ts.net`）。BはFunnelの取付けを`/webhook`の1つだけにし、ほかの最上位pathはFunnelが404を返して受け口に届かない。`/webhook/…`の下のpathは受け口に届く（取付けは前方一致。残る危険）が、受け口はPOSTでpathが`/webhook`と完全一致する要求以外を、bodyを読む前・署名とpolicyの検査の前に404で返し、何も処理しない（[webhook.ts](../scripts/lib/review-dispatch/webhook.ts)の`serve`）。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路は、shadowだけに使うA（Cloudflareのクイックトンネル。全pathが受け口に届く）と、activeに要るB（Tailscale Funnel。固定の`<host>.<tailnet>.ts.net`）。BはFunnelの取付けを`/webhook`の1つだけにし、ほかの最上位pathはFunnelが404を返して受け口に届かない。`/webhook/…`の下のpathは受け口に届く（取付けは前方一致。残る危険）が、受け口はPOSTでpathが`/webhook`と完全一致する要求以外を、bodyを読む前・署名とpolicyの検査の前に404で返し、何も処理しない（[webhook.ts](../scripts/lib/review-dispatch/webhook.ts)の`serve`）。署名のheaderが無いか形が違う要求も、bodyを読む前に401で返す。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -189,7 +189,8 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 所有者が[2026-10-07に受け入れた](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)残余リスク（Codexの[ISSUE50-P001〜P003](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019834396)）。supervisorはworkerのprocess groupを止めて空を確かめるが（§4）、全子孫の終了は証明しない。
 
 - groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きのIPv4のTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
-- Tailscale Funnelが`*:443`で待ち受けても、Mac自身のアドレスの443番は上の規則で拒否される（「443番で届く先」）。CLIとその子が届くのは、インターネットの誰とも同じく、Funnelの公開URLだけ。そこでは受け口が`/webhook`へのPOST以外を404にし（[webhook.ts L207-L210](../scripts/lib/review-dispatch/webhook.ts#L207-L210)）、署名が合わなければpolicyも読まずに401にする（[L244-L252](../scripts/lib/review-dispatch/webhook.ts#L244-L252)。経路は§3）。HMACの秘密なしには何も保存できない（[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
+- Tailscale Funnelが`*:443`で待ち受けても、Mac自身のアドレスの443番は上の規則で拒否される（「443番で届く先」）。CLIとその子が届くのは、インターネットの誰とも同じく、Funnelの公開URLだけ。そこでは受け口が`/webhook`へのPOST以外を404にし（[webhook.ts L209-L212](../scripts/lib/review-dispatch/webhook.ts#L209-L212)）、署名が合わなければpolicyも読まずに401にする（headerの形は[L213-L222](../scripts/lib/review-dispatch/webhook.ts#L213-L222)、HMACは[L256-L264](../scripts/lib/review-dispatch/webhook.ts#L256-L264)。経路は§3）。HMACの秘密なしには何も保存できない（[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
+- 形だけ正しい偽の署名header（`sha256=`と64桁の16進）は早い401を通り、HMACの検査で401になるまで、最大25 MiBを最大5秒受信させる（memoryは`MAX_BODY`で頭打ち。接続数の上限はない）。これが受け口に残るDoSの費用（W9）。
 - 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
 - この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
 - 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。
