@@ -1,0 +1,278 @@
+{
+ "schema_version": 2,
+ "task_id": "OPS-dispatch-active",
+ "base_sha": "c285290028f90d80824934b92d760becb1b08fbe",
+ "planned_paths": [
+  "docs/review-dispatch-design.md",
+  "docs/review-dispatch-runbook.md",
+  "tools/review_dispatch/launchd/tunnel.plist.in"
+ ],
+ "conflicts": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-07",
+   "source": "調整係が伝えた所有者の決定（Issue #50 W7。記録はIssue #50に調整係が残す）",
+   "decision": "activeの公開HTTPS経路B（Cloudflareの名前付きトンネル、ドメインの購入が要る）をTailscale Funnel（無料、固定の<host>.<tailnet>.ts.net）に替える。Aのクイックトンネル（shadowのみ）は変えない"
+  }
+ ],
+ "assessments": [
+  {
+   "id": "INV-PRIVACY",
+   "disposition": "preserve",
+   "reason": "手順書の例は変数と<host>.<tailnet>.ts.netの置き換え字だけ。実ホスト名・URL・tailnet名をrepoに書かない（URLはrepoに書かない規則を維持）",
+   "checks": [
+    {
+     "id": "public",
+     "method": "git grep -i 'ts.net'で置き換え字と変数だけであることを確かめる。check-public --staged",
+     "expected": "実ホスト名・URL・秘密なし"
+    }
+   ]
+  },
+  {
+   "id": "INV-TASKS",
+   "disposition": "preserve",
+   "reason": "Bの方式だけを替える。0・10・12・Bへ移る・14・17と比較表を同じ変更で直し、14が読む印tunnel-b-okの名前と意味（Bの確認の合格）を保つ。Bだけが使ったlaunchdの雛形tunnel.plist.inを消す",
+   "checks": [
+    {
+     "id": "dependencies",
+     "method": "baseが最新origin/main（W6 #68を含む）であることを確かめる。git grepでtunnel.plist.in・@CLOUDFLARED@・@TUNNEL_CONFIG@・kl_svc tunnelを参照するコード・試験・手順がないことを確かめる",
+     "expected": "雛形の削除で壊れる参照なし（過去の計画OPS-dispatch-active-w4b.jsonの記録は履歴として残す）"
+    },
+    {
+     "id": "entrypoints",
+     "method": "git grep -i 'cloudflare\\|tunnel_host\\|funnel'で、Bの定義が設計§3・§8と手順書10だけにあり、/webhook/*の残る危険が設計§3の1か所だけにあることを確かめる",
+     "expected": "概念ごとに置き場所は1つ。Aの記述は変わらない"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "id": "B1",
+   "direction": "entry",
+   "location": "公開HTTPS（Tailscale Funnel、443番）→ 127.0.0.1:<port>の受け口",
+   "data": "GitHubのWebhookの配送と、インターネットからの任意の要求",
+   "trust": "untrusted",
+   "control": "Funnelの取付けは/webhookの1つだけ（tailscale funnel statusで確かめる）。ほかの最上位pathはFunnelが404で受け口に届かない。/webhook/*は受け口に届きうるが、webhook.tsはmethodがPOSTでurlが/webhookと完全一致する要求以外を、bodyを読む前・HMAC・policyの検査の前に404で返す。届いた/webhookは従来どおりHMACの署名・body上限・許可リストで守る"
+  },
+  {
+   "id": "B2",
+   "direction": "exit",
+   "location": "手順書の端末出力・repo",
+   "data": "Funnelのホスト名（<host>.<tailnet>.ts.net）",
+   "trust": "trusted",
+   "control": "ホスト名は所有者の端末の変数funnel_hostだけに置き、repo・Issue・PRに書かない"
+  }
+ ],
+ "variant_analysis": [
+  {
+   "invariant_id": "INV-PRIVACY",
+   "pattern": "公開経路のホスト名・URLがrepoに入る",
+   "places": [
+    {
+     "location": "docs/review-dispatch-runbook.md 0・10・12・14・17",
+     "result": "変数funnel_hostと置き換え字だけ"
+    },
+    {
+     "location": "docs/review-dispatch-design.md §3・§8",
+     "result": "方式の名前だけ。ホスト名なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-TASKS",
+   "pattern": "Bの方式（名前付きトンネル・cloudflared・tunnel.yml・launchdのtunnel）に依存する記述",
+   "places": [
+    {
+     "location": "runbook 0 tunnel_host",
+     "result": "funnel_hostに替える"
+    },
+    {
+     "location": "runbook 1 cloudflaredの確認",
+     "result": "Aが使うので残す"
+    },
+    {
+     "location": "runbook 5 protectedRootsの$HOME/.cloudflared",
+     "result": "Aのcloudflaredが使いうるので残す（測定の対象を変えない）"
+    },
+    {
+     "location": "runbook 10 比較表とBのブロック",
+     "result": "Funnelに替える。アカウント・ドメインの要件を外す"
+    },
+    {
+     "location": "runbook 12 names+=(tunnel)・@CLOUDFLARED@・@TUNNEL_CONFIG@とBの確認",
+     "result": "launchdの登録をやめ、確認をcurlとkl_funnelに替える。印tunnel-b-okは同じ"
+    },
+    {
+     "location": "runbook Bへ移る",
+     "result": "12の再登録をやめ、10のB・0・12のBの確認の順にする"
+    },
+    {
+     "location": "runbook 14 kl_svc tunnel",
+     "result": "kl_funnelに替える。クイックトンネルのpgrepは残す"
+    },
+    {
+     "location": "runbook 17 cycle serve tunnelのbootout",
+     "result": "tunnelを外し、tailscale funnel --https=443 offを足す"
+    },
+    {
+     "location": "tools/review_dispatch/launchd/tunnel.plist.in",
+     "result": "Bだけが使ったので削除。コード・試験の参照なし"
+    },
+    {
+     "location": "docs/review-dispatch-implementation.md 検査表の「トンネル経由で5秒以内か」",
+     "result": "公開経路一般の意味なので変えない"
+    },
+    {
+     "location": "scripts/lib/review-dispatch/webhook.ts:207",
+     "result": "変更なし。完全一致でなければ404（受け口の404の根拠）"
+    }
+   ]
+  }
+ ],
+ "deferred": [
+  {
+   "item": "Funnelでの/webhook/*が受け口に届くかどうかの実測",
+   "reason": "所有者の実機の測定では区別できない（どちらでも404）。受け口のコードが処理せず404を返すことで閉じる"
+  },
+  {
+   "item": "tailscale funnel statusの表示形式の版差",
+   "reason": "所有者の実機で測った形（|-- /webhook proxy …と(Funnel on)）に合わせる。形が変わればkl_funnelは不合格で止まる（安全側）"
+  }
+ ],
+ "context": {
+  "INV-PRIVACY": {
+   "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+   "scenarios": [
+    {
+     "id": "public",
+     "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR12-R002",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "public-path-exception-scope",
+     "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+     ]
+    },
+    {
+     "id": "PR42-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "token-scope-fail-open",
+     "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+     ]
+    },
+    {
+     "id": "PR42-R006",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "credential-tool-from-untrusted-checkout",
+     "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR37-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "logged-value-carries-data",
+     "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+     ]
+    }
+   ]
+  },
+  "INV-TASKS": {
+   "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+   "scenarios": [
+    {
+     "id": "dependencies",
+     "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+    },
+    {
+     "id": "entrypoints",
+     "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R003",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "dependency-before-consumer",
+     "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+     ]
+    },
+    {
+     "id": "PR2-R008",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "entrypoint-order",
+     "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+     ]
+    },
+    {
+     "id": "PR4-R019",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "review-role-spelling",
+     "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R022",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "draft-open-entrypoint-coherence",
+     "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+     ]
+    },
+    {
+     "id": "PR10-R004",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "status-docs-current-state-coherence",
+     "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
+     ]
+    }
+   ]
+  }
+ }
+}
