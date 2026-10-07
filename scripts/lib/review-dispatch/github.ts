@@ -626,6 +626,24 @@ export type GhResult = {
   stderr: string | null;
 };
 export type GhRun = (args: string[], env: Record<string, string>) => GhResult;
+// The whole environment of every gh the dispatcher starts (never the parent's). gh 2.91 and later send telemetry by
+// default: each run creates $HOME/.local/state/gh/device-id, and a sampled run (1 in 100 by default) starts a detached
+// `gh send-telemetry` child (own process group, never awaited, same HOME) that recreates the removed temp HOME
+// (W9: leftover dispatch-gh-* dirs in the root). GH_TELEMETRY=false turns it off, so gh writes no state and the
+// only outbound traffic is the GitHub API. The update check is off too (it never runs without a terminal).
+// Both are documented in `gh help environment`.
+export function ghEnv(token: string, home: string): Record<string, string> {
+  return {
+    GH_TOKEN: token,
+    GH_CONFIG_DIR: home,
+    HOME: home,
+    PATH: process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
+    NO_COLOR: "1",
+    GH_PAGER: "cat",
+    GH_TELEMETRY: "false",
+    GH_NO_UPDATE_NOTIFIER: "1",
+  };
+}
 // The job-log endpoint: plain text that GitHub Actions colours with terminal escape sequences.
 const JOB_LOGS = /^\/repos\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+\/actions\/jobs\/\d+\/logs$/;
 export function ghTransport(
@@ -658,15 +676,7 @@ export function ghTransport(
       );
       for (const [k, v] of Object.entries(headers))
         args.push("-H", `${k}: ${v}`);
-      const r = run(args, {
-        GH_TOKEN: token,
-        GH_CONFIG_DIR: home,
-        HOME: home,
-        PATH:
-          process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
-        NO_COLOR: "1",
-        GH_PAGER: "cat",
-      });
+      const r = run(args, ghEnv(token, home));
       if (r.error || r.signal !== null || typeof r.stdout !== "string")
         throw new EvidenceError();
       const match = r.stdout.match(
@@ -751,17 +761,7 @@ export function ghReviewTransport(
             encoding: "utf8",
             timeout: 15000,
             maxBuffer: 1024 * 1024,
-            env: {
-              GH_TOKEN: token,
-              GH_CONFIG_DIR: home,
-              HOME: home,
-              PATH:
-                process.platform === "win32"
-                  ? "C:\\Windows\\System32"
-                  : "/usr/bin:/bin",
-              NO_COLOR: "1",
-              GH_PAGER: "cat",
-            },
+            env: ghEnv(token, home),
           },
         );
         if (r.status !== 0 || r.error) throw new EvidenceError();

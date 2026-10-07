@@ -480,7 +480,7 @@ if (args.includes("POST")) {
         assert.equal(c.token, true);
         assert.deepEqual(
           c.env.filter((k: string) => !k.startsWith("__CF")),
-          ["GH_CONFIG_DIR", "GH_PAGER", "GH_TOKEN", "HOME", "NO_COLOR", "PATH"],
+          ["GH_CONFIG_DIR", "GH_NO_UPDATE_NOTIFIER", "GH_PAGER", "GH_TELEMETRY", "GH_TOKEN", "HOME", "NO_COLOR", "PATH"],
         );
       }
       // GitHub reports a review by another App (e.g. the Codex bot): the relay reports failure only.

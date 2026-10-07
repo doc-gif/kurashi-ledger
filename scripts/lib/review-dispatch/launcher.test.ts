@@ -533,7 +533,10 @@ test("W5d jobText states the rules the schema cannot express: evidence forms of 
   assert.match(stdin, /Evidence: only links of these forms, otherwise an empty list/);
   assert.match(stdin, /Unverified: what you could not check, one line each/);
   assert.ok(stdin.includes(`${RESULT_LIMITS.text} characters`) && stdin.includes(`${RESULT_LIMITS.cell} per table cell`));
-  assert.match(stdin, /no "<" or "@"/);
+  assert.match(stdin, /no "<" or "@" \(full-width forms count as the same\)/);
+  // W9 (PR #66 P3): the link rules of safeProse and publicationFindings, so a finished review is not refused for them.
+  assert.match(stdin, /no invisible format characters/);
+  assert.match(stdin, /no relative or scheme-less \(\/\/\) link targets, also in Markdown links, and no bare www\. host names/);
   // Never a line the owner's measurement reads as a probe step (doctor.test.ts).
   assert.ok(!/^- /m.test(stdin));
   const ff = buildLaunch(policy(), ffJob(), claudeInstall(), run(), opts).stdin;

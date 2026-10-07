@@ -6,6 +6,8 @@ import { Store } from "./store.ts";
 export const MAX_BODY = 256 * 1024;
 // GitHub caps a delivery at 25 MB. Larger bodies are cut off without any record.
 export const MAX_DELIVERY = 25 * 1024 * 1024;
+// The only accepted form of the x-hub-signature-256 header.
+const SIGNATURE = /^sha256=[a-f0-9]{64}$/;
 export const EVENTS: ReadonlySet<string> = new Set([
   "pull_request",
   "pull_request_review",
@@ -67,7 +69,7 @@ export function ingest(
   if (p.mode === "off") return 503;
   if (raw.length > MAX_BODY) return 413;
   const sig = headers["x-hub-signature-256"];
-  if (!sig || !/^sha256=[a-f0-9]{64}$/.test(sig) || secret.length < 32)
+  if (!sig || !SIGNATURE.test(sig) || secret.length < 32)
     return 401;
   const expected = createHmac("sha256", secret).update(raw).digest(),
     supplied = Buffer.from(sig.slice(7), "hex");
@@ -122,7 +124,7 @@ export function ingestOversized(
   const sig = headers["x-hub-signature-256"];
   if (
     !sig ||
-    !/^sha256=[a-f0-9]{64}$/.test(sig) ||
+    !SIGNATURE.test(sig) ||
     secret.length < 32 ||
     digest.length !== 32 ||
     !timingSafeEqual(digest, Buffer.from(sig.slice(7), "hex"))
@@ -208,6 +210,16 @@ export function serve(
       reply(404);
       return;
     }
+    // W9: a request without a well-formed signature header can never pass, so it is refused before its body is
+    // read or hashed. Connection: close ends the socket after the reply instead of draining the rest of the body.
+    const claimed = req.headers["x-hub-signature-256"];
+    if (typeof claimed !== "string" || !SIGNATURE.test(claimed) || secret.length < 32) {
+      if (!res.writableEnded) {
+        res.writeHead(401, { Connection: "close" });
+        res.end();
+      }
+      return;
+    }
     let size = 0;
     const chunks: Buffer[] = [];
     const mac = createHmac("sha256", secret);
@@ -243,7 +255,7 @@ export function serve(
       // The policy is read only for a signed delivery.
       if (
         !sig ||
-        !/^sha256=[a-f0-9]{64}$/.test(sig) ||
+        !SIGNATURE.test(sig) ||
         secret.length < 32 ||
         !timingSafeEqual(digest, Buffer.from(sig.slice(7), "hex"))
       ) {
