@@ -17,7 +17,7 @@ setopt interactive_comments
 cd "$HOME"
 target_pr=0     # 対象のPR番号。Codexが実装したPR（Claudeがレビューする）
 port=8787       # 受け口のport。1024〜65535で443以外
-tunnel_host=''  # 10のB（名前付きトンネル）を選んだときのホスト名。Aなら空
+funnel_host=''  # 10のB（Tailscale Funnel）のホスト名<host>.<tailnet>.ts.net。Aなら空
 repo_slug=doc-gif/kurashi-ledger
 base="$HOME/.local/share/kurashi-dispatch"
 root="$base/root" etc="$base/etc" secrets="$base/secrets" runs="$base/runs" logs="$base/log"
@@ -37,6 +37,7 @@ kl_mode() { local d; d="$(gh api -i /zen 2>/dev/null | sed -n 's/^[Dd]ate: //p' 
 kl_stopped() { local st; st="$("${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null)" || { run_id=; echo "statusが失敗した（cycleの実行中なら1分後に）。停止は未確認"; return 1; }; run_id="$(print -r -- "$st" | awk '$1 ~ /^(faultfinding|review)$/ && $3 ~ /^(launching|running|result-ready|uncertain)$/ {print $5; exit}')"; [[ -z $run_id && $st == *"不明な投稿: 0件"* && $st != *"不明な投稿: "[1-9]* ]] && { echo "停止を確認"; return 0; }; echo "停止していない（run=${run_id:-なし}、不明な投稿あり、のどちらか）。16を行う"; return 1; }
 kl_svc() { local o; o="$(launchctl print "$gui/${label}.$1" 2>&1)"; case $? in 0) [[ $o == *"state = "* ]] && echo loaded || echo unknown;; 113) [[ $o == *"Could not find service \"${label}.$1\""* ]] && echo absent || echo unknown;; *) echo unknown;; esac; }
 kl_cycle_once() { local o r0 n st c g i; o="$(launchctl print "$gui/${label}.cycle" 2>/dev/null)" || { echo unknown; return 1; }; r0="$(print -r -- "$o" | awk -F' = ' '$1 == "\truns" {print $2}')"; [[ $r0 == <-> ]] && launchctl kickstart "$gui/${label}.cycle" >/dev/null 2>&1 || { echo unknown; return 1; }; for i in {1..120}; do sleep 5; o="$(launchctl print "$gui/${label}.cycle" 2>/dev/null)" || continue; IFS='|' read -r n st c g <<< "$(print -r -- "$o" | awk -F' = ' '$1 == "\truns" {r = $2} $1 == "\tstate" {s = $2} $1 == "\tlast exit code" {c = $2} $1 == "\tlast terminating signal" {g = "signal"} END {print r "|" s "|" c "|" g}')"; [[ $n == <-> ]] && (( n > r0 )) && [[ $st == "not running" ]] || continue; [[ $c == 0 && -z $g ]] && { echo ok; return 0; }; echo "failed（終了コード${c:-なし}${g:+、signal}）"; return 1; done; echo unknown; return 1; }
+kl_funnel() { local s m; [[ -n $funnel_host ]] || { echo "0のfunnel_hostを入れる"; return 1; }; s="$(tailscale funnel status 2>&1)" || { echo "funnelの状態を読めない"; return 1; }; m=( "${(@f)$(print -r -- "$s" | grep -E '^\|-- ')}" ); [[ $#m == 1 && ${m[1]} == "|-- /webhook proxy http://127.0.0.1:${port}/webhook" && $s == *"https://${funnel_host} (Funnel on)"* ]] && return 0; print -r -- "$s"; echo "Funnelの取付けが/webhookの1つだけでない"; return 1; }
 print -r -- "PR=${target_pr} 写し=${sha:-未作成} node=${node_bin:-なし} python=${python_bin:-なし} claude=${claude_ver:-なし}"
 ```
 
@@ -246,13 +247,13 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$logs" "$policy" "$install" "
 
 どちらも`127.0.0.1:${port}`の受け口へ転送する。URLはrepoに書かない。
 
-| | A. クイックトンネル | B. 名前付きトンネル |
+| | A. クイックトンネル | B. Tailscale Funnel |
 | --- | --- | --- |
-| 要るもの | なし（アカウント不要） | Cloudflareのアカウントと、DNSをCloudflareに置いたドメイン |
-| 費用 | 無料 | Tunnelは無料。ドメインの登録料（年額） |
-| URL | 起動のたびに変わる。毎回Appの設定を直す | 固定 |
-| 転送するpath | すべて | `/webhook`だけ（ほかはトンネルが404） |
-| 使える段階 | shadow のみ。残る危険（全pathが受け口に届く。受け口の404と署名で守る）（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。稼働の保証なし（[Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)） | shadowとactive。14の前に必須 |
+| 要るもの | なし（アカウント不要） | このMacでログインしたTailscaleのアプリ |
+| 費用 | 無料 | 無料 |
+| URL | 起動のたびに変わる。毎回Appの設定を直す | 固定（`<host>.<tailnet>.ts.net`） |
+| 転送するpath | すべて | `/webhook`とその下（ほかはFunnelが404。下のpathは受け口に届き、受け口が404。[設計§3](review-dispatch-design.md#3-配置とgithubの身元)） |
+| 使える段階 | shadow のみ。残る危険（全pathが受け口に届く。受け口の404と署名で守る）（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。稼働の保証なし（[Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)） | shadowとactive。14の前に必須。アプリが起動・ログイン中でMacが起きている間だけ動く（設定は再起動後も残る） |
 
 **A.** 別のターミナルで動かし続ける。
 
@@ -262,34 +263,13 @@ cloudflared tunnel --url "http://127.0.0.1:${port}"
 
 期待: `https://…trycloudflare.com`の行。そのURLに`/webhook`を付けたものが11のURL。
 
-**B.** 1回だけ行う。ブラウザでドメインを選ぶ。
+**B.** 1回だけ行う。App Store版のTailscaleでは、CLIは`/Applications/Tailscale.app/Contents/MacOS/Tailscale`（aliasか`/usr/local/bin`のlauncherで`tailscale`として呼ぶ）。証明書の発行で、ホスト名とtailnet名がCertificate Transparencyの公開ログに載り、消せない。実名などを含まない機器名に変えてから行う。URLは秘密ではなく、守りは署名（設計§3）。
 
 ```zsh
-cloudflared tunnel login && cloudflared tunnel create kurashi-dispatch && cloudflared tunnel route dns kurashi-dispatch "$tunnel_host"
+tailscale funnel --bg --set-path /webhook "http://127.0.0.1:${port}/webhook"
 ```
 
-期待: tunnelのIDと、DNSの記録を作った旨の表示。次に設定を書いて確かめる。
-
-```zsh
-(
-  umask 077
-  [[ -n $tunnel_host ]] || { echo "0のtunnel_hostを入れる"; exit 1; }
-  tid="$(cloudflared tunnel list | awk '$2 == "kurashi-dispatch" {print $1}')"
-  [[ -n $tid ]] && test -f "$HOME/.cloudflared/${tid}.json" || { echo "tunnelの資格情報がない。Bの1つ目をやり直す"; exit 1; }
-  cat > "$etc/tunnel.yml" <<EOF
-tunnel: ${tid}
-credentials-file: $HOME/.cloudflared/${tid}.json
-ingress:
-  - hostname: ${tunnel_host}
-    path: ^/webhook$
-    service: http://127.0.0.1:${port}
-  - service: http_status:404
-EOF
-  cloudflared tunnel --config "$etc/tunnel.yml" ingress validate && cloudflared tunnel --config "$etc/tunnel.yml" ingress rule "https://${tunnel_host}/webhook"
-)
-```
-
-期待: `OK`と、`http://127.0.0.1:`のportに当たった規則の表示。11のURLは`https://${tunnel_host}/webhook`。設定は[公式の形](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/)（`path`の正規表現と、最後の`http_status:404`）。
+期待: `https://<host>.<tailnet>.ts.net/webhook`の表示。初回はtailnetでFunnelを有効にするリンクが出るので、ブラウザで有効にし、URLが出なければやり直す。表示のホスト名を0の`funnel_host`に入れ、0を貼り直す。11のURLは`https://${funnel_host}/webhook`。443番だけを使う（[Funnel](https://tailscale.com/kb/1223/funnel)、[serve](https://tailscale.com/kb/1242/tailscale-serve)）。
 
 ## 11. Webhookの秘密と購読（CodexのApp）
 
@@ -314,12 +294,12 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 ## 12. launchdに登録する
 
-雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。Bを選んだときはトンネルも登録する。登録済み（`loaded`）は飛ばし、状態不明なら止まるので、やり直してよい。
+雛形（[tools/review_dispatch/launchd/](../tools/review_dispatch/launchd/)）を展開する。登録済み（`loaded`）は飛ばし、状態不明なら止まるので、やり直してよい。
 
 ```zsh
 (
   [[ -n $sha && -n $node_bin && -n $python_bin ]] || { echo "0を貼り直す"; exit 1; }
-  names=(serve cycle); [[ -n $tunnel_host ]] && names+=(tunnel)
+  names=(serve cycle)
   mkdir -p "$agents"
   for n in $names; do
     case "$(kl_svc $n)" in loaded) continue;; absent) ;; *) echo "状態不明: ${n}"; exit 1;; esac
@@ -327,7 +307,6 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
       -e "s|@ROOT@|${root}|g" -e "s|@POLICY@|${policy}|g" -e "s|@INSTALL@|${install}|g" -e "s|@SECRET@|${secret_file}|g" \
       -e "s|@PORT@|${port}|g" -e "s|@GH@|${gh_bin}|g" -e "s|@LOGS@|${logs}|g" -e "s|@HOME@|${HOME}|g" \
       -e "s|@CODEX_APP_ID@|${KL_GITHUB_APP_ID_CODEX}|g" -e "s|@CODEX_INSTALLATION_ID@|${KL_GITHUB_APP_INSTALLATION_ID_CODEX}|g" \
-      -e "s|@CLOUDFLARED@|$(command -v cloudflared)|g" -e "s|@TUNNEL_CONFIG@|${etc}/tunnel.yml|g" \
       "$copy/tools/review_dispatch/launchd/${n}.plist.in" > "$agents/${label}.${n}.plist" && plutil -lint "$agents/${label}.${n}.plist" && launchctl bootstrap "$gui" "$agents/${label}.${n}.plist" || exit 1
   done
   sleep 5; curl -s -o /dev/null -w '受け口: %{http_code}\n' -X POST "http://127.0.0.1:${port}/webhook"
@@ -336,21 +315,19 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 期待: 新しく登録したplistが`OK`、`受け口: 401`（署名がないので拒否）。`serve`は常駐し、`cycle`は15分ごとと、配送を保存したとき（`$root/trigger`）に動く。
 
-Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
+Bのときは、Funnelの取付けと受け口の応答を確かめる。このMacではホスト名がMagicDNSでtailnetのアドレスになり、curlは公開の入口を通らない。確かめるのは取付けだけで、公開経路の到達は「Bへ移る」の5のGitHubの配送で確かめる。
 
 ```zsh
 (
-  rm -f "$etc/tunnel-b-ok"
-  [[ -n $tunnel_host ]] || { echo "Bではない"; exit 1; }
-  for x in /other /webhook/extra; do cloudflared tunnel --config "$etc/tunnel.yml" ingress rule "https://${tunnel_host}${x}" | grep -q 'http_status:404' || { echo "トンネルが${x}を通す"; exit 1; }; done
-  w="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/webhook")"
-  o="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/other")"; e="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${tunnel_host}/webhook/extra")"
+  kl_funnel || exit 1
+  w="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/webhook")"
+  o="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/other")"; e="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/webhook/extra")"
   print -r -- "webhook=${w} other=${o} extra=${e}"
-  [[ $w == 401 && $o == 404 && $e == 404 ]] && : > "$etc/tunnel-b-ok" && echo "B確認"
+  [[ $w == 401 && $o == 404 && $e == 404 ]] && echo "取付け確認"
 )
 ```
 
-期待: `webhook=401 other=404 extra=404`と`B確認`（`/other`・`/webhook/extra`はトンネルの規則で404。受け口へは`/webhook`だけが届く）。
+期待: `webhook=401 other=404 extra=404`と`取付け確認`。`/other`はFunnelが、`/webhook/extra`は受け口が404を返す（設計§3）。`kl_funnel`が止めたら、表示の取付けを`tailscale funnel`で直す。
 
 ## 13. 最初のshadow
 
@@ -408,13 +385,14 @@ Bのときは、トンネルが`/webhook`だけを通すことを確かめる。
 
 activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。
 
-1. 0の`tunnel_host`を入れ、0を貼り直す。
-2. 10のBの2つのブロックを行う。
-3. 12を貼り直す。期待: トンネルだけが新しく登録され、`受け口: 401`。続けて12のBの確認で`B確認`。
-4. 11の1で、Webhook URLだけを`https://${tunnel_host}/webhook`に変える（秘密は変えない）。
-5. Aのターミナルで、Ctrl-Cでクイックトンネルを止める。
-6. 次の配送（またはRecent Deliveriesで直近の`ping`以外のRedeliver）の応答が`202`であることを確かめる。
-7. 13の5を、Bの経路でやり直す。
+旧B（名前付きトンネル）を作っていたら、先に`launchctl bootout "$gui/${label}.tunnel"; rm -f "$agents/${label}.tunnel.plist" "$etc/tunnel.yml" "$etc/tunnel-b-ok"`で外す。
+
+1. 10のBを行う（0の`funnel_host`を入れて貼り直すまで）。
+2. 12のBの確認を行う。期待: `取付け確認`。
+3. 11の1で、Webhook URLだけを`https://${funnel_host}/webhook`に変える（秘密は変えない）。
+4. Aのターミナルで、Ctrl-Cでクイックトンネルを止める。
+5. 次の配送（またはRecent Deliveriesで直近の`ping`以外のRedeliver）の応答が`202`であることを確かめ、`: > "$etc/tunnel-b-ok"`で印を作る。公開経路の到達の証拠はこのGitHubの配送だけ（`ping`のRedeliverが署名の検査の後の`400`でもよい）。
+6. 13の5を、Bの経路でやり直す。
 
 ## 14. 1件のPRをactiveにする
 
@@ -442,7 +420,7 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
   [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
-  test -e "$etc/tunnel-b-ok" && [[ $(kl_svc tunnel) == loaded ]] || { echo "Bのトンネルでない。「Bへ移る」を行う"; exit 1; }
+  test -e "$etc/tunnel-b-ok" && kl_funnel || { echo "BのFunnelでない。「Bへ移る」を行う"; exit 1; }
   pgrep -f 'cloudflared tunnel --url' >/dev/null; pg=$?; (( pg == 1 )) || { echo "クイックトンネルが動いているか、確かめられない（pgrep ${pg}）"; exit 1; }
   kl_mode active
 )
@@ -507,14 +485,14 @@ kl_mode shadow
 
 ```zsh
 (
-  for n in cycle serve tunnel; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
-  for i in {1..12}; do left=(); for n in cycle serve tunnel; do v="$(kl_svc $n)"; [[ $v == absent ]] || left+=("${n}=${v}"); done; (( $#left )) || break; sleep 5; done
+  for n in cycle serve; do launchctl bootout "$gui/${label}.${n}" 2>/dev/null; done
+  for i in {1..12}; do left=(); for n in cycle serve; do v="$(kl_svc $n)"; [[ $v == absent ]] || left+=("${n}=${v}"); done; (( $#left )) || break; sleep 5; done
   echo "全体を止めるときは、次に必ずkl_mode offを行う"
   (( $#left )) && { echo "外れていない: ${left}（写しの更新はしない）"; exit 1; }; echo "外した"
 )
 ```
 
-期待: `外した`。`外れていない: …`なら、`kl_mode off`のあとでこのブロックをやり直す。クイックトンネルはそのターミナルでCtrl-Cで止める。次にpolicyをoffにする:
+期待: `外した`。`外れていない: …`なら、`kl_mode off`のあとでこのブロックをやり直す。クイックトンネルはそのターミナルでCtrl-Cで、BのFunnelは`tailscale funnel --https=443 off`で止め、`tailscale funnel status`にFunnelが残っていないことを確かめる。次にpolicyをoffにする:
 
 ```zsh
 kl_mode off
