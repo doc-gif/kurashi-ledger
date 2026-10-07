@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { connect } from "node:net";
+import { dirname, join, sep } from "node:path";
 import { test } from "node:test";
 import {
   ActiveError,
@@ -15,6 +16,7 @@ import {
   nextKind,
   parseInstall,
   startSmall,
+  trapLayout,
   type ActiveInstall,
   type SpawnSupervisor,
   type SupervisorChild,
@@ -22,11 +24,11 @@ import {
 import { ReviewBroker } from "./broker.ts";
 import { profileHash } from "./doctor.ts";
 import { GhReader, type Transport } from "./github.ts";
-import { argvTemplateHash, scanTree, type LaunchInstall } from "./launcher.ts";
+import { argvTemplateHash, scanTree, TOKEN_ENV, type LaunchInstall } from "./launcher.ts";
 import { hash, type Job, type WorkerResult } from "./model.ts";
-import { signedMessage, RunVerifier } from "./provenance.ts";
+import { runBinding, signedMessage, RunVerifier } from "./provenance.ts";
 import { assess } from "./reducer.ts";
-import { fixtureResult, REQUIRED_PROBES, type Capability, type Runner } from "./runtime.ts";
+import { capabilityReady, fixtureResult, REQUIRED_PROBES, type Capability, type Runner } from "./runtime.ts";
 import { database, policy, snapshot, HEAD, BASE } from "../../../tests/fixtures/review-dispatch.ts";
 import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import { TestSigner } from "../../../tests/fixtures/review-dispatch-run-signer.ts";
@@ -42,7 +44,7 @@ const claude = (root: string): LaunchInstall => ({
   version: "2.1.300",
   runtime: "/opt/synthetic/claude/2.1.300",
   cliProfile: "/opt/synthetic/reviewed/seatbelt/cli.sb",
-  configDir: "/srv/synthetic/dispatch/claude-config",
+  configDir: null, // per run (W5c)
   tokenFile: "/srv/synthetic/owner-secrets/claude-setup-token",
   protectedRoots: [root, "/srv/synthetic/repo"],
 });
@@ -103,6 +105,7 @@ test("W4 install record: same trusted copy, Claude only, worker areas outside th
     ["install-paths", (v) => (v.supervisor = "/opt/synthetic/copy/supervisor.py")],
     ["install-copy", (v) => (v.broker.wrapper = "/opt/other/scripts/github-app-token.ts")],
     ["install-claude-only", (v) => (v.claude.backend = "codex")],
+    ["install-config-dir", (v) => (v.claude.configDir = "/srv/synthetic/dispatch/claude-config")],
     ["runs-overlap-root", (v) => (v.runs = `${root}/runs`)],
     ["runs-overlap-root", (v) => (v.runs = "/srv/synthetic/dispatch")],
     ["root-not-protected", (v) => (v.claude.protectedRoots = ["/srv/synthetic/repo"])],
@@ -122,10 +125,12 @@ test("W4 doctor hashes are bound to the plan: version, executable, cli.sb and ar
     ["capability-missing", null, i, PROFILE, EXE],
     ["capability-not-ready", { ...capability(i), probes: { ...probes, "deny-keys": false } }, i, PROFILE, EXE],
     ["capability-not-ready", { ...capability(i), backend: "codex" }, i, PROFILE, EXE],
+    // W5c: a capability recorded with the old descendant-lock proof is never ready.
+    ["capability-not-ready", { ...capability(i), probes: { ...Object.fromEntries(Object.entries(probes).filter(([k]) => k !== "group-ended" && k !== "deny-other-run")), "descendant-lock": true } }, i, PROFILE, EXE],
     ["capability-version", capability(i), { ...i, version: "2.1.301" }, PROFILE, EXE],
     ["capability-executable", capability(i), i, PROFILE, "f".repeat(64)],
     ["capability-profile", capability(i), i, `${PROFILE}(allow default)\n`, EXE],
-    ["capability-argv", capability(i), { ...i, configDir: "/srv/synthetic/other-config" }, PROFILE, EXE],
+    ["capability-argv", capability(i), { ...i, cliProfile: "/opt/synthetic/other/cli.sb" }, PROFILE, EXE],
   ];
   for (const [reason, c, inst, text, exe] of cases) {
     const r = boundCapability(c, inst, text, exe);
@@ -290,7 +295,12 @@ type FakeOptions = {
   badKey?: boolean;
   onAck?: () => void;
   exit?: number;
-  descendants?: { seen: number; checked: number; holding: number; pending: number; failed: number; blind: number; proven: boolean };
+  // W5c: what supervisor.py inspect answers (default: group ended, not uncertain), or raw text.
+  inspect?: Record<string, unknown> | string;
+  noResult?: boolean; // e.g. a timeout: no run-result line
+  otherRun?: string; // the envelope is signed for another run
+  raw?: string; // the worker's result text, instead of a valid result
+  plant?: (plan: Record<string, unknown>) => void; // W5e: what the worker leaves in its own areas
 };
 function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<string, unknown> }[]): SpawnSupervisor {
   return (file, args, env) => {
@@ -333,23 +343,26 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
             causes: [],
             previous: [],
           };
-          const raw = JSON.stringify(result),
-            binding = args[args.indexOf("--binding") + 1]!;
-          emit(
-            JSON.stringify({
-              schema: 1,
-              type: "run-result",
-              run,
-              binding,
-              resultHash: hash(raw),
-              result: raw,
-              signature: signer.sign(signedMessage(run, binding, hash(raw))),
-            }),
-          );
+          const raw = o.raw ?? JSON.stringify(result),
+            binding = args[args.indexOf("--binding") + 1]!,
+            signedRun = o.otherRun ?? run;
+          if (!o.noResult)
+            emit(
+              JSON.stringify({
+                schema: 1,
+                type: "run-result",
+                run: signedRun,
+                binding,
+                resultHash: hash(raw),
+                result: raw,
+                signature: signer.sign(signedMessage(signedRun, binding, hash(raw))),
+              }),
+            );
           close(o.exit ?? 0);
           return true;
         }
         call.plan = JSON.parse(chunk) as Record<string, unknown>;
+        o.plant?.(call.plan);
         const binding = args[args.indexOf("--binding") + 1]!;
         emit(JSON.stringify({ schema: 1, type: "run-key", run, binding: o.badKey ? "0".repeat(64) : binding, key: signer.publicKey() }));
         return true;
@@ -360,7 +373,8 @@ function fakeSupervisor(o: FakeOptions, calls: { args: string[]; plan?: Record<s
       },
     };
     if (mode === "inspect") {
-      emit(JSON.stringify({ run, treeEnded: true, neverStarted: false, uncertain: false, supervisorAlive: false, lockHeld: false, signed: true, ...(o.descendants ? { descendants: o.descendants } : {}) }));
+      const answer = o.inspect ?? { groupEnded: true, allDescendants: "unproven", neverStarted: false, uncertain: false, supervisorAlive: false, lockHeld: false, signed: true };
+      emit(typeof answer === "string" ? answer : JSON.stringify({ run, ...answer }));
       close(0);
     } else if (mode === "redact") close(0);
     return child;
@@ -429,7 +443,7 @@ test("W4 Claude runner: the key is stored before ack, the plan goes only through
     });
     const r = await runner.run(j);
     assert.equal(r.uncertain, false);
-    assert.equal(r.treeEnded, true);
+    assert.equal(r.groupEnded, true);
     assert.equal(storedAtAck, 1);
     const worker = x.calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(!worker.args.some((a) => a.includes(TOKEN)));
@@ -504,6 +518,189 @@ test("W4 Claude runner: a key line for another job is never acknowledged; refuse
   }
 });
 
+// ---- W5c (Issue #50): group-ended is necessary, never sufficient; per-run areas; removal failures ----
+
+test("W5c (ISSUE50-P002): an empty group alone never makes a result, a post or a free lease", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const other = "00000000-0000-4000-8000-000000000099";
+  const cases: [string, FakeOptions][] = [
+    ["a member that could not be stopped, or a failed enumeration", { inspect: { groupEnded: false, neverStarted: false, uncertain: true } }],
+    ["missing end evidence", { inspect: "not json" }],
+    ["an old (schema 1) report", { inspect: { treeEnded: true, neverStarted: false, uncertain: false } }],
+    ["group empty, stdout not finished", { noResult: true, inspect: { groupEnded: false, neverStarted: false, uncertain: true } }],
+    ["a timeout or cancel (group ended, nothing signed)", { noResult: true }],
+    ["a result that breaks the schema", { raw: JSON.stringify({ schema: 1, decision: "accepted" }) }],
+    ["another run's signature", { otherRun: other }],
+  ];
+  for (const [name, o] of cases) {
+    const x = runnerSetup(o);
+    try {
+      let submits = 0;
+      const broker = { submit: async () => (submits++, "posted" as const) };
+      x.d.store.observe(assess(x.p, x.s, null));
+      const step = () => activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner: x.runner, broker, fresh: async () => x.s, now: 100 });
+      assert.match(await step(), /^review:uncertain$/, name);
+      assert.equal(submits, 0, name);
+      const job = x.d.store.status("1:1").jobs[0]!;
+      assert.equal(job.status, "uncertain", name);
+      // The lease is held: nothing relaunches, and a release without the end evidence is refused.
+      assert.doesNotMatch(await step(), /uncertain/, name);
+      assert.equal(x.calls.filter((c) => c.args[1] === "run-worker").length, 1, name);
+      const j = x.d.store.jobByRun(job.run)!;
+      assert.throws(() => x.d.store.release(j, { run: j.run, neverStarted: false, groupEnded: false, uncertain: true }), name);
+      assert.deepEqual(readdirSync(x.runs), [], name);
+    } finally {
+      x.cleanup();
+    }
+  }
+});
+
+test("W5c (ISSUE50-P002): recovery with saved end evidence frees the lease, and the launch quota is kept", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const { inspectRun } = await import("./active.ts");
+  const x = runnerSetup({ noResult: true }); // every launch times out: uncertain, then recovered by the owner
+  try {
+    const broker = { submit: async () => assert.fail("nothing to post") };
+    const command = { python: x.i.python, supervisor: x.i.supervisor, root: x.d.root, spawn: fakeSupervisor({}, []) };
+    for (let n = 1; n <= 7; n++) {
+      x.s.pair.head = n.toString(16).repeat(40);
+      x.s.finalPair = { ...x.s.pair };
+      x.s.testedParents = [x.s.pair.base, x.s.pair.head];
+      x.s.history[1]!.id = `w5c-ready-${n}`;
+      x.s.history[1]!.pair = { ...x.s.pair };
+      x.d.store.observe(assess(x.p, x.s, x.d.store.target("1:1")));
+      const out = await activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner: x.runner, broker, fresh: async () => x.s, now: 100 + n });
+      if (n <= 6) {
+        assert.equal(out, "review:uncertain", String(n));
+        const job = x.d.store.jobByRun(x.d.store.status("1:1").jobs[0]!.run)!;
+        // The owner's release (review-dispatch.ts release): the supervisor's saved report decides.
+        x.d.store.release(job, { run: job.run, ...(await inspectRun(command, job.run)) });
+      } else assert.doesNotMatch(out, /uncertain/);
+    }
+    assert.equal(x.calls.filter((c) => c.args[1] === "run-worker").length, 6);
+    assert.equal(x.d.store.quotaPaused("1:1"), true);
+  } finally {
+    x.cleanup();
+  }
+});
+
+test("W5c (ISSUE50-P001/P003): each run gets new materials, HOME, tmp and config dir; none is reused", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the runner refuses before any supervisor starts (tested above)");
+    return;
+  }
+  const { newRunArea } = await import("./active.ts");
+  const x = runnerSetup();
+  try {
+    x.d.store.observe(assess(x.p, x.s, null));
+    const a = x.d.store.claim(x.p, x.s, 30, "faultfinding", 100)!;
+    x.d.store.running(a);
+    await x.runner.run(a);
+    await x.runner.run({ ...a, run: "00000000-0000-4000-8000-0000000000bb" });
+    const plans = x.calls.filter((c) => c.args[1] === "run-worker").map((c) => c.plan!);
+    assert.equal(plans.length, 2);
+    const places = (pl: Record<string, unknown>) => {
+      const env = pl["env"] as Record<string, string>;
+      return [String(pl["cwd"]), env["HOME"]!, env["TMPDIR"]!, env["CLAUDE_CONFIG_DIR"]!];
+    };
+    const [first, second] = [places(plans[0]!), places(plans[1]!)];
+    for (const p of [...first, ...second]) assert.ok(p.startsWith(`${x.runs}/`), p);
+    for (const p of first) assert.ok(!second.includes(p), p);
+    assert.equal(new Set(first).size, 4);
+    // The config dir is also the one cli.sb opens (CONFIG_DIR) for that run only.
+    for (const [pl, pls] of [[plans[0]!, first], [plans[1]!, second]] as const)
+      assert.ok((pl["args"] as string[]).includes(`CONFIG_DIR=${pls[3]}`));
+    assert.deepEqual(readdirSync(x.runs), []);
+    // An existing area is never reused.
+    const made = newRunArea(x.runs, "same");
+    assert.throws(() => newRunArea(x.runs, "same"));
+    rmSync(made.area, { recursive: true });
+  } finally {
+    x.cleanup();
+  }
+});
+
+test("W5c (ISSUE50-P003): a run area that cannot be removed is reported, never dropped", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: POSIX modes and links are macOS paths here");
+    return;
+  }
+  const { removeRunArea, newRunArea } = await import("./active.ts");
+  const runs = realpathSync(mkdtempSync(join(tmpdir(), "runs-")));
+  try {
+    const { area } = newRunArea(runs, "a");
+    assert.throws(() => removeRunArea(area, () => {}), /run-area-not-removed/); // "removed" but still there
+    assert.throws(() => removeRunArea(area, () => assert.fail("EACCES")), /run-area-not-removed/);
+    assert.throws(() => removeRunArea(join(runs, "missing")), /run-area-not-removed/);
+    const { symlinkSync } = await import("node:fs");
+    symlinkSync(area, join(runs, "link"));
+    assert.throws(() => removeRunArea(join(runs, "link")), /run-area-not-removed/);
+    assert.ok(existsSync(join(area, "materials"))); // the link was not followed
+    removeRunArea(area);
+    assert.ok(!existsSync(area));
+  } finally {
+    rmSync(runs, { recursive: true, force: true });
+  }
+  // Through a cycle (PR65-R003): the reason and run reach the cycle output and status, alone or with another failure.
+  const { chmodSync } = await import("node:fs");
+  const lock = (runs: string) => {
+    const dir = join(runs, readdirSync(runs)[0]!, "materials");
+    writeFileSync(join(dir, "x"), "synthetic\n");
+    chmodSync(dir, 0o500); // its entry cannot be unlinked
+    return dir;
+  };
+  const cases: [string, FakeOptions, boolean, RegExp][] = [
+    ["launched run", {}, false, /^review:uncertain run-area-not-removed run [0-9a-f-]{36}$/],
+    ["with another run's signature (an exception)", { otherRun: "00000000-0000-4000-8000-000000000099" }, false, /^review:uncertain run-area-not-removed run [0-9a-f-]{36}$/],
+    ["with a pre-launch refusal", {}, true, /^review:not-started:launch-refused run-area-not-removed run [0-9a-f-]{36}$/],
+  ];
+  for (const [name, o, refuse, expected] of cases) {
+    let locked = "";
+    const x = runnerSetup({ ...o, onAck: () => void (locked = lock(x.runs)) });
+    try {
+      let submits = 0;
+      const broker = { submit: async () => (submits++, "posted" as const) };
+      const runner = refuse
+        ? claudeRunner({
+            policy: x.p, store: x.d.store, root: x.d.root, install: x.i, capability: capability(x.i.claude), verifier: x.verifier,
+            materials: async (_j, dir) => {
+              mkdirSync(join(dir, ".claude")); // refused by the launcher
+              locked = lock(x.runs);
+              return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
+            },
+            bound: BOUND, digest: BOUND_DIGEST, spawn: () => assert.fail("supervisor must not start"), now: () => 100,
+            launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
+          })
+        : x.runner;
+      x.d.store.observe(assess(x.p, x.s, null));
+      const step = () => activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner, broker, fresh: async () => x.s, now: 100 });
+      const out = await step();
+      chmodSync(locked, 0o700);
+      assert.match(out, expected, name);
+      const run = x.d.store.status("1:1").jobs[0]!.run;
+      assert.ok(out.endsWith(` run ${run}`), name);
+      assert.ok(!out.includes(x.runs) && !out.includes(TOKEN), name); // no path, no secret
+      assert.deepEqual(x.d.store.status("1:1").blocked, { run, reason: "run-area-not-removed", at: null }, name);
+      assert.equal(submits, 0, name);
+      // Reported once: the next cycle launches nothing and does not repeat it.
+      assert.equal(await step(), "idle:blocked-owner-required", name);
+      if (!refuse) {
+        const j = x.d.store.jobByRun(run)!;
+        assert.throws(() => x.d.store.release(j, { run, neverStarted: false, groupEnded: false, uncertain: true }), name);
+      }
+    } finally {
+      if (locked) chmodSync(locked, 0o700);
+      x.cleanup();
+    }
+  }
+});
+
 // Fixture runner with the Claude capability shape (the real one needs a supervisor; activeCycle checks only the capability).
 // The ledger of these synthetic runs: two causes, both judged by the fake red team unless told otherwise.
 const RUN_LEDGER = ["INV-LOCK/restore-lock-identity", "INV-STORAGE/database-journal-pair"];
@@ -533,7 +730,7 @@ function sealedRunner(
         ...(red ? extra : {}),
       };
       const raw = JSON.stringify(result);
-      return { result: raw, treeEnded: true, uncertain: false, origin: channel.seal(j, raw) };
+      return { result: raw, groupEnded: true, uncertain: false, origin: channel.seal(j, raw) };
     },
   };
 }
@@ -633,15 +830,15 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     const p = policy(),
       i = install(d.root, runs);
     const outcomes = Object.fromEntries(MEASURED_PROBES.map((k) => [k, "denied"])) as Parameters<typeof measurementRecord>[3];
-    const file = (external = { schema: true, descendantLock: true }) =>
+    const file = (external = { schema: true, groupEnded: true }) =>
       JSON.stringify({ schema: 1, measurement: measurementRecord(i.claude, EXE, profileHash(PROFILE), outcomes), external });
     const base = {
       policy: p,
       store: d.store,
       install: i,
       host: allowedHost(),
-      authStatus: async () => ({ authMethod: "oauth_token", configDirectory: i.claude.configDir }),
-      configProblems: [],
+      // The doctor's own run config dir (W5c): auth status must report exactly that directory.
+      authStatus: async (plan: { env: Record<string, string> }) => ({ authMethod: "oauth_token", configDirectory: plan.env["CLAUDE_CONFIG_DIR"] }),
       managedSettings: false,
       profileText: PROFILE,
       executableDigest: EXE,
@@ -658,8 +855,43 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     assert.equal(ok.state, "verified", JSON.stringify(ok.reasons));
     assert.equal(boundCapability(d.store.capability("claude"), i.claude, PROFILE, EXE).reason, "bound");
     assert.deepEqual(readdirSync(runs), []);
-    // A later run without the descendant-lock evidence removes the stored capability.
-    const later = await doctorCommand({ ...base, measurement: file({ schema: true, descendantLock: false }) });
+    // W5c: the config dir inspected is the doctor run's own new one, inside its (removed) run area.
+    const seen: string[] = [];
+    const inspected = await doctorCommand({ ...base, measurement: file(), inspectConfig: (dir) => (seen.push(dir), []) });
+    assert.equal(inspected.state, "verified");
+    assert.equal(seen.length, 1);
+    assert.ok(seen[0]!.startsWith(`${runs}/doctor-`) && seen[0]!.endsWith("/config"), seen[0]);
+    const dirty = await doctorCommand({ ...base, measurement: file(), inspectConfig: () => ["present:CLAUDE.md"] });
+    assert.equal(dirty.state, "disabled");
+    assert.ok(dirty.reasons.includes("config-dir:present:CLAUDE.md"));
+    // PR #65 red team: the run area is removed before anything is stored; if it stays, nothing is verified.
+    const { chmodSync } = await import("node:fs");
+    let locked = "";
+    const stuck = await doctorCommand({
+      ...base,
+      measurement: file(),
+      inspectConfig: (dir) => {
+        locked = join(dirname(dir), "materials");
+        writeFileSync(join(locked, "x"), "synthetic\n");
+        chmodSync(locked, 0o500); // its entry cannot be unlinked
+        return [];
+      },
+    });
+    chmodSync(locked, 0o700);
+    assert.equal(stuck.state, "unverified");
+    assert.ok(stuck.reasons.includes("run-area-not-removed"));
+    assert.equal(capabilityReady(stuck.capability), false);
+    assert.equal(d.store.capability("claude"), null);
+    for (const n of readdirSync(runs)) rmSync(join(runs, n), { recursive: true });
+    await doctorCommand({ ...base, measurement: file() });
+    // An old measurement file (descendantLock) and a later run without the group-ended evidence remove the
+    // stored capability.
+    const old = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), external: { schema: true, descendantLock: true } }) });
+    assert.equal(old.state, "unverified");
+    assert.ok(old.reasons.includes("measurement-missing"));
+    assert.equal(d.store.capability("claude"), null);
+    await doctorCommand({ ...base, measurement: file() });
+    const later = await doctorCommand({ ...base, measurement: file({ schema: true, groupEnded: false }) });
     assert.equal(later.state, "unverified");
     assert.equal(d.store.capability("claude"), null);
     // A measurement for another executable is stale.
@@ -673,24 +905,36 @@ test("W4 doctor command stores a capability only when verified, bound to this in
     assert.equal(d.store.capability("claude"), null);
     const control = await doctorCommand({ ...base, measurement: file() });
     assert.equal(control.state, "verified");
+    // W4f: the doctor ignores diagnostics (even broken ones) but still refuses any other extra key.
+    const withDiagnostics = (diagnostics: unknown, external = { schema: true, groupEnded: true }) =>
+      JSON.stringify({ ...JSON.parse(file(external)), diagnostics });
+    for (const diagnostics of [{ A: null, A2: null, B: null, benign: { supervisorExitCode: 0, failed: null, stage: null, field: null } }, "broken", null, { A: { exitCode: "x" } }]) {
+      const r = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics) });
+      assert.deepEqual({ state: r.state, reasons: r.reasons, probes: r.capability.probes }, { state: ok.state, reasons: ok.reasons, probes: ok.capability.probes });
+      const notLock = await doctorCommand({ ...base, measurement: withDiagnostics(diagnostics, { schema: true, groupEnded: false }) });
+      assert.deepEqual({ state: notLock.state, reasons: notLock.reasons }, { state: later.state, reasons: later.reasons });
+    }
+    const extraKey = await doctorCommand({ ...base, measurement: JSON.stringify({ ...JSON.parse(file()), notes: "x" }) });
+    assert.equal(extraKey.state, "unverified");
+    assert.ok(extraKey.reasons.includes("measurement-missing"));
+    assert.equal(d.store.capability("claude"), null);
   } finally {
     d.cleanup();
     rmSync(runs, { recursive: true, force: true });
   }
 });
 
-test("W4 measure command: measured outcomes bound to the hashes, plus schema and descendant-lock evidence from one supervised run", async (t) => {
+test("W4 measure command: measured outcomes bound to the hashes, plus schema and group-ended evidence from one supervised run", async (t) => {
   if (process.platform === "win32") {
     t.diagnostic("Windows: the owner's measurement is macOS-only (the plan check refuses Windows paths)");
     return;
   }
-  const { measureCommand } = await import("./active.ts");
+  const { measureCommand, diagnosticLines } = await import("./active.ts");
   const runs = realpathSync(mkdtempSync(join(tmpdir(), "runs-")));
   try {
     const p = policy(),
       i = install("/srv/synthetic/dispatch/root", runs);
     const calls: { args: string[]; plan?: Record<string, unknown> }[] = [];
-    mkdirSync(join(runs, "config"), { mode: 0o700 }); // the dedicated config dir (synthetic)
     const layout = async (root: string) => {
       mkdirSync(root, { recursive: true, mode: 0o700 });
       for (const sub of ["secrets", "targets", "control"]) mkdirSync(join(root, sub), { mode: 0o700 });
@@ -700,51 +944,90 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
         writeTargets: { db: join(root, "targets", "db"), policy: join(root, "targets", "p") },
         keychain: null,
         network: { url: "http://127.0.0.1:9/probe", hits: () => 0 },
-        supervisor: { socket: join(root, "control", "c.sock"), hits: () => 0 },
+        supervisor: { sockets: [join(root, "control", "c.sock")], hits: () => 0 },
         close: async () => {},
       };
     };
-    const record = await measureCommand({
-      policy: p,
-      install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
-      executableDigest: EXE,
-      profileText: PROFILE,
-      executor: async () => ({ exitCode: 0, stdout: "" }),
-      spawn: fakeSupervisor({}, calls),
-      layout,
-      bound: BOUND,
-      unchanged: () => true,
-      launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
-    });
+    const measure = (o: FakeOptions, c: typeof calls = []) =>
+      measureCommand({
+        policy: p,
+        install: i,
+        executableDigest: EXE,
+        profileText: PROFILE,
+        executor: async () => ({ exitCode: 0, stdout: "" }),
+        spawn: fakeSupervisor(o, c),
+        layout,
+        bound: BOUND,
+        unchanged: () => true,
+        launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
+      });
+    const record = await measure({}, calls);
     assert.equal(record.measurement.codeHash, EXE);
     assert.equal(record.measurement.profileHash, profileHash(PROFILE));
-    // A clean exit without an observed child proves no inheritance (PR #56 red team P1).
-    assert.deepEqual(record.external, { schema: true, descendantLock: false });
+    // The supervisor's own report: the group was stopped and seen empty (not "all descendants ended").
+    assert.deepEqual(record.external, { schema: true, groupEnded: true });
+    // W4f: diagnostics per run, enums and numbers only; a silent CLI shows it never started.
+    const silent = { exitCode: 0, started: false, tools: null, mcpServers: null, attempts: 0, permissionDenials: null, result: null };
+    // W5e (PR67 RT-1): every run's own config dir, HOME and tmp were scanned (counts only): the result schema in
+    // each tmp, and run B's config trap file (a nonce, not the token).
+    const scanned = (files: number) => ({ files, hits: 0, unreadable: 0 });
+    assert.deepEqual(record.diagnostics, {
+      A: silent,
+      A2: silent,
+      B: silent,
+      scan: { A: scanned(1), A2: scanned(1), B: scanned(2), benign: scanned(1) },
+      benign: { supervisorExitCode: 0, failed: null, stage: null, field: null },
+    });
+    assert.equal(record.measurement.outcomes["config-holds-no-secret"], "denied");
+    assert.ok(!JSON.stringify(record).includes(TOKEN));
+    assert.deepEqual(diagnosticLines(record.diagnostics!), [
+      "診断 A: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
+      "診断 A2: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
+      "診断 B: exit=0 started=false tools=- mcp=- attempts=0 denials=- result=-",
+      "診断 benign: exit=0 failed=なし stage=- field=-",
+      "診断 走査: A=files=1/hits=0/unreadable=0 A2=files=1/hits=0/unreadable=0 B=files=2/hits=0/unreadable=0 benign=files=1/hits=0/unreadable=0",
+    ]);
+    // The benign run leaving the token or a credential file in its own areas fails the gate; so does a file the
+    // scan cannot check. Nothing of it is written to the record.
+    const env = (plan: Record<string, unknown>) => plan["env"] as Record<string, string>;
+    for (const [name, plant, want] of [
+      ["token", (plan: Record<string, unknown>) => writeFileSync(join(env(plan)["CLAUDE_CONFIG_DIR"]!, "state.json"), `{"t":"${env(plan)[TOKEN_ENV]}"}`), "allowed"],
+      ["credentials", (plan: Record<string, unknown>) => writeFileSync(join(env(plan)["HOME"]!, ".credentials.json"), "{}"), "allowed"],
+      ["link", (plan: Record<string, unknown>) => symlinkSync("/etc/hosts", join(env(plan)["TMPDIR"]!, "x")), "inconclusive"],
+    ] as const) {
+      const r = await measure({ plant });
+      assert.equal(r.measurement.outcomes["config-holds-no-secret"], want, name);
+      assert.ok(!JSON.stringify(r).includes(TOKEN), name);
+    }
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
-    assert.ok(worker.args.includes("--probe-descendants"));
+    assert.ok(!worker.args.some((a) => /descendant/.test(a)));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
-    const again = async (descendants: { seen: number; checked: number; holding: number; pending: number; failed: number; blind?: number; proven: boolean }) =>
-      (
-        await measureCommand({
-          policy: p,
-          install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
-          executableDigest: EXE,
-          profileText: PROFILE,
-          executor: async () => ({ exitCode: 0, stdout: "" }),
-          spawn: fakeSupervisor({ descendants: { blind: 0, ...descendants } }, []),
-          layout,
-          bound: BOUND,
-          unchanged: () => true,
-          launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
-        })
-      ).external.descendantLock;
-    assert.equal(await again({ seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, proven: true }), true);
+    // W5d RT-1: the benign run gets the same job text as a real review (its evidence and unverified rules) and
+    // only the minimal measurement ask; it never tells the model to leave evidence or unverified empty.
+    const benignStdin = String(worker.plan!["stdin"]);
+    assert.match(benignStdin, /^Job kind: review$/m);
+    assert.match(benignStdin, /Evidence: only links of these forms, otherwise an empty list/);
+    assert.match(benignStdin, /Unverified: what you could not check, one line each/);
+    assert.match(benignStdin, /Measurement: .*decision needs-owner and no findings\.$/m);
+    assert.doesNotMatch(benignStdin, /empty (?:findings, )?evidence|evidence[^\n]*empty[^\n]*unverified|leave[^\n]*(?:evidence|unverified)/i);
+    const refused = await measure({ badKey: true });
+    assert.deepEqual(refused.external, { schema: false, groupEnded: false });
+    assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", stage: null, field: null });
+    assert.equal(diagnosticLines(refused.diagnostics!)[3], "診断 benign: exit=2 failed=keyed stage=- field=-");
+    // ISSUE50-P002: an uncertain, unfinished or unparsable report is never "group ended"; neither is an old one.
+    for (const inspect of [
+      { groupEnded: true, uncertain: true },
+      { groupEnded: false, uncertain: false },
+      { treeEnded: true, uncertain: false },
+      "not json",
+    ])
+      assert.equal((await measure({ inspect })).external.groupEnded, false, JSON.stringify(inspect));
     // Round 4 RT-3: a swap during the measurement writes no record.
     let reads = 0;
     await assert.rejects(
       measureCommand({
         policy: p,
-        install: { ...i, claude: { ...i.claude, configDir: join(runs, "config") } },
+        install: i,
         executableDigest: EXE,
         profileText: PROFILE,
         executor: async () => ({ exitCode: 0, stdout: "" }),
@@ -756,20 +1039,10 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
       }),
       /bound-file-changed/,
     );
-    // Codex PR56-R001, independent expectations: partial, failed, pending or inconsistent reports are never proof.
-    for (const d of [
-      { seen: 2, checked: 2, holding: 1, pending: 0, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 1, failed: 0, proven: false },
-      { seen: 2, checked: 1, holding: 1, pending: 0, failed: 1, proven: true }, // a report that claims too much
-      { seen: 0, checked: 0, holding: 0, pending: 0, failed: 0, proven: true },
-      // A failed group enumeration (an unobserved interval) is never proof, even when every known child held.
-      { seen: 2, checked: 2, holding: 2, pending: 0, failed: 0, blind: 1, proven: true },
-    ])
-      assert.equal(await again(d), false, JSON.stringify(d));
-    // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default).
-    assert.ok(Object.values(record.measurement.outcomes).every((o) => o === "inconclusive"));
-    assert.deepEqual(readdirSync(runs).filter((n) => n !== "config"), []);
+    // No evidence from a silent CLI: every measured probe stays inconclusive (never "denied" by default), except the
+    // post-run scan, which needs no attempt (W5e).
+    for (const [k, o] of Object.entries(record.measurement.outcomes)) assert.equal(o, k === "config-holds-no-secret" ? "denied" : "inconclusive", k);
+    assert.deepEqual(readdirSync(runs), []);
   } finally {
     rmSync(runs, { recursive: true, force: true });
   }
@@ -1095,4 +1368,133 @@ test("Round 6 RT-1: the REAL guard.py accepts a PR's changed plan (ok), refuses 
   assert.deepEqual(redTeamOpen(clear, { ...refused.meta, ledger: [], previousRts: [] }), ["guard-refused"]);
   assert.deepEqual(redTeamOpen(clear, { ...missing.meta, ledger: [], previousRts: [] }), ["guard-unavailable"]);
   assert.deepEqual(redTeamOpen(clear, { ...ok.meta, ledger: [], previousRts: [] }), []);
+});
+
+// W4d: the owner's measure failed with listen EINVAL at
+// ~/.local/share/kurashi-dispatch/runs/measure-<uuid>/trap/control/control.sock (124 bytes; macOS allows 103).
+test("W4d measure: trapLayout under a root over 80 characters binds the control socket outside it, counts a connect, and removes it on close", async (t) => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "kl-w4d-trap-")));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const root = join(base, ".local", "share", "kurashi-dispatch", "runs", `measure-${"0".repeat(36)}`, "trap");
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  assert.ok(root.length > 80 && Buffer.byteLength(join(root, "control", "control.sock")) > 108, root);
+  if (process.platform === "win32") {
+    // Not a skip: the measurement runs on macOS only; on Windows the trap refuses (no Unix sockets).
+    await assert.rejects(trapLayout(root), /unix-socket-unsupported/);
+    t.diagnostic("Windows: trapLayout refused (no Unix sockets for the measurement)");
+    return;
+  }
+  const layout = await trapLayout(root);
+  const sockets = layout.supervisor.sockets;
+  try {
+    // One under the socket-deny prefix, one outside it (PR60 RT-1).
+    assert.deepEqual(sockets.map((p) => /\/(kl-sock|kl-ctl)-[^/]+\/control\.sock$/.exec(p)?.[1]), ["kl-sock", "kl-ctl"]);
+    for (const socket of sockets) {
+      assert.ok(Buffer.byteLength(socket) < 104, socket);
+      assert.ok(!socket.startsWith(root + sep) && !socket.startsWith(base + sep), socket);
+    }
+    assert.equal(layout.supervisor.hits(), 0);
+    for (const socket of sockets)
+      await new Promise<void>((resolve, reject) => {
+        const c = connect({ path: socket });
+        c.on("error", reject);
+        c.on("close", () => resolve());
+        c.resume();
+      });
+    assert.equal(layout.supervisor.hits(), 2);
+  } finally {
+    await layout.close();
+  }
+  for (const socket of sockets) assert.equal(existsSync(dirname(socket)), false);
+});
+
+test("PR60 RT-4: a failure after trapLayout made its listener, sockets and keychain leaves none of them behind", async (t) => {
+  if (process.platform === "win32") {
+    // Not a skip: no Unix sockets on Windows; trapLayout refuses before the hook (covered above).
+    t.diagnostic("Windows: trapLayout refuses before making the sockets");
+    return;
+  }
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt4-trap-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  let made: { port: number; sockets: string[]; keychain: string | null } | null = null;
+  await assert.rejects(
+    trapLayout(root, (m) => {
+      made = m;
+      throw new Error("synthetic-failure");
+    }),
+    /synthetic-failure/,
+  );
+  const m = made as { port: number; sockets: string[]; keychain: string | null } | null;
+  assert.ok(m && m.sockets.length === 2);
+  for (const socket of m.sockets) assert.equal(existsSync(dirname(socket)), false, socket);
+  if (m.keychain) assert.equal(existsSync(m.keychain), false);
+  const refused = await new Promise<boolean>((resolve) => {
+    const c = connect(m.port, "127.0.0.1");
+    c.on("connect", () => {
+      c.destroy();
+      resolve(false);
+    });
+    c.on("error", () => resolve(true));
+  });
+  assert.equal(refused, true, "the loopback listener is closed");
+});
+
+test("W4f: the benign run reports the first failed check as a closed step; exception text is never kept", async () => {
+  const { benignSchema, measurementJob } = await import("./active.ts");
+  const j = measurementJob(policy());
+  const signer = new TestSigner();
+  const result: WorkerResult = {
+    schema: 1,
+    run: j.run,
+    actor: j.actor,
+    generation: j.generation,
+    pair: j.pair,
+    decision: "needs-owner",
+    summary: "合成の結果です。",
+    findings: [],
+    evidence: [],
+    unverified: [],
+    causes: [],
+    previous: [],
+  };
+  const signed = (raw: string) =>
+    JSON.stringify({ schema: 1, type: "run-result", run: j.run, binding: runBinding(j), resultHash: hash(raw), result: raw, signature: signer.sign(signedMessage(j.run, runBinding(j), hash(raw))) });
+  const good = signed(JSON.stringify(result));
+  const ok = { keyed: true, signed: good, groupEnded: true, uncertain: false };
+  const pass = { verify: () => true },
+    reject = { verify: () => false },
+    thrower = {
+      verify: (): boolean => {
+        throw new Error("SYNTHETIC-SECRET-IN-ERROR");
+      },
+    };
+  const none = { stage: null, field: null };
+  assert.deepEqual(benignSchema(j, pass, ok), { schema: true, failed: null, ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, keyed: false }), { schema: false, failed: "keyed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, signed: null }), { schema: false, failed: "signed", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, groupEnded: false }), { schema: false, failed: "groupEnded", ...none });
+  assert.deepEqual(benignSchema(j, pass, { ...ok, uncertain: true }), { schema: false, failed: "uncertain", ...none });
+  // W5c: the stage inside parse, and for the schema the fixed key name only (never a value or an unknown key).
+  const parse = (stage: string, field: string | null = null) => ({ schema: false, failed: "parse", stage, field });
+  const cases: [string, Parameters<typeof benignSchema>[2]["signed"], ReturnType<typeof parse>][] = [
+    ["envelope not json", "SYNTHETIC-SECRET not json", parse("signed")],
+    ["result not json", signed("SYNTHETIC-SECRET not json"), parse("result-json")],
+    ["result an array", signed(JSON.stringify(["SYNTHETIC-SECRET"])), parse("result-json")],
+    ["result too large (the envelope bounds it)", signed(JSON.stringify({ ...result, summary: "x".repeat(40000) })), parse("signed")],
+    ["bad decision", signed(JSON.stringify({ ...result, decision: "SYNTHETIC-SECRET" })), parse("schema-field", "decision")],
+    ["missing summary", signed(JSON.stringify({ ...result, summary: undefined })), parse("schema-field", "summary")],
+    ["unknown key", signed(JSON.stringify({ ...result, SYNTHETIC_SECRET_KEY: 1 })), parse("schema-field", "keys")],
+    ["secret-shaped summary", signed(JSON.stringify({ ...result, summary: "ghp_SYNTHETICSYNTHETIC0000" })), parse("schema-field", "summary")],
+    ["accepted with findings", signed(JSON.stringify({ ...result, decision: "accepted", findings: [{ id: "PR1-R001", location: "a", impact: "b", completion: "c" }] })), parse("schema-field", "decision")],
+    ["bad pair", signed(JSON.stringify({ ...result, pair: { head: "SYNTHETIC-SECRET", base: "x" } })), parse("schema-field", "pair")],
+    ["two bad keys", signed(JSON.stringify({ ...result, schema: 2, run: "SYNTHETIC-SECRET" })), parse("schema-field", "multiple")],
+  ];
+  for (const [name, env, expected] of cases) {
+    const got = benignSchema(j, pass, { ...ok, signed: env });
+    assert.deepEqual(got, expected, name);
+    assert.ok(!JSON.stringify(got).includes("SYNTHETIC"), name);
+  }
+  assert.deepEqual(benignSchema(measurementJob(policy()), pass, ok), parse("provenance")); // another job's result
+  assert.deepEqual(benignSchema(j, reject, ok), { schema: false, failed: "verify", stage: "verify", field: null });
+  assert.deepEqual(benignSchema(j, thrower, ok), { schema: false, failed: "verify", stage: "verify", field: null });
 });

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "d0f95ff4c20a3deeab282b3ea066529e4ff78481",
+  "base_sha": "40ea19054f02d2b987ef646f1d6fc63c716a1380",
   "task_id": "OPS-APP-NEGATIVE",
   "planned_paths": [
     "docs/github-apps.md"

@@ -29,6 +29,7 @@ import {
   boundCapability,
   buildMaterials,
   claudeRunner,
+  diagnosticLines,
   doctorCommand,
   fileDigest,
   inspectRun,
@@ -48,8 +49,8 @@ import { createClaudeReviewBroker, type SpawnRelay } from "./lib/review-dispatch
 import { createHash } from "node:crypto";
 import type { LaunchOptions } from "./lib/review-dispatch/launcher.ts";
 import {
-  inspectConfigDir,
   managedSettingsPresent,
+  measuredItems,
   seatbeltHost,
   spawnExecutor,
 } from "./lib/review-dispatch/doctor.ts";
@@ -470,7 +471,6 @@ async function doctor(
           return null;
         }
       },
-      configProblems: inspectConfigDir(install.claude.configDir),
       managedSettings: managedSettingsPresent(),
       profileText: files.text,
       executableDigest: files.bound.executableSha256,
@@ -478,6 +478,7 @@ async function doctor(
       now: clock(),
     });
     log(`doctor: ${result.state}${result.reasons.length ? `（${result.reasons.join("、")}）` : ""}`);
+    if (result.allows.length) log(`子processにも許す（共有profile）: ${result.allows.join("、")}`);
     return result.state === "verified" ? 0 : 5;
   } finally {
     await host.close();
@@ -505,8 +506,10 @@ async function measure(
   });
   // Never overwrites an earlier record; owner-only.
   writeFileSync(values.get("--out") ?? "", `${JSON.stringify(record, null, 1)}\n`, { mode: 0o600, flag: "wx" });
-  const outcomes = Object.entries(record.measurement.outcomes).map(([k, v]) => `${k}=${v}`);
-  log(`測定: ${outcomes.join("、")}、schema=${record.external.schema}、descendantLock=${record.external.descendantLock}`);
+  const m = record.measurement;
+  log(`測定: ${measuredItems(m).join("、")}、schema=${record.external.schema}、groupEnded=${record.external.groupEnded}`);
+  log(`子processにも許す（共有profile）: ${m.sharedProfile.join("、")}`);
+  if (record.diagnostics) for (const line of diagnosticLines(record.diagnostics)) log(line);
   return 0;
 }
 

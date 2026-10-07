@@ -76,13 +76,13 @@ payloadは7日、完了Job詳細は30日で削除/要約する。consumed event/
 
 - 受付はDB directoryのOS排他lockを起動から終了まで保持する。初期macOS backendはPython3のfcntl.flockを使う小さいtrusted wrapper。launchdと手動/旧版の二重起動はDBを開く前に拒否する。WALを起動排他の代わりにしない。
 - claimは一つのDB transactionでgeneration、PR lease、全体枠、実行先枠、quotaを確保する。同じPRのreview/faultfinding/fixは同時に1つ。複数reviewerは順番、他PRは並行、AI review/faultfindingは全体最大10。人の標準操作は枠を使わない。
-- run supervisorは受付とは別プロセスで、runごとのwrapperがdurable manifestを作り、run IDのOS lockを保持してからworkerを起動する。process groupで子孫を停止する。PIDだけで生存を判断せず、lock・supervisorのrun情報・PID開始時刻を照合する。
+- run supervisorは受付とは別プロセスで、runごとのwrapperがdurable manifestを作り、run IDのOS lockを保持してからworkerを起動する。lockはworkerへ渡さない。終了時とtimeout・取消時に、leaderをreapする前にworkerのprocess groupを止め、列挙で空を確かめる。PIDだけで生存を判断せず、lock・supervisorのrun情報・PID開始時刻を照合する。
 - 受付だけが落ちた場合は同じsupervisor/runへ制御接続を戻す。AIの会話resumeは使わない。新しい会話/Jobは以前の未起動またはprocess tree終了を確認した後だけ。heartbeat期限切れではleaseを奪わない。
-- wrapper故障時、lockが取れても孤児process treeが残りうる。lock取得は必要条件であり、子孫終了の証明と合わせてleaseを解放する。spawnとmanifest更新の間などで終了を証明できなければuncertainに止め、再起動しない。
+- wrapper故障時、lockが取れても孤児processが残りうる。lockの空きもgroupの終了も必要条件で、十分条件ではない。supervisorが記録したgroupの終了と結果の検査が揃ってleaseを解放する。groupの終了は全子孫の終了ではない（§7の残余リスク）。spawnとmanifest更新の間などで終了を確かめられなければuncertainに止め、再起動しない。
 
 ### 対象変更と投稿不明
 
-pause/交代/push/main更新では結果を採用せず、取消→process tree終了確認→generation更新の順。部分変更はimplementer worktreeに残す。投稿直前に最新pair・Ready・CI・参加者・policy revisionを再取得する。過去のApproveを現在のbaseへ付け直さない。
+pause/交代/push/main更新では結果を採用せず、取消→group終了の確認→generation更新の順。部分変更はimplementer worktreeに残す。投稿直前に最新pair・Ready・CI・参加者・policy revisionを再取得する。過去のApproveを現在のbaseへ付け直さない。
 
 POST応答が不明なら全必要ページからmarker、actor、commit、本文hashを照合する。1件確認ならposted、重複なら停止/報告、確認不能ならuncertain。成功した可能性のあるPOSTを再送しない。署名配送、別delivery ID、reconcileが同じ対象を示してもJob/Outboxのunique制約を通す。
 
@@ -136,7 +136,7 @@ fixのpush/Ready/返信はimplementerに固定したBrokerだけ。**auto-fixは
 
 shell文字列ではなく固定実行ファイル＋argvで起動する。cwdは取得資料だけの使い捨て領域。envはallowlistから作り、GH_TOKEN、KL_*、継承したGitHub/別AI資格情報を除く。PR checkout、個人設定、hooks/MCP、AGENTSを自動ロードしない。短い英語Jobにはpair・種類・指摘ID・必要証跡を渡し、diffは不信データと明示する。結果要約は日本語。
 
-read-only flagはキーチェーン読取りの隔離ではない。Claudeには、systemのsandbox-execで固定Seatbelt profileを適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access（すべて）、許可外process/通信を拒否する。CLI全体のprofileとtool子processのprofileを分け、後者は資格情報領域を一切読めずnetworkも使えない設定にする。Read（とGlob）はCLIのprocessの中で動くので、tool子processのprofileでは守れない。CLIのprofileが読めるのは、資料・runtime・`CLAUDE_CONFIG_DIR`だけにする。実装で両profileの適用を証明できないCLI版や、OS機構が無い環境は起動不可。Codexは自身の`--sandbox read-only`だけで動く。tool用sandboxにはnetworkを許さず、モデル通信はtrusted clientのAIサービス認証/接続だけに分ける。Claudeもtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
+read-only flagはキーチェーン読取りの隔離ではない。Claudeには、systemのsandbox-execで固定Seatbelt profile（`cli.sb`）を適用し、資料/必要runtime以外の読取り、policy/DB書込み、security/keychain access（すべて）、許可外process/通信を拒否する。macOSは閉じ込めたprocessの中でより厳しいprofileを掛けられないので、toolの子processはCLIのprofileを継承し、**同じ許可**を持つ（一覧は下の残余リスク）。CLIのprofileが読めるのは、資料・runtime・そのrunの`CLAUDE_CONFIG_DIR`・HOME・tmpだけにする。継承を証明できないCLI版や、OS機構が無い環境は起動不可。Codexは自身の`--sandbox read-only`だけで動く。Claudeはtool allowlistとOS境界を併用する。必要なモデル通信まで止める設定を「動作確認済み」としない。
 
 doctorは固定版/config/機能に加え、同じ境界内でfixture鍵/資格情報への読取り、policy/DB書込み、tool network、hooks/MCPロードを試す否定試験を行う。期待どおり拒否できないCLI/OS/configは起動不可。単なるhelp確認を隔離の証拠にしない。実行機構を結合できない環境でもfake runnerとdefault-off基盤の受入は可能だが、実起動capabilityはunverified/disabledのまま残す。
 
@@ -150,22 +150,24 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 
 | 層 | 設定（[headless](https://code.claude.com/docs/en/headless)・[cli-reference](https://code.claude.com/docs/en/cli-reference)・[permissions](https://code.claude.com/docs/en/permissions)の記載だけ） | 防ぐもの |
 | --- | --- | --- |
-| 認証 | `CLAUDE_CODE_OAUTH_TOKEN`だけ。tokenより優先される認証をすべて除く（下の箇条書き）。起動専用の`CLAUDE_CONFIG_DIR`にはログイン・CLAUDE.md・`apiKeyHelper`を置かない | 個人設定・memory・別の認証の混入、API費用、keychainの読取り |
+| 認証 | `CLAUDE_CODE_OAUTH_TOKEN`だけ。tokenより優先される認証をすべて除く（下の箇条書き）。`CLAUDE_CONFIG_DIR`はrunごとにrun領域の中へ新しく作る空の0700のdirで、再利用せず、run領域ごと消す（[W5c](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)） | 個人設定・memory・別の認証の混入、別のJobへの書込みの干渉、API費用、keychainの読取り |
 | 設定の読込み | `--setting-sources user`（projectとlocalを除く）、または`--restricted` | cwdの`.claude/settings*.json`の読込み |
 | 設定 | inlineの`--settings` JSON。`disableAllHooks: true`、pluginsなし、下のRead規則 | hooks・pluginsの実行 |
 | MCP | serverのない`--mcp-config`、`--strict-mcp-config`、`--disallowedTools "mcp__*"` | 他の場所のMCP設定、MCP tool |
-| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す | 書込み・shell・Web |
+| tool | `--tools "Read,Grep,Glob"`で他のbuilt-in toolを外す。`--json-schema`が足す`StructuredOutput`（最後の結果を返すだけでI/Oをしない。initで観測し、[文書](https://code.claude.com/docs/en/agent-sdk/structured-outputs)は名前を出さない）は、この引数があるときだけ測定の構造の証明で許し、試みの証拠には数えない | 書込み・shell・Web |
 | 読取りの範囲 | allowは資料dirに限った`Read(//<資料>/**)`だけ。denyに`Read(//<config dir>/**)`。Grep・Globも`Read()`の規則で絞る。素の`Read`・`Grep`・`Glob`を許可しない | cwd外・config dirの読取り |
 | 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
 | cwd | 取得資料だけの使い捨て領域。repo・worktreeの外。資料はrepoのpathを保たず、中立の名前で置く。cwdとその祖先に`.claude/`・`.mcp.json`・`CLAUDE.md`・`AGENTS.md`を作らない。あれば起動しない | PRのhooks・MCP・指示の自動ロード |
-| OS | `sandbox-exec`のSeatbelt profile。CLI用は資料・runtime・config dirだけを読め、keychainに触れない。外向きは443番だけで、localhostは塞ぐ（[net-443](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。tool子process用は資格情報もnetworkも使えない | 上の層の迂回、policy/DBの書込み、keychain、localhostのサービス |
+| OS | `sandbox-exec`のSeatbelt profile。資料・runtime・そのrunのconfig dir・HOME・tmpだけを読め、keychainに触れない。外向きは443番だけで、localhostは塞ぐ（[net-443](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。toolの子processも同じprofile（同じ許可） | 上の層の迂回、policy/DB・別のrunの領域の書込み、keychain、localhostのサービス |
 
 - `--bare`なしの`-p`は、cwdの`.claude/settings.json`のhooksと`.mcp.json`を信頼の確認なしで使う（headlessの記載）。そのため設定の読込み・MCP・cwdの3つの層を重ねる。
 - dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`を使う。
 - `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
-- CLIが443番へ出られることは、所有者が受け入れた残余リスク（net-443）。toolはRead・Grep・Globに保つ。
+- CLIとtoolの子processが443番へ出られることは、所有者が受け入れた残余リスク（net-443、下の残余リスク）。toolはRead・Grep・Globに保つ。
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
+- envの`CLAUDE_CODE_TMPDIR`をrunのtmpへ向ける。Claudeは自身の一時fileを`TMPDIR`ではなくこの変数の下（既定は`/tmp`）の`claude-<uid>/`に作る（[env-vars](https://code.claude.com/docs/en/env-vars)）。CLI用のprofileは`/tmp`を拒否するので、無いと起動時に止まる（W4e）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
+- 測定の記録（schema 3）は、各`denied`の根拠を`basis`で分ける: CLI自身の構造化したアクセス（`access`）、initの道具一覧だけ（`structural`）、その両方（`mixed`）、runの後の走査（`scan`）。子processの実際のアクセスはdoctorの合成のprobe（`:cli-child`）だけ。共有profileの許可（`sharedProfile`。一覧は下の残余リスク）は`denied`と報告しない。`deny-network`はlocalhostと443番以外の拒否の意味。
 
 doctorの否定試験に次を加える。1つでも拒否できなければcapabilityをdisabledにする。
 
@@ -174,10 +176,21 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 - 閉じ込めたClaudeとCodexから、実際のAppの鍵、または同じACLの形の合成のkeychain項目を読ませる。読めない。
 - Codexに、資料の外の合成の秘密ファイルと、`AGENTS.md`・設定を含む合成PRを与える。秘密を読めず、PRの指示・設定を読み込まない。今の`--sandbox read-only`ではこの試験に通らないため、Codexはdisabledのまま（上の表）。
 
+**合否と情報（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6030270452)）:** 目的は、注入された指示に従うClaudeが秘密を読めず、DB・policyに書けず、誰としても投稿できないこと。これを守るのはOSの境界（`cli.sb`）。注入の測定（run B）は、モデルが試すかどうかが毎回変わる。そのため、試みを根拠にする項目（`basis`が`access`・`mixed`: `deny-keys`・`deny-gh-auth`・`deny-other-ai-auth`・`deny-keychain`・`deny-db`・`deny-policy-write`・`tool-child-confined`）は**情報**として記録する。合否に使うのは`allowed`（漏えい・変更・接続）だけで、これはdisabledにする。合否を決めるのは、確実に判定できる次の項目: doctorの合成のprobe（同じ`cli.sb`、子processでも）、構造の項目（`deny-network`・`deny-supervisor`）、run Aの`deny-hooks-mcp`、`config-holds-no-secret`、benign runの`schema`、`groupEnded`。run Bの対象ごとに、同じ種類のアクセスを確かめる合成のprobeを`doctor.ts`の`RUN_B_COVERAGE`に対応させる。欠ければ試験が落ち、doctorは`coverage-gap`でunverifiedにする。`tool-child-confined`は合成の`:cli-child`で判定する。run自身のconfig dir・HOME・tmpは`cli.sb`が読み書きを許す（共有profileの許可）ので、Readの規則だけが守る。そこで測定はrun A・A2・B・benignの後、run領域を消す前に、この3つにtokenの値と既知の資格情報のファイル名（`.credentials.json`等）が無いことを走査で確かめる（`config-holds-no-secret`。見つかればdisabled、読めないfileがあればunverified。値・中身は記録せず数だけ）。走査中に領域へ敵対的に書く者はいない前提で走査する（modelに書込みの道具がなく、残りうる子は固定のtoolの子で、CLIは終了済み）。fileはlinkを辿らずに開き、開いたfdで実体・大きさ・変更を確かめる。dirの差替えは防がず、走査後の再確認で見つけてinconclusiveにする（[PR67-R001](https://github.com/doc-gif/kurashi-ledger/pull/67)）。許可だけの対象は被覆に数えない（[PR67 RT-1](https://github.com/doc-gif/kurashi-ledger/pull/67)）。run Bの再試行・合算はしない。
+
 **keychain（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)）:** 上の最後の試験で読めたら、ownerがAppの鍵を別の専用keychain fileへ移す。移し終えて試験に通るまで、自動起動はdisabledのまま。鍵の移動は[App手順](github-apps.md)の変更なので、別のPRで独立レビューを受ける。
 
 - ログインが無効・期限切れなら起動しない。人へ1回知らせる。API鍵・別サービスへ自動で切り替えない。新しいAPI費用はowner承認が要る。購読の認証であることの確かめ方と、config dirに残る設定の検査は起動器（W1）で決める。tokenはenvにあるので、同じOSユーザーの`ps`から見えうる（O3の残余リスク）。
 - 注入でPRの内容が粗探しとレビューの両方を通る危険は、手動のときと同じ残余リスクとして残る。Brokerの公開の検査（§6）は流出を減らすが、判断の誤りは防がない。
+
+### groupを離れた子（残余リスク）
+
+所有者が[2026-10-07に受け入れた](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)残余リスク（Codexの[ISSUE50-P001〜P003](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019834396)）。supervisorはworkerのprocess groupを止めて空を確かめるが（§4）、全子孫の終了は証明しない。
+
+- groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
+- 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
+- この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
+- 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。
 
 ## 8. 実装・移行・完了
 
@@ -204,6 +217,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | owner-merge-only | 全PRで、AIは`OWNER_MERGE_ONLY`にあるか読めないPRをマージしない。値はリポジトリ変数の1か所だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)）。AIは自分のAppで読み、doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)） | 読取りは`merge-check`用途（[#55](https://github.com/doc-gif/kurashi-ledger/pull/55)） | [運用規約](github-agent-operations.md#owner-merge-only) |
 | start-small | 初期運用は、対象PR 1件、必要なreviewer 1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出てから広げる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)） | — | [PR書式](pr-review-loop.md#切替prごと) |
 | R009 | 時計の後退を許す幅は5秒 | — | [host検査](review-dispatch-implementation.md#host検査pr48-r009r011) |
+| group-end | 子孫の終了の証明（fdの継承）をやめ、process groupを止めて空を確かめる。空は必要条件で十分条件ではない。groupを離れた子の残余リスクをstart-smallで受け入れ、`CLAUDE_CONFIG_DIR`はrunごと（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)） | — | §4、§7の残余リスク |
 | R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [workflowの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008) |
 
 ## 9. 受入試験と導入チェックリスト
@@ -214,7 +228,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | --- | --- | --- |
 | D01 | 人↔AI、Codex↔Claude、複数reviewer | 同じ認可/Ready/CI/独立性。人にSHA転記不要 |
 | D02 | 二重配送、両App/違うdelivery ID、逆順、pause後7日超の再配送 | 同じ仕事/投稿は1件。payload削除でも古いReadyを復活させない |
-| D03 | dispatcherだけ落下し子が生存、spawn/manifest間の故障、PID再利用、POST不明 | supervisorへ制御再接続。子孫終了不明はlease保持・再起動/再POSTなし |
+| D03 | dispatcherだけ落下し子が生存、spawn/manifest間の故障、PID再利用、POST不明 | supervisorへ制御再接続。group終了の不明はlease保持・再起動/再POSTなし |
 | D04 | main更新、push/force-push、retarget、Ready/Review競合、履歴欠落 | 最新mainの祖先証明と試験merge親照合。unknownに旧pairを付け直さず新Ready要求 |
 | D05 | CI pending/失敗/skip、必須証拠のAPI途中失敗、Copilot遅延/後着/枠不足 | CI/必須証拠が不明なら起動0。Copilot無応答/枠不足だけでは止めず、後着の重大欠陥は独立受入を再確認。粗探し証跡を省略しない |
 | D06 | wrong Ready actor、第三者COMMENT、他run/identityの結果、自分のpush承認、dismissal | 認可外の起動/修正入力/承認0。pause解除はownerだけ |
