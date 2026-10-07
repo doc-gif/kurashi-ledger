@@ -41,7 +41,6 @@ export class EvidenceError extends Error {
 export class GhReader {
   readonly prefix: string;
   readonly send: Transport;
-  readonly cache = new Map<string, Response>();
   readonly clock: () => number;
   readonly deadline: number;
   // W4 row 12: the latest server Date seen by this reader (the end of an observation window).
@@ -67,11 +66,9 @@ export class GhReader {
       this.clock() >= this.deadline
     )
       throw new EvidenceError();
-    const old = this.cache.get(path);
-    const r = await this.send(
-      path,
-      old?.headers["etag"] ? { "If-None-Match": old.headers["etag"] } : {},
-    );
+    // No conditional requests (owner decision on Issue #50, PR68 RT-1): every read is a full 200, and
+    // collect's second read of main and the PR must see the server's current state, never a memo.
+    const r = await this.send(path, {});
     if (
       this.clock() >= this.deadline ||
       r.status === 429 ||
@@ -80,18 +77,8 @@ export class GhReader {
       throw new EvidenceError();
     const date = Date.parse(r.headers["date"] ?? "");
     if (Number.isFinite(date) && !(date <= this.maxDate)) this.maxDate = date;
-    if (r.status === 304) {
-      if (!old) throw new EvidenceError();
-      const cached = {
-        ...old,
-        headers: { ...old.headers, date: r.headers["date"] ?? "" },
-      };
-      this.cache.set(path, cached);
-      return cached;
-    }
     if (r.status !== 200 || Buffer.byteLength(r.body) > 8 * 1024 * 1024)
       throw new EvidenceError();
-    this.cache.set(path, r);
     return r;
   }
   async object(path: string): Promise<Record<string, unknown>> {
@@ -630,51 +617,74 @@ export function bindReady(
     policy: c.policyRevision,
   };
 }
-export function ghTransport(token: string, ghPath: string): Transport {
+// What one gh run returned. `status` is null when gh was ended by a signal (spawnSync's timeout included).
+export type GhResult = {
+  status: number | null;
+  signal: string | null;
+  error?: Error;
+  stdout: string | null;
+  stderr: string | null;
+};
+export type GhRun = (args: string[], env: Record<string, string>) => GhResult;
+// The job-log endpoint: plain text that GitHub Actions colours with terminal escape sequences.
+const JOB_LOGS = /^\/repos\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+\/actions\/jobs\/\d+\/logs$/;
+export function ghTransport(
+  token: string,
+  ghPath: string,
+  run: GhRun = (args, env) =>
+    spawnSync(ghPath, args, {
+      encoding: "utf8",
+      timeout: 15000,
+      maxBuffer: 9 * 1024 * 1024,
+      env,
+    }),
+): Transport {
   if (!token || !/^(?:\/|[A-Za-z]:[\\/])/.test(ghPath))
     throw new EvidenceError();
   return async (endpoint, headers) => {
     const home = mkdtempSync(join(tmpdir(), "dispatch-gh-"));
     try {
-      const args = [
-        "api",
-        "--hostname",
-        "github.com",
-        "--include",
+      const args = ["api", "--hostname", "github.com", "--include"];
+      // gh 2.97.0 and later refuse to print a non-JSON body with escape sequences (exit 1, partial stdout).
+      // The log body only reaches the TESTED_SHA parser, never a terminal. An older gh rejects the
+      // unknown flag with a non-zero exit, which fails closed below.
+      if (JOB_LOGS.test(endpoint)) args.push("--allow-escape-sequences");
+      args.push(
         endpoint,
         "-H",
         "Accept: application/vnd.github+json",
         "-H",
         "X-GitHub-Api-Version: 2022-11-28",
-      ];
+      );
       for (const [k, v] of Object.entries(headers))
         args.push("-H", `${k}: ${v}`);
-      const r = spawnSync(ghPath, args, {
-        encoding: "utf8",
-        timeout: 15000,
-        maxBuffer: 9 * 1024 * 1024,
-        env: {
-          GH_TOKEN: token,
-          GH_CONFIG_DIR: home,
-          HOME: home,
-          PATH:
-            process.platform === "win32"
-              ? "C:\\Windows\\System32"
-              : "/usr/bin:/bin",
-          NO_COLOR: "1",
-          GH_PAGER: "cat",
-        },
+      const r = run(args, {
+        GH_TOKEN: token,
+        GH_CONFIG_DIR: home,
+        HOME: home,
+        PATH:
+          process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
+        NO_COLOR: "1",
+        GH_PAGER: "cat",
       });
-      const match = r.stdout?.match(
-        /^HTTP\/\S+ (\d+) [^\r\n]*\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/,
+      if (r.error || r.signal !== null || typeof r.stdout !== "string")
+        throw new EvidenceError();
+      const match = r.stdout.match(
+        /^HTTP\/\S+ (\d{3}) [^\r\n]*\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/,
       );
-      if (!match || r.error) throw new EvidenceError();
+      if (!match) throw new EvidenceError();
+      const status = Number(match[1]),
+        body = match[3]!;
+      // Success is exit 0 with a 2xx status line, nothing else. gh exits 1 on every status above 299,
+      // and a non-zero exit is a failed fetch whatever stdout holds. GhReader sends no conditional
+      // request, so a 304 is never expected and is EvidenceError like any other non-2xx.
+      if (r.status !== 0 || status < 200 || status > 299) throw new EvidenceError();
       const h: Record<string, string> = {};
       for (const line of match[2]!.split(/\r?\n/)) {
         const i = line.indexOf(":");
         if (i > 0) h[line.slice(0, i).toLowerCase()] = line.slice(i + 1).trim();
       }
-      return { status: Number(match[1]), headers: h, body: match[3]! };
+      return { status, headers: h, body };
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

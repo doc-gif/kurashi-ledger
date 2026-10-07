@@ -136,7 +136,7 @@ DBはWAL/FULL同期、schema 5（W4で`blocked`・`run_keys`・`capability`・`m
 | D01/D04/D05/D06 | reducer: 役割入替え、複数reviewer、base/Ready/履歴、試験mergeの親/tree、CI・独立性・dismissal |
 | D02/D03/D08/D09 | 実SQLite: tombstone、transaction、全種類PR lease、10枠/実行先枠、24時間6回とowner解除まで保持するquota pause、世代の取消、不明POST・通知の重複 |
 | D03/D09/I009 | POSIX fixture: supervisor死亡、groupの居残り・列挙失敗・PermissionError、setsidで抜けた子（group終了・全子孫は未証明、stdoutを持てばuncertain）、取消・timeout、同一runへの再接続。Windowsは未対応を検査しskipしない |
-| D05/D07/I003/I004 | fake ghの全ページ/ETag/rate limit/部分失敗、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
+| D05/D07/I003/I004 | fake ghの全ページ/rate limit/部分失敗、条件付き要求なし（成功はghの終了0かつ2xxだけ。非0・signal・timeout・304は失敗）とjob logのescape（gh 2.97.0以上、logだけ`--allow-escape-sequences`）、Inbox結合のatomic rollback・欠落回復・activity身元・shadow差分、raw署名、body上限、localhost HTTP、durable保存失敗 |
 | D06/D07/D10 | run/身元/pair/結果hashの照合、supervisor署名の相互試験ベクトルと改ざんの拒否、公開前の検査、厳格な結果schema・protocol/mention偽装拒否、固定Broker、環境allowlist、未確認capability・active拒否 |
 | I007 | `dispatch-read`の正確なread-only grant、追加write/missing grantではgh起動0 |
 | PR48-R007〜R011 | 未解消の指摘の規則（会話コメント・owner・第三者・dismiss・編集/削除の観測記録・古いcommitの承認・同時刻）、CIの判定を決める範囲の要約とowner信頼・範囲の内外・ci.yml以外のrun、時計の後退、policy/root/DB/WAL/SHM/lockの所有者・権限・リンク、過大な配送の印、本文の正規形とhash不一致のuncertain |
