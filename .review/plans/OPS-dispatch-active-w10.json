@@ -7,6 +7,7 @@
   "scripts/lib/review-dispatch/broker.test.ts",
   "scripts/lib/review-dispatch/broker.ts",
   "scripts/lib/review-dispatch/reducer.test.ts",
+  "scripts/lib/review-dispatch/store.ts",
   "scripts/review-dispatch.test.ts",
   "scripts/review-dispatch.ts"
  ],
@@ -16,6 +17,11 @@
    "date": "2026-10-07",
    "source": "Issue #50 W10（調整係の指示。PR #59の稼働観察で見つかった不具合、main 6aa7264で読取りだけの診断）",
    "decision": "activeで、有効なReadyが一時的な取得の不完全（保留）を越えて残るようにする。保留の結果は保存済みのtarget・世代・Readyを上書きしない。保留は成功ではなく、PRを対象（eligible）にしない。前の保存状態を残すだけ"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #72 red team RT-1・RT-3と調整係の指示（RT-2は所有者の設計判断として保留）",
+   "decision": "RT-1: statusはholdsの行を読取りだけで読み、保留中と開始時刻を出す。保留中のPRを前回の状態だけで（eligibleとして）出さない。RT-3: 投稿直前の再取得の読取り失敗（EvidenceError）はOutboxの行を作る前なので保留と同じく延期（deferred）する。Outboxの行の後の失敗（POSTが不明）はuncertainのまま"
   }
  ],
  "assessments": [
@@ -26,8 +32,8 @@
    "checks": [
     {
      "id": "identity",
-     "method": "git diffでstore.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでstore.tsの差分がstatus()でholdsを読むSELECTだけ（書込み・構造の変更なし）ことを確かめる",
+     "expected": "読取りの1行だけ"
     },
     {
      "id": "recovery",
@@ -72,35 +78,35 @@
    "checks": [
     {
      "id": "first-use",
-     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでhost.tsに差分がなく、store.tsの差分がstatus()の読取りだけであることを確かめる",
+     "expected": "保存先の識別は同じ"
     },
     {
      "id": "aliases",
-     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでhost.tsに差分がなく、store.tsの差分がstatus()の読取りだけであることを確かめる",
+     "expected": "保存先の識別は同じ"
     }
    ]
   },
   {
    "id": "INV-STORAGE",
    "disposition": "preserve",
-   "reason": "DBの構造・書込みの関数は変えない。保留のcycleで書かない経路を増やすだけ",
+   "reason": "DBの構造・書込みの関数は変えない。保留のcycleで書かない経路を増やし、statusでholdsを読取りだけで読む",
    "checks": [
     {
      "id": "rollback",
-     "method": "git diffでstore.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでstore.tsの差分がstatus()でholdsを読むSELECTだけ（書込み・構造の変更なし）ことを確かめる",
+     "expected": "読取りの1行だけ"
     },
     {
      "id": "restore",
-     "method": "git diffでstore.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでstore.tsの差分がstatus()でholdsを読むSELECTだけ（書込み・構造の変更なし）ことを確かめる",
+     "expected": "読取りの1行だけ"
     },
     {
      "id": "manifest",
-     "method": "git diffでstore.tsに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "git diffでstore.tsの差分がstatus()でholdsを読むSELECTだけ（書込み・構造の変更なし）ことを確かめる",
+     "expected": "読取りの1行だけ"
     }
    ]
   },
@@ -145,7 +151,15 @@
    "location": "review-dispatch.ts fresh → broker.ts ReviewBroker.submit（投稿直前の再取得）",
    "data": "再取得した照合の結果",
    "trust": "partially-trusted",
-   "control": "再取得が保留ならfreshはHeldSnapshotErrorを投げ、submitはdeferredを返す（staleにしない）。結果とleaseは残り、次のcycleが保存した結果から投稿する（再起動しない）。保留の再取得で投稿もしない"
+   "control": "再取得が保留ならfreshはHeldSnapshotErrorを投げ、GitHubの読取りの失敗（EvidenceError: 429・残り0・5xx・期限切れ・ghの失敗）も同じく、submitはdeferredを返す（staleにもuncertainにもしない）。どちらもOutboxの行を作る前なので二重POSTはない。結果とleaseは残り、次のcycleが保存した結果から1回だけ投稿する（再起動しない）。ほかの例外（identityの変化、ReadyAfterError等）は従来どおり呼出し側がuncertainにする。Outboxの行の後の失敗（POST・回復のlist）はuncertainのまま再送しない"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "review-dispatch.ts status（store.status）・heldNotices",
+   "data": "所有者に見せるPRの状態と保留",
+   "trust": "trusted",
+   "control": "保留の結果は保存しないので、statusはholdsの行を読取りだけで読み、保留中なら「照合を保留中（開始時刻から）。前回の完全な照合: …」と出す。保留中のPRを前回の状態だけ（eligible等）で出さない。保留の原因はholdsに記録していないので出さない（固定の例だけ）。heldNoticesは従来どおり1時間で1回"
   }
  ],
  "variant_analysis": [
@@ -188,6 +202,22 @@
     {
      "location": "webhook.ts（受け口のinbox・marks）",
      "result": "照合の結果に依らない。対象外"
+    },
+    {
+     "location": "review-dispatch.ts status（store.status）",
+     "result": "修正（RT-1）: holdsを読取りだけで読み、保留中と開始時刻を出す。保留中に前回のeligibleだけを出さない"
+    },
+    {
+     "location": "review-dispatch.ts heldNotices",
+     "result": "変えない（1時間で1回）。投稿直前の再取得だけが保留のときは、次の完全な照合でholdsが消えるので通知は出ないが、cycleの出力にresume:deferredが毎回出る"
+    },
+    {
+     "location": "broker.ts submit 再取得のEvidenceError（RT-3）",
+     "result": "修正: deferred。従来はuncertainでleaseが残り、ownerのreleaseが要り、その世代のjobが済んだ扱いになった"
+    },
+    {
+     "location": "broker.ts submit Outboxの行の後（POST・回復のlist）",
+     "result": "変えない: uncertainのまま再送しない（試験あり）"
     }
    ]
   },
@@ -197,7 +227,7 @@
    "places": [
     {
      "location": "store.ts",
-     "result": "差分なし"
+     "result": "status()でholdsを読むSELECTだけ（書込み・構造の変更なし）"
     }
    ]
   },
@@ -227,7 +257,7 @@
    "places": [
     {
      "location": "host.ts・store.ts",
-     "result": "差分なし"
+     "result": "status()でholdsを読むSELECTだけ（書込み・構造の変更なし）"
     }
    ]
   },
@@ -237,7 +267,7 @@
    "places": [
     {
      "location": "store.ts",
-     "result": "差分なし"
+     "result": "status()でholdsを読むSELECTだけ（書込み・構造の変更なし）"
     }
    ]
   }

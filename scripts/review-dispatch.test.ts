@@ -567,6 +567,15 @@ test("W10 (PR #59): Ready, faultfinding posted, a held cycle from the updated_at
     // A second held cycle changes nothing either.
     assert.equal(await main(c.args, c.env, () => {}, () => 1001, held), 0);
     assert.deepEqual(store.target("1:1"), before.target);
+    // RT-1: status shows the hold and its start, and never the stored state alone as if current.
+    const status = async () => {
+      const out: string[] = [];
+      assert.equal(await main(["status", "--root", c.x.d.root, "--policy", c.x.file], c.x.env, (x) => out.push(x), () => 1001), 0);
+      return out.join("\n");
+    };
+    const shown = await status();
+    assert.match(shown, /^PR #1: 照合を保留中（1970-01-01T00:00:01\.000Zから。.*前回の完全な照合: eligible（ready、世代1）/m);
+    assert.doesNotMatch(shown, /^PR #1: eligible/m);
     // Complete cycle: the original Ready is intact (not new-ready-required) and the next job is the review.
     lines.length = 0;
     const complete = deps(() => c.fakeGitHub(c.github), unacknowledged(() => spawned++));
@@ -577,6 +586,7 @@ test("W10 (PR #59): Ready, faultfinding posted, a held cycle from the updated_at
     assert.equal(after.generation, ready.generation);
     assert.ok(spawned >= 1); // the review launch reached the supervisor
     assert.match(lines.join("\n"), /PR #1: review:not-started:not-acknowledged/);
+    assert.doesNotMatch(await status(), /保留/);
   } finally {
     c.x.cleanup();
   }
@@ -615,7 +625,7 @@ test("W10 a held cycle never makes a PR eligible: no target, no job, the Ready d
   }
 });
 
-test("W10 a held re-check right before a post defers it (no POST, nothing spent); the next complete cycle posts it once", async (t) => {
+test("W10 a held or failed re-check right before a post defers it (no POST, nothing spent); the next complete cycle posts it once", async (t) => {
   if (process.platform === "win32") {
     t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
     return;
@@ -627,6 +637,9 @@ test("W10 a held re-check right before a post defers it (no POST, nothing spent)
   const { hash } = await import("./lib/review-dispatch/model.ts");
   const { fixtureResult } = await import("./lib/review-dispatch/runtime.ts");
   const { TestSigner } = await import("../tests/fixtures/review-dispatch-run-signer.ts");
+  const { EvidenceError } = await import("./lib/review-dispatch/github.ts");
+  // drift: the re-check is held (PR #59). fail: the re-check's GitHub read fails (RT-3: 429, 5xx, deadline, gh).
+  for (const gap of ["drift", "fail"] as const) {
   const c = await activeCli();
   try {
     const store = c.x.d.store,
@@ -671,7 +684,10 @@ test("W10 a held re-check right before a post defers it (no POST, nothing spent)
         drift = drifting(inner);
       let reads = 0;
       return (async (endpoint, headers) => {
-        if (endpoint.endsWith("/pulls/1") && ++reads > 2) return drift(endpoint, headers);
+        if (endpoint.endsWith("/pulls/1") && ++reads > 2) {
+          if (gap === "fail") throw new EvidenceError();
+          return drift(endpoint, headers);
+        }
         return inner(endpoint, headers);
       }) as import("./lib/review-dispatch/github.ts").Transport;
     };
@@ -685,16 +701,22 @@ test("W10 a held re-check right before a post defers it (no POST, nothing spent)
     });
     const lines: string[] = [];
     assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1000, deps(late)), 0);
-    assert.match(lines.join("\n"), /PR #1: resume:deferred/);
+    assert.match(lines.join("\n"), /PR #1: resume:deferred/, gap);
     assert.equal(posted.length, 0);
-    assert.equal(store.deferred("1:1")?.job.id, j.id); // result and lease kept, not released as stale
+    assert.equal(store.deferred("1:1")?.job.id, j.id); // result and lease kept, not released as stale or uncertain
+    assert.equal(store.job(j.id)!.status, "result-ready");
     assert.deepEqual(store.target("1:1"), ready);
     lines.length = 0;
     assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1001, deps(() => c.fakeGitHub(c.github))), 0);
-    assert.match(lines.join("\n"), /PR #1: resume:posted/);
+    assert.match(lines.join("\n"), /PR #1: resume:posted/, gap);
     assert.equal(posted.length, 1);
     assert.equal(store.job(j.id)!.status, "posted");
+    assert.equal(store.status("1:1").jobs.length, 1); // nothing relaunched, no quota spent
+    // The next cycle posts nothing more.
+    assert.equal(await main(c.args, c.env, () => {}, () => 1002, deps(() => c.fakeGitHub(c.github))), 0);
+    assert.equal(posted.length, 1);
   } finally {
     c.x.cleanup();
+  }
   }
 });

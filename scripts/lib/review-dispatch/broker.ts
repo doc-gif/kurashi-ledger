@@ -8,7 +8,7 @@ import {
 } from "./model.ts";
 import { approvalBlockers, assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
-import { canonicalBody } from "./github.ts";
+import { canonicalBody, EvidenceError } from "./github.ts";
 import type { ResultVerifier } from "./provenance.ts";
 import { CAUSE_KEY, RECORD_ID, RESULT_LIMITS as L, RT_ID } from "./launcher.ts";
 import {
@@ -25,7 +25,8 @@ import {
 // Rejected because of WHAT the result says (secret shapes, format characters, look-alikes, injection, links),
 // as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
 export class ResultContentError extends Error {}
-// fetchFresh: the re-check reconcile was held (transiently incomplete, PR48-R013). submit() defers, never "stale".
+// fetchFresh: the re-check reconcile was held (transiently incomplete, PR48-R013). submit() defers, never "stale"
+// (and likewise on an EvidenceError of the re-check, RT-3).
 export class HeldSnapshotError extends Error {}
 
 // `records`: the whole-record IDs (record-<comment|review>-<id>) of this job's materials (store.runMaterials).
@@ -255,7 +256,10 @@ export class ReviewBroker {
       s = await fetchFresh();
       for (let n = 0; n < 2 && this.store.marked(j.key); n++) s = await fetchFresh();
     } catch (e) {
-      if (e instanceof HeldSnapshotError) return "deferred";
+      // W10 RT-3: a failed GitHub read (429, rate limit, 5xx, deadline, a gh failure: EvidenceError) is the same
+      // transient gap. Nothing is posted before the Outbox row below, so deferring cannot double-post.
+      // Any other error (identity change, revision without a new readyAfter, ...) stays with the caller.
+      if (e instanceof HeldSnapshotError || e instanceof EvidenceError) return "deferred";
       throw e;
     }
     if (this.store.marked(j.key)) return "deferred";
