@@ -227,6 +227,7 @@ PRの作者が自分のAppのbotであることを2つ目で確かめる。マ�
 - `implement`のトークン（workflowsなし）で、workflowの変更を含むmainを取り込んだmerge commitをpushできるか。`gh pr merge`・update-branch（`gh pr update-branch`、`PUT /pulls/{番号}/update-branch`）を、workflowの変更を含むPRで行えるか。
 - `repos/…/activity`（pushした身元の確認）を、このトークンで読めるか。読めなければ、PRのtimelineで確かめる手順に直す。
 - 権限の外の書込みが、bodyの検証より前に403で拒まれるか（下の「実際の鍵での確認」の否定の確認の前提）。
+- `review`でissuesへの書込みをGitHub APIが拒むか。下の無効な本文のPOSTは両用途とも422なので、拒否を確認できていない。`review`にissues:writeがない根拠は、発行応答の権限の完全一致照合であり、このPOSTの結果ではない。
 
 ## 移行の計画
 
@@ -255,13 +256,15 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 期待: 2つ目の要求が`HTTP 401`で失敗する。スクリプト自身の失効は401（すでに無効）になり、注意を出さずに終える。
 
-否定（bodyは無効なので、権限があっても作成されない。issuesの要求は本文の検証が先に行われるため、422では権限不足を証明できない。2xxが出たら所有者に知らせる）:
+否定（bodyは無効なので、権限があっても作成されない。issuesの要求は本文の検証が先に行われるため、422では権限不足を証明できない。issues行は参考結果として残し、否定確認の合格に数えない。2xxが出たら所有者に知らせる）:
 
 | 確かめること | コマンドの`--`のあと | `review`で期待 | `implement`で期待 |
 | --- | --- | --- | --- |
 | contentsの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000` | 403 | 422 |
-| issuesの書込み | `gh api -X POST repos/doc-gif/kurashi-ledger/issues -f title=` | 422 | 422 |
+| issuesの書込み（参考。合格に数えない） | `gh api -X POST repos/doc-gif/kurashi-ledger/issues -f title=` | 422 | 422 |
 | administration | `gh api -X POST repos/doc-gif/kurashi-ledger/rulesets -f name=` | 403 | 403 |
+
+`review`にissues:writeがないことは、[発行手順](#使い方スクリプトがコマンドを実行する)の2で、要求した権限と発行応答の権限が完全に一致することを照合して確かめる。余分なissues:writeが付いていれば、スクリプトはトークンを失効させ、子を実行しない。これは発行された権限の確認であり、API側で書込みが拒否されることの確認は[未確認の一覧](#確かめていないこと推測しない)に残す。有効な本文のPOSTによるIssue作成は、この確認では行わない。
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
 
