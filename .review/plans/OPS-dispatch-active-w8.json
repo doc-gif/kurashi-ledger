@@ -8,7 +8,8 @@
   "scripts/lib/review-dispatch/active.ts",
   "scripts/lib/review-dispatch/doctor.test.ts",
   "scripts/lib/review-dispatch/doctor.ts",
-  "scripts/lib/review-dispatch/runtime.ts"
+  "scripts/lib/review-dispatch/runtime.ts",
+  "scripts/review-dispatch.test.ts"
  ],
  "conflicts": [],
  "owner_decisions": [
@@ -204,6 +205,10 @@
     {
      "location": "review-dispatch.ts cycle",
      "result": "boundCapabilityを通るので今回の修正で閉じる"
+    },
+    {
+     "location": "review-dispatch.test.ts cycleの試験が記録するcapability",
+     "result": "PROBE_SETを持たせる（doctorが記録する形と同じ）。持たなければcapability-probesで起動しない"
     }
    ]
   },
