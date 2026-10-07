@@ -731,12 +731,14 @@ export const GIT_CREDENTIAL_HELPER = '!f() { test "$1" = get || exit 0; echo use
 // 空のデバイス（/dev/null、Windowsの\\.\nul）は、WindowsのgitがEINVALで読めないので使わない。
 export const UNUSED_GIT_GLOBAL_CONFIG = 'git-global-config-unused';
 
-// extraheaderは、選んだrepoのpushのURLの細かさでも空にする。
-export const childGitConfig = (repository: Repository): readonly (readonly [string, string])[] => [
+// extraheaderは、許可リストのすべてのrepoのpushのURLの細かさでも空にする（選んだrepoによらない）。gitは最も細かく
+// 一致したURLの値を使うので、選んだrepoのURLだけを空にすると、repoの設定にある別のrepoのURL用のheader（所有者の
+// 資格情報）が、そのURLへのpush（remote名経由を含む）で使われる（PR74 RT-1）。
+export const CHILD_GIT_CONFIG: readonly (readonly [string, string])[] = [
   ['credential.helper', ''],
   ['credential.https://github.com.helper', GIT_CREDENTIAL_HELPER],
   ['http.https://github.com/.extraheader', ''],
-  [`http.${pushUrl(repository)}.extraheader`, ''],
+  ...REPOSITORIES.map((repository) => [`http.${pushUrl(repository)}.extraheader`, ''] as const),
   ['core.askPass', ''],
 ];
 
@@ -744,15 +746,13 @@ export function childEnvironment(
   parent: Readonly<Record<string, string | undefined>>,
   token: string,
   configDir: string,
-  repository: Repository,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(parent)) {
     if (value !== undefined && !REMOVED_ENV.test(name)) env[name] = value;
   }
-  const config = childGitConfig(repository);
-  const gitConfig: Record<string, string> = { GIT_CONFIG_COUNT: String(config.length) };
-  config.forEach(([key, value], i) => {
+  const gitConfig: Record<string, string> = { GIT_CONFIG_COUNT: String(CHILD_GIT_CONFIG.length) };
+  CHILD_GIT_CONFIG.forEach(([key, value], i) => {
     gitConfig[`GIT_CONFIG_KEY_${i}`] = key;
     gitConfig[`GIT_CONFIG_VALUE_${i}`] = value;
   });
@@ -1056,7 +1056,7 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
       let configDir: string | undefined;
       try {
         configDir = deps.makeConfigDir();
-        const env = childEnvironment(deps.env, token, configDir, options.repository);
+        const env = childEnvironment(deps.env, token, configDir);
         const handle = deps.runChild(command, env, options.key.kind === 'stdin' ? 'ignore' : 'inherit');
         state.child = handle;
         // 起動と登録の間に届いたシグナルも転送する。

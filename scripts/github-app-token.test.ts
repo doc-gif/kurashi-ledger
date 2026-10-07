@@ -510,7 +510,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     KL_GITHUB_APP_ID_CODEX: '1',
     UNDEFINED: undefined,
   };
-  const env = childEnvironment(parent, TOKEN, CONFIG_DIR, DEFAULT_REPOSITORY);
+  const env = childEnvironment(parent, TOKEN, CONFIG_DIR);
   assert.deepEqual(env, {
     PATH: '/usr/bin',
     LANG: 'C',
@@ -524,17 +524,21 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_GLOBAL: join(CONFIG_DIR, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
     GIT_TRACE_REDACT: '1',
-    GIT_CONFIG_COUNT: '5',
+    GIT_CONFIG_COUNT: '7',
     GIT_CONFIG_KEY_0: 'credential.helper',
     GIT_CONFIG_VALUE_0: '',
     GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
     GIT_CONFIG_VALUE_1: GIT_CREDENTIAL_HELPER,
     GIT_CONFIG_KEY_2: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_2: '',
-    GIT_CONFIG_KEY_3: `http.${pushUrl(DEFAULT_REPOSITORY)}.extraheader`,
+    GIT_CONFIG_KEY_3: 'http.https://github.com/doc-gif/kurashi-ledger.git.extraheader',
     GIT_CONFIG_VALUE_3: '',
-    GIT_CONFIG_KEY_4: 'core.askPass',
+    GIT_CONFIG_KEY_4: 'http.https://github.com/doc-gif/mekiki.git.extraheader',
     GIT_CONFIG_VALUE_4: '',
+    GIT_CONFIG_KEY_5: 'http.https://github.com/doc-gif/mekiki-claude.git.extraheader',
+    GIT_CONFIG_VALUE_5: '',
+    GIT_CONFIG_KEY_6: 'core.askPass',
+    GIT_CONFIG_VALUE_6: '',
   });
   assert.equal(pushUrl(DEFAULT_REPOSITORY), 'https://github.com/doc-gif/kurashi-ledger.git');
   // helperはトークンの値を含まず、子の環境のGH_TOKENを読む。
@@ -569,7 +573,7 @@ test('子の環境の実際のgit: github.comにだけAppのトークンを返�
     }
     const configDir = join(dir, 'gh-config');
     mkdirSync(configDir);
-    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home }, TOKEN, configDir, DEFAULT_REPOSITORY);
+    const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: home, USERPROFILE: home }, TOKEN, configDir);
     for (const cwd of [home, repo]) {
       const github = gitIn(cwd, env, ['credential', 'fill'], 'protocol=https\nhost=github.com\n\n');
       assert.equal(github.status, 0, github.stderr);
@@ -638,7 +642,7 @@ test('子の環境の実際のgitは、利用者の.netrcの資格情報を送�
     // 子の環境では、HOMEを一時のディレクトリにするので、利用者の.netrcを読まない。
     const configDir = join(dir, 'gh-config');
     mkdirSync(configDir);
-    const env = childEnvironment(parent, TOKEN, configDir, DEFAULT_REPOSITORY);
+    const env = childEnvironment(parent, TOKEN, configDir);
     assert.ok(!('NETRC' in env));
     await withAuthServer(async (url, seen) => {
       const code = await gitAsync(env, ['ls-remote', url], dir);
@@ -1030,7 +1034,7 @@ test('出力を伏せる処理は、長い英数字の並びと既知の秘密�
 });
 
 test('実際の子プロセス: シェルを通さずに起動し、渡した環境だけを見せ、終了コードを返す。見つからないコマンドはENOENT', async () => {
-  const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', GITHUB_TOKEN: 'parent' }, TOKEN, CONFIG_DIR, DEFAULT_REPOSITORY);
+  const env = childEnvironment({ PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', GITHUB_TOKEN: 'parent' }, TOKEN, CONFIG_DIR);
   const source = [
     `const ok = process.env.GH_TOKEN === ${JSON.stringify(TOKEN)} && process.env.GITHUB_TOKEN === undefined`,
     `  && process.env.GH_CONFIG_DIR === ${JSON.stringify(CONFIG_DIR)} && process.argv[1] === 'a b;$(x)';`,
@@ -1516,6 +1520,7 @@ test('--repoの既定はkurashi-ledgerで、省略したときの要求・確認
   assert.equal(await run(args, h.deps), 0);
   assert.deepEqual(JSON.parse(h.calls[0]?.init.body ?? '{}').repositories, ['kurashi-ledger']);
   assert.equal(h.children[0]?.env['GIT_CONFIG_KEY_3'], 'http.https://github.com/doc-gif/kurashi-ledger.git.extraheader');
+  assert.equal(h.children[0]?.env['GIT_CONFIG_COUNT'], '7');
   assert.equal(h.calls[0]?.init.headers['User-Agent'], 'kurashi-ledger-github-app-token');
 });
 
@@ -1534,8 +1539,11 @@ test('--repo mekikiは、トークンの要求・応答と触れるrepoの確認
   const child = h.children[0];
   assert.ok(child !== undefined);
   assert.deepEqual(child.command, ['/synthetic/bin/git', ...push.slice(1)]);
-  assert.equal(child.env['GIT_CONFIG_KEY_3'], 'http.https://github.com/doc-gif/mekiki.git.extraheader');
-  assert.equal(child.env['GIT_CONFIG_VALUE_3'], '');
+  // 選んだrepoによらず、許可リストの3つのpushのURLのextraheaderを空にする（PR74 RT-1）。
+  const emptied = Object.keys(child.env)
+    .filter((k) => /^GIT_CONFIG_KEY_\d+$/.test(k) && /^http\.https:\/\/github\.com\/doc-gif\/.+\.extraheader$/.test(child.env[k] ?? ''))
+    .map((k) => [child.env[k], child.env[k.replace('KEY', 'VALUE')]]);
+  assert.deepEqual(emptied, REPOSITORIES.map((r) => [`http.${pushUrl(r)}.extraheader`, '']));
   assert.equal(child.env['GH_TOKEN'], TOKEN);
   // 道具の名前（User-Agent）はrepoで変えない。
   assert.equal(h.calls[0]?.init.headers['User-Agent'], 'kurashi-ledger-github-app-token');
@@ -1685,5 +1693,34 @@ test('merge-checkは--repoで選んだrepoのOWNER_MERGE_ONLYだけを読む（�
     assert.equal(await run(['--agent', agent, '--purpose', 'merge-check', '--repo', 'mekiki', ...ID_ARGS, '--', ...kurashi], other.deps), EXIT_OWN_FAILURE);
     assert.deepEqual(other.keychainCalls, []);
     assert.deepEqual(other.calls, []);
+  }
+});
+
+test('PR74 RT-1: どの--repoでも、repoの設定にある許可リストの別のrepoのURL用のextraheaderを、実際のgitで使わない', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
+  try {
+    const repo = join(dir, 'repo');
+    assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
+    // 合成のrepoの設定に、許可リストの3つのrepoのURLそれぞれ用のheader（所有者の資格情報の代わり）を置く。
+    for (const r of REPOSITORIES) {
+      assert.equal(spawnSync('git', ['-C', repo, 'config', `http.${pushUrl(r)}.extraheader`, `AUTHORIZATION: synthetic-owner-${r}`]).status, 0, r);
+    }
+    for (const selected of REPOSITORIES) {
+      // runが子に渡す環境を、--repoごとに実際に取り出す。
+      const h = harness([{ status: 201, body: repoGranted('implement', selected) }, repoListed(selected), REVOKED]);
+      const configDir = join(dir, `gh-config-${selected}`);
+      mkdirSync(configDir);
+      const deps = { ...h.deps, env: { PATH: process.env['PATH'] ?? '', SYSTEMROOT: process.env['SYSTEMROOT'] ?? '', HOME: dir, USERPROFILE: dir }, makeConfigDir: () => configDir };
+      const args = ['--agent', 'claude', '--purpose', 'implement', ...(selected === DEFAULT_REPOSITORY ? [] : ['--repo', selected]), ...ID_ARGS, '--', 'true'];
+      assert.equal(await run(args, deps), 0, `${selected}: ${h.err.join('')}`);
+      const env = h.children[0]?.env;
+      assert.ok(env !== undefined, selected);
+      for (const target of REPOSITORIES) {
+        const header = gitIn(repo, env, ['config', '--get-urlmatch', 'http.extraheader', pushUrl(target)]);
+        assert.equal(header.stdout.trim(), '', `--repo ${selected}で${target}のURLのheaderが残った`);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
