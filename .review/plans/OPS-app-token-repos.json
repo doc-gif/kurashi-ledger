@@ -151,7 +151,7 @@
    "location": "childEnvironment（gitのextraheaderの上書き）とcommandTargetProblem（子のコマンドの引数）",
    "data": "子のコマンドとgitの設定",
    "trust": "partially-trusted",
-   "control": "選んだrepoのpushのURLのextraheaderを空にする。発行の前（鍵を読む前）に、ghの--repo・-R・--repo=・環境変数GH_REPO・gh apiのrepos/<owner>/<name>のパス・github.comのURLの引数、gitのgithub.comのURLの引数が、選んだrepo（gitはそのpushのURLと完全一致）以外を指せば拒む。sh -c等の中は読まない（範囲の正本はトークンの縮小で、この照合は取り違えを早く止めるためのもの）"
+   "control": "許可リストの3つのrepoのpushのURLのextraheaderを、選んだrepoによらずすべて空にする（選んだURLだけでは、repoの設定にある別のrepoのURL用のheaderがそのURLへのpushで使われる。PR74 RT-1）。発行の前（鍵を読む前）に、ghの--repo・-R・--repo=・環境変数GH_REPO・gh apiのrepos/<owner>/<name>のパス・github.comのURLの引数、gitのgithub.comのURLの引数が、選んだrepo（gitはそのpushのURLと完全一致）以外を指せば拒む。sh -c等の中は読まない（範囲の正本はトークンの縮小で、この照合は取り違えを早く止めるためのもの）"
   }
  ],
  "variant_analysis": [
@@ -169,7 +169,7 @@
     },
     {
      "location": "PUSH_URL・CHILD_GIT_CONFIG（extraheaderの上書き）",
-     "result": "修正: pushUrl(repo)・childGitConfig(repo)にする"
+     "result": "修正: pushUrl(repo)にする。extraheaderの上書き（CHILD_GIT_CONFIG）は許可リストの3つのURLすべて（PR74 RT-1。選んだURLだけでは別のrepoのURL用のheaderが残る）。試験: どの--repoでも、合成のrepoの設定の3つのheaderが実際のgitで空になる"
     },
     {
      "location": "USER_AGENT",
