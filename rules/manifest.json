@@ -1,0 +1,1165 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0",
+  "note": "制度の規則の一覧（T14）。読み方・状態・承認の手順・地域の符号はdocs/rules/README.md。規則の版は書き換えず、訂正は新しい版として足す。statusがdraftの規則は、別担当のレビューで確かめられるまで後続（T11・T15〜）の承認済みの規則として使わない。",
+  "jurisdictionCodeSystem": {
+    "spec": "docs/rules/README.md",
+    "description": "計算runのtarget.jurisdictionの符号の体系（docs/rules/README.mdの「地域の符号」）。nationalはJP、prefecture・municipalityは全国地方公共団体コードの6桁（検査数字を含む）。insurerは未確認。",
+    "sources": [
+      "soumu-lgcode",
+      "soumu-lgcode-spec"
+    ]
+  },
+  "sources": [
+    {
+      "id": "nta-nencho2026-changes",
+      "title": "令和8年分 年末調整のしかた「昨年と比べて変わった点（基礎控除の引上げ等）」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/102.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2026-tax",
+      "title": "令和8年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/110.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2026-table",
+      "title": "令和8年分の年末調整等のための給与所得控除後の給与等の金額の表",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2026-rates",
+      "title": "令和8年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/115.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2026-computer",
+      "title": "令和8年分 年末調整のしかた（源泉徴収義務者の方用情報）「電子計算機等による年末調整」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/204.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-08-31",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-2026kiso-qa",
+      "title": "令和8年度税制改正（所得税の基礎控除の引上げ等関係）Q&A",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2026-05-29",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "資料の表記は「令和8年5月」、令和8年5月1日現在の法令・通達等に基づく",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2025-tax",
+      "title": "令和7年分 年末調整のしかた「年税額の計算・過不足額の精算」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/110.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-09-03",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2025-table",
+      "title": "令和7年分の年末調整等のための給与所得控除後の給与等の金額の表",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-08-29",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-nencho2025-rates",
+      "title": "令和7年分の年末調整のための算出所得税額の速算表・配偶者控除額及び配偶者特別控除額の一覧表・基礎控除額の表・特定親族特別控除額の表・扶養控除額等の表",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/115.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-08-29",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-2025kiso",
+      "title": "令和7年度税制改正による所得税の基礎控除の見直し等について",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/users/gensen/2025kiso/index.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-01-30",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-2025kiso-qa",
+      "title": "令和7年度税制改正（所得税の基礎控除の見直し等関係）Q&A",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/gensen/0025005-051.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-05-30",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "資料の表記は令和7年5月30日",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-2025tsukin-qa",
+      "title": "通勤手当の非課税限度額の引上げに関するQ&A",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/users/gensen/2025tsukin/pdf/03.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-19",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "資料の表記は「令和7年11月」、令和7年11月19日現在の法令等に基づく",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-2509",
+      "title": "タックスアンサーNo.2509 給与所得の収入金額の収入すべき時期",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2509.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-10",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-2260",
+      "title": "タックスアンサーNo.2260 所得税の税率",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1410",
+      "title": "タックスアンサーNo.1410 給与所得控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1411",
+      "title": "タックスアンサーNo.1411 所得金額調整控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1411.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1199",
+      "title": "タックスアンサーNo.1199 基礎控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1180",
+      "title": "タックスアンサーNo.1180 扶養控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1191",
+      "title": "タックスアンサーNo.1191 配偶者控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1195",
+      "title": "タックスアンサーNo.1195 配偶者特別控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1177",
+      "title": "タックスアンサーNo.1177 特定親族特別控除",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-1181",
+      "title": "タックスアンサーNo.1181 扶養親族が2人以上の納税者の扶養親族に該当する場合",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1181.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-09",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-ta-2665",
+      "title": "タックスアンサーNo.2665 年末調整の対象となる人",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2665.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-09-10",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "令和8年4月1日現在法令等",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-shinkoku2025-taxable",
+      "title": "令和7年分 確定申告の手引き 手順4「課税される所得金額・課税される所得金額に対する税額」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_26.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-04-17",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-shinkoku2025-balance",
+      "title": "令和7年分 確定申告の手引き 手順4「申告納税額」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_39.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-12-24",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-shinkoku2025-reconstruction",
+      "title": "令和7年分 確定申告の手引き 手順4「復興特別所得税額」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/tebiki/2025/03/order4/3-4_45.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-12-24",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "egov-tsusoku",
+      "title": "国税通則法（昭和三十七年法律第六十六号）第118条・第119条",
+      "publisher": "デジタル庁（e-Gov法令検索）",
+      "url": "https://laws.e-gov.go.jp/law/337AC0000000066",
+      "primary": true,
+      "documentUpdatedOn": "2026-07-01",
+      "documentDateBasis": "egov-revision-updated",
+      "documentDateNote": "法令の版 337AC0000000066_20260624_508AC0000000046",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-scope",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「提出する必要がある方」",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-1.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-28",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-payment",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「支払金額」欄",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-3.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-28",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-employment-income",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「給与所得控除後の金額（調整控除後）」欄",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-4.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-28",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-deductions",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「所得控除の額の合計額」欄",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-5.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-28",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-withholding",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「源泉徴収税額」欄",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-6.htm",
+      "primary": true,
+      "documentUpdatedOn": "2025-11-28",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "nta-hotei2025-social-insurance",
+      "title": "令和7年分 給与所得の源泉徴収票等の法定調書の作成と提出の手引「社会保険料等の金額」欄",
+      "publisher": "国税庁",
+      "url": "https://www.nta.go.jp/publication/pamph/hotei/tebikihtml/2-2-14.htm",
+      "primary": true,
+      "documentUpdatedOn": "2026-06-12",
+      "documentDateBasis": "http-last-modified",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "soumu-lgcode",
+      "title": "全国地方公共団体コード",
+      "publisher": "総務省",
+      "url": "https://www.soumu.go.jp/denshijiti/code.html",
+      "primary": true,
+      "documentUpdatedOn": "2026-05-13",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "コード一覧は令和6年1月1日更新と表示",
+      "retrievedOn": "2026-10-03"
+    },
+    {
+      "id": "soumu-lgcode-spec",
+      "title": "全国地方公共団体コード仕様",
+      "publisher": "総務省",
+      "url": "https://www.soumu.go.jp/main_content/000137948.pdf",
+      "primary": true,
+      "documentUpdatedOn": "2025-01-22",
+      "documentDateBasis": "http-last-modified",
+      "documentDateNote": "資料の表記は平成19年4月1日",
+      "retrievedOn": "2026-10-03"
+    }
+  ],
+  "ruleSets": [
+    {
+      "id": "jp-income-tax-salary-2025",
+      "version": "1",
+      "status": "draft",
+      "approval": "未確認",
+      "regime": "income-tax",
+      "kind": "calculation",
+      "title": "所得税（給与所得だけの居住者の年税額）令和7年分",
+      "spec": "docs/rules/income-tax.md",
+      "data": "rules/income-tax/jp-2025.json",
+      "applies": [
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2025
+          },
+          "procedure": "year-end-adjustment",
+          "referencePoint": {
+            "kind": "date",
+            "from": "2025-12-01"
+          }
+        },
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2025
+          },
+          "procedure": "tax-return",
+          "referencePoint": {
+            "kind": "date",
+            "from": "2025-12-01"
+          }
+        }
+      ],
+      "sources": [
+        "nta-2025kiso",
+        "nta-nencho2025-tax",
+        "nta-nencho2025-table",
+        "nta-nencho2025-rates",
+        "nta-ta-1410",
+        "nta-ta-1411",
+        "nta-ta-1199",
+        "nta-ta-1180",
+        "nta-ta-1191",
+        "nta-ta-1195",
+        "nta-ta-1177",
+        "nta-ta-1181",
+        "nta-ta-2665",
+        "nta-2025kiso-qa",
+        "nta-ta-2260",
+        "nta-shinkoku2025-taxable",
+        "nta-shinkoku2025-reconstruction",
+        "nta-shinkoku2025-balance",
+        "egov-tsusoku",
+        "nta-hotei2025-scope",
+        "nta-hotei2025-payment"
+      ],
+      "requiredInputs": [
+        {
+          "path": "residency",
+          "type": "enum",
+          "values": [
+            "resident",
+            "non-resident"
+          ]
+        },
+        {
+          "path": "incomeSources",
+          "type": "enum",
+          "values": [
+            "salary-only",
+            "other"
+          ]
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "type": "enum",
+          "values": [
+            "none",
+            "death",
+            "emigration"
+          ]
+        },
+        {
+          "path": "taxpayerEvent.date",
+          "when": {
+            "path": "taxpayerEvent.kind",
+            "in": [
+              "death",
+              "emigration"
+            ]
+          },
+          "type": "date"
+        },
+        {
+          "path": "returnKind",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "enum",
+          "values": [
+            "regular",
+            "quasi"
+          ]
+        },
+        {
+          "path": "salaryRevenue",
+          "type": "yen"
+        },
+        {
+          "path": "socialInsuranceDeduction",
+          "type": "yen"
+        },
+        {
+          "path": "otherIncomeDeductions",
+          "type": "yen"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen"
+        },
+        {
+          "path": "incomeAdjustmentEligible",
+          "when": {
+            "path": "salaryRevenue",
+            "greaterThan": 8500000
+          },
+          "type": "boolean"
+        },
+        {
+          "path": "withheldTax",
+          "type": "yen"
+        },
+        {
+          "path": "taxCredits",
+          "type": "yen"
+        },
+        {
+          "path": "spouse",
+          "nullable": true,
+          "type": "object"
+        },
+        {
+          "path": "relatives",
+          "emptyAllowed": true,
+          "type": "array"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "path": "annualValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "給与等の収入金額・源泉徴収税額・社会保険料等の元になった源泉徴収票の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形、採用の範囲（確定し、重ならず、採用しない資料は同じ金額で含まれる）を確かめ、採用した資料とpayslipDerivedValues（源泉徴収票のない支払者の明細から示す値）の合計が、salaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計とsocialInsuranceAdditionalの和がsocialInsuranceDeductionと同じことを検査が確かめる"
+        },
+        {
+          "path": "payslipDerivedValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は、その合計とsocialInsuranceAdditionalの和）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない。明細から示す値を既知の金額で使うrunは、契約版1.0の計算結果の2の表の4行（coverageがentered-records-only）なのでprovisional"
+        },
+        {
+          "path": "socialInsuranceAdditional",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen",
+          "meaning": "確定申告で足す社会保険料等の額（源泉徴収票・明細に含まれない、本人が申告で加える分）。0以上の整数かunknown。annualValuesかpayslipDerivedValuesがあるときは必須で、socialInsuranceDeductionは、採用した資料と明細の社会保険料等の金額の合計と、この額の和と同じ（二重に数えない）"
+        },
+        {
+          "path": "taxpayer",
+          "type": "object",
+          "meaning": "納税者側の家族の適用要件の入力（taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld。No.1177の(9)）。必要かどうかは家族の控除の判定の手順で決まり、特定親族特別控除の候補がいなければ求めない。中の入力の型はfamilyCheckが確かめる"
+        }
+      ],
+      "unsupportedInputs": [
+        {
+          "path": "residency",
+          "allowed": [
+            "resident"
+          ],
+          "reason": "非居住者は範囲外"
+        },
+        {
+          "path": "incomeSources",
+          "allowed": [
+            "salary-only"
+          ],
+          "reason": "給与所得以外の所得は範囲外"
+        },
+        {
+          "path": "taxCredits",
+          "allowed": [
+            0
+          ],
+          "reason": "住宅借入金等特別控除等の税額控除は範囲外"
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "allowed": [
+            "none"
+          ],
+          "reason": "年の中途の死亡・出国では、家族の判定の時点が死亡・出国の時になる（タックスアンサーNo.1180・1177）。この版は12月31日の現況だけを扱う"
+        },
+        {
+          "path": "returnKind",
+          "allowed": [
+            "regular"
+          ],
+          "procedures": [
+            "tax-return"
+          ],
+          "reason": "準確定申告（死亡・出国）は範囲外"
+        },
+        {
+          "path": "spouse.livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した配偶者の判定の時点は確かめていない"
+        },
+        {
+          "path": "relatives[].livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した親族の判定の時点は確かめていない"
+        },
+        {
+          "path": "spouse.resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である配偶者の要件は範囲外"
+        },
+        {
+          "path": "relatives[].resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "allowed": [
+            0
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "dependent-declaration",
+          "reason": "扶養控除等申告書を提出していない人は年末調整の対象とならない（タックスアンサーNo.2665）"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "employed-at-year-end",
+          "reason": "年の中途で退職した人の年末調整（No.2665の年の中途で行う年末調整）は範囲外。年の中途で退職して12月に行う年末調整の対象とならない人も同じ"
+        },
+        {
+          "path": "salaryRevenue",
+          "max": 20000000,
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "salary-total-max",
+          "reason": "給与の総額が2,000万円を超える人は年末調整の対象とならない（No.2665の(1)）。確定申告にはこの上限を当てない"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "allowed": [
+            false
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "disaster-relief",
+          "reason": "災害減免法により給与の源泉徴収の猶予・還付を受けた人は年末調整の対象とならない（No.2665の(2)）"
+        }
+      ]
+    },
+    {
+      "id": "jp-income-tax-salary-2026",
+      "version": "1",
+      "status": "draft",
+      "approval": "未確認",
+      "regime": "income-tax",
+      "kind": "calculation",
+      "title": "所得税（給与所得だけの居住者の年税額）令和8年分",
+      "spec": "docs/rules/income-tax.md",
+      "data": "rules/income-tax/jp-2026.json",
+      "applies": [
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2026
+          },
+          "procedure": "year-end-adjustment",
+          "referencePoint": {
+            "kind": "date",
+            "from": "2026-12-01"
+          }
+        },
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2026
+          },
+          "procedure": "tax-return",
+          "referencePoint": {
+            "kind": "date",
+            "from": "2026-12-01"
+          }
+        }
+      ],
+      "sources": [
+        "nta-2026kiso-qa",
+        "nta-nencho2026-changes",
+        "nta-nencho2026-tax",
+        "nta-nencho2026-table",
+        "nta-nencho2026-rates",
+        "nta-nencho2026-computer",
+        "nta-ta-1410",
+        "nta-ta-1411",
+        "nta-ta-1199",
+        "nta-ta-1180",
+        "nta-ta-1191",
+        "nta-ta-1195",
+        "nta-ta-1177",
+        "nta-ta-1181",
+        "nta-ta-2665",
+        "nta-2025kiso-qa",
+        "nta-ta-2260",
+        "nta-shinkoku2025-taxable",
+        "nta-shinkoku2025-reconstruction",
+        "nta-shinkoku2025-balance",
+        "egov-tsusoku",
+        "nta-hotei2025-scope"
+      ],
+      "requiredInputs": [
+        {
+          "path": "residency",
+          "type": "enum",
+          "values": [
+            "resident",
+            "non-resident"
+          ]
+        },
+        {
+          "path": "incomeSources",
+          "type": "enum",
+          "values": [
+            "salary-only",
+            "other"
+          ]
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "type": "enum",
+          "values": [
+            "none",
+            "death",
+            "emigration"
+          ]
+        },
+        {
+          "path": "taxpayerEvent.date",
+          "when": {
+            "path": "taxpayerEvent.kind",
+            "in": [
+              "death",
+              "emigration"
+            ]
+          },
+          "type": "date"
+        },
+        {
+          "path": "returnKind",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "enum",
+          "values": [
+            "regular",
+            "quasi"
+          ]
+        },
+        {
+          "path": "salaryRevenue",
+          "type": "yen"
+        },
+        {
+          "path": "socialInsuranceDeduction",
+          "type": "yen"
+        },
+        {
+          "path": "otherIncomeDeductions",
+          "type": "yen"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen"
+        },
+        {
+          "path": "incomeAdjustmentEligible",
+          "when": {
+            "path": "salaryRevenue",
+            "greaterThan": 8500000
+          },
+          "type": "boolean"
+        },
+        {
+          "path": "withheldTax",
+          "type": "yen"
+        },
+        {
+          "path": "taxCredits",
+          "type": "yen"
+        },
+        {
+          "path": "spouse",
+          "nullable": true,
+          "type": "object"
+        },
+        {
+          "path": "relatives",
+          "emptyAllowed": true,
+          "type": "array"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "type": "boolean"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "path": "annualValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "給与等の収入金額・源泉徴収税額・社会保険料等の元になった源泉徴収票の写し（照合（T11）の入力。計算はsalaryRevenue等を使う）。あれば、各資料の形、採用の範囲（確定し、重ならず、採用しない資料は同じ金額で含まれる）を確かめ、採用した資料とpayslipDerivedValues（源泉徴収票のない支払者の明細から示す値）の合計が、salaryRevenue・withheldTaxと同じこと、社会保険料等の金額の合計とsocialInsuranceAdditionalの和がsocialInsuranceDeductionと同じことを検査が確かめる"
+        },
+        {
+          "path": "payslipDerivedValues",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "array",
+          "meaning": "年間資料（源泉徴収票）のない支払者の明細から示す値（照合（T11）の入力の写し。要素は{ payer, paymentAmount, withholdingTax, socialInsurancePremiums }で、金額は0以上の整数かunknown）。支払者は、annualValuesのどの資料の支払者・範囲とも重ねず、互いにも重ねない。給与等の収入金額・源泉徴収税額は、採用した資料と明細から示す値の合計と同じ（社会保険料控除額は、その合計とsocialInsuranceAdditionalの和）。採用が要判断の資料か、金額がunknownの要素があれば、それらの入力はunknownでなければならない。明細から示す値を既知の金額で使うrunは、契約版1.0の計算結果の2の表の4行（coverageがentered-records-only）なのでprovisional"
+        },
+        {
+          "path": "socialInsuranceAdditional",
+          "procedures": [
+            "tax-return"
+          ],
+          "type": "yen",
+          "meaning": "確定申告で足す社会保険料等の額（源泉徴収票・明細に含まれない、本人が申告で加える分）。0以上の整数かunknown。annualValuesかpayslipDerivedValuesがあるときは必須で、socialInsuranceDeductionは、採用した資料と明細の社会保険料等の金額の合計と、この額の和と同じ（二重に数えない）"
+        },
+        {
+          "path": "taxpayer",
+          "type": "object",
+          "meaning": "納税者側の家族の適用要件の入力（taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld。No.1177の(9)）。必要かどうかは家族の控除の判定の手順で決まり、特定親族特別控除の候補がいなければ求めない。中の入力の型はfamilyCheckが確かめる"
+        }
+      ],
+      "unsupportedInputs": [
+        {
+          "path": "residency",
+          "allowed": [
+            "resident"
+          ],
+          "reason": "非居住者は範囲外"
+        },
+        {
+          "path": "incomeSources",
+          "allowed": [
+            "salary-only"
+          ],
+          "reason": "給与所得以外の所得は範囲外"
+        },
+        {
+          "path": "taxCredits",
+          "allowed": [
+            0
+          ],
+          "reason": "住宅借入金等特別控除等の税額控除は範囲外"
+        },
+        {
+          "path": "taxpayerEvent.kind",
+          "allowed": [
+            "none"
+          ],
+          "reason": "年の中途の死亡・出国では、家族の判定の時点が死亡・出国の時になる（タックスアンサーNo.1180・1177）。この版は12月31日の現況だけを扱う"
+        },
+        {
+          "path": "returnKind",
+          "allowed": [
+            "regular"
+          ],
+          "procedures": [
+            "tax-return"
+          ],
+          "reason": "準確定申告（死亡・出国）は範囲外"
+        },
+        {
+          "path": "spouse.livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した配偶者の判定の時点は確かめていない"
+        },
+        {
+          "path": "relatives[].livingAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "reason": "年の中途で死亡した親族の判定の時点は確かめていない"
+        },
+        {
+          "path": "spouse.resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である配偶者の要件は範囲外"
+        },
+        {
+          "path": "relatives[].resident",
+          "allowed": [
+            true
+          ],
+          "reason": "非居住者である扶養親族の要件は範囲外（タックスアンサーNo.1180の控除対象扶養親族の範囲のただし書）"
+        },
+        {
+          "path": "returnOnlyDeductions",
+          "allowed": [
+            0
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "reason": "医療費控除・寄附金控除・雑損控除は年末調整では控除できず、確定申告で控除する。年末調整の入力に0でない値があれば未対応（年末調整の計算に混ぜない）"
+        },
+        {
+          "path": "yearEndAdjustment.dependentDeclarationSubmitted",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "dependent-declaration",
+          "reason": "扶養控除等申告書を提出していない人は年末調整の対象とならない（タックスアンサーNo.2665）"
+        },
+        {
+          "path": "yearEndAdjustment.employedAtYearEnd",
+          "allowed": [
+            true
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "employed-at-year-end",
+          "reason": "年の中途で退職した人の年末調整（No.2665の年の中途で行う年末調整）は範囲外。年の中途で退職して12月に行う年末調整の対象とならない人も同じ"
+        },
+        {
+          "path": "salaryRevenue",
+          "max": 20000000,
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "salary-total-max",
+          "reason": "給与の総額が2,000万円を超える人は年末調整の対象とならない（No.2665の(1)）。確定申告にはこの上限を当てない"
+        },
+        {
+          "path": "yearEndAdjustment.disasterReliefWithholding",
+          "allowed": [
+            false
+          ],
+          "procedures": [
+            "year-end-adjustment"
+          ],
+          "yearEndAdjustmentCondition": "disaster-relief",
+          "reason": "災害減免法により給与の源泉徴収の猶予・還付を受けた人は年末調整の対象とならない（No.2665の(2)）"
+        }
+      ]
+    },
+    {
+      "id": "jp-salary-income-year",
+      "version": "1",
+      "status": "draft",
+      "approval": "未確認",
+      "regime": "income-tax",
+      "kind": "attribution",
+      "autoApply": false,
+      "title": "給与の所得の年への帰属（支給日の定めによる）",
+      "spec": "docs/rules/salary-income-year.md",
+      "data": "rules/salary-income-year/v1.json",
+      "applies": [
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2025
+          }
+        },
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2026
+          }
+        }
+      ],
+      "sources": [
+        "nta-ta-2509",
+        "nta-2025tsukin-qa"
+      ]
+    },
+    {
+      "id": "jp-withholding-slip-mapping",
+      "version": "1",
+      "status": "draft",
+      "approval": "未確認",
+      "regime": "income-tax",
+      "kind": "comparison-mapping",
+      "title": "給与所得の源泉徴収票と給与明細の比較の対応表",
+      "spec": "docs/rules/withholding-slip-mapping.md",
+      "data": "rules/withholding-slip-mapping/v1.json",
+      "applies": [
+        {
+          "jurisdiction": {
+            "kind": "national",
+            "code": "JP"
+          },
+          "year": {
+            "kind": "calendar",
+            "year": 2025
+          }
+        }
+      ],
+      "sources": [
+        "nta-hotei2025-payment",
+        "nta-hotei2025-employment-income",
+        "nta-hotei2025-deductions",
+        "nta-hotei2025-withholding",
+        "nta-hotei2025-social-insurance",
+        "nta-2025tsukin-qa",
+        "nta-nencho2025-tax",
+        "nta-2026kiso-qa"
+      ]
+    }
+  ],
+  "unsupported": [
+    {
+      "regime": "income-tax",
+      "procedure": "withholding",
+      "reason": "給与の支払ごとの源泉徴収（源泉徴収税額表の月額表・日額表・賞与の算出率の表、電子計算機等の特例）は表が大きく、このPRでは一次資料の行を写して確かめていない。計算runはunsupported。"
+    },
+    {
+      "regime": "income-tax",
+      "procedure": "year-end-adjustment",
+      "reason": "令和7年分は2025-12-01より前、令和8年分は2026-12-01より前の年末調整（年の中途の死亡・出国等）は、改正前の規則を使う。改正前の規則はこのPRで確かめていないので未対応（unsupported）。"
+    },
+    {
+      "regime": "income-tax",
+      "procedure": "tax-return",
+      "reason": "令和7年分は2025-12-01より前、令和8年分は2026-12-01より前に提出する準確定申告は、改正前の規則を使う。未対応（unsupported）。令和7年分・令和8年分以外の年分も未対応。"
+    },
+    {
+      "regime": "income-tax",
+      "reason": "給与の所得の年への帰属の自動適用（jp-salary-income-yearはautoApplyがfalse）。契約版1.0の給与明細では、支給日と別の時期に帰属する給与（支給日の定めがない給与、利益を基礎とする役員賞与等）を見分けられないため。帰属は年間資料と利用者の指定だけで決まる（契約の照合の規則の8）。見分ける項目を足す契約の変更は所有者の判断待ち。"
+    },
+    {
+      "regime": "income-tax",
+      "reason": "年の中途で死亡・出国した本人（準確定申告を含む）、年の中途で死亡した家族、非居住者の家族。計算の規則のunsupportedInputsに当たる入力のrunはunsupported。"
+    },
+    {
+      "regime": "resident-tax",
+      "reason": "T14のPR B（Issue #27）で扱う。それまで未対応。"
+    },
+    {
+      "regime": "furusato",
+      "reason": "T14のPR B（Issue #27）で扱う。それまで未対応。"
+    },
+    {
+      "regime": "employee-insurance",
+      "reason": "T14のPR C（Issue #27）で扱う。それまで未対応。"
+    },
+    {
+      "regime": "dependents",
+      "reason": "T14のPR C（Issue #27）で扱う。それまで未対応。"
+    },
+    {
+      "regime": "nhi",
+      "reason": "T14のPR D（Issue #27）で扱う。料率等は地域の入力とし、全国共通の定数にしない。それまで未対応。"
+    }
+  ]
+}
