@@ -12,6 +12,7 @@ import {
   type Policy,
   type Snapshot,
   type Target,
+  type WorkerResult,
 } from "./model.ts";
 import { assess, reviewerEligible } from "./reducer.ts";
 import { runBinding, type RunKey } from "./provenance.ts";
@@ -711,6 +712,15 @@ export class Store {
         .run(id, j.id, kind, value);
     });
     return id;
+  }
+  // PR #73 RT-1: the whole red-team judgement of a run, from its Outbox row (retain never clears it), or null.
+  redTeamRecord(run: string): Pick<WorkerResult, "causes" | "previous"> | null {
+    const r = this.db
+      .prepare("SELECT o.value FROM outbox o JOIN jobs j ON j.id=o.job WHERE j.run=? AND o.kind='faultfinding'")
+      .get(run) as Row | undefined;
+    if (!r) return null;
+    const v = JSON.parse(String(r["value"])) as Partial<WorkerResult>;
+    return Array.isArray(v.causes) && Array.isArray(v.previous) ? { causes: v.causes, previous: v.previous } : null;
   }
   outboxState(id: string): string {
     const r = this.db.prepare("SELECT state FROM outbox WHERE id=?").get(id) as

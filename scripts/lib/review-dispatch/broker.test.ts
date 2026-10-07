@@ -454,13 +454,24 @@ const W11_MATERIALS = { planPath: ".review/plans/OPS-SYN.json", ledger: W11_LEDG
 const W11_MARKER = `kurashi-ledger:dispatch-run:v1:${W11_RUN}`;
 const W11_ID = { role: "claude-reviewer" as const, agent: "claude" as const };
 // Every line starts with a fixed label of the format; worker prose never starts a line.
-const W11_LABELS = /^(?:$|<!-- |auditor_id: |implementer_id: |role: |agent_id: |head_sha: |base_sha: |plan_path: |decision: |結論: |> |原因台帳: |- 該当: |- 確認できない: |前のRT: |- (?:RT-[0-9]+|record-(?:comment|review)-[0-9]+) 未解消: |### (?:RT-[0-9]+|PR[0-9]+-R[0-9]{3}) |- 重さ: P[123] ／ 時期: |- 場所: |- 問題: |- 例: |- やってほしいこと: |- 完了条件: |検証: |未検証: |受付の確認: )/;
+const W11_LABELS = /^(?:$|<!-- |auditor_id: |implementer_id: |role: |agent_id: |head_sha: |base_sha: |plan_path: |decision: |結論: |> |原因台帳: |- 該当: |- 確認できない: |- 未判定: |前のRT: |- (?:RT-[0-9]+|record-(?:comment|review)-[0-9]+) 未解消: |### (?:RT-[0-9]+|PR[0-9]+-R[0-9]{3}) |- 重さ: P[123] ／ 時期: |- 場所: |- 問題: |- 例: |- やってほしいこと: |- 完了条件: |検証: |未検証: |受付の確認: )/;
+
+test("PR #73 RT-2 (reproduced): a 該当 cause and a 確認できない cause outside the ledger stay open with accepted and no finding", async () => {
+  const { redTeamOpen } = await import("./broker.ts");
+  const r = { ...w11RedTeam(), decision: "accepted" as const, findings: [], previous: [], causes: [
+    { cause: "INV-A/x", judgement: "該当" as const, where: "x" },
+    { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "x" },
+  ] };
+  const meta = { planPath: null, ledger: ["INV-A/x"], previousRts: [], guard: "none" as const };
+  assert.deepEqual(redTeamOpen(r, meta), ["applies:INV-A/x", "unconfirmed:INV-EXTRA"]);
+  assert.deepEqual(redTeamOpen({ ...r, causes: [r.causes[1]!] }, { ...meta, ledger: [] }), ["unconfirmed:INV-EXTRA"]);
+});
 
 test("W11 red-team post: only 該当 and 確認できない cause IDs with a count, structured findings, resolved earlier RTs on one line", async () => {
   const { renderRedTeam, redTeamOpen } = await import("./broker.ts");
   const r = w11RedTeam();
   const open = redTeamOpen(r, W11_MATERIALS);
-  assert.deepEqual(open, ["RT-1", "RT-3", "unconfirmed:INV-SYN/cause-9"]);
+  assert.deepEqual(open, ["RT-1", "RT-3", "applies:INV-SYN/cause-7", "unconfirmed:INV-SYN/cause-9"]);
   const body = renderRedTeam(r, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, open);
   const lines = body.split("\n");
   for (const line of lines) assert.match(line, W11_LABELS, line);
@@ -471,7 +482,7 @@ test("W11 red-team post: only 該当 and 確認できない cause IDs with a cou
   assert.match(body, /^plan_path: \.review\/plans\/OPS-SYN\.json$/m);
   assert.doesNotMatch(body, /^(?:role|decision):/m);
   // Conclusion first, then the cause count and only the applicable or unconfirmed IDs.
-  assert.equal(lines.indexOf("結論: 未解消あり（RT-1, RT-3, unconfirmed:INV-SYN/cause-9）"), 8);
+  assert.equal(lines.indexOf("結論: 未解消あり（RT-1, RT-3, applies:INV-SYN/cause-7, unconfirmed:INV-SYN/cause-9）"), 8);
   assert.ok(lines.includes("原因台帳: 55件を判定（該当1・確認できない1）"));
   assert.ok(lines.includes("- 該当: INV-SYN/cause-7"));
   assert.ok(lines.includes("- 確認できない: INV-SYN/cause-9"));
@@ -494,6 +505,12 @@ test("W11 red-team post: only 該当 and 確認できない cause IDs with a cou
   const partial = { ...r, causes: r.causes.slice(1) };
   const partialBody = renderRedTeam(partial, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, redTeamOpen(partial, W11_MATERIALS));
   assert.match(partialBody, /^原因台帳: 55件のうち54件を判定（該当1・確認できない1）$/m);
+  assert.match(partialBody, /^- 未判定: INV-SYN\/cause-1$/m);
+  // A cause judged outside the ledger is counted apart, so the tally matches the listed IDs.
+  const extra = { ...r, causes: [...r.causes, { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "x" }] };
+  const extraBody = renderRedTeam(extra, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, redTeamOpen(extra, W11_MATERIALS));
+  assert.match(extraBody, /^原因台帳: 55件＋台帳外1件を判定（該当1・確認できない2）$/m);
+  assert.match(extraBody, /^- 確認できない: INV-SYN\/cause-9, INV-EXTRA$/m);
   assert.match(partialBody, /^結論: 未解消あり（.*ledger-incomplete.*）$/m);
   // No materials record: the count says so.
   assert.match(renderRedTeam(r, W11_MARKER, W11_ID, W11_RUN, 20, null, []), /^原因台帳: 資料の記録がない（55件を判定、該当1・確認できない1）$/m);
@@ -511,6 +528,9 @@ test("W11 the readers of the posted body get the same IDs from the new format", 
   const read = redTeamLines(body.normalize("NFKC").split(/\r?\n/).map((x) => x.trim()));
   assert.deepEqual(read.open, ["cause:INV-SYN/cause-7", "cause:INV-SYN/cause-9"]);
   assert.deepEqual(read.resolved, ["RT-2"]);
+  // PR #73 P3: each RT ID takes the status word before it.
+  assert.deepEqual(redTeamLines(["前のRT: 解消 RT-1, 未解消 RT-2 / 対応不要 RT-4, record-comment-7, RT-5", "前のRT: 解消なし RT-6"]).resolved, ["RT-1", "RT-4", "RT-5"]);
+  assert.deepEqual(redTeamLines(["- 未判定: INV-A/x"]).open, ["cause:INV-A/x"]);
   // findings.ts: the review's heading IDs are raised; a quoted or mid-line ID is not.
   const review = {
     ...w11RedTeam(),

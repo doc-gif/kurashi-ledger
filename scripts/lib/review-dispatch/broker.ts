@@ -348,6 +348,10 @@ export class ReviewBroker {
         decision: blockers.length ? "needs-owner" : result.decision,
         // IDs only (no prose): store.faultfinding() reads them as the unresolved RTs.
         findings: j.kind === "faultfinding" ? unresolved : result.findings.map((f) => f.id),
+        // PR #73 RT-1: the whole judgement (every cause and earlier RT, with its reason; checked by
+        // resultFindings above). The post lists only part of it and jobs.result is cleared after 30 days
+        // (store.retain); the Outbox row is kept (store.redTeamRecord).
+        ...(j.kind === "faultfinding" ? { causes: result.causes, previous: result.previous } : {}),
       }),
     );
     const recover = async (): Promise<"posted" | "uncertain"> => {
@@ -468,7 +472,8 @@ export type RunMaterials = {
   guard?: "ok" | "refused" | "unavailable" | "none";
 };
 // Codex PR56-R004: clear only when every required ledger cause was judged and none of them is 確認できない,
-// and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear.
+// and every earlier RT was re-checked (解消 or 対応不要); an omitted re-check is not clear. PR #73 RT-2: every
+// 該当 and every 確認できない cause stays open, inside the ledger or not, whatever the decision and findings say.
 export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[] {
   const judged = new Map(r.causes.map((c) => [c.cause, c.judgement]));
   const rechecked = new Set(r.previous.map((v) => v.id));
@@ -477,7 +482,8 @@ export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[
     ...r.findings.map((f) => f.id),
     ...r.previous.filter((v) => v.status === "未解消").map((v) => v.id),
     ...(meta === null || ledger.some((c) => !judged.has(c)) ? ["ledger-incomplete"] : []),
-    ...ledger.filter((c) => judged.get(c) === "確認できない").map((c) => `unconfirmed:${c}`),
+    ...r.causes.filter((c) => c.judgement === "該当").map((c) => `applies:${c.cause}`),
+    ...r.causes.filter((c) => c.judgement === "確認できない").map((c) => `unconfirmed:${c.cause}`),
     ...(meta?.previousRts ?? []).filter((id) => !rechecked.has(id)).map((id) => `unchecked:${id}`),
     // A plan whose trusted guard check is missing or failed (RT-4): the red team had no guard output to start from.
     ...(meta !== null && meta.guard === "refused" ? ["guard-refused"] : []),
@@ -489,8 +495,9 @@ export function redTeamOpen(r: WorkerResult, meta: RunMaterials | null): string[
 }
 // Red-team record in the canonical format (pr-review-loop.md#提出前の粗探し) for a faultfinding job. No `role:` or
 // `decision:` line, so it is never read as a review record. The plan path and the ledger size are the dispatcher's
-// own record of the materials (store.runMaterials). The post lists only the causes judged 該当 or 確認できない and
-// a count; the whole judgement stays in the stored result (jobs.result), and redTeamOpen reads it from there.
+// own record of the materials (store.runMaterials). The post lists only the causes judged 該当 or 確認できない, the
+// ledger causes without a judgement (未判定) and a count. submit computes the open IDs (redTeamOpen) from the
+// parsed result and keeps them and the whole judgement in the Outbox row (store.redTeamRecord, PR #73 RT-1).
 // Earlier RTs: the resolved IDs on one line, details only for the unresolved ones.
 export function renderRedTeam(
   r: WorkerResult,
@@ -508,11 +515,11 @@ export function renderRedTeam(
   const hit = ids("該当"),
     unsure = ids("確認できない");
   const tally = `該当${hit.length}・確認できない${unsure.length}`;
+  // Causes judged outside the ledger are counted apart, so the tally matches the listed IDs (PR #73 P3).
+  const outside = meta ? r.causes.filter((c) => !meta.ledger.includes(c.cause)).length : 0;
   const ledger = !meta
     ? `原因台帳: 資料の記録がない（${r.causes.length}件を判定、${tally}）`
-    : missing.length
-      ? `原因台帳: ${meta.ledger.length}件のうち${meta.ledger.length - missing.length}件を判定（${tally}）`
-      : `原因台帳: ${meta.ledger.length}件を判定（${tally}）`;
+    : `原因台帳: ${missing.length ? `${meta.ledger.length}件のうち${meta.ledger.length - missing.length}件` : `${meta.ledger.length}件`}${outside ? `＋台帳外${outside}件` : ""}を判定（${tally}）`;
   const prev = (st: string) => r.previous.filter((v) => v.status === st).map((v) => v.id);
   const resolved = (["解消", "対応不要"] as const)
     .filter((st) => prev(st).length)
@@ -522,6 +529,7 @@ export function renderRedTeam(
     `\n${ledger}\n` +
     (hit.length ? `- 該当: ${hit.join(", ")}\n` : "") +
     (unsure.length ? `- 確認できない: ${unsure.join(", ")}\n` : "") +
+    (missing.length ? `- 未判定: ${missing.join(", ")}\n` : "") +
     (r.previous.length
       ? `\n前のRT: ${resolved.join(" ／ ") || "解消なし"}\n` +
         r.previous
@@ -534,22 +542,28 @@ export function renderRedTeam(
   );
 }
 // The machine-read lines of the format above, for a record written by hand (evidence.ts manualFaultfinding):
-// `- 該当: <IDs>` and `- 確認できない: <IDs>` are open causes, `前のRT: 解消 <IDs> ／ 対応不要 <IDs>` resolves.
+// `- 該当: <IDs>`, `- 確認できない: <IDs>` and `- 未判定: <IDs>` are open causes, `前のRT: 解消 <IDs> ／ 対応不要
+// <IDs>` resolves.
 // Lines are read after NFKC (so "：" and "／" are ":" and "/") and trimmed. An ID of another shape is
 // `cause:unparsed`, so a malformed line never clears anything.
 export function redTeamLines(lines: readonly string[]): { open: string[]; resolved: string[] } {
   const open: string[] = [],
     resolved: string[] = [];
   for (const row of lines) {
-    const cause = /^(?:[-*]\s*)?(?:該当|確認できない)\s*:\s*(.*)$/.exec(row);
+    const cause = /^(?:[-*]\s*)?(?:該当|確認できない|未判定)\s*:\s*(.*)$/.exec(row);
     if (cause)
       for (const id of cause[1]!.split(/[,、\s]+/).filter((x) => x && x !== "なし"))
         open.push(/^[A-Za-z0-9._/-]{1,120}$/.test(id) ? `cause:${id}` : "cause:unparsed");
+    // Each RT ID takes the status word last written before it (解消 / 対応不要 resolve; 未解消, 解消なし or
+    // anything else does not), so `解消 RT-1, 未解消 RT-2` resolves RT-1 only (PR #73 P3).
     const previous = /^前のRT\s*:\s*(.*)$/.exec(row);
-    if (previous)
-      for (const part of previous[1]!.split("/"))
-        if (/^\s*(?:解消|対応不要)\s/.test(part))
-          for (const m of part.matchAll(/\bRT-[1-9][0-9]{0,2}\b/g)) resolved.push(m[0]);
+    if (previous) {
+      let clears = false;
+      for (const word of previous[1]!.split(/[\s,、/]+/).filter(Boolean))
+        if (/^RT-[1-9][0-9]{0,2}$/.test(word)) {
+          if (clears) resolved.push(word);
+        } else if (!/^record-(?:comment|review)-[0-9]+$/.test(word)) clears = word === "解消" || word === "対応不要";
+    }
   }
   return { open, resolved };
 }

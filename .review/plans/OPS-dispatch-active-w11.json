@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "task_id": "OPS-dispatch-active",
- "base_sha": "6aa72646c9c22d6eab1f5f6f7a73c6643e8cc07a",
+ "base_sha": "125c51cce6ce5bc80a9e7081ad32a87cfba84c4c",
  "planned_paths": [
   "docs/pr-review-loop.md",
   "scripts/lib/review-dispatch/active.test.ts",
@@ -15,7 +15,8 @@
   "scripts/lib/review-dispatch/launcher.test.ts",
   "scripts/lib/review-dispatch/launcher.ts",
   "scripts/lib/review-dispatch/model.ts",
-  "scripts/lib/review-dispatch/publication.ts"
+  "scripts/lib/review-dispatch/publication.ts",
+  "scripts/lib/review-dispatch/store.ts"
  ],
  "conflicts": [],
  "owner_decisions": [
@@ -23,22 +24,27 @@
    "date": "2026-10-07",
    "source": "Issue #50 W11（調整係が伝えた所有者の依頼。PR #59の自動の粗探しの投稿 pullrequestreview-5441686784 が原因台帳の55行の表を全部載せた）",
    "decision": "投稿の原因台帳は該当・確認できないのIDと件数の1行だけにする。全原因の判定はworkerが出しBrokerが確かめる（今と同じ）が、置き場所はdispatcherの記録（DBの結果）。指摘は構造化した書式（結論1〜2行、### ID 題名、重さ／時期・場所・問題・例・やってほしいこと・完了条件、前のRTは解消を1行・未解消だけ詳しく、検証・未検証は各3行まで）にし、内容レビュー（PR<N>-R###）の投稿も同じ。書式はpr-review-loop.mdの1か所に置く（所有者承認済みの「指摘の書式を正本へ」もここで済ませる）。結果のschemaとargvが変わるので、測定（手順8・9）は所有者がやり直す"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #73の粗探し（RT-1・RT-2）と調整係の指示",
+   "decision": "全件の判定はretainで消えない記録（Outboxの値）に残し、正本に保存期間を1行で書く。該当と確認できない（台帳の内外を問わない）は、決定や指摘の有無にかかわらず未解消にする。前のRTの行は語ごとに状態を読む。判定のない台帳の原因は未判定として投稿に並べる。正本の要約の行数は1〜2行に一本化する"
   }
  ],
  "assessments": [
   {
    "id": "INV-LOCK",
    "disposition": "preserve",
-   "reason": "lock・排他は変えない（結果の形・投稿の本文・読取り・文書だけ）",
+   "reason": "lock・排他は変えない（結果の形・投稿の本文・読取り・文書、Outboxの値の項目の追加だけ）",
    "checks": [
     {
      "id": "identity",
-     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "method": "git diffでstore.tsの差分がredTeamRecordの追加だけで、lease・lock・supervisor.pyに差分がないことを確かめる",
      "expected": "同じ"
     },
     {
      "id": "recovery",
-     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "method": "git diffでstore.tsの差分がredTeamRecordの追加だけで、lease・lock・supervisor.pyに差分がないことを確かめる",
      "expected": "同じ"
     }
    ]
@@ -84,7 +90,7 @@
     },
     {
      "id": "trust",
-     "method": "broker.test.ts: 原因の判定の欠け・確認できない・前のRTの未解消・needs-ownerは、本文から表を外しても未解消のID（Outboxのfindings）に残る。evidence.test.ts: 手動の記録の新しい行（該当・確認できない・前のRT）を読み、旧来の表も読む",
+     "method": "broker.test.ts: 原因の判定の欠け・確認できない・前のRTの未解消・needs-ownerは、本文から表を外しても未解消のID（Outboxのfindings）に残る。evidence.test.ts: 手動の記録の新しい行（該当・確認できない・前のRT）を読み、旧来の表も読む。PR #73 RT-2: 該当1件と台帳外の確認できない1件、指摘なし、acceptedの結果でも、未解消（applies:・unconfirmed:）が残りnextKindがfaultfinding-openを返す",
      "expected": "未解消は消えない。表から行へ変えても判定は緩まない"
     }
    ]
@@ -109,22 +115,22 @@
   {
    "id": "INV-STORAGE",
    "disposition": "preserve",
-   "reason": "DB・journal・manifestは変えない。結果は今と同じくjobs.resultに丸ごと入る",
+   "reason": "DB・journal・manifestの形は変えない。粗探しのOutboxの値に、全件の判定（原因ごとの判定と理由、前のRTごとの状態と理由）を足す。retainは30日でjobs.resultを消すがOutboxは消さないので、全件の判定は期限なしで残る（PR #73 RT-1）",
    "checks": [
     {
      "id": "rollback",
-     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "active.test.ts: 粗探しの投稿の後に31日後のretainを呼び、jobs.resultがNULLになり、store.redTeamRecordが投稿前と同じ全件の判定を返すことを確かめる。git diffでstore.tsの表の定義・migration・retainに差分がないことを確かめる",
+     "expected": "結果の平文は従来どおり消え、全件の判定は残る。表の形は同じ"
     },
     {
      "id": "restore",
-     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "active.test.ts: 粗探しの投稿の後に31日後のretainを呼び、jobs.resultがNULLになり、store.redTeamRecordが投稿前と同じ全件の判定を返すことを確かめる。git diffでstore.tsの表の定義・migration・retainに差分がないことを確かめる",
+     "expected": "結果の平文は従来どおり消え、全件の判定は残る。表の形は同じ"
     },
     {
      "id": "manifest",
-     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
-     "expected": "同じ"
+     "method": "active.test.ts: 粗探しの投稿の後に31日後のretainを呼び、jobs.resultがNULLになり、store.redTeamRecordが投稿前と同じ全件の判定を返すことを確かめる。git diffでstore.tsの表の定義・migration・retainに差分がないことを確かめる",
+     "expected": "結果の平文は従来どおり消え、全件の判定は残る。表の形は同じ"
     }
    ]
   },
@@ -135,7 +141,7 @@
    "checks": [
     {
      "id": "dependencies",
-     "method": "baseが最新main（6aa7264、W9 #71を含む）であることをgit logで確かめる。evidence.tsの差分がmanualFaultfindingの中だけであることをgit diffで確かめる",
+     "method": "baseが最新main（W10 #72を含む）であることをgit logで確かめる。evidence.tsの差分がmanualFaultfindingの中だけ、store.tsの差分がredTeamRecordの追加だけであることをgit diffで確かめる",
      "expected": "W10の範囲と重ならない（evidence.tsは1関数だけ）"
     },
     {
@@ -161,7 +167,7 @@
    "location": "broker.ts renderRedTeam・render → canonicalBody → publicationFindings → POST",
    "data": "粗探しの記録と内容レビューの本文",
    "trust": "partially-trusted",
-   "control": "workerの文は固定の見出し（`- 場所:`等）の後か`> `の引用にだけ置き、行頭に出さない。見出しの行は検査済みのIDと1行の題名だけ。原因は該当・確認できないのIDと件数の行だけ（IDはCAUSE_KEYの形）。印・head/base・plan_path等の機械の行は変えない。最終の本文に公開検査を掛ける順は変えない。検証・未検証は各3件まで（RESULT_LIMITS）"
+   "control": "workerの文は固定の見出し（`- 場所:`等）の後か`> `の引用にだけ置き、行頭に出さない。見出しの行は検査済みのIDと1行の題名だけ。原因は該当・確認できないのIDと件数の行だけ（IDはCAUSE_KEYの形）。印・head/base・plan_path等の機械の行は変えない。最終の本文に公開検査を掛ける順は変えない。検証・未検証は各3件まで（RESULT_LIMITS）。全件の判定（原因・前のRTの理由を含む）は投稿せず、公開検査済みのままOutboxの値に残す"
   },
   {
    "id": "B3",
@@ -199,7 +205,7 @@
     },
     {
      "location": "store.ts faultfinding（Outboxのfindings）・broker.ts redTeamOpen",
-     "result": "変更なし: 本文ではなく結果から未解消のIDを作る。台帳の判定の欠け・確認できないはここに残る"
+     "result": "修正（PR #73 RT-2）: redTeamOpenは該当と確認できないを台帳の内外を問わず未解消にする（applies:・unconfirmed:）。本文ではなく結果から未解消のIDを作るのは変わらない"
     },
     {
      "location": "broker.ts recover（印とbodyのhash）・evidence.ts recordField（head_sha・base_sha）",
@@ -212,6 +218,10 @@
     {
      "location": "tools/review_guard（guard.py・ci.py）",
      "result": "変更なし: 投稿の本文を読まない"
+    },
+    {
+     "location": "broker.ts redTeamLines（前のRTの行）",
+     "result": "修正（PR #73 P3）: RT IDごとに直前の状態の語で判定し、未解消・解消なしの後のIDを解消にしない"
     }
    ]
   },
@@ -269,11 +279,15 @@
   },
   {
    "invariant_id": "INV-STORAGE",
-   "pattern": "変更なし",
+   "pattern": "記録の置き場所を変えて、保存期間で消える",
    "places": [
     {
-     "location": "store.ts",
-     "result": "差分なし"
+     "location": "store.ts retain（jobs.resultを30日でNULL）",
+     "result": "変更なし。全件の判定はOutboxの値に移したので消えない（試験で確認）"
+    },
+    {
+     "location": "store.ts outbox・redTeamRecord",
+     "result": "修正: 粗探しのOutboxの値に全件の判定を足し、読み出しを足す"
     }
    ]
   },

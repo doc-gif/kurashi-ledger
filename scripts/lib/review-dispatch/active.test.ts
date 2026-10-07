@@ -1079,6 +1079,51 @@ function stepSetup(extra: Partial<WorkerResult> = {}, decisions: Record<string, 
   return { d, p, s, posts, launches, step, setFresh: (f: typeof fresh) => (fresh = f) };
 }
 
+test("PR #73 RT-2: a 該当 cause or a 確認できない cause outside the ledger keeps the record open, even with accepted and no finding", async () => {
+  for (const [name, causes, open] of [
+    ["applies and unconfirmed outside", [
+      { cause: RUN_LEDGER[0]!, judgement: "該当" as const, where: "合成" },
+      { cause: RUN_LEDGER[1]!, judgement: "該当なし" as const, where: "合成" },
+      { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "合成" },
+    ], [`applies:${RUN_LEDGER[0]}`, "unconfirmed:INV-EXTRA"]],
+    ["unconfirmed outside only", [
+      ...RUN_LEDGER.map((cause) => ({ cause, judgement: "該当なし" as const, where: "合成" })),
+      { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "合成" },
+    ], ["unconfirmed:INV-EXTRA"]],
+  ] as const) {
+    const x = stepSetup({ causes: [...causes], findings: [] }, { faultfinding: "accepted" });
+    try {
+      assert.equal(await x.step(), "faultfinding:posted", name);
+      assert.match(x.posts[0]!.body, /^結論: 未解消あり（/m, name);
+      const ff = x.d.store.faultfinding("1:1", x.s.pair, "p1")!;
+      assert.deepEqual(ff.unresolved, open, name);
+      assert.equal(nextKind(x.d.store, x.p, { ...x.s, faultfinding: ff }).reason, "faultfinding-open", name);
+    } finally {
+      x.d.cleanup();
+    }
+  }
+});
+
+test("PR #73 RT-1: the whole red-team judgement outlives the 30-day clearing of jobs.result", async () => {
+  const x = stepSetup({
+    causes: RUN_LEDGER.map((cause) => ({ cause, judgement: "該当なし" as const, where: "合成の箇所を確かめた" })),
+    previous: [{ id: "RT-3", status: "解消" as const, reason: "直った" }],
+  });
+  try {
+    assert.equal(await x.step(), "faultfinding:posted");
+    const run = x.d.store.status("1:1").jobs.find((j) => j.kind === "faultfinding")!.run;
+    const before = x.d.store.redTeamRecord(run);
+    assert.deepEqual(before!.causes.map((c) => [c.cause, c.judgement, c.where]), RUN_LEDGER.map((c) => [c, "該当なし", "合成の箇所を確かめた"]));
+    assert.deepEqual(before!.previous, [{ id: "RT-3", status: "解消", reason: "直った" }]);
+    x.d.store.retain(100 + 31 * 86400000);
+    const row = x.d.store.db.prepare("SELECT result FROM jobs WHERE run=?").get(run) as { result: string | null };
+    assert.equal(row.result, null); // the plaintext result is cleared as before
+    assert.deepEqual(x.d.store.redTeamRecord(run), before); // the judgement is not
+  } finally {
+    x.d.cleanup();
+  }
+});
+
 test("W4 red team: an unjudged ledger cause or an earlier RT still open keeps the record unresolved", async () => {
   const x = stepSetup({
     causes: [{ cause: "INV-LOCK/restore-lock-identity", judgement: "該当なし", where: "確かめた" }],
