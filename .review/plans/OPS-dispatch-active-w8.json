@@ -1,0 +1,583 @@
+{
+ "schema_version": 2,
+ "task_id": "OPS-dispatch-active",
+ "base_sha": "17b37921521ce5d69aad5677db669c66aec56dd8",
+ "planned_paths": [
+  "docs/review-dispatch-design.md",
+  "scripts/lib/review-dispatch/active.test.ts",
+  "scripts/lib/review-dispatch/active.ts",
+  "scripts/lib/review-dispatch/doctor.test.ts",
+  "scripts/lib/review-dispatch/doctor.ts",
+  "scripts/lib/review-dispatch/runtime.ts",
+  "scripts/review-dispatch.test.ts",
+  "tools/review_dispatch/seatbelt/cli.sb"
+ ],
+ "conflicts": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-07",
+   "source": "Issue #50 W8（調整係が伝えた所有者の決定。記録はIssue #50に調整係が残す）",
+   "decision": "doctorのloopbackの証明を環境に依らないものにする。実行時の証明はdoctor自身が127.0.0.1の一時portに立てる待受けで行い、sandboxなしの対照は接続して目印のbyteを受け取ること、cli.sbの下では同じ接続が拒否されること。hang・timeoutはdeniedにせずinconclusive（止める）。443番がloopbackに届かないことは静的に保証する（VETTED_RULESの順でlocalhostのdenyがTCP 443のallowより後。Seatbeltでは後の規則が勝つ）。443番の実行時probeはやめる。単体試験は実の443番や固定のportに触れない。Tailscale Funnelの443番の残余リスクを設計§7の残余リスクに1か所で書く。probeのIDが変われば古いcapability・測定を拒否する"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #70 red team RT-1・RT-2（調整係の指示）",
+   "decision": "cli.sbの443番のallowを(remote tcp4 \"*:443\")にする（localhostのdenyはIPv4射影のIPv6アドレスに一致しないため）。loopbackのdeny行と規則の順を、443番のallowをdoctorの一時portへ移したprofileの変種で実行時に証明する（127.0.0.1・::1・::ffff:127.0.0.1。open=deny行なしでallowed、confined=出荷の順でdenied）。lintの順の検査も残す。cli.sbが変わるので所有者はマージ後に手順8・9をやり直す"
+  }
+ ],
+ "assessments": [
+  {
+   "id": "INV-LOCK",
+   "disposition": "preserve",
+   "reason": "lock・排他は変えない（doctorのprobeとcapabilityの照合だけ）",
+   "checks": [
+    {
+     "id": "identity",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "recovery",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-PRIVACY",
+   "disposition": "preserve",
+   "reason": "probeの出力は閉じた結果（allowed・denied・error・unmarked）だけ。目印はdoctorが毎回作る乱数で、秘密ではなく出力に出さない。試験は合成のfixtureと一時portだけで、実の資格情報・実のport 443に触れない",
+   "checks": [
+    {
+     "id": "public",
+     "method": "doctor.test.ts: 目印・pathが結果・理由に出ないことを確かめる（既存の出力の形の試験）。check-public --staged",
+     "expected": "秘密・実データの出力なし"
+    }
+   ]
+  },
+  {
+   "id": "INV-RELEASE",
+   "disposition": "preserve",
+   "reason": "capabilityにdoctorの合成probeの集合のhash（probeSet）を加える。古い写しで記録したcapability（probeSetなし・別の集合）はboundCapabilityがcapability-probesで拒否し、起動しない。測定（schema 3）は測る項目（MEASURED_PROBES）が変わらないので版を上げず、項目が変われば既存のparseMeasurementがinvalidにする。cli.sbは変えないのでprofileHashと既存の測定はそのまま。cli.sbの443番のallowをtcp4に変えるのでprofileHashと共有profileの一覧（tcp4-443）が変わり、既存の測定・capabilityは拒否される（所有者は手順8・9をやり直す）。tcp4でもモデルへのIPv4の443番に出られることを、tokenなしの実CLI（system/init）とsandbox内のcurl -4で確かめる",
+   "checks": [
+    {
+     "id": "update",
+     "method": "active.test.ts: probeSetなし・別のprobeSetのcapabilityはcapability-probes、doctorが記録したものはbound。doctor.test.ts: PROBE_SETがprobeの定義と子のsourceから決まる",
+     "expected": "旧probe集合のcapabilityで起動しない。doctorをやり直せば記録される"
+    },
+    {
+     "id": "artifact",
+     "method": "git diffでpackage.json・lockfile・workflow・cli.sbに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-ROOT",
+   "disposition": "preserve",
+   "reason": "保存先の識別は変えない",
+   "checks": [
+    {
+     "id": "first-use",
+     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "aliases",
+     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-STORAGE",
+   "disposition": "preserve",
+   "reason": "DB・journalは変えない（capabilityの値のJSONに1項目増えるだけで、表の形は同じ）",
+   "checks": [
+    {
+     "id": "rollback",
+     "method": "git diffでstore.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "restore",
+     "method": "git diffでstore.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "manifest",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-TASKS",
+   "disposition": "preserve",
+   "reason": "Issue #50 W8。所有者の実機（Tailscale Funnelが*:443で待受け）でdoctorとnpm testがloopback-443で止まった不具合の修正。設計§7に静的な保証の1行と残余リスクの1項目を足す",
+   "checks": [
+    {
+     "id": "dependencies",
+     "method": "baseが最新main（c285290、W6 #68を含む）であることをgit logで確かめる",
+     "expected": "doctor.tsはmainの版"
+    },
+    {
+     "id": "entrypoints",
+     "method": "git grepでloopback-443・connect-443が残っていないこと、Funnelの残余リスクの説明が設計§7の残余リスクの1か所だけにあることを確かめる",
+     "expected": "説明の置き場所は1つ"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "id": "B1",
+   "direction": "entry",
+   "location": "doctor.ts seatbeltHost（tool-networkの待受け）・PROBE_SOURCEのconnect",
+   "data": "probeの子が127.0.0.1の一時portへ接続した結果と、待受けが送る目印",
+   "trust": "partially-trusted",
+   "control": "待受けはdoctorが127.0.0.1のport 0（OSが選ぶ一時port）に立て、接続ごとに毎回の乱数の目印を送って閉じる。子は目印を受け取ったときだけallowed、接続後に目印が来ない・違う・切れた・時間切れはunmarked、接続前のEPERMだけdenied、ほかのerror・時間切れはerror。対照（sandboxなし）はallowed（目印あり）だけを成功とし、unmarkedはinconclusive。cli.sbの下ではunmarkedも接続できた証拠なのでallowed（disabled）。hang・timeoutはdeniedにならない"
+  },
+  {
+   "id": "B2",
+   "direction": "entry",
+   "location": "doctor.ts lintProfile",
+   "data": "所有者の写しのcli.sbの本文",
+   "trust": "partially-trusted",
+   "control": "既存の完全一致（VETTED_RULESと同じ規則・順・数）に加え、名前の付いた検査loopback-deny-after-443: 最後のTCP 443のallowより後にlocalhostのdenyがなければloopback-deny-not-after-443でdisabled。VETTED_RULESを編集してもこの検査が順を守る"
+  },
+  {
+   "id": "B3",
+   "direction": "entry",
+   "location": "active.ts boundCapability",
+   "data": "DBに記録したcapability（JSON）",
+   "trust": "partially-trusted",
+   "control": "版・実行ファイル・cli.sb・argvに加え、probeSetが今のPROBE_SETと一致しなければcapability-probesで起動しない"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "cli.sb network-outbound（CLIとその子の外向き通信）",
+   "data": "TCP接続の宛先アドレスとport",
+   "trust": "untrusted",
+   "control": "許可は(remote tcp4 \"*:443\")とDNSだけ。IPv6のTCPは許さないのでIPv4射影の形（::ffff:127.0.0.1、::ffff:<自分のアドレス>）も拒否。その後のlocalhostのdenyがloopbackとMac自身のIPv4アドレスを拒否する。doctorのloopback-ipv4・loopback-ipv6・loopback-mappedがこの順を実行時に証明する"
+  }
+ ],
+ "variant_analysis": [
+  {
+   "invariant_id": "INV-LOCK",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "store.ts・supervisor.py",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-PRIVACY",
+   "pattern": "試験・probeがhostの状態（実のport・他のサービス）に依存する、または触れる",
+   "places": [
+    {
+     "location": "doctor.ts SYNTHETIC_PROBES loopback-443（127.0.0.1:443へ接続）",
+     "result": "修正: 削除。443番は静的な保証（lintProfile）"
+    },
+    {
+     "location": "doctor.ts tool-network",
+     "result": "修正: doctor自身の一時portの待受けと目印。対照は目印を要する"
+    },
+    {
+     "location": "doctor.ts supervisor-pipe・unixの子",
+     "result": "doctor自身が作るunix socket（privateSocket）。hostの他のサービスに依らない"
+    },
+    {
+     "location": "doctor.ts measureCliのnetwork（layout.network）",
+     "result": "測定自身が持つloopbackの待受け（一時port）。443番を使わない"
+    },
+    {
+     "location": "doctor.test.ts・active.test.ts・webhook.test.ts・review-dispatch.test.ts",
+     "result": "443番や固定portへ接続・待受けしない。serveの8787はsecret・lockの検査で待受け前に拒否される（変更なし）"
+    },
+    {
+     "location": "cli.sbのallow (remote tcp \"*:443\")（PR #70 RT-1）",
+     "result": "修正: tcp4。IPv4射影の形がlocalhostのdenyをすり抜けていた"
+    },
+    {
+     "location": "doctor.ts lintProfileの順の検査（PR #70 P3）",
+     "result": "修正: localhostのdenyの後にnetworkを含むallowが1つもないことを見る（1行の完全一致ではなく）"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RELEASE",
+   "pattern": "probe・測定の項目が変わったのに古い記録を使う",
+   "places": [
+    {
+     "location": "active.ts boundCapability",
+     "result": "修正: probeSetの照合（capability-probes）"
+    },
+    {
+     "location": "doctor.ts parseMeasurement",
+     "result": "既に項目（MEASURED_PROBES）・basis・sharedProfileの完全一致を要求。今回は測る項目が変わらない"
+    },
+    {
+     "location": "doctor.ts RUN_B_COVERAGE.network",
+     "result": "修正: tool-networkだけ（connect-443の種類を外す）。coverageGapsは空のまま"
+    },
+    {
+     "location": "review-dispatch.ts cycle",
+     "result": "boundCapabilityを通るので今回の修正で閉じる"
+    },
+    {
+     "location": "review-dispatch.test.ts cycleの試験が記録するcapability",
+     "result": "PROBE_SETを持たせる（doctorが記録する形と同じ）。持たなければcapability-probesで起動しない"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-ROOT",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "host.ts",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-STORAGE",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "store.ts",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-TASKS",
+   "pattern": "説明の重複",
+   "places": [
+    {
+     "location": "docs/review-dispatch-design.md §7 Claudeの起動の層（OSの行の下の箇条書き）",
+     "result": "静的な保証（loopback-deny-after-443）を1行"
+    },
+    {
+     "location": "docs/review-dispatch-design.md §7 groupを離れた子（残余リスク）",
+     "result": "Funnelの443番の残余リスクを1項目（ここだけ）"
+    },
+    {
+     "location": "cli.sb のコメント",
+     "result": "変えない（profileHashと既存の測定を保つ）。内容は既に「Not loopback, not even port 443」"
+    }
+   ]
+  }
+ ],
+ "deferred": [
+  {
+   "item": "所有者の実機でのdoctor（手順9）の再実行",
+   "reason": "実のSeatbeltとFunnelのある環境で所有者が行う。CIと単体試験は合成のfixtureと一時portだけ"
+  },
+  {
+   "item": "Tailscale serveが/webhook以外を404にすることの実機での確認",
+   "reason": "Tailscaleの挙動で、このrepoの試験では確かめられない。所有者の設定（--set-path /webhook）に基づいて記録する"
+  }
+ ],
+ "context": {
+  "INV-LOCK": {
+   "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+   "scenarios": [
+    {
+     "id": "identity",
+     "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+    },
+    {
+     "id": "recovery",
+     "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R007",
+     "invariant_id": "INV-LOCK",
+     "cause_key": "restore-lock-identity",
+     "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+     ]
+    }
+   ]
+  },
+  "INV-PRIVACY": {
+   "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+   "scenarios": [
+    {
+     "id": "public",
+     "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR12-R002",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "public-path-exception-scope",
+     "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+     ]
+    },
+    {
+     "id": "PR42-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "token-scope-fail-open",
+     "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+     ]
+    },
+    {
+     "id": "PR42-R006",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "credential-tool-from-untrusted-checkout",
+     "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR37-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "logged-value-carries-data",
+     "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+     ]
+    }
+   ]
+  },
+  "INV-RELEASE": {
+   "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+   "scenarios": [
+    {
+     "id": "update",
+     "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+    },
+    {
+     "id": "artifact",
+     "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R006",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "artifact-release-coherence",
+     "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+     ]
+    },
+    {
+     "id": "PR12-R001",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "setup-worktree-exclusion",
+     "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+     ]
+    },
+    {
+     "id": "PR12-R101",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "cleanup-failure-path-contract",
+     "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+     ]
+    },
+    {
+     "id": "PR12-R102",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "install-record-verification-scope",
+     "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+     ]
+    },
+    {
+     "id": "PR12-R103",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "verification-on-target-runtime",
+     "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+     ]
+    }
+   ]
+  },
+  "INV-ROOT": {
+   "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+   "scenarios": [
+    {
+     "id": "first-use",
+     "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+    },
+    {
+     "id": "aliases",
+     "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R002",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "first-use-vs-interruption",
+     "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+     ]
+    },
+    {
+     "id": "PR12-R104",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "destructive-op-follows-link",
+     "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+     ]
+    }
+   ]
+  },
+  "INV-STORAGE": {
+   "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+   "scenarios": [
+    {
+     "id": "rollback",
+     "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+    },
+    {
+     "id": "restore",
+     "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+    },
+    {
+     "id": "manifest",
+     "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R001",
+     "invariant_id": "INV-STORAGE",
+     "cause_key": "database-journal-pair",
+     "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+     ]
+    }
+   ]
+  },
+  "INV-TASKS": {
+   "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+   "scenarios": [
+    {
+     "id": "dependencies",
+     "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+    },
+    {
+     "id": "entrypoints",
+     "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R003",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "dependency-before-consumer",
+     "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+     ]
+    },
+    {
+     "id": "PR2-R008",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "entrypoint-order",
+     "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+     ]
+    },
+    {
+     "id": "PR4-R019",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "review-role-spelling",
+     "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R022",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "draft-open-entrypoint-coherence",
+     "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+     ]
+    },
+    {
+     "id": "PR10-R004",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "status-docs-current-state-coherence",
+     "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
+     ]
+    }
+   ]
+  }
+ }
+}

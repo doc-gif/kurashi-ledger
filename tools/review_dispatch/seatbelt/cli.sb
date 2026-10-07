@@ -7,7 +7,7 @@
 ;; boundary (the doctor checks the inheritance with a grandchild probe).
 ;;
 ;; Allowed: read the fixed runtime and the fetched materials, read and write the
-;; dedicated config directory and the run's own HOME/TMP, outbound TCP 443 for the
+;; dedicated config directory and the run's own HOME/TMP, outbound IPv4 TCP 443 for the
 ;; model service, DNS. Denied by default: every other path (policy, dispatcher DB,
 ;; repository, GitHub/other-AI credentials, App keys), other ports, other programs.
 ;; No keychain at all (owner decision O2-token, Issue #50): the Claude login comes from
@@ -75,8 +75,11 @@
   (global-name "com.apple.logd")
   (global-name "com.apple.system.logger"))
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))
-(allow network-outbound (remote tcp "*:443"))
-;; Not loopback, not even port 443 (local services, the dispatcher itself).
+;; IPv4 only: "localhost" below does not match an IPv4-mapped IPv6 address (::ffff:127.0.0.1 or
+;; ::ffff:<this Mac's address>), so IPv6 TCP is not allowed at all (Issue #50 W8, PR #70 RT-1).
+(allow network-outbound (remote tcp4 "*:443"))
+;; Not loopback or this Mac's own addresses, not even port 443 (local services, the dispatcher itself).
+;; It must come after the 443 allow: the later rule wins (the doctor's loopback-* probes show it).
 (deny network-outbound (remote ip "localhost:*"))
 
 ;; Other processes: deny-by-default leaves the arguments and environment of same-user
