@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ReviewBroker, parseResult } from "./broker.ts";
+import { HeldSnapshotError, ReviewBroker, parseResult } from "./broker.ts";
 import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import { hash } from "./model.ts";
 import { fixtureResult } from "./runtime.ts";
@@ -138,6 +138,38 @@ test("D04 before-post head/base/Ready is fetched again; active identity cannot c
     assert.equal(
       await b.submit(p, j, raw, channel.seal(j, raw), async () => s),
       "stale",
+    );
+  } finally {
+    d.cleanup();
+  }
+});
+test("W10 a held re-check before the post defers it (never stale): no POST, the result and the lease stay", async () => {
+  const d = database();
+  try {
+    const p = policy(),
+      j = claim(d.store);
+    d.store.running(j);
+    const raw = JSON.stringify(fixtureResult(j)),
+      origin = channel.seal(j, raw);
+    d.store.result(j, raw, origin);
+    const b = new ReviewBroker(
+      30,
+      { post: async () => assert.fail("POST on a held re-check"), list: async () => [] },
+      d.store,
+      channel,
+    );
+    const held = async (): Promise<never> => {
+      throw new HeldSnapshotError();
+    };
+    assert.equal(await b.submit(p, j, raw, origin, held), "deferred");
+    assert.equal(d.store.deferred(j.key)?.job.id, j.id);
+    assert.equal(d.store.job(j.id)!.status, "result-ready");
+    // Any other failure of the re-check is still thrown (the caller keeps it uncertain).
+    await assert.rejects(
+      b.submit(p, j, raw, origin, async () => {
+        throw new Error("network");
+      }),
+      /network/,
     );
   } finally {
     d.cleanup();

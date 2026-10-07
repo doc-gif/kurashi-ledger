@@ -6,6 +6,7 @@
   "docs/review-dispatch-implementation.md",
   "scripts/lib/review-dispatch/broker.test.ts",
   "scripts/lib/review-dispatch/broker.ts",
+  "scripts/lib/review-dispatch/reducer.test.ts",
   "scripts/review-dispatch.test.ts",
   "scripts/review-dispatch.ts"
  ],

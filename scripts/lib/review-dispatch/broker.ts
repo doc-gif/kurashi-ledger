@@ -25,6 +25,8 @@ import {
 // Rejected because of WHAT the result says (secret shapes, format characters, look-alikes, injection, links),
 // as opposed to a malformed shape. The dispatcher treats it as `blocked` and redacts it (PR #53 round 3).
 export class ResultContentError extends Error {}
+// fetchFresh: the re-check reconcile was held (transiently incomplete, PR48-R013). submit() defers, never "stale".
+export class HeldSnapshotError extends Error {}
 
 // `records`: the whole-record IDs (record-<comment|review>-<id>) of this job's materials (store.runMaterials).
 // A red team may re-check such a record as a whole; any other record ID is refused (red team round 5).
@@ -246,8 +248,16 @@ export class ReviewBroker {
     // W4 row 8 / PR #56 red team P2: an edit/delete/dismiss delivery for this PR that no reconcile has processed
     // yet. Keep the result and reconcile again (fetchFresh reconciles and clears processed marks); if a mark is
     // still there after three tries, defer: the job keeps its result and lease and the next cycle posts it.
-    let s = await fetchFresh();
-    for (let n = 0; n < 2 && this.store.marked(j.key); n++) s = await fetchFresh();
+    // Issue #50 W10: a held re-check is unknown, not stale. Defer like a mark: releasing the lease as stale would
+    // spend this generation's job on a fetch gap (no relaunch, so the next job never starts).
+    let s: Snapshot;
+    try {
+      s = await fetchFresh();
+      for (let n = 0; n < 2 && this.store.marked(j.key); n++) s = await fetchFresh();
+    } catch (e) {
+      if (e instanceof HeldSnapshotError) return "deferred";
+      throw e;
+    }
     if (this.store.marked(j.key)) return "deferred";
     const prior = this.store.target(j.key);
     const t = assess(p, s, prior, this.store.consumed());

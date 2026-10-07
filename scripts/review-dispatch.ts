@@ -46,6 +46,7 @@ import {
   type SupervisorChild,
 } from "./lib/review-dispatch/active.ts";
 import { createClaudeReviewBroker, type SpawnRelay } from "./lib/review-dispatch/claude-broker.ts";
+import { HeldSnapshotError } from "./lib/review-dispatch/broker.ts";
 import { createHash } from "node:crypto";
 import type { LaunchOptions } from "./lib/review-dispatch/launcher.ts";
 import {
@@ -207,6 +208,10 @@ export async function main(
       return 4;
     }
     for (const result of results) {
+      // PR48-R013 / Issue #50 W10: a held result (transiently incomplete) writes nothing. The stored target keeps
+      // its generation and Ready, so a Ready consumed by a job survives a fetch gap (PR #59: our own post moved
+      // updated_at). It never makes a PR eligible either: the next complete reconcile decides.
+      if (result.heldSince !== null) continue;
       const r = dispatcher.observe(result.snapshot);
       if (r.notice) log(`PR #${result.pr}: ${r.status}`);
     }
@@ -248,12 +253,15 @@ async function active(
 ): Promise<number> {
   const target = startSmall(policy);
   const current = results.find((r) => r.pr === target.pr);
-  if (!current) return 0;
+  // Held (W10): no job, no resumed post, no write; the stored state waits for a complete reconcile.
+  if (!current || current.heldSince !== null) return 0;
   const fresh = async () => {
     const again = (await reconcile(new GhReader(policy.repo, transport), policy, store)).find(
       (r) => r.pr === target.pr,
     );
     if (!again) throw new Error("Target vanished");
+    // A held re-check defers the post (the result and lease stay); it is never read as stale.
+    if (again.heldSince !== null) throw new HeldSnapshotError();
     return again.snapshot;
   };
   const broker = () =>

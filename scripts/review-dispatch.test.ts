@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { EventEmitter } from "node:events";
 import { main, HELP } from "./review-dispatch.ts";
 test("default command is off without reading policy/database/auth or spawning", async () => {
   const out: string[] = [];
@@ -490,4 +491,210 @@ test("Round 4 RT-3: doctor and measure hash cli.sb from the one read they use, a
   assert.equal(files.unchanged(), true);
   current = B;
   assert.equal(files.unchanged(), false);
+});
+
+// Issue #50 W10 (PR #59): our own post moves the PR's updated_at late, so the next reconcile sees a drift between
+// its two reads of the PR and is held. pulls/1 here returns a later updated_at on every read.
+function drifting(inner: import("./lib/review-dispatch/github.ts").Transport): import("./lib/review-dispatch/github.ts").Transport {
+  let n = 0;
+  return async (endpoint, headers) => {
+    const r = await inner(endpoint, headers);
+    if (endpoint.replace("/repos/synthetic/repository/", "") !== "pulls/1") return r;
+    const v = JSON.parse(r.body) as Record<string, unknown>;
+    v["updated_at"] = new Date(Date.parse("2026-01-01T00:00:10Z") + 1000 * ++n).toISOString();
+    return { ...r, body: JSON.stringify(v) };
+  };
+}
+// A supervisor that reads the plan and ends without announcing a key: the worker never starts (as in PR56-R005).
+function unacknowledged(count: () => void) {
+  return () => {
+    count();
+    const child = new EventEmitter() as InstanceType<typeof EventEmitter> & Record<string, unknown>;
+    child["stdout"] = { on: () => child };
+    child["stdin"] = { on: () => child, write: () => (setImmediate(() => child.emit("close", 2)), true), end: () => true };
+    child["kill"] = () => true;
+    return child as never;
+  };
+}
+
+test("W10 (PR #59): Ready, faultfinding posted, a held cycle from the updated_at drift, then a complete cycle: the Ready is intact and the review job starts", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { GhReader } = await import("./lib/review-dispatch/github.ts");
+  const { reconcile } = await import("./lib/review-dispatch/evidence.ts");
+  const { assess } = await import("./lib/review-dispatch/reducer.ts");
+  const c = await activeCli();
+  try {
+    const store = c.x.d.store,
+      p = c.x.p;
+    // Ready -> faultfinding job (consumes the Ready) -> its clean red-team record posted -> lease released.
+    const s = (await reconcile(new GhReader(p.repo, c.fakeGitHub(c.github)), p, store))[0]!.snapshot;
+    store.observe(assess(p, s, null, store.consumed()));
+    const ready = store.target("1:1")!;
+    assert.equal(ready.status, "eligible");
+    assert.ok(ready.ready);
+    const j = store.claim(p, s, 30, "faultfinding", 500)!;
+    assert.ok(j);
+    assert.ok(store.consumed().has(ready.ready!));
+    store.running(j);
+    store.result(j, "{}");
+    const id = store.outbox(j, "faultfinding", JSON.stringify({ actor: 30, decision: "accepted", findings: [] }));
+    store.sending(id);
+    store.posted(id, "900");
+    store.release(j, { run: j.run, neverStarted: false, groupEnded: true, uncertain: false });
+    const jobs = () => store.status("1:1").jobs.map((x) => `${x.kind}:${x.status}`);
+    const before = { target: store.target("1:1"), jobs: jobs() };
+    let spawned = 0;
+    const deps = (transport: () => import("./lib/review-dispatch/github.ts").Transport, spawn: () => never) => ({
+      transport,
+      spawn,
+      relaySpawn: () => assert.fail("no post in this test"),
+      readBytes: () => c.A,
+      digest: (path: string) => (path === c.install.claude.cliProfile ? c.sha(c.A) : c.EXE),
+      platform: "darwin" as const,
+      launch: { platform: "darwin" as const, exists: () => false, readToken: () => "synthetic-setup-token-0123456789abcdef" },
+    });
+    // Held cycle: nothing is written or launched; the stored target keeps its generation and Ready.
+    const lines: string[] = [];
+    const held = deps(() => drifting(c.fakeGitHub(c.github)), () => assert.fail("no launch on a held cycle"));
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1000, held), 0);
+    assert.deepEqual(store.target("1:1"), before.target);
+    assert.deepEqual(jobs(), before.jobs);
+    assert.equal(store.db.prepare("SELECT count(*) AS n FROM leases").get()!["n"], 0);
+    assert.equal(lines.length, 0);
+    // A second held cycle changes nothing either.
+    assert.equal(await main(c.args, c.env, () => {}, () => 1001, held), 0);
+    assert.deepEqual(store.target("1:1"), before.target);
+    // Complete cycle: the original Ready is intact (not new-ready-required) and the next job is the review.
+    lines.length = 0;
+    const complete = deps(() => c.fakeGitHub(c.github), unacknowledged(() => spawned++));
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1002, complete), 0);
+    const after = store.target("1:1")!;
+    assert.equal(after.status, "eligible", after.reason);
+    assert.equal(after.ready, ready.ready);
+    assert.equal(after.generation, ready.generation);
+    assert.ok(spawned >= 1); // the review launch reached the supervisor
+    assert.match(lines.join("\n"), /PR #1: review:not-started:not-acknowledged/);
+  } finally {
+    c.x.cleanup();
+  }
+});
+
+test("W10 a held cycle never makes a PR eligible: no target, no job, the Ready delivery stays pending until a complete cycle", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const c = await activeCli();
+  try {
+    const store = c.x.d.store;
+    let spawned = 0;
+    const deps = (transport: () => import("./lib/review-dispatch/github.ts").Transport) => ({
+      transport,
+      spawn: unacknowledged(() => spawned++),
+      readBytes: () => c.A,
+      digest: (path: string) => (path === c.install.claude.cliProfile ? c.sha(c.A) : c.EXE),
+      platform: "darwin" as const,
+      launch: { platform: "darwin" as const, exists: () => false, readToken: () => "synthetic-setup-token-0123456789abcdef" },
+    });
+    assert.equal(await main(c.args, c.env, () => {}, () => 1000, deps(() => drifting(c.fakeGitHub(c.github)))), 0);
+    assert.equal(store.target("1:1"), null);
+    assert.equal(spawned, 0);
+    assert.equal(store.status("1:1").jobs.length, 0);
+    assert.equal(store.consumed().size, 0);
+    assert.equal(store.db.prepare("SELECT processed FROM inbox WHERE delivery='ready'").get()!["processed"], 0);
+    // The complete cycle binds the Ready and starts the first job (faultfinding).
+    const lines: string[] = [];
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1001, deps(() => c.fakeGitHub(c.github))), 0);
+    assert.equal(store.target("1:1")!.status, "eligible");
+    assert.match(lines.join("\n"), /PR #1: faultfinding:not-started:not-acknowledged/);
+  } finally {
+    c.x.cleanup();
+  }
+});
+
+test("W10 a held re-check right before a post defers it (no POST, nothing spent); the next complete cycle posts it once", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: the dispatcher refuses to run (host checks are POSIX only)");
+    return;
+  }
+  const { GhReader } = await import("./lib/review-dispatch/github.ts");
+  const { reconcile } = await import("./lib/review-dispatch/evidence.ts");
+  const { assess } = await import("./lib/review-dispatch/reducer.ts");
+  const { runBinding, signedMessage } = await import("./lib/review-dispatch/provenance.ts");
+  const { hash } = await import("./lib/review-dispatch/model.ts");
+  const { fixtureResult } = await import("./lib/review-dispatch/runtime.ts");
+  const { TestSigner } = await import("../tests/fixtures/review-dispatch-run-signer.ts");
+  const c = await activeCli();
+  try {
+    const store = c.x.d.store,
+      p = c.x.p;
+    // A signed faultfinding result waiting for its post (as in PR56-R003, without the edit mark).
+    const s = (await reconcile(new GhReader(p.repo, c.fakeGitHub(c.github)), p, store))[0]!.snapshot;
+    store.observe(assess(p, s, null));
+    const j = store.claim(p, s, 30, "faultfinding", 500)!;
+    store.running(j);
+    const signer = new TestSigner();
+    store.saveRunKey(j, { run: j.run, binding: runBinding(j), key: signer.publicKey() }, 501);
+    store.saveRunMaterials(j.run, { planPath: null, ledger: [], previousRts: [] });
+    const raw = JSON.stringify({ ...fixtureResult(j), decision: "accepted", unverified: [] });
+    store.result(j, raw, { run: j.run, actor: 30, resultHash: hash(raw), signature: signer.sign(signedMessage(j.run, runBinding(j), hash(raw))) });
+    const ready = store.target("1:1");
+    // Fake Claude App relay (list/post JSON lines), as in PR56-R003.
+    const posted: { head: string; body: string }[] = [];
+    const relaySpawn = () => {
+      const out = new EventEmitter();
+      const child = new EventEmitter() as InstanceType<typeof EventEmitter> & Record<string, unknown>;
+      child["stdout"] = { on: (e: string, f: (b: Buffer) => void) => out.on(e, f) };
+      child["kill"] = () => true;
+      child["stdin"] = {
+        on: () => child,
+        end: () => setImmediate(() => child.emit("exit")),
+        write: (line: string) => {
+          const r = JSON.parse(line) as Record<string, unknown>;
+          if (r["op"] === "post") posted.push({ head: String(r["head"]), body: String(r["body"]) });
+          const reply =
+            r["op"] === "post"
+              ? { id: r["id"], ok: true }
+              : { id: r["id"], ok: true, reviews: posted.map((x, n) => ({ id: String(900 + n), actor: 30, ...x })) };
+          setImmediate(() => out.emit("data", Buffer.from(`${JSON.stringify(reply)}\n`)));
+          return true;
+        },
+      };
+      return child as never;
+    };
+    // The cycle's own reconcile is complete (two reads of the PR); from the re-check on, updated_at drifts.
+    const late = () => {
+      const inner = c.fakeGitHub(c.github),
+        drift = drifting(inner);
+      let reads = 0;
+      return (async (endpoint, headers) => {
+        if (endpoint.endsWith("/pulls/1") && ++reads > 2) return drift(endpoint, headers);
+        return inner(endpoint, headers);
+      }) as import("./lib/review-dispatch/github.ts").Transport;
+    };
+    const deps = (transport: () => import("./lib/review-dispatch/github.ts").Transport) => ({
+      transport,
+      spawn: () => assert.fail("no worker relaunch"),
+      relaySpawn,
+      readBytes: () => c.A,
+      digest: (path: string) => (path === c.install.claude.cliProfile ? c.sha(c.A) : c.EXE),
+      platform: "darwin" as const,
+    });
+    const lines: string[] = [];
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1000, deps(late)), 0);
+    assert.match(lines.join("\n"), /PR #1: resume:deferred/);
+    assert.equal(posted.length, 0);
+    assert.equal(store.deferred("1:1")?.job.id, j.id); // result and lease kept, not released as stale
+    assert.deepEqual(store.target("1:1"), ready);
+    lines.length = 0;
+    assert.equal(await main(c.args, c.env, (x) => lines.push(x), () => 1001, deps(() => c.fakeGitHub(c.github))), 0);
+    assert.match(lines.join("\n"), /PR #1: resume:posted/);
+    assert.equal(posted.length, 1);
+    assert.equal(store.job(j.id)!.status, "posted");
+  } finally {
+    c.x.cleanup();
+  }
 });
