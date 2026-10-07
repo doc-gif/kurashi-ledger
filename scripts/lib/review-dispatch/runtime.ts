@@ -45,6 +45,9 @@ export const REQUIRED_PROBES = [
   "tool-child-confined",
   // A child of this run cannot write another run's area (W5c; the config dir is per run).
   "deny-other-run",
+  // The measured runs' own config dir, HOME and tmp hold no token or credential file after the run (W5e, PR67 RT-1):
+  // cli.sb lets the CLI read them, so only this scan stands behind the Read rule there.
+  "config-holds-no-secret",
   "schema",
   // The supervisor stops the worker's process group and sees it empty (W5c). Not "all descendants ended":
   // a child that left the group is a residual risk (design §7).

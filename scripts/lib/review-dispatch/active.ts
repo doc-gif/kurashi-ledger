@@ -48,18 +48,22 @@ import {
   createSyntheticKeychain,
   existsSafe,
   inspectConfigDir,
+  combineOutcomes,
   measureCli,
   measurementRecord,
   controlSockets,
   profileHash,
   removeSyntheticKeychain,
   runDoctor,
+  scanOutcome,
+  scanPlan,
   type CliExecutor,
   type CliRunId,
   type DoctorResult,
   type Measurement,
   type RunDiagnostics,
   type SandboxHost,
+  type SecretScan,
   type TrapLayout,
 } from "./doctor.ts";
 import { Store } from "./store.ts";
@@ -775,7 +779,11 @@ export type BenignDiagnostics = {
 };
 // Per run: A (synthetic PR under cli.sb), A2 (flag layer only), B (injected instructions), benign (supervised).
 // Closed enums, booleans and bounded integers only (diagnoseRun, benignSchema).
-export type MeasurementDiagnostics = Record<CliRunId, RunDiagnostics | null> & { benign: BenignDiagnostics };
+// scan: the post-run secret scan's counts per run (scanRunArea), never a value or a path.
+export type MeasurementDiagnostics = Record<CliRunId, RunDiagnostics | null> & {
+  benign: BenignDiagnostics;
+  scan: Record<CliRunId | "benign", SecretScan | null>;
+};
 export function parseMeasurementFile(raw: string | null): MeasurementFile | null {
   if (raw === null) return null;
   try {
@@ -971,9 +979,11 @@ export async function measureCommand(d: {
     const layout = await d.layout(join(area, "trap"));
     let outcomes: Awaited<ReturnType<typeof measureCli>>;
     const cli: Record<CliRunId, RunDiagnostics | null> = { A: null, A2: null, B: null };
+    const scan: MeasurementDiagnostics["scan"] = { A: null, A2: null, B: null, benign: null };
     try {
-      outcomes = await measureCli(d.policy, job, d.install.claude, layout, d.executor, d.launch ?? {}, (id, diag) => {
+      outcomes = await measureCli(d.policy, job, d.install.claude, layout, d.executor, d.launch ?? {}, (id, diag, s) => {
         cli[id] = diag;
+        scan[id] = s;
       });
     } finally {
       await layout.close();
@@ -1001,6 +1011,9 @@ export async function measureCommand(d: {
       (record) => verifier.register(job, record),
     );
     const { schema, failed, stage, field } = benignSchema(job, verifier, r);
+    // The benign run's own config dir, HOME and tmp, before the run area is removed (PR67 RT-1).
+    scan.benign = scanPlan(plan, benign.run);
+    outcomes = { ...outcomes, "config-holds-no-secret": combineOutcomes([outcomes["config-holds-no-secret"], scanOutcome(scan.benign)]) };
     let same = false;
     try {
       same = d.unchanged();
@@ -1015,6 +1028,7 @@ export async function measureCommand(d: {
       external: { schema, groupEnded: r.groupEnded && !r.uncertain },
       diagnostics: {
         ...cli,
+        scan,
         benign: {
           supervisorExitCode: r.exitCode !== null && Number.isSafeInteger(r.exitCode) && r.exitCode >= 0 && r.exitCode <= 255 ? r.exitCode : null,
           failed,
@@ -1116,5 +1130,13 @@ export function diagnosticLines(d: MeasurementDiagnostics): string[] {
     return `診断 ${id}: exit=${v(r.exitCode)} started=${r.started} tools=${r.tools ? r.tools.join(",") || "なし" : "-"} mcp=${v(r.mcpServers)} attempts=${r.attempts} denials=${v(r.permissionDenials)} result=${res}`;
   });
   const b = d.benign;
-  return [...cli, `診断 benign: exit=${v(b.supervisorExitCode)} failed=${b.failed ?? "なし"} stage=${v(b.stage)} field=${v(b.field)}`];
+  const sc = (["A", "A2", "B", "benign"] as const).map((id) => {
+    const x = d.scan?.[id];
+    return `${id}=${x ? `files=${x.files}/hits=${x.hits}/unreadable=${x.unreadable}` : "-"}`;
+  });
+  return [
+    ...cli,
+    `診断 benign: exit=${v(b.supervisorExitCode)} failed=${b.failed ?? "なし"} stage=${v(b.stage)} field=${v(b.field)}`,
+    `診断 走査: ${sc.join(" ")}`,
+  ];
 }
