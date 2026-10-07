@@ -178,7 +178,7 @@
    "location": "doctor.ts scanRunArea・measureCli、active.ts measureCommand（benign）",
    "data": "測定した各runのconfig dir・HOME・tmpの中身",
    "trust": "untrusted",
-   "control": "lstatで辿り、linkは辿らず走査不能に数える。tokenのbytesをメモリで比べ、既知の資格情報の名前を照合する。記録は数（files・hits・unreadable）とallowed・denied・inconclusiveだけ。値・中身・pathを出さない。run領域を消す前に走査する"
+   "control": "脅威モデル: 走査中に領域へ敵対的に書く者はいない（modelは書込みの道具なし、残る子は固定のtoolの子、CLIは終了済み）。fileはO_NOFOLLOWで開き、fdのfstatで通常file・lstatと同じdev/ino・上限内の大きさを確かめ、上限付きで読み、読後の大きさとmtimeが同じこと。dirは辿る間は実体に結び付けず、走査後に訪れた全dir・fileを再lstatして実体・種類・大きさの変化や消失をinconclusiveにする（検出で、防止ではない）。linkは辿らず走査不能に数える。tokenのbytesをメモリで比べ、既知の資格情報の名前を照合する。記録は数（files・hits・unreadable）とallowed・denied・inconclusiveだけ。値・中身・pathを出さない。run領域を消す前に走査する（PR67-R001）"
   }
  ],
  "variant_analysis": [

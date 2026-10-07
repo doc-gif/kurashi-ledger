@@ -22,12 +22,17 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   rmdirSync,
   rmSync,
@@ -1305,29 +1310,89 @@ export function diagnoseRun(backend: Backend, r: CliRun): RunDiagnostics {
   };
 }
 
-// ---- Post-run secret scan (Issue #50 W5e, PR67 RT-1) ----
+// ---- Post-run secret scan (Issue #50 W5e, PR67 RT-1, PR67-R001) ----
 // cli.sb lets the CLI (and so an injected model's Read) read the run's own config dir, HOME and tmp. Only the Read
 // rule refuses them, so after every measured run, before its area is removed, they must hold no token and no
 // credential file. Bytes are compared in memory; the value, file content and paths are never kept or printed,
-// only counts. A file that cannot be read or checked (a link, a socket, an oversized file) is "unreadable": the
-// scan is then inconclusive, which blocks.
+// only counts. Anything that cannot be checked (a link, a socket, an oversized or changing file) is "unreadable":
+// the scan is then inconclusive, which blocks.
+// Threat model (owner decision on PR67-R001): during the scan no actor writes the run area adversarially. The model
+// has no write tool (Read/Grep/Glob only), the children that may linger are fixed tool children (ripgrep) and not
+// model-chosen, and the CLI has exited. The scan outputs nothing but counts, so a read that a swapped path sends
+// outside the area leaks nothing; what is guarded against is a wrong "clean" verdict. So: a file is opened with
+// O_NOFOLLOW (a link in its place is never followed) and checked on the open fd (regular file, the same dev/ino as
+// its lstat, size within the cap, unchanged size and mtime after the read). Directories are not bound to their
+// identity while walking: every visited entry's dev/ino, type and size are re-checked after the walk, which DETECTS
+// a swap afterwards (inconclusive) but does not prevent the read through it.
 export const CREDENTIAL_NAMES = [".credentials.json", "credentials.json", "auth.json", ".netrc"] as const;
 const SCAN_FILE_MAX = 64 << 20;
 export type SecretScan = { files: number; hits: number; unreadable: number };
+export type ScanStat = { isDirectory(): boolean; isFile(): boolean; size: number; dev: number; ino: number; mtimeMs: number };
 export type ScanIo = {
-  lstat(p: string): { isDirectory(): boolean; isFile(): boolean; size: number };
+  lstat(p: string): ScanStat;
   readdir(p: string): string[];
-  readFile(p: string): Buffer;
+  open(p: string): number; // read-only, never through a link in the last component
+  fstat(fd: number): ScanStat;
+  read(fd: number, buf: Buffer, offset: number, length: number, position: number): number;
+  close(fd: number): void;
 };
-const realScanIo: ScanIo = { lstat: (p) => lstatSync(p), readdir: (p) => readdirSync(p), readFile: (p) => readFileSync(p) };
+export const realScanIo: ScanIo = {
+  lstat: (p) => lstatSync(p),
+  readdir: (p) => readdirSync(p),
+  open: (p) => {
+    // No O_NOFOLLOW (Windows): a file cannot be opened safely, so it is never opened (fails closed).
+    if (fsConstants.O_NOFOLLOW === undefined) throw new Error("no O_NOFOLLOW");
+    return openSync(p, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (fsConstants.O_NONBLOCK ?? 0));
+  },
+  fstat: (fd) => fstatSync(fd),
+  read: (fd, buf, offset, length, position) => readSync(fd, buf, offset, length, position),
+  close: (fd) => closeSync(fd),
+};
+const kind = (st: ScanStat): "dir" | "file" | "other" => (st.isDirectory() ? "dir" : st.isFile() ? "file" : "other");
 export function scanRunArea(dirs: readonly string[], token: string, io: ScanIo = realScanIo): SecretScan {
   const s: SecretScan = { files: 0, hits: 0, unreadable: 0 };
   // Nothing to compare is never "clean".
   if (token.length < 8 || dirs.length === 0) return { ...s, unreadable: 1 };
   const needle = Buffer.from(token, "utf8");
   const names: readonly string[] = CREDENTIAL_NAMES;
+  const visited: { path: string; kind: "dir" | "file"; dev: number; ino: number; size: number }[] = [];
+  // The file behind an fd opened without following a link, checked against its lstat before and after the read.
+  const readChecked = (p: string, st: ScanStat): void => {
+    let fd: number;
+    try {
+      fd = io.open(p);
+    } catch {
+      s.unreadable++;
+      return;
+    }
+    try {
+      const before = io.fstat(fd);
+      if (!before.isFile() || before.dev !== st.dev || before.ino !== st.ino || before.size > SCAN_FILE_MAX) {
+        s.unreadable++;
+        return;
+      }
+      // One byte more than the size seen, to notice growth during the read.
+      const buf = Buffer.alloc(before.size + 1);
+      let total = 0;
+      for (let n = -1; n !== 0 && total < buf.length; total += n) n = io.read(fd, buf, total, buf.length - total, total);
+      const after = io.fstat(fd);
+      if (total !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+        s.unreadable++;
+        return;
+      }
+      if (buf.subarray(0, total).includes(needle)) s.hits++;
+    } catch {
+      s.unreadable++;
+    } finally {
+      try {
+        io.close(fd);
+      } catch {
+        s.unreadable++;
+      }
+    }
+  };
   const walk = (p: string, top: boolean): void => {
-    let st: ReturnType<ScanIo["lstat"]>;
+    let st: ScanStat;
     try {
       st = io.lstat(p);
     } catch {
@@ -1336,27 +1401,37 @@ export function scanRunArea(dirs: readonly string[], token: string, io: ScanIo =
     }
     const name = basename(p);
     if (!top && (names.includes(name.toLowerCase()) || name.includes(token))) s.hits++;
-    if (st.isDirectory()) {
-      let entries: string[];
-      try {
-        entries = io.readdir(p);
-      } catch {
-        s.unreadable++;
-        return;
-      }
-      for (const e of entries) walk(join(p, e), false);
-    } else if (st.isFile()) {
+    const k = kind(st);
+    if (k === "other") {
+      s.unreadable++; // a link, socket or device: never followed, so never proven clean
+      return;
+    }
+    visited.push({ path: p, kind: k, dev: st.dev, ino: st.ino, size: st.size });
+    if (k === "file") {
       s.files++;
       if (st.size > SCAN_FILE_MAX) s.unreadable++;
-      else
-        try {
-          if (io.readFile(p).includes(needle)) s.hits++;
-        } catch {
-          s.unreadable++;
-        }
-    } else s.unreadable++; // a link, socket or device: never followed, so never proven clean
+      else readChecked(p, st);
+      return;
+    }
+    let entries: string[];
+    try {
+      entries = io.readdir(p);
+    } catch {
+      s.unreadable++;
+      return;
+    }
+    for (const e of entries) walk(join(p, e), false);
   };
   for (const d of dirs) walk(d, true);
+  // Detects (does not prevent) a swap during the walk: every visited directory and file must still be the same.
+  for (const v of visited) {
+    try {
+      const now = io.lstat(v.path);
+      if (kind(now) !== v.kind || now.dev !== v.dev || now.ino !== v.ino || now.size !== v.size) s.unreadable++;
+    } catch {
+      s.unreadable++;
+    }
+  }
   return s;
 }
 export const scanOutcome = (s: SecretScan | null): Outcome =>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -29,6 +29,8 @@ import {
   coverageGaps,
   scanRunArea,
   scanOutcome,
+  realScanIo,
+  type ScanIo,
   CREDENTIAL_NAMES,
   informational,
   injectionRun,
@@ -1249,6 +1251,16 @@ test("W5e (PR67 RT-1): the post-run scan finds the token or a credential file in
     writeFileSync(join(dirs[2]!, "claude-501", "log.txt"), "synthetic log\n");
     return dirs;
   };
+  if (process.platform === "win32") {
+    // Not a skip: without O_NOFOLLOW no file is opened, so nothing is ever "clean" (fails closed); a credential
+    // file name is still found. The real scan runs on macOS only.
+    assert.equal(scanOutcome(scanRunArea(area("win-clean"), TOKEN)), "inconclusive");
+    const named = area("win-name");
+    writeFileSync(join(named[1]!, ".credentials.json"), "{}\n");
+    assert.equal(scanOutcome(scanRunArea(named, TOKEN)), "allowed");
+    t.diagnostic("Windows: no file is opened without O_NOFOLLOW; the scan fails closed");
+    return;
+  }
   const clean = scanRunArea(area("clean"), TOKEN);
   assert.deepEqual(clean, { files: 2, hits: 0, unreadable: 0 });
   assert.equal(scanOutcome(clean), "denied");
@@ -1266,27 +1278,31 @@ test("W5e (PR67 RT-1): the post-run scan finds the token or a credential file in
     assert.equal(scanOutcome(scanRunArea(dirs, TOKEN)), "allowed", name);
   }
   // Anything that cannot be checked is inconclusive: an unreadable file or directory, a link, no token to compare.
-  const io = (fail: "read" | "list" | "stat") => ({
+  const io = (fail: "open" | "read" | "list" | "stat"): ScanIo => ({
+    ...realScanIo,
     lstat: (p: string) => {
       if (fail === "stat" && p.endsWith(".claude.json")) throw new Error("EACCES");
-      return lstatSync(p);
+      return realScanIo.lstat(p);
     },
     readdir: (p: string) => {
       if (fail === "list" && p.endsWith("claude-501")) throw new Error("EACCES");
-      return readdirSync(p);
+      return realScanIo.readdir(p);
     },
-    readFile: (p: string) => {
-      if (fail === "read") throw new Error("EACCES");
-      return readFileSync(p);
+    open: (p: string) => {
+      if (fail === "open") throw new Error("EACCES");
+      return realScanIo.open(p);
+    },
+    read: (fd, buf, off, len, pos) => {
+      if (fail === "read") throw new Error("EIO");
+      return realScanIo.read(fd, buf, off, len, pos);
     },
   });
-  for (const fail of ["read", "list", "stat"] as const) {
+  for (const fail of ["open", "read", "list", "stat"] as const) {
     const s = scanRunArea(area(`fail-${fail}`), TOKEN, io(fail));
     assert.ok(s.unreadable > 0 && s.hits === 0, fail);
     assert.equal(scanOutcome(s), "inconclusive", fail);
   }
-  if (process.platform !== "win32") {
-    const { symlinkSync } = await import("node:fs");
+  {
     const dirs = area("link");
     symlinkSync("/etc/hosts", join(dirs[1]!, "pointer"));
     assert.equal(scanOutcome(scanRunArea(dirs, TOKEN)), "inconclusive");
@@ -1361,4 +1377,118 @@ test("W5e (PR67 RT-1): a CLI that leaves the token or a credential file in its c
   assert.equal(ok.capability.probes["config-holds-no-secret"], true);
   assert.ok((REQUIRED_PROBES as readonly string[]).includes("config-holds-no-secret"));
   assert.ok(!JSON.stringify(scans).includes(TOKEN));
+});
+
+test("PR67-R001: a swap during the scan is never a clean verdict; a link is never followed for a read", async (t) => {
+  if (process.platform === "win32") {
+    t.diagnostic("Windows: no file is opened without O_NOFOLLOW (see the scan test); the swaps below need POSIX links");
+    return;
+  }
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "kl-scan-swap-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // Outside the scanned area, holding the token: reading it would turn the verdict into "allowed".
+  const outside = join(root, "outside");
+  mkdirSync(join(outside, "sub"), { recursive: true });
+  writeFileSync(join(outside, "secret.txt"), TOKEN);
+  writeFileSync(join(outside, "sub", "state.json"), "{}\n");
+  const area = (name: string, content = "synthetic\n") => {
+    const dirs = ["config", "home", "tmp"].map((d) => join(root, name, d));
+    for (const d of dirs) mkdirSync(d, { recursive: true });
+    mkdirSync(join(dirs[0]!, "sub"));
+    writeFileSync(join(dirs[0]!, "sub", "state.json"), content);
+    return dirs;
+  };
+  // Unchanged files: the token gives allowed, none gives denied.
+  assert.equal(scanOutcome(scanRunArea(area("plain"), TOKEN)), "denied");
+  assert.equal(scanOutcome(scanRunArea(area("plain-token", `{"t":"${TOKEN}"}`), TOKEN)), "allowed");
+  // A file swapped to a link after its lstat: O_NOFOLLOW refuses it, the link target (the token) is never read.
+  {
+    const dirs = area("file-link");
+    const target = join(dirs[0]!, "sub", "state.json");
+    let opened: string[] = [];
+    const io: ScanIo = {
+      ...realScanIo,
+      lstat: (p) => {
+        const st = realScanIo.lstat(p);
+        if (p === target && opened.length === 0) {
+          rmSync(p);
+          symlinkSync(join(outside, "secret.txt"), p);
+        }
+        return st;
+      },
+      open: (p) => {
+        opened.push(p);
+        return realScanIo.open(p);
+      },
+    };
+    const s = scanRunArea(dirs, TOKEN, io);
+    assert.deepEqual(opened, [target]);
+    assert.equal(s.hits, 0, "the link target was read");
+    assert.equal(scanOutcome(s), "inconclusive");
+    opened = [];
+  }
+  // A parent directory swapped for a link to another directory between its enumeration and the re-check: the walk
+  // went through it (the read may have happened, and leaks nothing), but the re-check sees it and nothing is clean.
+  for (const swap of ["link", "dir"] as const) {
+    const dirs = area(`dir-${swap}`);
+    const sub = join(dirs[0]!, "sub");
+    const io: ScanIo = {
+      ...realScanIo,
+      readdir: (p) => {
+        const entries = realScanIo.readdir(p);
+        if (p === sub) {
+          renameSync(sub, `${sub}.old`);
+          if (swap === "link") symlinkSync(join(outside, "sub"), sub);
+          else {
+            mkdirSync(sub);
+            writeFileSync(join(sub, "state.json"), "synthetic\n");
+          }
+        }
+        return entries;
+      },
+    };
+    const s = scanRunArea(dirs, TOKEN, io);
+    assert.equal(s.hits, 0, swap);
+    assert.equal(scanOutcome(s), "inconclusive", swap);
+  }
+  // The file grows during the read: its size after the read differs, so it is not clean.
+  {
+    const dirs = area("grow");
+    const target = join(dirs[0]!, "sub", "state.json");
+    let grown = false;
+    const io: ScanIo = {
+      ...realScanIo,
+      read: (fd, buf, off, len, pos) => {
+        const n = realScanIo.read(fd, buf, off, len, pos);
+        if (!grown) {
+          grown = true;
+          appendFileSync(target, "more synthetic bytes\n");
+        }
+        return n;
+      },
+    };
+    assert.equal(scanOutcome(scanRunArea(dirs, TOKEN, io)), "inconclusive");
+  }
+  // The fd is closed on every path (no fd left open by a failed check).
+  {
+    const dirs = area("close");
+    const open = new Set<number>();
+    const io: ScanIo = {
+      ...realScanIo,
+      open: (p) => {
+        const fd = realScanIo.open(p);
+        open.add(fd);
+        return fd;
+      },
+      fstat: () => {
+        throw new Error("EIO");
+      },
+      close: (fd) => {
+        open.delete(fd);
+        realScanIo.close(fd);
+      },
+    };
+    assert.equal(scanOutcome(scanRunArea(dirs, TOKEN, io)), "inconclusive");
+    assert.equal(open.size, 0);
+  }
 });
