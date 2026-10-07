@@ -46,6 +46,7 @@ import {
   type SupervisorChild,
 } from "./lib/review-dispatch/active.ts";
 import { createClaudeReviewBroker, type SpawnRelay } from "./lib/review-dispatch/claude-broker.ts";
+import { HeldSnapshotError } from "./lib/review-dispatch/broker.ts";
 import { createHash } from "node:crypto";
 import type { LaunchOptions } from "./lib/review-dispatch/launcher.ts";
 import {
@@ -207,6 +208,10 @@ export async function main(
       return 4;
     }
     for (const result of results) {
+      // PR48-R013 / Issue #50 W10: a held result (transiently incomplete) writes nothing. The stored target keeps
+      // its generation and Ready, so a Ready consumed by a job survives a fetch gap (PR #59: our own post moved
+      // updated_at). It never makes a PR eligible either: the next complete reconcile decides.
+      if (result.heldSince !== null) continue;
       const r = dispatcher.observe(result.snapshot);
       if (r.notice) log(`PR #${result.pr}: ${r.status}`);
     }
@@ -248,12 +253,15 @@ async function active(
 ): Promise<number> {
   const target = startSmall(policy);
   const current = results.find((r) => r.pr === target.pr);
-  if (!current) return 0;
+  // Held (W10): no job, no resumed post, no write; the stored state waits for a complete reconcile.
+  if (!current || current.heldSince !== null) return 0;
   const fresh = async () => {
     const again = (await reconcile(new GhReader(policy.repo, transport), policy, store)).find(
       (r) => r.pr === target.pr,
     );
     if (!again) throw new Error("Target vanished");
+    // A held re-check defers the post (the result and lease stay); it is never read as stale.
+    if (again.heldSince !== null) throw new HeldSnapshotError();
     return again.snapshot;
   };
   const broker = () =>
@@ -391,9 +399,13 @@ async function receive(
 function status(policy: Policy, store: Store, log: (s: string) => void): number {
   for (const t of policy.targets) {
     const s = store.status(keyOf(policy, t.pr));
+    const last = `${s.target?.status ?? "未観測"}（${s.target?.reason ?? "-"}、世代${s.target?.generation ?? 0}）`;
     log(
       [
-        `PR #${t.pr}: ${s.target?.status ?? "未観測"}（${s.target?.reason ?? "-"}、世代${s.target?.generation ?? 0}）`,
+        // W10 RT-1: a held PR is never shown as its last state alone (held results are not saved).
+        s.held === null
+          ? `PR #${t.pr}: ${last}`
+          : `PR #${t.pr}: 照合を保留中（${new Date(s.held).toISOString()}から。取得の途中でPRかmainが変わった、一覧・履歴が足りない等。原因は記録していません）。前回の完全な照合: ${last}`,
         `  blocked: ${s.blocked ? `${s.blocked.reason}（run ${s.blocked.run}）` : "なし"}、上限での停止: ${s.quota ? "あり" : "なし"}、未処理の編集の印: ${s.marked ? "あり" : "なし"}、不明な投稿: ${s.uncertainOutbox}件`,
         ...(s.pending.length ? [`  停止の時刻が未確定（${s.pending.join("・")}）: 確定する前のreview:pausedの解除は数えません`] : []),
         ...s.jobs.map((j) => `  ${j.kind} 世代${j.generation} ${j.status} run ${j.run}`),

@@ -943,15 +943,20 @@ export class Store {
     // PR48-R015: holds of this PR whose server time is not settled yet (an unpause does not count before).
     pending: string[];
     marked: boolean;
+    // PR48-R013 / W10 RT-1: since when (stored local clock) the reconcile of this PR is held; null if not held.
+    // While held, `target` is the last complete observation, not the current state.
+    held: number | null;
     jobs: { kind: string; run: string; status: string; generation: number }[];
     uncertainOutbox: number;
   } {
+    const hold = this.db.prepare("SELECT since FROM holds WHERE key=?").get(key) as Row | undefined;
     return {
       target: this.target(key),
       blocked: this.blocked(key),
       quota: this.quotaPaused(key),
       pending: HOLD_TABLES.filter((x) => this.unsettledHolds().has(`${x}:${key}`)),
       marked: this.marked(key),
+      held: hold ? Number(hold["since"]) : null,
       jobs: (
         this.db
           .prepare(
