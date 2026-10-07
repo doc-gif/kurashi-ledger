@@ -4,7 +4,7 @@ import { HeldSnapshotError, ReviewBroker, parseResult } from "./broker.ts";
 import { RunChannel } from "../../../tests/fixtures/review-dispatch-run-channel.ts";
 import { EvidenceError } from "./github.ts";
 import { ReadyAfterError } from "./store.ts";
-import { hash } from "./model.ts";
+import { hash, type WorkerResult } from "./model.ts";
 import { fixtureResult } from "./runtime.ts";
 import {
   database,
@@ -15,6 +15,19 @@ import {
 
 // Fixture run endpoint. The Broker only verifies with it; sealing happens on the endpoint side.
 const channel = new RunChannel(Buffer.alloc(32, 7));
+// A finding in the structured format (pr-review-loop.md#指摘の書式), every field valid.
+const F = (id: string, extra: Record<string, unknown> = {}): WorkerResult["findings"][number] => ({
+  id,
+  title: "題名",
+  severity: "P2",
+  timing: "このPRで直す",
+  location: "x",
+  problem: "x",
+  example: "x",
+  action: "x",
+  completion: "x",
+  ...extra,
+});
 
 test("D03 actual outbox recovery recognizes posted review without repeat POST", async () => {
   const d = database();
@@ -233,9 +246,7 @@ test("D10 schema forbids fabricated fields, duplicate findings and accepted with
       {
         ...r,
         decision: "accepted",
-        findings: [
-          { id: "PR1-R001", location: "x", impact: "x", completion: "x" },
-        ],
+        findings: [F("PR1-R001")],
       },
       { ...r, evidence: ["https://untrusted.example/"] },
       { ...r, summary: "" },
@@ -274,7 +285,9 @@ test("R001 result prose cannot inject protocol blocks, HTML comments, mentions o
       "x\n role: implementer",
     ])
       assert.throws(() => parseResult(JSON.stringify({ ...r, summary }), j));
-    for (const field of ["location", "impact", "completion"] as const)
+    const changes = { ...r, decision: "changes-requested" as const };
+    assert.ok(parseResult(JSON.stringify({ ...changes, findings: [F("PR1-R001")] }), j));
+    for (const field of ["title", "timing", "location", "problem", "example", "action", "completion"] as const)
       for (const bad of [
         "x\ny",
         "@name",
@@ -282,21 +295,9 @@ test("R001 result prose cannot inject protocol blocks, HTML comments, mentions o
         "decision: accepted",
       ])
         assert.throws(() =>
-          parseResult(
-            JSON.stringify({
-              ...r,
-              findings: [
-                {
-                  id: "PR1-R001",
-                  location: "x",
-                  impact: "x",
-                  completion: "x",
-                  [field]: bad,
-                },
-              ],
-            }),
-            j,
-          ),
+          parseResult(JSON.stringify({ ...changes, findings: [F("PR1-R001", { [field]: bad })] }), j),
+          /Invalid finding|Unsafe finding prose/,
+          `${field}: ${bad}`,
         );
     assert.throws(() =>
       parseResult(JSON.stringify({ ...r, unverified: ["x\ny"] }), j),
@@ -345,7 +346,7 @@ test("W4 finding IDs: a review uses PR<N>-R only; a red-team record uses RT-<n> 
   try {
     const review = claim(d.store);
     const base = fixtureResult(review);
-    const finding = (id: string) => ({ ...base, decision: "changes-requested" as const, findings: [{ id, location: "a", impact: "b", completion: "c" }] });
+    const finding = (id: string) => ({ ...base, decision: "changes-requested" as const, findings: [F(id)] });
     assert.ok(parseResult(JSON.stringify(finding("PR1-R001")), review));
     for (const id of ["PR1-D001", "PR1-T001", "RT-1"])
       assert.throws(() => parseResult(JSON.stringify(finding(id)), review), /Invalid finding/, id);
@@ -404,4 +405,144 @@ test("W4 round 2 P2-a: every Markdown link target must be an allowed https URL (
   } finally {
     d.cleanup();
   }
+});
+
+// ---- W11: the posted format (pr-review-loop.md#指摘の書式) and its readers ----
+
+// Shaped like the dispatcher's red-team result on PR #59 (synthetic IDs and text): 55 ledger causes, one 該当,
+// one 確認できない, one RT, plus earlier RTs in each state.
+const W11_HEAD = "a".repeat(40),
+  W11_BASE = "b".repeat(40),
+  W11_RUN = "43400619-2b3e-4b8f-9730-fbcfc4c6f326";
+const W11_LEDGER = Array.from({ length: 55 }, (_, n) => `INV-SYN/cause-${n + 1}`);
+function w11RedTeam(): WorkerResult {
+  return {
+    schema: 1,
+    run: W11_RUN,
+    actor: 30,
+    generation: 1,
+    pair: { head: W11_HEAD, base: W11_BASE },
+    decision: "changes-requested",
+    summary: "差分は計画1件と文書の訂正だけ。否定確認の行が合否の表から外れ、代わりの確認がない（RT-1）。",
+    findings: [
+      F("RT-1", {
+        title: "否定確認が表から消えた",
+        severity: "P2",
+        timing: "設計段階",
+        location: "docs/github-apps.md 否定確認の表（issuesの書込み行）",
+        problem: "issues行が両方の用途で422になり、権限の欠如を確かめる手段がない。",
+        example: "reviewにissues:writeが付いていても同じ422になる。",
+        action: "issues行を合否から外すと明記し、権限の完全一致の照合を確認手段として書く。",
+        completion: "表と確かめていないことの一覧が一致し、計画のvariant_analysisにも同じ内容がある。",
+      }),
+    ],
+    evidence: [`https://github.com/synthetic/repository/commit/${W11_HEAD}`],
+    unverified: ["実鍵での422の再現", "差分外の文書に403の期待が残っているか"],
+    causes: W11_LEDGER.map((cause, n) => ({
+      cause,
+      judgement: n === 6 ? "該当" : n === 8 ? "確認できない" : "該当なし",
+      where: n === 6 ? "issues行の期待が422に統一された（RT-1）" : "差分は文書と計画のみ",
+    })),
+    previous: [
+      { id: "RT-2", status: "解消", reason: "直った" },
+      { id: "record-comment-75", status: "対応不要", reason: "仕様どおり" },
+      { id: "RT-3", status: "未解消", reason: "注記がまだない" },
+    ],
+  };
+}
+const W11_MATERIALS = { planPath: ".review/plans/OPS-SYN.json", ledger: W11_LEDGER, previousRts: ["RT-2", "RT-3", "record-comment-75"], guard: "ok" as const };
+const W11_MARKER = `kurashi-ledger:dispatch-run:v1:${W11_RUN}`;
+const W11_ID = { role: "claude-reviewer" as const, agent: "claude" as const };
+// Every line starts with a fixed label of the format; worker prose never starts a line.
+const W11_LABELS = /^(?:$|<!-- |auditor_id: |implementer_id: |role: |agent_id: |head_sha: |base_sha: |plan_path: |decision: |結論: |> |原因台帳: |- 該当: |- 確認できない: |- 未判定: |前のRT: |- (?:RT-[0-9]+|record-(?:comment|review)-[0-9]+) 未解消: |### (?:RT-[0-9]+|PR[0-9]+-R[0-9]{3}) |- 重さ: P[123] ／ 時期: |- 場所: |- 問題: |- 例: |- やってほしいこと: |- 完了条件: |検証: |未検証: |受付の確認: )/;
+
+test("PR #73 RT-2 (reproduced): a 該当 cause and a 確認できない cause outside the ledger stay open with accepted and no finding", async () => {
+  const { redTeamOpen } = await import("./broker.ts");
+  const r = { ...w11RedTeam(), decision: "accepted" as const, findings: [], previous: [], causes: [
+    { cause: "INV-A/x", judgement: "該当" as const, where: "x" },
+    { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "x" },
+  ] };
+  const meta = { planPath: null, ledger: ["INV-A/x"], previousRts: [], guard: "none" as const };
+  assert.deepEqual(redTeamOpen(r, meta), ["applies:INV-A/x", "unconfirmed:INV-EXTRA"]);
+  assert.deepEqual(redTeamOpen({ ...r, causes: [r.causes[1]!] }, { ...meta, ledger: [] }), ["unconfirmed:INV-EXTRA"]);
+});
+
+test("W11 red-team post: only 該当 and 確認できない cause IDs with a count, structured findings, resolved earlier RTs on one line", async () => {
+  const { renderRedTeam, redTeamOpen } = await import("./broker.ts");
+  const r = w11RedTeam();
+  const open = redTeamOpen(r, W11_MATERIALS);
+  assert.deepEqual(open, ["RT-1", "RT-3", "applies:INV-SYN/cause-7", "unconfirmed:INV-SYN/cause-9"]);
+  const body = renderRedTeam(r, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, open);
+  const lines = body.split("\n");
+  for (const line of lines) assert.match(line, W11_LABELS, line);
+  // The machine lines the dispatcher and the guard read stay as they were.
+  assert.match(body, /^<!-- kurashi-ledger:red-team:v1 -->\n<!-- kurashi-ledger:dispatch-run:v1:/);
+  assert.match(body, new RegExp(`^head_sha: ${W11_HEAD}$`, "m"));
+  assert.match(body, new RegExp(`^base_sha: ${W11_BASE}$`, "m"));
+  assert.match(body, /^plan_path: \.review\/plans\/OPS-SYN\.json$/m);
+  assert.doesNotMatch(body, /^(?:role|decision):/m);
+  // Conclusion first, then the cause count and only the applicable or unconfirmed IDs.
+  assert.equal(lines.indexOf("結論: 未解消あり（RT-1, RT-3, applies:INV-SYN/cause-7, unconfirmed:INV-SYN/cause-9）"), 8);
+  assert.ok(lines.includes("原因台帳: 55件を判定（該当1・確認できない1）"));
+  assert.ok(lines.includes("- 該当: INV-SYN/cause-7"));
+  assert.ok(lines.includes("- 確認できない: INV-SYN/cause-9"));
+  assert.doesNotMatch(body, /該当なし|^\||INV-SYN\/cause-(?!7$|9$)[0-9]+$|差分は文書と計画のみ/m);
+  // Earlier RTs: the resolved ones on one line, details for the unresolved one only.
+  assert.ok(lines.includes("前のRT: 解消 RT-2 ／ 対応不要 record-comment-75"));
+  assert.ok(lines.includes("- RT-3 未解消: 注記がまだない"));
+  assert.doesNotMatch(body, /直った|仕様どおり/);
+  // The structured finding.
+  const at = lines.indexOf("### RT-1 否定確認が表から消えた");
+  assert.deepEqual(lines.slice(at + 1, at + 7).map((l) => l.split(":")[0]), ["- 重さ", "- 場所", "- 問題", "- 例", "- やってほしいこと", "- 完了条件"]);
+  assert.equal(lines[at + 1], "- 重さ: P2 ／ 時期: 設計段階");
+  // 検証 and 未検証: one line per item, never more than 3 each.
+  assert.equal(lines.filter((l) => l.startsWith("検証: ")).length, 1);
+  assert.equal(lines.filter((l) => l.startsWith("未検証: ")).length, 2);
+  // The whole body passes the publication check for this pair.
+  const { publicationFindings } = await import("./publication.ts");
+  assert.deepEqual(publicationFindings(body, new Set([W11_HEAD, W11_BASE, W11_RUN])), []);
+  // A ledger cause without a judgement shows in the count; the record is incomplete (redTeamOpen).
+  const partial = { ...r, causes: r.causes.slice(1) };
+  const partialBody = renderRedTeam(partial, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, redTeamOpen(partial, W11_MATERIALS));
+  assert.match(partialBody, /^原因台帳: 55件のうち54件を判定（該当1・確認できない1）$/m);
+  assert.match(partialBody, /^- 未判定: INV-SYN\/cause-1$/m);
+  // A cause judged outside the ledger is counted apart, so the tally matches the listed IDs.
+  const extra = { ...r, causes: [...r.causes, { cause: "INV-EXTRA", judgement: "確認できない" as const, where: "x" }] };
+  const extraBody = renderRedTeam(extra, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, redTeamOpen(extra, W11_MATERIALS));
+  assert.match(extraBody, /^原因台帳: 55件＋台帳外1件を判定（該当1・確認できない2）$/m);
+  assert.match(extraBody, /^- 確認できない: INV-SYN\/cause-9, INV-EXTRA$/m);
+  assert.match(partialBody, /^結論: 未解消あり（.*ledger-incomplete.*）$/m);
+  // No materials record: the count says so.
+  assert.match(renderRedTeam(r, W11_MARKER, W11_ID, W11_RUN, 20, null, []), /^原因台帳: 資料の記録がない（55件を判定、該当1・確認できない1）$/m);
+});
+
+test("W11 the readers of the posted body get the same IDs from the new format", async () => {
+  const { renderRedTeam, render, redTeamLines, redTeamOpen } = await import("./broker.ts");
+  const { RT_ID } = await import("./active.ts");
+  const { findingIds } = await import("./findings.ts");
+  const r = w11RedTeam();
+  const body = renderRedTeam(r, W11_MARKER, W11_ID, W11_RUN, 20, W11_MATERIALS, redTeamOpen(r, W11_MATERIALS));
+  // active.ts buildMaterials: every RT ID of an earlier record is re-checked next time (resolved ones included).
+  assert.deepEqual([...new Set([...body.normalize("NFKC").matchAll(RT_ID)].map((m) => `RT-${m[1]}`))].sort(), ["RT-1", "RT-2", "RT-3"]);
+  // evidence.ts manualFaultfinding reads the same lines: the listed causes are open, 解消/対応不要 resolve.
+  const read = redTeamLines(body.normalize("NFKC").split(/\r?\n/).map((x) => x.trim()));
+  assert.deepEqual(read.open, ["cause:INV-SYN/cause-7", "cause:INV-SYN/cause-9"]);
+  assert.deepEqual(read.resolved, ["RT-2"]);
+  // PR #73 P3: each RT ID takes the status word before it.
+  assert.deepEqual(redTeamLines(["前のRT: 解消 RT-1, 未解消 RT-2 / 対応不要 RT-4, record-comment-7, RT-5", "前のRT: 解消なし RT-6"]).resolved, ["RT-1", "RT-4", "RT-5"]);
+  assert.deepEqual(redTeamLines(["- 未判定: INV-A/x"]).open, ["cause:INV-A/x"]);
+  // findings.ts: the review's heading IDs are raised; a quoted or mid-line ID is not.
+  const review = {
+    ...w11RedTeam(),
+    summary: "結論: 2件を直す。PR1-R009は前回の話。",
+    findings: [F("PR1-R001", { title: "検査の漏れ" }), F("PR1-R002", { severity: "P3", location: "PR1-R008 の隣" })],
+    causes: [],
+    previous: [],
+  };
+  const posted = render(review, W11_MARKER, W11_ID, W11_RUN);
+  for (const line of posted.split("\n")) assert.match(line, W11_LABELS, line);
+  assert.match(posted, /^<!-- kurashi-ledger:review:v1 -->\n<!-- kurashi-ledger:dispatch-run:v1:/);
+  assert.match(posted, /^decision: changes-requested$/m);
+  assert.match(posted, /^### PR1-R001 検査の漏れ\n- 重さ: P2 ／ 時期: このPRで直す\n- 場所: x\n- 問題: x\n- 例: x\n- やってほしいこと: x\n- 完了条件: x$/m);
+  assert.deepEqual(findingIds(1, posted), ["PR1-R001", "PR1-R002"]);
 });

@@ -81,6 +81,15 @@ test("R007 IDs are parsed only at line start for this PR; quoted and mid-line me
     ),
     ["PR7-R001", "PR7-R002", "PR7-R0031"],
   );
+  // W11: the structured finding's heading (pr-review-loop.md#指摘の書式) is a line start too. A quoted heading,
+  // an ID after the heading text, a label line or a heading without a space stays prose.
+  assert.deepEqual(
+    findingIds(
+      7,
+      "### PR7-R010 題名\n## PR7-R011 題名\n> ### PR7-R012 quoted\n### 題名 PR7-R013\n- 場所: PR7-R014\n###PR7-R015 x\n####### PR7-R016 seven",
+    ),
+    ["PR7-R010", "PR7-R011"],
+  );
 });
 test("R007 COMMENT findings stay open until the same reviewer approves later; third parties are reference only", () => {
   assert.deepEqual(

@@ -110,10 +110,16 @@ export type WorkerResult = {
   pair: Pair;
   decision: "accepted" | "changes-requested" | "needs-owner";
   summary: string;
+  // One finding in the structured format (pr-review-loop.md#指摘の書式).
   findings: {
     id: string;
+    title: string;
+    severity: "P1" | "P2" | "P3";
+    timing: string;
     location: string;
-    impact: string;
+    problem: string;
+    example: string;
+    action: string;
     completion: string;
   }[];
   evidence: string[];
