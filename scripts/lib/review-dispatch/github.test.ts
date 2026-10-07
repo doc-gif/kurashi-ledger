@@ -33,27 +33,27 @@ const response = (
   headers: Record<string, string> = {},
 ): Response => ({ status: 200, headers, body: JSON.stringify(value) });
 
-test("I004 paginated evidence is complete, conditional ETag reuses only verified cache", async () => {
-  let n = 0;
+test("I004 paginated evidence is complete; every read is a full request without a conditional header", async () => {
+  const sent: Record<string, string>[] = [];
+  let first = 1;
   const r = new GhReader("synthetic/repository", async (path, headers) => {
-    n++;
-    if (headers["If-None-Match"] === "tag")
-      return { status: 304, headers: {}, body: "" };
+    sent.push(headers);
     return path.endsWith("page=2")
       ? response([{ id: 2 }])
-      : response([{ id: 1 }], {
+      : response([{ id: first++ }], {
           etag: "tag",
           link: '<https://api.github.com/repos/synthetic/repository/issues?page=2>; rel="next"',
         });
   });
   assert.deepEqual(await r.pages("issues?page=1"), [{ id: 1 }, { id: 2 }]);
-  assert.deepEqual(await r.pages("issues?page=1"), [{ id: 1 }, { id: 2 }]);
-  assert.equal(n, 4);
+  // A second read sees the server's current answer, never a memo of the first.
+  assert.deepEqual(await r.pages("issues?page=1"), [{ id: 2 }, { id: 2 }]);
+  assert.deepEqual(sent, [{}, {}, {}, {}]);
 });
 for (const [name, reply] of [
   ["partial failure", { status: 500, headers: {}, body: "" }],
   ["rate limit", { status: 429, headers: {}, body: "" }],
-  ["empty cache 304", { status: 304, headers: {}, body: "" }],
+  ["304", { status: 304, headers: {}, body: "" }],
   ["malformed JSON", { status: 200, headers: {}, body: "broken" }],
   [
     "untrusted next",
@@ -451,21 +451,21 @@ const ok = (stdout: string): GhResult => ({ status: 0, signal: null, stdout, std
 const ESCAPE_REFUSAL =
   "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway\n";
 const endpointOf = (args: string[]): string => args.find((a) => a.startsWith("/repos/"))!;
-const headerOf = (args: string[], name: string): string | undefined =>
-  args
-    .filter((a, i) => args[i - 1] === "-H" && a.startsWith(name + ": "))
-    .map((a) => a.slice(name.length + 2))[0];
+const CONDITIONAL = /^If-(None-Match|Modified-Since):/i;
 
 test("W6 gh exiting 1 with partial stdout (the escape-sequence refusal) is EvidenceError, never a response", async () => {
-  const partial = http("200 OK", { "Content-Type": "text/plain" }, GATE_LOG.slice(0, 120));
-  const t = ghTransport("synthetic-token", "/synthetic/gh", () => ({
-    status: 1,
-    signal: null,
-    stdout: partial,
-    stderr: ESCAPE_REFUSAL,
-  }));
-  await assert.rejects(t(LOGS, {}), EvidenceError);
-  await assert.rejects(new GhReader("synthetic/repository", t).request(LOGS), EvidenceError);
+  // As observed with gh 2.97.0: the status line and headers, then an empty body. Also a partial body.
+  for (const body of ["", GATE_LOG.slice(0, 120)]) {
+    const partial = http("200 OK", { "Content-Type": "text/plain" }, body);
+    const t = ghTransport("synthetic-token", "/synthetic/gh", () => ({
+      status: 1,
+      signal: null,
+      stdout: partial,
+      stderr: ESCAPE_REFUSAL,
+    }));
+    await assert.rejects(t(LOGS, {}), EvidenceError);
+    await assert.rejects(new GhReader("synthetic/repository", t).request(LOGS), EvidenceError);
+  }
 });
 
 for (const [name, r] of [
@@ -499,10 +499,8 @@ for (const [name, r] of [
   ["exit 0 with a 404", { status: 0, signal: null, stdout: http("404 Not Found", {}, "{}"), stderr: "" }],
   ["404 (gh exit 1)", { status: 1, signal: null, stdout: http("404 Not Found", {}, '{"message":"Not Found"}'), stderr: "gh: Not Found (HTTP 404)\n" }],
   ["429 (gh exit 1)", { status: 1, signal: null, stdout: http("429 Too Many Requests", {}, "{}"), stderr: "gh: HTTP 429\n" }],
-  ["304 with another stderr", { status: 1, signal: null, stdout: http("304 Not Modified", {}, ""), stderr: "gh: HTTP 304\nmore\n" }],
-  ["304 with a body", { status: 1, signal: null, stdout: http("304 Not Modified", {}, "x"), stderr: "gh: HTTP 304\n" }],
-  ["304 with exit 2", { status: 2, signal: null, stdout: http("304 Not Modified", {}, ""), stderr: "gh: HTTP 304\n" }],
-  ["304 killed by a signal", { status: null, signal: "SIGTERM", stdout: http("304 Not Modified", {}, ""), stderr: "gh: HTTP 304\n" }],
+  ["304 (gh exit 1)", { status: 1, signal: null, stdout: http("304 Not Modified", {}, ""), stderr: "gh: HTTP 304\n" }],
+  ["304 with other stderr wording", { status: 1, signal: null, stdout: http("304 Not Modified", {}, ""), stderr: "gh: Not Modified (HTTP 304)\n" }],
   [
     "older gh rejecting the flag",
     { status: 1, signal: null, stdout: "", stderr: "unknown flag: --allow-escape-sequences\n" },
@@ -514,20 +512,27 @@ for (const [name, r] of [
     await assert.rejects(t(LOGS, {}), EvidenceError);
   });
 
-test("W6 gh's 304 (exit 1, \"gh: HTTP 304\") still revalidates the ETag cache", async () => {
-  const seen: (string | undefined)[] = [];
+test("W6 the reader never sends a conditional header; a 304 from gh is EvidenceError", async () => {
+  const seen: string[][] = [];
   const t = ghTransport("synthetic-token", "/synthetic/gh", (args) => {
-    const tag = headerOf(args, "If-None-Match");
-    seen.push(tag);
-    return tag === '"t1"'
-      ? { status: 1, signal: null, stdout: http("304 Not Modified", { Etag: '"t1"', Date: "Thu, 01 Jan 2026 00:00:02 GMT" }, ""), stderr: "gh: HTTP 304\n" }
-      : ok(http("200 OK", { "Content-Type": "application/json", Etag: '"t1"', Date: "Thu, 01 Jan 2026 00:00:01 GMT" }, JSON.stringify({ commit: { sha: BASE } })));
+    seen.push(args);
+    return ok(http("200 OK", { "Content-Type": "application/json", Etag: '"t1"' }, JSON.stringify({ commit: { sha: BASE } })));
   });
   const r = new GhReader("synthetic/repository", t);
   assert.deepEqual(await r.object("branches/main"), { commit: { sha: BASE } });
   assert.deepEqual(await r.object("branches/main"), { commit: { sha: BASE } });
-  assert.deepEqual(seen, [undefined, '"t1"']);
-  assert.equal(r.maxDate, Date.parse("2026-01-01T00:00:02Z"));
+  assert.equal(seen.length, 2);
+  assert.ok(seen.every((args) => !args.some((a) => CONDITIONAL.test(a))));
+  const notModified = new GhReader(
+    "synthetic/repository",
+    ghTransport("synthetic-token", "/synthetic/gh", () => ({
+      status: 1,
+      signal: null,
+      stdout: http("304 Not Modified", { Etag: '"t1"' }, ""),
+      stderr: "gh: HTTP 304\n",
+    })),
+  );
+  await assert.rejects(notModified.object("branches/main"), EvidenceError);
 });
 
 test("W6 --allow-escape-sequences is passed for the job-log endpoint only; the log with escapes is parsed", async () => {
@@ -560,28 +565,24 @@ test("W6 --allow-escape-sequences is passed for the job-log endpoint only; the l
   assert.equal(log.body.match(/TESTED_SHA[=: ]+([a-f0-9]{40})/)?.[1], TESTED);
 });
 
-// gh 2.97.0 as observed in shadow: the log without the flag is refused (exit 1, partial stdout).
-function gh297(route: (path: string, tag: string | undefined) => Response): GhRun {
+// gh 2.97.0 as observed in shadow: without the flag, a log with escapes is refused with exit 1,
+// the status line and headers on stdout, and an empty body.
+function gh297(route: (path: string) => Response, calls: string[][] = []): GhRun {
   return (args) => {
-    const endpoint = endpointOf(args),
-      tag = headerOf(args, "If-None-Match");
-    const r = route(endpoint.replace("/repos/synthetic/repository/", ""), tag);
-    if (r.status === 304)
-      return { status: 1, signal: null, stdout: http("304 Not Modified", r.headers, ""), stderr: "gh: HTTP 304\n" };
-    const out = http(`${r.status} ${r.status === 200 ? "OK" : "Error"}`, r.headers, r.body);
-    if (r.status !== 200) return { status: 1, signal: null, stdout: out, stderr: `gh: HTTP ${r.status}\n` };
+    calls.push(args);
+    const r = route(endpointOf(args).replace("/repos/synthetic/repository/", ""));
+    const status = `${r.status} ${r.status === 200 ? "OK" : "Error"}`;
+    if (r.status !== 200)
+      return { status: 1, signal: null, stdout: http(status, r.headers, r.body), stderr: `gh: HTTP ${r.status}\n` };
     if (r.body.includes(ESC) && !args.includes("--allow-escape-sequences"))
-      return { status: 1, signal: null, stdout: out.slice(0, out.indexOf(ESC)), stderr: ESCAPE_REFUSAL };
-    return ok(out);
+      return { status: 1, signal: null, stdout: http(status, r.headers, ""), stderr: ESCAPE_REFUSAL };
+    return ok(http(status, r.headers, r.body));
   };
 }
 // Mirrors the shadow case: CI succeeded with every required job, the gate log names a test merge
 // whose tree equals the head tree and whose parents are [base, head].
-function shadowCase(path: string, tag: string | undefined): Response {
-  if (path === "branches/main")
-    return tag === '"main"'
-      ? { status: 304, headers: { Etag: '"main"' }, body: "" }
-      : response({ commit: { sha: BASE } }, { Etag: '"main"' });
+function shadowCase(path: string): Response {
+  if (path === "branches/main") return response({ commit: { sha: BASE } }, { Etag: '"main"' });
   if (path === "pulls/1")
     return response({
       head: { sha: HEAD, ref: "synthetic-branch", repo: { id: 1 } },
@@ -637,8 +638,12 @@ test("W6 shadow case: CI is proven when the gate log (with escapes) names the te
     faultfinding: null,
     unresolvedDesign: [],
   };
-  const reader = new GhReader("synthetic/repository", ghTransport("synthetic-token", "/synthetic/gh", gh297(shadowCase)));
+  const calls: string[][] = [];
+  const reader = new GhReader("synthetic/repository", ghTransport("synthetic-token", "/synthetic/gh", gh297(shadowCase, calls)));
   const c = await collect(reader, p, 1, options);
+  // collect reads main twice, both as full requests; no conditional header in the whole cycle.
+  assert.equal(calls.filter((a) => endpointOf(a).endsWith("/branches/main")).length, 2);
+  assert.ok(calls.every((a) => !a.some((x) => CONDITIONAL.test(x))));
   assert.equal(c.snapshot.complete, true);
   assert.equal(c.snapshot.testedTree, c.snapshot.headTree);
   assert.deepEqual(c.snapshot.testedParents, [BASE, HEAD]);

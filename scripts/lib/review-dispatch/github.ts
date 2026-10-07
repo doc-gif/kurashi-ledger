@@ -41,7 +41,6 @@ export class EvidenceError extends Error {
 export class GhReader {
   readonly prefix: string;
   readonly send: Transport;
-  readonly cache = new Map<string, Response>();
   readonly clock: () => number;
   readonly deadline: number;
   // W4 row 12: the latest server Date seen by this reader (the end of an observation window).
@@ -67,11 +66,9 @@ export class GhReader {
       this.clock() >= this.deadline
     )
       throw new EvidenceError();
-    const old = this.cache.get(path);
-    const r = await this.send(
-      path,
-      old?.headers["etag"] ? { "If-None-Match": old.headers["etag"] } : {},
-    );
+    // No conditional requests (owner decision on Issue #50, PR68 RT-1): every read is a full 200, and
+    // collect's second read of main and the PR must see the server's current state, never a memo.
+    const r = await this.send(path, {});
     if (
       this.clock() >= this.deadline ||
       r.status === 429 ||
@@ -80,18 +77,8 @@ export class GhReader {
       throw new EvidenceError();
     const date = Date.parse(r.headers["date"] ?? "");
     if (Number.isFinite(date) && !(date <= this.maxDate)) this.maxDate = date;
-    if (r.status === 304) {
-      if (!old) throw new EvidenceError();
-      const cached = {
-        ...old,
-        headers: { ...old.headers, date: r.headers["date"] ?? "" },
-      };
-      this.cache.set(path, cached);
-      return cached;
-    }
     if (r.status !== 200 || Buffer.byteLength(r.body) > 8 * 1024 * 1024)
       throw new EvidenceError();
-    this.cache.set(path, r);
     return r;
   }
   async object(path: string): Promise<Record<string, unknown>> {
@@ -688,17 +675,10 @@ export function ghTransport(
       if (!match) throw new EvidenceError();
       const status = Number(match[1]),
         body = match[3]!;
-      // A non-zero exit is a failed fetch, whatever stdout holds, with one exception: gh exits 1 on
-      // every status above 299, and GhReader needs the 304 of its ETag revalidation. Accept that only
-      // when the response is a bodiless 304 and stderr is exactly gh's message for it. Other non-2xx
-      // statuses were already EvidenceError in GhReader.
-      const notModified =
-        r.status === 1 &&
-        status === 304 &&
-        body === "" &&
-        /^gh: HTTP 304\r?\n?$/.test(r.stderr ?? "");
-      if (!(r.status === 0 && status >= 200 && status <= 299) && !notModified)
-        throw new EvidenceError();
+      // Success is exit 0 with a 2xx status line, nothing else. gh exits 1 on every status above 299,
+      // and a non-zero exit is a failed fetch whatever stdout holds. GhReader sends no conditional
+      // request, so a 304 is never expected and is EvidenceError like any other non-2xx.
+      if (r.status !== 0 || status < 200 || status > 299) throw new EvidenceError();
       const h: Record<string, string> = {};
       for (const line of match[2]!.split(/\r?\n/)) {
         const i = line.indexOf(":");

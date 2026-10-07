@@ -244,7 +244,7 @@ PR46-I001〜I007は次へ引き継ぐ。
 | I001 | CLI絶対パス/版変更、schema/結果actor、Claudeの購読ログインと§7の層、capability失敗時の人/旧方式へのowner制御切替 |
 | I002 | 対応Nodeのsqlite安定度、途中終了/WAL/移行/バックアップ/未知schema。repo外の合成DBで3 OS試験 |
 | I003 | 10秒以内のHTTP応答、body上限、Appの配送失敗は自動再送に頼らず照合回復。issues等の購読要否、実配送/redelivery IDは導入実測 |
-| I004 | 全ページ/ETag/rate limit、shadowの15分照合と現行5分の遅延/呼出し数比較 |
+| I004 | 全ページ/rate limit、shadowの15分照合と現行5分の遅延/呼出し数比較 |
 | I005 | base≠main/retarget/force-push、試験mergeの親とtree |
 | I006 | D001〜D009の全反例を合成イベント/fake adapterで試験。実OS lock/process tree/隔離は対応backendの結合試験 |
 | I007 | dispatcher/Broker/policy adapter/PURPOSESを権限制御変更として独立レビュー。固定版更新はownerだけ。正本移行でT23のpolicy_pathsへ加える |
