@@ -19,9 +19,15 @@ import { join, posix, win32 } from 'node:path';
 export const API_ORIGIN = 'https://api.github.com';
 export const API_VERSION = '2022-11-28';
 export const REPOSITORY_OWNER = 'doc-gif';
-export const REPOSITORY_NAME = 'kurashi-ledger';
+// トークンを縮小できるrepo（固定の許可リスト。ownerは常にdoc-gif）。2026-10-07の所有者の依頼（Issue #50 W12）:
+// 2つのAppをmekikiにも加えたので、AIはmekikiへも自分のAppで書く。--repoで1つを選び、省略時は既定。
+// この表の変更は権限の制御の変更なので、独立したレビューを受ける（docs/github-apps.md）。
+export const REPOSITORIES = Object.freeze(['kurashi-ledger', 'mekiki', 'mekiki-claude'] as const);
+export type Repository = (typeof REPOSITORIES)[number];
+export const DEFAULT_REPOSITORY: Repository = 'kurashi-ledger';
 // 文書のpushのURL（利用者名なし。範囲を限った資格情報のhelperが当たる）。
-export const PUSH_URL = `https://github.com/${REPOSITORY_OWNER}/${REPOSITORY_NAME}.git`;
+export const pushUrl = (repository: Repository): string => `https://github.com/${REPOSITORY_OWNER}/${repository}.git`;
+// 道具の名前（対象のrepoではない）。どのrepoを選んでも変えない。
 export const USER_AGENT = 'kurashi-ledger-github-app-token';
 export const KEYCHAIN_TOOL = '/usr/bin/security';
 export const MAX_KEY_BYTES = 16 * 1024;
@@ -94,6 +100,8 @@ export type KeySource =
 export type Options = {
   readonly agent: Agent;
   readonly purpose: Purpose;
+  // トークンを縮小するrepo（許可リストの1つ）。
+  readonly repository: Repository;
   readonly appId: string;
   readonly installationId: string;
   readonly key: KeySource;
@@ -130,6 +138,8 @@ PRのcheckoutから実行しない（docs/github-apps.md の「信頼した写�
                                     implement:           ${permissionList('implement')}
                                     implement-workflows: ${permissionList('implement-workflows')}
                                     merge-check:         ${permissionList('merge-check')}
+  --repo <名前>                   トークンを縮小する${REPOSITORY_OWNER}のrepo（${REPOSITORIES.join('・')}）。既定は${DEFAULT_REPOSITORY}。
+                                    ghの--repo・gh apiのrepos/…・github.comのURLの引数が別のrepoを指せば拒む
   --app-id <数字>                 既定は環境変数（codex: ${AGENTS.codex.appIdEnv}、claude: ${AGENTS.claude.appIdEnv}）
   --installation-id <数字>        既定は環境変数（codex: ${AGENTS.codex.installationIdEnv}、claude: ${AGENTS.claude.installationIdEnv}）
 
@@ -156,6 +166,11 @@ export function isPurpose(value: string): value is Purpose {
   return (PURPOSE_NAMES as readonly string[]).includes(value);
 }
 
+// 許可リストとの完全一致だけ（パスやowner/nameとして解釈しない。../ 等で別の先に解決されない）。
+export function isRepository(value: string): value is Repository {
+  return (REPOSITORIES as readonly string[]).includes(value);
+}
+
 export function validateId(value: string | undefined, what: string): string {
   if (value === undefined || value === '') throw new UsageError(`${what}がない。`);
   // 値そのものは表示しない（誤って鍵等を貼り付けた場合に出さないため）。
@@ -163,7 +178,7 @@ export function validateId(value: string | undefined, what: string): string {
   return value;
 }
 
-const FLAGS_WITH_VALUE = new Set(['--agent', '--purpose', '--app-id', '--installation-id', '--keychain-service', '--key-file']);
+const FLAGS_WITH_VALUE = new Set(['--agent', '--purpose', '--repo', '--app-id', '--installation-id', '--keychain-service', '--key-file']);
 const FLAGS_WITHOUT_VALUE = new Set(['--key-stdin', '--help', '-h']);
 
 export type ParseResult = { readonly help: true } | { readonly help: false; readonly options: Options };
@@ -198,6 +213,9 @@ export function parseArgs(argv: readonly string[], env: Readonly<Record<string, 
   const purpose = values.get('--purpose');
   if (purpose === undefined) throw new UsageError(`--purposeがない（${PURPOSE_NAMES.join('・')}）。`);
   if (!isPurpose(purpose)) throw new UsageError(`--purposeは ${PURPOSE_NAMES.join('・')} のどれか。`);
+  const repository = values.get('--repo') ?? DEFAULT_REPOSITORY;
+  // 値そのものは表示しない（鍵等を誤って渡した場合に出さないため）。ownerは書かない（常にdoc-gif）。
+  if (!isRepository(repository)) throw new UsageError(`--repoは ${REPOSITORIES.join('・')} のどれか（名前だけ。ownerは${REPOSITORY_OWNER}に固定）。`);
   const profile = AGENTS[agent];
 
   const appId = validateId(values.get('--app-id') ?? env[profile.appIdEnv], `AppのID（--app-id か ${profile.appIdEnv}）`);
@@ -221,7 +239,7 @@ export function parseArgs(argv: readonly string[], env: Readonly<Record<string, 
   }
   const [program, ...programArgs] = command;
   if (program === undefined || program === '') throw new UsageError('実行するコマンドがない（`-- <コマンド> [引数…]`）。トークンは表示しない。');
-  return { help: false, options: { agent, purpose, appId, installationId, key, command: [program, ...programArgs] } };
+  return { help: false, options: { agent, purpose, repository, appId, installationId, key, command: [program, ...programArgs] } };
 }
 
 const PEM_PREFIX = '-----BEGIN ';
@@ -285,8 +303,10 @@ export function tokenRequest(
   installationId: string,
   jwt: string,
   purpose: Purpose,
+  repository: Repository,
 ): { readonly url: string; readonly method: string; readonly headers: Record<string, string>; readonly body: string } {
   validateId(installationId, 'Installation ID');
+  if (!isRepository(repository)) throw new UsageError('repoが許可リストにない。');
   return {
     url: `${API_ORIGIN}/app/installations/${installationId}/access_tokens`,
     method: 'POST',
@@ -297,7 +317,7 @@ export function tokenRequest(
       'User-Agent': USER_AGENT,
       'X-GitHub-Api-Version': API_VERSION,
     },
-    body: JSON.stringify({ repositories: [REPOSITORY_NAME], permissions: PURPOSES[purpose] }),
+    body: JSON.stringify({ repositories: [repository], permissions: PURPOSES[purpose] }),
   };
 }
 
@@ -364,7 +384,7 @@ export const TOKEN_PATTERN = /^ghs_[A-Za-z0-9._-]{36,8188}$/;
 const HEADER_SAFE = /^[\x21-\x7e]{1,8192}$/;
 
 // 応答の権限・repoが要求どおりか。違えば理由を返す（トークンは含めない）。
-export function checkGrantedScope(response: unknown, purpose: Purpose): string | null {
+export function checkGrantedScope(response: unknown, purpose: Purpose, repository: Repository): string | null {
   if (response === null || typeof response !== 'object') return '応答がJSONのオブジェクトでない';
   const r = response as { permissions?: unknown; repository_selection?: unknown; repositories?: unknown };
   const expected: Record<string, PermissionLevel> = { ...PURPOSES[purpose] };
@@ -383,24 +403,26 @@ export function checkGrantedScope(response: unknown, purpose: Purpose): string |
   }
   if (r.repository_selection !== 'selected') return 'repoが選んだものだけに縮小されていない';
   // repositoriesがなければ、縮小した先を確かめられないので失敗にする（fail closed）。
-  return checkOnlyThisRepository(r.repositories, '発行の応答');
+  return checkOnlyThisRepository(r.repositories, '発行の応答', repository);
 }
 
-// repoの一覧が、このrepoの1件だけか。違う・確かめられなければ理由を返す。
-export function checkOnlyThisRepository(repositories: unknown, where: string): string | null {
+// repoの一覧が、選んだrepoの1件だけか。違う・確かめられなければ理由を返す。
+// ownerはInstallation（doc-gifのアカウントのもの）で決まるので、名前だけを照合する。
+export function checkOnlyThisRepository(repositories: unknown, where: string, repository: Repository): string | null {
   if (repositories === undefined) return `${where}にrepoの一覧がない（縮小した先を確かめられない）`;
   if (!Array.isArray(repositories) || repositories.length !== 1) return `${where}のrepoが1つでない`;
   const name = (repositories[0] as { name?: unknown } | null | undefined)?.name;
-  if (name !== REPOSITORY_NAME) return `${where}のrepoが${REPOSITORY_NAME}でない`;
+  if (name !== repository) return `${where}のrepoが${repository}でない`;
   return null;
 }
 
 // 発行したトークンで、実際に触れるrepoを数える（GET /installation/repositories）。
-// このrepoの1件だけでなければ、または確かめられなければ、理由を返す。
+// 選んだrepoの1件だけでなければ、または確かめられなければ、理由を返す。
 export async function verifyTokenRepositories(
   fetchImpl: FetchLike,
   token: string,
   timeoutMs: number,
+  repository: Repository,
   abort?: AbortSignal,
 ): Promise<string | null> {
   let response: FetchResponse;
@@ -428,7 +450,7 @@ export async function verifyTokenRepositories(
   }
   const r = parsed as { total_count?: unknown; repositories?: unknown } | null;
   if (r === null || typeof r !== 'object' || r.total_count !== 1) return '触れるrepoの数が1でない、または不明';
-  return checkOnlyThisRepository(r.repositories, '触れるrepoの確認');
+  return checkOnlyThisRepository(r.repositories, '触れるrepoの確認', repository);
 }
 
 // 失効させる（DELETE /installation/token）。シグナルでは中断しない。
@@ -478,13 +500,14 @@ export async function requestInstallationToken(args: {
   readonly installationId: string;
   readonly jwt: string;
   readonly purpose: Purpose;
+  readonly repository: Repository;
   readonly timeoutMs: number;
   // 既知の秘密の一覧。発行したトークンを、得た直後にここへ加える（呼出し側の失敗の出力でも伏せるため）。
   readonly secrets: string[];
   // シグナルを受けたら、発行と確認の要求を中断する（失効は中断しない）。
   readonly abort?: AbortSignal;
 }): Promise<string> {
-  const request = tokenRequest(args.installationId, args.jwt, args.purpose);
+  const request = tokenRequest(args.installationId, args.jwt, args.purpose, args.repository);
   let response: FetchResponse;
   try {
     response = await args.fetch(request.url, {
@@ -527,8 +550,8 @@ export async function requestInstallationToken(args: {
   try {
     problem =
       (args.abort?.aborted === true ? 'シグナルを受けた' : null) ??
-      checkGrantedScope(parsed, args.purpose) ??
-      (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.abort));
+      checkGrantedScope(parsed, args.purpose, args.repository) ??
+      (await verifyTokenRepositories(args.fetch, token, args.timeoutMs, args.repository, args.abort));
   } catch (error) {
     // 受け取ったトークンを確かめる途中の予期しない例外でも、失効させてから伝える（結果を捨てない）。
     const result = await revokeToken(args.fetch, token, args.timeoutMs);
@@ -708,11 +731,14 @@ export const GIT_CREDENTIAL_HELPER = '!f() { test "$1" = get || exit 0; echo use
 // 空のデバイス（/dev/null、Windowsの\\.\nul）は、WindowsのgitがEINVALで読めないので使わない。
 export const UNUSED_GIT_GLOBAL_CONFIG = 'git-global-config-unused';
 
+// extraheaderは、許可リストのすべてのrepoのpushのURLの細かさでも空にする（選んだrepoによらない）。gitは最も細かく
+// 一致したURLの値を使うので、選んだrepoのURLだけを空にすると、repoの設定にある別のrepoのURL用のheader（所有者の
+// 資格情報）が、そのURLへのpush（remote名経由を含む）で使われる（PR74 RT-1）。
 export const CHILD_GIT_CONFIG: readonly (readonly [string, string])[] = [
   ['credential.helper', ''],
   ['credential.https://github.com.helper', GIT_CREDENTIAL_HELPER],
   ['http.https://github.com/.extraheader', ''],
-  [`http.${PUSH_URL}.extraheader`, ''],
+  ...REPOSITORIES.map((repository) => [`http.${pushUrl(repository)}.extraheader`, ''] as const),
   ['core.askPass', ''],
 ];
 
@@ -744,6 +770,61 @@ export function childEnvironment(
     GIT_TRACE_REDACT: '1',
     ...gitConfig,
   };
+}
+
+// 子のコマンドが、選んだrepoと別のrepoを指していないか（発行の前・鍵を読む前に確かめる）。違えば理由を返す
+// （引数の値は出さない）。範囲の正本はトークンの縮小で、これは取り違えを早く止めるためのもの。見るのは次だけ:
+// - 環境変数GH_REPO（子へそのまま渡るので、どのコマンドでも）
+// - gh: --repo・-R・--repo=・-R<値>の値（doc-gif/<repo>と完全一致）、repos/<owner>/<name>で始まるgh apiのパス、
+//   github.comのURLの引数
+// - git: github.comのURLの引数（--repo=<URL>も）。選んだrepoのpushのURLと完全一致（文書の形だけ）
+// sh -c等の中や、ほかのコマンドは読まない。gh apiの{owner}/{repo}の置換も、指す先を確かめられないので拒む。
+const GITHUB_URL = /^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[^@/\s]*@)?(?:www\.)?github\.com(?=[/:])/i;
+const GITHUB_URL_REPO = /^github\.com[/:]([^/?#]+)\/([^/?#]+?)(?:\.git)?(?:[/?#]|$)/;
+const API_REPO_PATH = /^\/?repos\//;
+const API_REPO = /^\/?repos\/([^/?#]+)\/([^/?#]+)(?:[/?#]|$)/;
+
+function programName(program: string): string {
+  return (program.split(/[\\/]/).pop() ?? '').toLowerCase().replace(/\.(exe|com)$/, '');
+}
+
+export function commandTargetProblem(
+  command: readonly [string, ...string[]],
+  repository: Repository,
+  env: Readonly<Record<string, string | undefined>>,
+): string | null {
+  const slug = `${REPOSITORY_OWNER}/${repository}`;
+  const ghRepo = env['GH_REPO'];
+  if (ghRepo !== undefined && ghRepo !== '' && ghRepo !== slug) return `環境変数GH_REPOが${slug}でない`;
+  const [program, ...args] = command;
+  const name = programName(program);
+  if (name !== 'gh' && name !== 'git') return null;
+  const urlRepo = (url: string): string | null => {
+    const m = GITHUB_URL_REPO.exec(url.replace(GITHUB_URL, 'github.com'));
+    return m === null ? null : `${m[1]}/${m[2]}`;
+  };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    const where = `${i + 2}番目`;
+    if (name === 'git') {
+      const url = arg.startsWith('--repo=') ? arg.slice('--repo='.length) : arg;
+      if (GITHUB_URL.test(url) && url !== pushUrl(repository)) return `gitのURL（${where}）が${pushUrl(repository)}でない`;
+      continue;
+    }
+    let value: string | undefined;
+    if (arg === '--repo' || arg === '-R') value = args[++i] ?? '';
+    else if (arg.startsWith('--repo=')) value = arg.slice('--repo='.length);
+    else if (arg.startsWith('-R')) value = arg.slice(2).replace(/^=/, '');
+    if (value !== undefined) {
+      if (value !== slug) return `ghの--repo（${where}）が${slug}でない`;
+    } else if (API_REPO_PATH.test(arg)) {
+      const m = API_REPO.exec(arg);
+      if (m === null || `${m[1]}/${m[2]}` !== slug) return `gh apiのパス（${where}）が${slug}でない`;
+    } else if (GITHUB_URL.test(arg) && urlRepo(arg) !== slug) {
+      return `ghのURL（${where}）が${slug}でない`;
+    }
+  }
+  return null;
 }
 
 // 実行するコマンドを、発行の前に絶対パスへ解決する。見つからなければnull（発行しない）。
@@ -899,6 +980,7 @@ export async function mintToken(options: Options, deps: Deps, secrets: string[],
     installationId: options.installationId,
     jwt,
     purpose: options.purpose,
+    repository: options.repository,
     timeoutMs: deps.timeoutMs ?? REQUEST_TIMEOUT_MS,
     secrets,
     ...(abort === undefined ? {} : { abort }),
@@ -925,6 +1007,12 @@ export async function run(argv: readonly string[], deps: Deps): Promise<number> 
     return 0;
   }
   const { options } = parsed;
+  // 鍵を読む前に、コマンドが選んだrepoと別のrepoを指していないかを確かめる。
+  const target = commandTargetProblem(options.command, options.repository, deps.env);
+  if (target !== null) {
+    deps.stderr(`コマンドが--repoで選んだrepoと別の先を指すので止めた（${target}）。トークンは発行していない。\n`);
+    return EXIT_OWN_FAILURE;
+  }
   // 発行の前に、実行するコマンドを解決する。見つからなければ発行しない。
   const [program, ...programArgs] = options.command;
   const resolved = deps.resolveCommand(program);
