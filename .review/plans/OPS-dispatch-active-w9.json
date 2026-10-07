@@ -10,6 +10,7 @@
   "scripts/lib/review-dispatch/github.ts",
   "scripts/lib/review-dispatch/launcher.test.ts",
   "scripts/lib/review-dispatch/launcher.ts",
+  "scripts/lib/review-dispatch/publication.ts",
   "scripts/lib/review-dispatch/webhook.test.ts",
   "scripts/lib/review-dispatch/webhook.ts"
  ],
@@ -19,6 +20,11 @@
    "date": "2026-10-07",
    "source": "Issue #50 W9（調整係が伝えた所有者の決定。記録はIssue #50に調整係が残す）",
    "decision": "後回しのP3をまとめるPRを作りレビューまで進めるが、マージは稼働観察（main e322f45）の後。cli.sbとVETTED_RULESは変えない（測り直しになる）。PRは小さく。P3は実際の危険か運用の失敗を減らすものだけ直し、ほかは1行の理由で落とす。観察中に見つかったdispatch-gh-*の残りの原因を突き止めて直す"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #71 red team RT-1と調整係の指示",
+   "decision": "jobTextに公開検査の全規則（%XXの3連続、このPRにない32文字以上の英数字の並び、//・pathなしのhost）を、publication.tsの1つの定数（PUBLICATION_RULES）から述べる。規則と依頼文の対応を試験で固定する。偽の形だけ正しい署名headerが25 MiBを5秒流せる残余を設計§7に1行書く"
   }
  ],
  "assessments": [
@@ -140,15 +146,15 @@
    "location": "webhook.ts serve（公開の経路から届く要求）",
    "data": "署名のheader x-hub-signature-256とbody",
    "trust": "untrusted",
-   "control": "POST /webhook以外は従来どおり404。署名のheaderが無い・sha256=<64桁の16進>の形でなければ、bodyを読む前（HMACの前）に401をConnection: closeで返す。形の合うheaderは従来どおりbodyの全体のHMACを定時間比較し、policyは署名が合ってから読む"
+   "control": "POST /webhook以外は従来どおり404。署名のheaderが無い・sha256=<64桁の16進>の形でなければ、bodyを読む前（HMACの前）に401をConnection: closeで返す。形の合うheaderは従来どおりbodyの全体のHMACを定時間比較し、policyは署名が合ってから読む。残余: 形だけ正しい偽のheaderは早い401を通り、HMACで401になるまで最大25 MiBを5秒流せる（設計§7に記載）"
   },
   {
    "id": "B3",
    "direction": "exit",
-   "location": "launcher.ts jobText（workerへの依頼文）",
+   "location": "launcher.ts jobText（workerへの依頼文）・publication.ts PUBLICATION_RULES",
    "data": "parseResultが拒む内容の規則",
    "trust": "trusted",
-   "control": "依頼文に、相対・scheme無し（//）のlink、裸のwww.、全角の同等の文字（NFKCで同じ）、見えない書式文字を使わないことを足す。判定はparseResultのまま（緩めない）"
+   "control": "publicationFindingsの各findingに依頼文の句を1つずつ対応させた定数PUBLICATION_RULESをpublication.tsに置き、jobTextはそれを並べる。連続の長さ（%XXの3、英数字の32）は検査の正規表現と同じ定数から作る。launcher.testが、各規則の合成の違反が該当のfindingになること、句に従った書き方が通ること、全句がjobTextにあることを確かめる。判定は緩めない"
   }
  ],
  "variant_analysis": [
@@ -245,6 +251,10 @@
     {
      "location": "docs/review-dispatch-runbook.md 手順1・更新したとき",
      "result": "ghの版（2.97.0以上）の確認を手順1に1行、残ったdispatch-gh-*の消し方を更新したときの表に1行"
+    },
+    {
+     "location": "docs/review-dispatch-design.md §7 残余リスク",
+     "result": "偽の形だけ正しい署名headerのDoSの費用を1項目（ここだけ）"
     }
    ]
   }
