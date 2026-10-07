@@ -627,19 +627,25 @@ export function claudeRunner(d: ClaudeRunnerDeps): Runner {
     async run(j) {
       if (!unchanged()) return notStarted("bound-file-changed");
       const { area, run } = newRunArea(d.install.runs, j.run);
-      let outcome: Outcome | null = null;
+      let outcome: Outcome | null = null,
+        failure: unknown = null;
       try {
         outcome = await launch(j, run);
-      } finally {
-        try {
-          removeRunArea(area);
-        } catch {
-          // Reported, never dropped (ISSUE50-P003): one owner notice, and a started run stays uncertain (its lease
-          // is held), since something may still be using the area. The next run gets a new area anyway.
-          d.store.notice(`${j.key}:run-area-not-removed:${j.run}`);
-          if (outcome && !outcome.neverStarted) outcome = { ...outcome, result: "", uncertain: true, origin: null };
-        }
+      } catch (e) {
+        failure = e;
       }
+      try {
+        removeRunArea(area);
+      } catch {
+        // Reported, never dropped (ISSUE50-P003): the dispatcher blocks the PR and names the reason and run in the
+        // cycle output and status (runtime.ts). A started run, or one that failed, stays uncertain with its lease
+        // held, since something may still be using the area. The next run gets a new area anyway.
+        const base: Outcome = outcome && !failure ? outcome : { result: "", groupEnded: false, uncertain: true, origin: null };
+        return base.neverStarted
+          ? { ...base, problem: "run-area-not-removed" }
+          : { ...base, result: "", uncertain: true, origin: null, problem: "run-area-not-removed" };
+      }
+      if (failure) throw failure;
       return outcome as Outcome;
     },
     async redact(j, resultHash) {

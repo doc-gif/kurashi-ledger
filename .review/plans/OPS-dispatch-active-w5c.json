@@ -190,7 +190,7 @@
    "location": "active.ts newRunArea・removeRunArea、launcher.ts envFor・profileParams",
    "data": "runごとのconfig dir",
    "trust": "trusted",
-   "control": "run領域の中に0700で新規作成、CLAUDE_CONFIG_DIRとcli.sbのCONFIG_DIRに渡す。tokenはenvだけ。削除の失敗は例外・owner通知・uncertain"
+   "control": "run領域の中に0700で新規作成、CLAUDE_CONFIG_DIRとcli.sbのCONFIG_DIRに渡す。tokenはenvだけ。削除の失敗はPRのblocked（run-area-not-removed）とcycleの出力・statusの理由とrun ID、起動済みはuncertain"
   },
   {
    "id": "B6",
@@ -257,11 +257,11 @@
     },
     {
      "location": "active.ts claudeRunner",
-     "result": "削除失敗はowner通知、起動済みのrunはuncertain"
+     "result": "削除失敗はblockedとcycleの出力・statusへ理由とrun ID。起動前の拒否・例外と重なっても同じ。起動済みのrunはuncertain"
     },
     {
      "location": "active.ts doctorCommand・measureCommand",
-     "result": "削除失敗はコマンドの失敗として出る"
+     "result": "doctorは削除してからcapabilityを記録し、消せなければunverified。measureはコマンドの失敗として出る"
     },
     {
      "location": "launcher.ts validate",

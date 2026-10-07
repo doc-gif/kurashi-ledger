@@ -38,7 +38,7 @@ Brokerの身元と隔離の規則は[受付設計](review-dispatch-design.md)の
 - supervisorがrunごとに一度きりの鍵（SHA-256のLamport署名）で結果に署名する。鍵はsupervisorのメモリにだけ置く。
 - supervisorは鍵の約束値を、workerの起動前に標準出力で受付へ渡す。受付は`run_keys`に保存してから`ack`を返し、supervisorは`ack`を受けてからworkerを起動する。再起動後は`loadVerifier`がDBから検証する。
 - 受付とBrokerは`provenance.ts`の`RunVerifier`で検証だけを行う。封ができる`RunChannel`は`tests/fixtures/`だけに置く。
-- `supervisor.py run-worker`は、cwd・HOME・TMPDIR・config dirがrootと重なれば拒否する。runごとの領域（資料・HOME・tmp・`CLAUDE_CONFIG_DIR`）はinstall記録の`runs`に新しく作り、再利用しない。終わったら消し、消せなければ所有者へ通知して、起動したrunはuncertainにする。config dirは起動直前にも、linkでない自分の0700の空dirであることを確かめる。
+- `supervisor.py run-worker`は、cwd・HOME・TMPDIR・config dirがrootと重なれば拒否する。runごとの領域（資料・HOME・tmp・`CLAUDE_CONFIG_DIR`）はinstall記録の`runs`に新しく作り、再利用しない。終わったら消す。消せなければPRをblocked（`run-area-not-removed`）にして、cycleの出力とstatusに理由とrun IDを出し、起動したrunはuncertainにする（起動前の拒否や別の失敗と重なっても同じ）。doctorはrun領域を消してからcapabilityを記録し、消せなければ記録しない。config dirは起動直前にも、linkでない自分の0700の空dirであることを確かめる。
 - Claude Broker（`claude-broker.ts`と中継`scripts/review-dispatch-claude-broker.ts`）は、token wrapperを`--agent claude --purpose review`に固定する。submitごとに1回起動して閉じ、POSTは1回まで。
 - Brokerは`canonicalBody` → 公開検査 → 本文hash → POSTの順に処理する。検査は投稿する正規化後の本文に掛ける。
 

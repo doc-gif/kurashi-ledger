@@ -87,6 +87,9 @@ type RunOutcome = {
   neverStarted?: boolean;
   // Why it never started (a fixed reason ID, for the owner notice).
   reason?: string;
+  // The run area could not be removed (W5c, ISSUE50-P003): the PR is blocked for the owner and the cycle output
+  // names it, whatever else happened to the run.
+  problem?: "run-area-not-removed";
   // From the run endpoint (the supervisor's signature, or a fixture runner's seal); null if absent.
   origin: Provenance | null;
 };
@@ -194,9 +197,26 @@ export class Dispatcher {
   ): Promise<string> {
     const j = this.store.claim(this.policy, s, actor, kind, now);
     if (!j) return "waiting";
+    let value: RunOutcome | null = null;
+    const outcome = await this.#settle(j, async () => (value = await runner.run(j)), s, runner, broker, fetchFresh, now);
+    const v = value as RunOutcome | null;
+    if (v?.problem !== "run-area-not-removed") return outcome;
+    // Reported where the owner reads (cycle output and status: the blocked row with the reason and run).
+    this.store.block(j, "run-area-not-removed", now);
+    return `${outcome} run-area-not-removed run ${j.run}`;
+  }
+  async #settle(
+    j: Job,
+    start: () => Promise<RunOutcome>,
+    s: Snapshot,
+    runner: Runner,
+    broker: Pick<ReviewBroker, "submit">,
+    fetchFresh: () => Promise<Snapshot>,
+    now: number,
+  ): Promise<string> {
     try {
       this.store.running(j);
-      const value = await runner.run(j);
+      const value = await start();
       if (value.neverStarted === true) {
         // Nothing ran: release the lease, keep the job (no relaunch for this generation) and tell the owner once.
         this.store.release(j, { run: j.run, neverStarted: true, groupEnded: false, uncertain: false });

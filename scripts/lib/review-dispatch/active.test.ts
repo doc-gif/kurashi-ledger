@@ -645,26 +645,57 @@ test("W5c (ISSUE50-P003): a run area that cannot be removed is reported, never d
   } finally {
     rmSync(runs, { recursive: true, force: true });
   }
-  // Through the runner: a started run whose area stays is uncertain (lease held) with one owner notice.
+  // Through a cycle (PR65-R003): the reason and run reach the cycle output and status, alone or with another failure.
   const { chmodSync } = await import("node:fs");
-  let locked = "";
-  const x = runnerSetup({
-    onAck: () => {
-      const area = readdirSync(x.runs)[0]!;
-      locked = join(x.runs, area, "materials");
-      chmodSync(locked, 0o500); // its entries cannot be unlinked
-    },
-  });
-  try {
-    x.d.store.observe(assess(x.p, x.s, null));
-    const j = x.d.store.claim(x.p, x.s, 30, "faultfinding", 100)!;
-    x.d.store.running(j);
-    const r = await x.runner.run(j);
-    assert.deepEqual([r.uncertain, r.result, r.origin], [true, "", null]);
-    assert.equal(x.d.store.notice(`${j.key}:run-area-not-removed:${j.run}`), false); // already recorded
-  } finally {
-    if (locked) chmodSync(locked, 0o700);
-    x.cleanup();
+  const lock = (runs: string) => {
+    const dir = join(runs, readdirSync(runs)[0]!, "materials");
+    writeFileSync(join(dir, "x"), "synthetic\n");
+    chmodSync(dir, 0o500); // its entry cannot be unlinked
+    return dir;
+  };
+  const cases: [string, FakeOptions, boolean, RegExp][] = [
+    ["launched run", {}, false, /^review:uncertain run-area-not-removed run [0-9a-f-]{36}$/],
+    ["with another run's signature (an exception)", { otherRun: "00000000-0000-4000-8000-000000000099" }, false, /^review:uncertain run-area-not-removed run [0-9a-f-]{36}$/],
+    ["with a pre-launch refusal", {}, true, /^review:not-started:launch-refused run-area-not-removed run [0-9a-f-]{36}$/],
+  ];
+  for (const [name, o, refuse, expected] of cases) {
+    let locked = "";
+    const x = runnerSetup({ ...o, onAck: () => void (locked = lock(x.runs)) });
+    try {
+      let submits = 0;
+      const broker = { submit: async () => (submits++, "posted" as const) };
+      const runner = refuse
+        ? claudeRunner({
+            policy: x.p, store: x.d.store, root: x.d.root, install: x.i, capability: capability(x.i.claude), verifier: x.verifier,
+            materials: async (_j, dir) => {
+              mkdirSync(join(dir, ".claude")); // refused by the launcher
+              locked = lock(x.runs);
+              return { planPath: null, ledger: [], previousRts: [], guard: "none" as const };
+            },
+            bound: BOUND, digest: BOUND_DIGEST, spawn: () => assert.fail("supervisor must not start"), now: () => 100,
+            launch: { platform: "darwin", exists: () => false, readToken: () => TOKEN },
+          })
+        : x.runner;
+      x.d.store.observe(assess(x.p, x.s, null));
+      const step = () => activeStep({ policy: x.p, store: x.d.store, snapshot: x.s, runner, broker, fresh: async () => x.s, now: 100 });
+      const out = await step();
+      chmodSync(locked, 0o700);
+      assert.match(out, expected, name);
+      const run = x.d.store.status("1:1").jobs[0]!.run;
+      assert.ok(out.endsWith(` run ${run}`), name);
+      assert.ok(!out.includes(x.runs) && !out.includes(TOKEN), name); // no path, no secret
+      assert.deepEqual(x.d.store.status("1:1").blocked, { run, reason: "run-area-not-removed", at: null }, name);
+      assert.equal(submits, 0, name);
+      // Reported once: the next cycle launches nothing and does not repeat it.
+      assert.equal(await step(), "idle:blocked-owner-required", name);
+      if (!refuse) {
+        const j = x.d.store.jobByRun(run)!;
+        assert.throws(() => x.d.store.release(j, { run, neverStarted: false, groupEnded: false, uncertain: true }), name);
+      }
+    } finally {
+      if (locked) chmodSync(locked, 0o700);
+      x.cleanup();
+    }
   }
 });
 

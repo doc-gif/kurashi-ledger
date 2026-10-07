@@ -456,7 +456,7 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
 | 行 | 読み方 |
 | --- | --- |
 | `PR #N: 状態（理由、世代G）` | 状態は`waiting`・`eligible`・`finished`。主な理由: `draft`、`new-ready-required`（新しいDraft→Readyが要る）、`ci-not-proven`、`base-not-incorporated`（mainを取り込む）、`unknown-identity`（branchの作成から身元を証明できない。新しいPRにするか、[shadowの照合](review-dispatch-implementation.md#shadowの照合)の`identity`を設定する）、`unknown-evidence`（取得の欠け、[CIの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008)の未記録）、`paused`、`blocked-owner-required`、`quota-owner-required` |
-| `blocked` | 公開前の検査で止めた結果。内容を確かめ、PRに`review:paused`を付けてから外すと消える |
+| `blocked` | 公開前の検査で止めた結果（`publication`）か、消せなかったrun領域（`run-area-not-removed`。18の確認を行う）。内容を確かめ、PRに`review:paused`を付けてから外すと消える |
 | `上限での停止` | 24時間に6回の起動の上限。原因を確かめ、`review:paused`の付け外しで解く |
 | `停止の時刻が未確定` | 出ているあいだの`review:paused`の解除は数えない。消えてから付け外しする（[R015](review-dispatch-implementation.md#pr48-r013r016w4c58)） |
 | `未処理の編集の印` | 指摘の編集・削除の配送。次のcycleの照合で消える |
@@ -532,31 +532,41 @@ gh api --paginate "repos/${repo_slug}/pulls/${target_pr}/reviews" --jq '.[] | se
 
 期待: 時刻順に読む。起動回数は`red-team`と`review`の行数（投稿のない起動は15のJobの行で数える）。同じ種類で同じheadの行が2つあれば重複起動。各`ready`から次の`red-team`・`review`までが待ち時間。値と旧巡回との比較をIssue #50に記録し、所有者が広げるかを決める。
 
-最初の1PRでは、Jobが終わるたびに（15のJobの行が`running`でないとき）、受付のrunが残したprocessと資源を見る（[残余リスク](review-dispatch-design.md#groupを離れた子残余リスク)）。`lsof`で、cwdか開いたfileが`$runs`の下にあるprocessを探す。自分で起こした対照のprocessが見つからないか、出力の形が違えば「確認できない」とする。次の関数を貼り、`kl_left`を実行する（`left_pids`に残るPIDが入る）。
+最初の1PRでは、Jobが終わるたびに（15のJobの行が`running`でないとき）、受付のrunが残したかもしれないprocessと資源を**表示**する（[残余リスク](review-dispatch-design.md#groupを離れた子残余リスク)）。判断は所有者が行う。候補は2種類: (a) cwdか開いたfileが`$runs`の下にあるprocess、(b) 消したrun領域のfile（削除済み）を開いたままのprocess（`lsof +L1`）。どちらも、この関数が自分で起こした対照のprocessを見つけたときだけ結果を信じる。`lsof +D`は見つけたときも終了1を返すので使わない。次の関数を貼り、`kl_left`を実行する。
 
 ```zsh
 kl_left() {
-  local d="$runs/.kl-control" out c; left_pids=()
-  mkdir -p "$d" || return 2
-  (cd "$d" && exec /bin/sleep 30) & c=$!; sleep 1
-  out="$(lsof -nP -F p +D "$runs" 2>/dev/null)"
-  kill $c 2>/dev/null; wait $c 2>/dev/null; rmdir "$d"; du -sk "$runs"
-  if [[ $'\n'"$out"$'\n' != *$'\n'"p$c"$'\n'* ]] || print -r -- "$out" | grep -qvE '^(p[0-9]+|f.*)$'; then
-    echo "確認できない（lsofが対照を見つけない・形が違う）。下の停止の手順を行う"; return 2
-  fi
-  left_pids=( ${(f)"$(print -r -- "$out" | sed -n 's/^p//p' | grep -vx "$c")"} )
-  (( $#left_pids )) || { echo "残るprocessなし"; return 0; }
-  ps -o pid=,pgid=,%cpu=,rss=,etime=,comm= -p "${(j:,:)left_pids}"; return 1
+  local d="$runs/.kl-control" a b all del pa pb s1 s2 s3 s4 s5 bad=""
+  mkdir -p "$d" && : > "$d/held" || { echo "確認できない（対照を作れない）"; return 2; }
+  (cd "$d" && exec /bin/sleep 60) &! a=$!
+  (exec /bin/sleep 60 < "$d/held") &! b=$!
+  sleep 1; rm "$d/held"
+  all="$(lsof -nP -F pn)"; s1=$?
+  del="$(lsof -nP -F pn +L1)"; s2=$?
+  kill $a $b; rmdir "$d"
+  kl_pick() { print -r -- "$1" | awk -v r="$runs" '/^p[0-9]+$/ {p = substr($0, 2); next} /^f/ {next} /^n/ {n = substr($0, 2); if (n == r || index(n, r "/") == 1) print p; next} {bad = 1} END {exit bad}'; }
+  pa="$(kl_pick "$all")"; s3=$?
+  pb="$(kl_pick "$del")"; s4=$?
+  du -sk "$runs"; s5=$?
+  (( s1 )) && bad+=" lsof=$s1"; (( s2 )) && bad+=" lsof+L1=$s2"; (( s3 || s4 )) && bad+=" 出力の形"; (( s5 )) && bad+=" du=$s5"
+  [[ $'\n'"$pa"$'\n' == *$'\n'"$a"$'\n'* ]] || bad+=" 対照(a)なし"
+  [[ $'\n'"$pb"$'\n' == *$'\n'"$b"$'\n'* ]] || bad+=" 対照(b)なし"
+  [[ -z $bad ]] || { echo "確認できない（${bad# }）"; return 2; }
+  pa=( ${(u)${(f)pa}} ); pb=( ${(u)${(f)pb}} ); pa=( ${pa:#($a|$b)} ); pb=( ${pb:#($a|$b)} )
+  (( $#pa + $#pb )) || { echo "候補なし（全子孫の終了の証明ではない）"; return 0; }
+  echo "候補 (a) cwdか開いたfileが\$runsの下: ${pa:-なし}"; echo "候補 (b) 消したrun領域のfileを開いたまま: ${pb:-なし}"
+  local both=( $pa $pb )
+  ps -o pid=,pgid=,%cpu=,rss=,etime=,comm= -p "${(j:,:)${(u)both}}" || { echo "確認できない（ps=$?）"; return 2; }
+  return 1
 }
-kl_left
+kl_left; echo "戻り値 $?"
 ```
 
-期待: `$runs`の大きさの行と`残るprocessなし`。PIDの行が出る、`確認できない`が出る、`$runs`が空でない（大きさが0でない）のどれかなら異常。受付を止めてから手で戻す。
+期待: `$runs`の大きさ（`du`の行）と`候補なし（全子孫の終了の証明ではない）`、`戻り値 0`。これは候補が見えないことだけを示す。戻り値ごとに分ける。
 
-1. `kl_mode shadow`（新しい起動を止める）。
-2. `kl_left && echo 終わり || { kill -TERM $left_pids; sleep 10; kl_left || kill -KILL $left_pids; }`を、`残るprocessなし`になるまで繰り返す（毎回PIDを取り直す）。`確認できない`のままなら止めてIssue #50に記録する。
-3. 16の`kl_stopped`が`停止を確認`になるまで16を行う。`$runs`に残ったrunの領域は、processが無くなってから`rm -rf`で消す。
-4. 出た行（PID・CPU・RSS・経過時間・名前）と原因をIssue #50に記録する。processが残りうる間は、8の測定もactiveへの切替もしない。戻すかは所有者が決める（14の3）。
+- **0**: `$runs`の大きさが0なら、次のJobへ進んでよい。0でなければ1と同じに扱う。
+- **1**（候補あり）: `kl_mode shadow`で新しい起動を止める。出たPIDとCPU・RSS・経過時間を確かめ、所有者が`kill -TERM <PID>`で止める（残れば`kill -KILL <PID>`）。`kl_left`をやり直し、0になるまで再開しない。16の`kl_stopped`が`停止を確認`になるまで16を行い、空でない`$runs`のrun領域は、processが無くなってから消す。出た行と原因をIssue #50に記録する。再開（14の3）は所有者が決める。
+- **2**（確認できない）: `kl_mode shadow`で止め、表示をIssue #50に記録する。signalは送らず、再開しない。8の測定もしない。
 
 ## 更新したとき
 
