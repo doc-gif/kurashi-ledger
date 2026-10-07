@@ -1,0 +1,930 @@
+{
+  "schema_version": 1,
+  "base_sha": "409bd3fc52e942c941596ab376db27e9797233cd",
+  "task_id": "T06",
+  "planned_paths": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "README.md",
+    "docs/github-agent-operations.md",
+    "docs/implementation-tasks.md",
+    "docs/project-status.md",
+    "docs/test-oracles/README.md",
+    "docs/testing.md",
+    "src/domain/records/aggregate.ts",
+    "src/domain/records/effective.ts",
+    "src/domain/records/fact.ts",
+    "src/domain/records/history.ts",
+    "src/domain/records/ids.ts",
+    "src/domain/records/index.ts",
+    "src/domain/records/ledger.ts",
+    "src/domain/records/masters.ts",
+    "src/domain/records/oracle.test.ts",
+    "src/domain/records/reasons.ts",
+    "src/domain/records/records.test.ts",
+    "src/domain/records/save.ts",
+    "src/domain/records/schema.ts",
+    "src/domain/records/series.ts",
+    "src/domain/records/validate.ts",
+    "src/domain/records/values.ts",
+    "src/domain/records/views.ts"
+  ],
+  "conflicts": [
+    {
+      "description": "契約版2.0（PR #36）が、行IDのwholeの予約、検査済みの改訂による回復、修復の改訂、古い版で読むだけ、incomeTimingKindを契約に書く。T06はその文に合わせる必要がある。",
+      "state": "resolved",
+      "resolution": "T06（PR #28）はPR #36のあとにマージする。意味はPR #36の文に合わせ、食い違いは選ばずに報告する。incomeTimingKindはPR #36のマージ後に追従する。"
+    },
+    {
+      "description": "README・docs/project-status.md・docs/implementation-tasks.mdは、ほかの作業中のPR（#25・#29・#33・#37・#38・#44等）も変える共有の文書。",
+      "state": "resolved",
+      "resolution": "T06は記録ドメインの事実を足す数行だけにし、#40の構成（正本へのリンク、表）に合わせる。後からマージする側が行の競合を解消する。"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "T06の差分は、src/domain/records/の純粋なドメインのコード（I/O・DB・HTTP・UI・システム時計・乱数をimportしない。時計とID生成器は引数で受け取る）とそのunit test、整合のための文書の数行だけで、データルート・DB・journal・lock・配信物・依存・Node.jsの版に触れない。単一起動のlockと保守コマンドの排他は定めない（T07）。保存の直列化（recordedSeqの割り当てとcommitを1件ずつ行う）は、ドメインでは「直前の状態に1件を足した新しい状態を返す」純粋な関数として表し、transactionとlockはT07が行う。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分にlockの取得・保持、ファイル・パスの処理がないことを、src/domain/records/のimportがnode:のI/Oのモジュールを含まないことで確かめる。",
+          "expected": "lockの同一性に関わらない。"
+        },
+        {
+          "id": "recovery",
+          "method": "差分に強制終了・PID・再取得の処理がないことを確かめる。",
+          "expected": "lockの回復に関わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "試験の入力はT03の合成の台帳（架空の勤務先A・B・C、口座1・2、架空市・架空町・架空村）と、unit testの中で作る架空の値だけを使う。実際の給与明細・源泉徴収票・通知書、実在の勤務先・氏名・口座・金額、個人のパス、秘密情報を、コード・試験・Issue・PR・ログに書かない。T03のfixtureは読むだけで変えない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "commitの前に、stageするファイルを名前で指定し、git diff --cachedで差分を読み、node scripts/check-public.ts --stagedを実行する（手元のNode.js 24.14.0ではnpm runが版の検査で止まるため、同じスクリプトを直接実行する）。試験の値が台帳か、試験の中で作った架空の値だけであることを差分で確かめる。",
+          "expected": "公開検査が当たらない。秘密情報・個人のパス・メールアドレス・実在の勤務先・実データの金額がない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "preserve",
+      "reason": "T06は契約版1.0（docs/contracts/、main 7cbb684）の記録と改訂の共通の形を、src/domain/records/の純粋なTypeScriptにする。方針: (1) 型と保存の条件は契約の本文から書き、T03のcontract-shape.ts（台帳の検査のために独立に書き写した表）をimportしない（実装と台帳の検査が同じ誤りを共有しないため。PR11-R108）。T03のload.tsは、試験で台帳を読むためだけに使う。(2) Factは4つの状態を型で区別し、不明・記載なしを0や空で補わない。known(0)だけが0。集計は不足をmissingに挙げ、不足があればincompleteで、0円にしない（PR11-R006）。項目ごとの許す状態は共通の型の12の表を1か所に書く（PR11-R004）。(3) 改訂のモデルは理由ごとの表（直前のstatus・改訂後のstatus・duplicateOf・bodyの扱い）を1か所に書き、取消・取消の取り消しではbodyを直前と同じに保つ。把握日は、新規・新しい情報・把握日の写し誤りの訂正だけが新しい値を持て、保存のときの注入した時計の日付（Asia/Tokyo）より後を拒否する。取消・取消の取り消しは直前の把握日を引き継ぐ（PR11-R001）。(4) 保存の順序はrecordedSeqだけで決め、記録日時（時計の値）は順序と保存の条件に使わない。時点から連番への対応は、連番1からsまでの記録日時がすべてT以下である最大のsにする（PR11-R111）。(5) 差し替えの系列（記録の型の10の1〜5）は1つの補助で導き、系列の状態（seriesStatus）・集計・duplicateOfの残す方・保存の検査のすべてがその結果だけを使う。取消した記録を通り過ぎ、自己参照・長さによらない循環・分岐・識別の次元の不一致を見つけ、未確定の次元や見方で解決できない参照を含む系列は未確認の系列として系列全体を除いてconflictに挙げる（関係がないとはみなさない。PR11-R002・R101）。保存の検査は、保存したあとの状態で新しく生じた違反だけを拒否する（復元した古いデータの違反で無関係な保存を止めない）。(6) 参照は、記録どうしの関係はcurrent、集計の結果のmissingのrefは見方で選ばれた版の整数にする。記録全体の関係はwholeだけで、行を指せる項目だけが行を指せる（PR11-R007・R102）。(7) マスタのIDは二重登録の取消（duplicateOf）をたどった正規のIDで比べ・まとめ、表示名等の自由な値をキーにしない（PR11-R107）。正規のIDが変わる保存（二重登録の取消・その取消の取り消し）は、正規のIDに依存する記録の保存の検査（雇用条件の期間の重なり、年間資料のincludedOtherPayers、正式通知のissuerKind）をすべての有効な記録でやり直し、満たさなくなれば拒否する。保存の検査は新規だけでなく、訂正・新しい情報・取消・取消の取り消し・マスタの保存のすべての経路で行い、復元した（検査をすり抜けた）記録は、集計のたびに同じ条件で確かめてsave-checkのconflictに挙げる（PR11-R109）。(8) 状態の判定（系列の状態、集計の状態）は優先順の表で1つに決め、空の集合でもちょうど1つに決まる（PR11-R110）。系列は取消していない記録だけから作り、有効な記録の定義を循環させない（PR11-R105）。(9) 集計（deposit-amount・payslip-item）は、記録をIDの順に処理し、入力順・保存順に依存しない。合計が安全な整数を超えたら誤りとして止め、丸めない。(10) 記録のIDの本体はUUIDv7（ハイフン付き、小文字）に決め、生成は注入した時刻と乱数から行う純粋な関数にする。内容からIDを作らない。(11) T11・T15が担当する検査（照合配分の確定の条件・識別の次元・配分の符号・判断の保存の検証・計算runの保存）はT06では行わず、試験では、その理由を期待する操作と、その種類の検査を、範囲外の一覧として過不足なく照合する（黙って飛ばさない）。(12) 台帳の未決事項（docs/test-oracles/README.mdの1〜11）は決めない。集計値のexcludedCount（未決事項1）は返さず、報告する。台帳の期待値と契約の読みが食い違えば、台帳を変えずに報告する。（Copilotのレビュー5400037100への対応で追加）冪等キーで既存の記録を返す前に、要求そのものを検査する: 再取込（importKey）は、記録1件で決まる検査（entryChannelとimportKeyの組、bodyの形、許す状態等）と、把握日の検査・参照先の実在を通ったあとでだけ既存の記録を返し、不正な要求は拒否する（PR11-R109）。既存の記録との重なりで決まる検査（期間の重なり・系列等）は、同じ取引の再取込そのものが当たるので、既存の記録を返す判定の前には行わない。契約（共通の型の10）は、同じimportKeyなら内容が違っても既存の記録を返すと定めるので、内容の食い違いでは拒否しない。復元（検査をすり抜けたデータを置く入口）でも、データベース全体で予約するキー（writeRequestId・importKey）が既存の記録と重なれば置かない（既存の記録の索引を黙って上書きしない）。入力誤りの訂正で把握日を変える場合は、把握日の写し誤りを直すときだけなので、changeNoteがknownでなければ拒否する（共通の型の7の把握日の表。PR11-R001）。（Codexのレビュー5400107864のPR28-R001〜R004、Copilotのr4172606043・r4172606055への対応で追加）(a) 検査をすり抜けた履歴は、導く判定（集計・差し替えの系列）のたびに、選ばれた版までのすべての改訂について、保存と同じ版間の条件（版の連続、理由と直前のstatus、変えられない項目、取消・取消の取り消しのbodyと把握日、把握日を変える訂正のメモ、行IDの予約）と静的な検査で確かめる。満たさない履歴の記録は集計の根拠にせず、save-checkのconflictに挙げて集計をincompleteにし、差し替えの系列では整っていない系列にする。見方で選ばれた版より後の改訂は使わない（過去の見方で未来の版を使わない）。bodyがobjectでない等の形の崩れた記録でも例外を投げず、範囲から外せないものとしてsave-checkのconflictに挙げる。(b) 再送は、要求の全内容（キーの有無を含む）を、最初の要求（新規ならbaseRevisionなし、改訂なら元のbaseRevision）と比べ、違えば拒否する。(c) 正規のIDに依存する保存の条件は、保存の前からある違反でも、保存する記録自身と、その保存で正規のIDが変わる参照・直接の参照を持つ記録が関わる違反は免除せず拒否する。関係のない記録の違反だけは、保存を止めない。差し替えの系列は、契約（記録の型の10の3）の「保存したあとに生じる場合だけ」のとおり、新しく生じた形の違反だけを拒否する。(d) 把握日を実際に変える入力誤りの訂正は、knownで空でない（空白だけでない）changeNoteを求める。 版間の条件は、保存（save.ts）と導く判定（集計・系列）が同じ関数を使うように、src/domain/records/history.tsにまとめる（予定パスに追加）。（Codexのレビュー5400334217のPR28-R001の残りと、Copilotのレビュー5400332926への対応。同じ原因の2回目なので、局所の修正ではなく規則を1つに決め直した）履歴の検査の規則: 導く判定（集計・差し替えの系列・正規のID）が、見方で選ばれた改訂の値を根拠に使う記録は、どれもその改訂までの履歴を保存と同じ検査（静的な検査と版間の条件。history.tsのisHistoryValid）にかけてから使う。対象は、(1) 集計に数える記録、(2) 差し替えの系列で、起点の記録、たどる途中の取消した記録（橋）、たどり着いた記録のすべて、(3) マスタの正規のIDの鎖でたどるすべての改訂。履歴の検査を満たさない記録の値は根拠にしない。系列では、その記録を、選ばれた改訂までのすべての改訂のsupersedesの先と、その記録をたどってきた起点の記録と同じ系列に入れ、系列全体を整っていない系列（conflict・incomplete）にする（壊れたsupersedesで古い資料を独立の系列として残さない）。たどる途中の正しい橋も起点と同じ系列に入れる（橋の状態は取消のまま）。マスタでは、鎖に履歴の検査を満たさない改訂があれば、正規のIDを解決できないもの（unknown）にする。どれも見方で選ばれた改訂までだけを使い、後の改訂を過去の見方に持ち込まない。保存のときの検査（期間の重なり等）は、履歴の検査を満たさない記録も数える（緩めない）。あわせて、保存の境界（saveRevision・saveEvidenceFile・restoreUnchecked）で入力を深く写して凍結し、その写しで検査・保存し、返す結果も台帳と同じ写しを指す（呼び出し元が後から入力を変えても、保存した履歴・連番・索引が変わらない）。新規の保存にbaseRevisionがあれば拒否する。Asia/Tokyoの暦日は、固定のUTC+9ではなく、Node.jsのIntl（ICUのタイムゾーンのデータ。I/Oではない）で求め、日本の夏時間（1948〜1951年）も正しくする。把握日の未来の判定は、年が5桁になる時点でも誤らないように数で比べる。（Codexのレビュー5400493347のPR28-R002の再発と、Copilot r4172920418への対応）保存の境界の写しは、入力の意味を変えない: JSONのすべてのown key（\"__proto__\"を含む）を、prototypeを持たないobjectのown data propertyとして保持し、検査（表にない項目の拒否）と再送の比較に、そのまま使う。（Codexのレビュー5400556586のPR28-R005・R006と、Copilot r4172982708への対応）(e) 履歴全体で予約するキー（importKey）は、版1だけでなく、保存・復元したすべての改訂に現れたknownのキーを、その記録に予約する（共通の型の9・10。復元した不正な履歴の版2以降のキーも予約する）。(f) 期間の端は、knownでも暦に実在するLocalDateでなければ、境界に使わず、分からない端と同じくその側へ限りなく開いた期間として扱う（共通の型の6の「端が分からない期間の扱い」、記録の型の2「重ならないことを確かめられない保存は拒否する」）。形の崩れた期間（objectでない等）は、両端とも開いた期間として扱う。（Codexのレビュー5400617679のneeds-owner（PR28-R001）に対する所有者の判断「Codexの推奨どおり続ける」（転記: PRのコメント5968958793。実装側AIによる転記）で、規則を次のとおり確定する。契約は緩めない）履歴の検査の規則（確定版）: 導く判定が、見方で選ばれた改訂の値を使う箇所は、加える根拠（集計に数える、系列の関係を作る、正規のIDに解決する）だけでなく、除く根拠（取消した、差し替えられた、範囲の外、見方にない以外のすべて）にも使う前に、その改訂までの履歴を保存と同じ検査（isHistoryValid）にかける。履歴の検査を満たさない記録の扱い: (1) 集計: 取消・差し替え・範囲の外のどれによっても除かない。選ばれた改訂までのすべての版が範囲の外を示すと確かめられるときだけ除き、そうでなければsave-checkのconflictに挙げてincompleteにする。 (2) 差し替えの系列: 取消した記録でも、状態をvoidedとせずunconfirmed-seriesにする。系列全体を整っていない系列にする（前回からの扱い）。 (3) 正規のID: 鎖のどの改訂も、取消・取消の取り消しの根拠にする前に検査する（前回から）。 (4) 保存のときの検査（期間の重なり、includedOtherPayers、issuerKind、マスタへの参照）: 履歴の検査を満たさない記録は、取消・差し替え済みであっても検査の対象から除かない（緩めない）。一方、duplicateOfの残す方などの「有効な記録であること」を求める判定では、履歴の検査を満たすことも求める。入力の写しでは、循環するobjectを、例外ではなくJSONの値でないものとして拒否する（Copilot r4173033817。必須の受入条件ではない）。（Codexのレビュー5400698891のPR28-R007と、Copilot r4173089809への対応）要求の結果の持ち方: 台帳（Ledger）に、改訂を作った要求（writeRequests。最初の結果は保存した改訂）とは別に、既存の記録を返した要求の索引（requestResults: writeRequestId → 写して凍結した要求の全内容と、最初の結果（返した記録のIDと、そのときの取消の有無））を持つ。どちらもデータベース全体で予約するwriteRequestIdで、1つのIDはどちらか一方にだけ入る。同じwriteRequestIdの要求が来たら、両方の索引を引き、要求の全内容が同じなら最初の結果をそのまま返し（台帳を変えない。その後の取消・取消の取り消しで結果を変えない）、違えばwrite-request-conflictで拒否する（台帳を変えない）。既存の記録を返した要求の登録は、記録・改訂・保存の連番（recordedSeq）・記録日時を作らない（保存ではなく冪等性の記録。T07は改訂と同じtransactionの規律で永続化する）。別のwriteRequestIdで同じimportKeyを再取込すれば、その時点の状態（取消の有無）を返し、そのIDの最初の結果として登録する。復元の入口でも、writeRequestIdは両方の索引と重ねない。系列の違反を一部だけ減らす訂正（Copilotの概要）は、記録の型の10の3から受け付けるべきとは決められないので、このPRでは変えない（系列を完全に整える訂正は受け付ける）。復元したデータの修復の操作として、T09の受入条件に回す。（Codexのレビュー5400801225のPR28-R008と、Copilot r4173178671への対応）記録の種類ごとの改訂の理由と前後の規則を、共通の版間の検査（history.tsのcheckAgainstPrevious）に入れる。保存のときとisHistoryValidの両方に、同じ規則を当てる。 (1) 給与明細（記録の型の4）: new-informationの改訂で変えてよいのは、直前にunknown・not-statedだった項目を、knownかnot-applicableにすることだけ。明細に記載された値（knownやnot-applicableの項目、Factでない項目）を別の値に直すのは、correct-input-errorだけ。new-informationで項目を埋める場合は、情報源を書いたchangeNote（knownで空でない）を求める。差し替え（supersedes）は明細に記載された値ではないので、この規則の対象にしない。 (2) 予測（同7）: 同じ行IDの行をopenからwithdrawnにする（取り下げる）のは、new-informationの改訂だけ。満たさない保存はtransition-not-allowedで拒否し、復元したデータの違反はsave-checkのconflictにする。PR28-R009（LineIdのwhole）は、契約の方針について所有者の判断を待ち、判断が伝わるまで実装しない。（PR28-R009。所有者の判断「wholeを予約語にする」（転記: PRのコメント5969290311）による）行ID（LineId）は、英数字の1〜40文字のうち、Ref.lineで記録全体を表すwholeと完全に一致するものを除く。Refの形は変えない。比較は大文字と小文字を区別する。保存では、whole という行IDをvalue-invalidで拒否する。復元したデータでは、save-checkのconflictにする（履歴の検査を満たさない記録）。Ref.lineのwholeは、これまでどおり記録全体を指す。契約の本文の変更は契約のPR #36（Issue #32）で行う。このPRは契約を変えず、PR #36のあとにマージする依存として引継ぎに書く。（Copilot r4173261559への対応。R001の原則の、まだ覆っていない経路。所有者が承認済みの原則なので、新しい判断は要らないと調整係が判断した）規則: knownだが形の崩れた参照・関係を、関係がないものとして扱わない。形の崩れたもの、状態が不正なもの、参照先がないものを含む。関わる系列・記録を、未確認・conflictにする。検査をすり抜けたデータならsave-checkのconflict、集計ならincompleteにし、独立した現在の記録にしない。src/domain/records/の参照・関係を読む箇所の監査（箇所 → いまの扱い → 対応）: (1) series.tsのsupersedes（起点・橋・履歴の検査を満たさない記録・見方で選ばれない記録の展開）: knownで形の崩れた値（revisionが整数、lineが行ID、余分な項目等）は、参照先のIDを捨てて「invalid」だけにしていた。履歴の検査を満たさない記録の展開と、選ばれない記録の展開では、その先とつながなかった。古い資料が独立の現在の記録になり、二重に数えうる → 直す。読み取れる参照先のIDがあれば、どの経路でもその記録と同じ系列に入れ、系列全体を整っていない系列にする。IDが読み取れない（文字列でない）ときは、指す先を決められないので、その記録の系列を整っていない系列にする（前から）。 (2) masters.tsのduplicateOf（正規のIDの鎖）: 形の崩れた参照、取消でない改訂、見方にない参照先は、解決できない（unknown）として扱っていた。関係がないものとはみなしていない → 変えない（履歴の検査も前から）。 (3) 取消（void）とduplicateOfの改訂: 形の崩れたduplicateOfを持つ取消は、静的な検査を満たさないので、履歴の検査でsave-checkになり、取消を根拠に除かない（R001で確定した規則）→ 回帰の試験だけ足す。 (4) effective.tsのマスタへの参照（masterRefsOf・期間の重なり・includedOtherPayers・issuerKind）: 雇用条件の雇用先が文字列でない、または有効なマスタに解決できないとき、重なりの判定から外していた（重ならないとしていた）→ 直す。雇用先が分からない雇用条件は、どの雇用先の雇用条件とも同じ雇用先でありうるものとして、期間の重なりを判定する（共通の型の5の「分からない値で絞り込まない」）。includedOtherPayersとissuerKindの形の崩れた参照は、その記録自身が履歴の検査を満たさないのでsave-checkになる。重複・食い違いを決められないが、関係がないとして数える経路はない → 変えない。 (5) aggregate.tsの範囲の次元（雇用先・口座）: 形の崩れた参照・解決できない参照は、unknownとして範囲から外さない（前から）→ 変えない。 (6) save.tsの参照先の実在（recordRefsOf・lineExists・証憑ファイル）: 保存しようとしている記録は、静的な検査で形の崩れた参照を先に拒否する。lineExistsはbodyOfで読む → 変えない。 (7) ledger.tsのimportKeyの予約: 形の崩れたknownのimportKeyは、キーを読み取れないので予約できない。その記録は履歴の検査を満たさず、save-checkになる → 変えない（予約は読み取れるキーだけ）。 (8) history.tsの行IDの予約・行の比較: 行IDが文字列でない行は、静的な検査を満たさないので、その記録はsave-checkになる → 変えない。 (9) 照合配分のfrom・to、判断のtargets、証憑の紐付けのtarget: T06は保存のときの実在と粒度だけを確かめる。これらの関係を使う導く判定はT11 → T06の範囲外。T11で同じ規則を当てる。監査の結果、契約が決めていない関係はなかった。（事前の粗探し（head 9e2ad2a）と、所有者の判断（転記5970274376）への対応。1回の巡回でまとめて直す）[P1-1 信頼の回復（所有者の判断: 正しい保存で信頼を回復）] 改訂は、検査を通って保存したもの（検査済み）と、復元・取込等で検査を通らずに置いたもの（未検査）を区別して持つ。台帳のunchecked（記録のIDと版の組の集合）に未検査の改訂を記録し、T07はこの区別を改訂ごとの印として永続化する（読み込みで復元する。取込・復元で入るものは既定で未検査）。改訂が信頼できるかの判定（isHistoryValid）: (a) どの改訂にも、その版だけの検査を当てる。静的な検査、直前の版からの遷移（改訂のモデル、種類ごとの規則、変えられない項目、取消・取消の取り消しのbodyと把握日、行IDの予約）、連番の増加、把握日の未来の検査。 (b) 検査済みの改訂は、(a)を満たせば、それより前の版の不正に関わらず信頼する。 (c) 未検査の改訂は、(a)を満たし、かつ直前の版も信頼できるときだけ信頼する。版1は直前がないので(a)だけ。このため、不正な版は履歴に要確認として残るが、そのあとに検査を通った保存があれば、その版からの集計・判定は止まらない。その版より前の時点の見方では、不正な版が選ばれ、これまでどおりincompleteになる。直前の版が不正でも、保存は直前の版（記録されたとおりの値）を基にする。把握日の引継ぎ、取消・取消の取り消しのbodyの一致、行IDの予約は、記録された直前の版と全改訂について判定する。行IDの予約は、不正な版の行IDも予約したままにする（安全側）。R001の規則（除く根拠にも、選ばれた版までの信頼の判定を先に当てる）は、そのまま保つ。未検査のデータを根拠に使う3つの経路も、同じ判定にそろえる（P3-3）。 1つ目: 再取込の結果の取消の有無。信頼できない最新の版なら、取消かどうかを決められないもの（undefined）として返す。 2つ目: writeRequestIdの再送。未検査の改訂の最初の結果は保存の結果ではないので、同じIDの要求をwrite-request-conflictで拒否する。 3つ目: 行の実在の確認。参照先の最新の版が信頼できなければ、行を確かめられないものとして拒否する。[P2-1 行の実在（所有者の判断: 取消・却下では行の確認をしない）] 行を指す参照の行の実在は、記録の作成のときと、その参照（照合配分のfrom・to）を直前の版から変える改訂のときだけ確かめる。取消・取消の取り消し・却下（rejected）への訂正等、参照を変えない改訂では確かめない。参照先の記録の実在は、これまでどおりすべての保存で確かめる（記録は消えない）。[P3-7 空の文字列（所有者の判断: 契約に書き足す）] writeRequestId、importKeyのsource・key、証憑ファイルのmediaType・storageNameの空の文字列の禁止は、実装のまま保つ。契約版2.0（PR #36）に、規則として書き足される。[P2-2] 給与明細のnew-informationの規則（R008）は、bodyの最上位の項目だけでなく、葉のFactまで再帰して比べる。行は同じ行IDで対応させ、Periodの端も含める。 new-informationで変えてよいのは、葉のFactをunknown・not-statedからknown・not-applicableにすることだけ。 knownの並びに行を足す・消すこと、Factでない葉（ラベル・分類の列挙等）を変えることは、記載された値の変更として拒否する。 Factのnote（メモ）だけの変更は、記載された値ではないので許す。項目を埋めたことにも数えない（情報源のメモは要らない）。[P3-1] 把握時点の見方では、knownでもLocalDateでない把握日を、unknownとして扱う（選ばない）。[P3-2] マスタへの参照で、knownだが文字列でない値は、読み飛ばさず、解決できない参照（unknown）として扱う（master-refの違反になる）。年間資料のincludedOtherPayersの、形の崩れた支払者・解決できない支払者は、一意性と発行者との違いを確かめられない違反にする。[P3-4] 集計の要求は、余分な最上位の項目と、形の崩れた見方を、rejected-requestで拒否する（安いので、いま直す）。[P3-6] 集計の結果と、台帳の配列（saves・改訂の並び）は凍結する。台帳のMapは、実行時には凍結できないので型（ReadonlyMap）で守る。実行時の保護はT07の読み込みに回す（docs/implementation-tasks.mdのT07節に受入を書く）。[P3-8] 集計のoverflowは、IDの順の途中の合計で判定せず、正の値の合計と負の値の合計をそれぞれBigIntで求めて判定する。どちらかが安全な整数を超えたら誤りにする。どの順で足しても途中の合計はこの2つの間にあるので、入力の順に依存せず、契約の「途中や結果」を満たす。[P3-5] 保存した行から台帳を組み立てるT07の読み込みに、次を受入として書く（docs/implementation-tasks.mdのT07節）。recordedAt・recordedSeq・未検査の印を保つこと。索引（writeRequestId・requestResults・importKey・sha256）を安全に作り直すこと。重なりや抜けがあれば開かないこと。[P3-9] 試験: T03の台帳の拒否で台帳が変わらないことを確かめる。日付が分からない記録の並び順は、契約が決めていないので、順序でなく集合と決定性だけを確かめる。把握時点の見方と不正な履歴の組合せを確かめる。監査の表（前回からの更新）: 参照・関係を読む箇所は、系列のsupersedes、正規のIDの鎖のduplicateOf、取消、マスタへの参照、年間資料の他の支払者、集計の範囲、保存のときの参照先と行、importKey、行ID、writeRequestIdの再送、再取込の結果、照合配分・判断・証憑の紐付け。 どれも、形の崩れたもの・未検査で信頼できないものを、関係がない・正しいものとして使わない。 照合配分・判断・証憑の紐付けを使う導く判定は、T11の範囲。契約が決めていない関係はなかった。日付が分からない記録の並び順だけは、実装の決め方（実装で定めた順）と明記する。（事前の粗探しの2回目（head 54243b8。PR #36との突き合わせを含む）と、所有者の判断（転記5970596299）への対応。PR #36（契約版2.0）が同じ規則を並行して書くので、意味をその文に合わせ、食い違えば選ばずに報告する）[検査の印（N-P2-2）] 台帳は、検査を通って保存した改訂の集合（checked）を持つ。印がない改訂は未検査とする（印の欠落を検査済みと読まない）。T07・T12の受入: 自分のDBの完全な復元と構造の移行は印を保つ。外部からの取込と古い形式の移行だけを未検査にする（タスク台帳のT07・T12節）。[信頼の判定（PR #36の共通の型の9「検査済みの改訂による回復」と同じ）] 選ばれた改訂Rから前へたどり、Rから、R以前で最も新しい検査済みの改訂Cまでの各改訂に、その版だけの検査を当てる。Cがなければ版1まで当てる。1つでも満たさなければ信頼しない。Cより前の改訂は使わない。[その版だけの検査（境界と変種の表）] (1) 静的な検査。取消（void）の改訂は、その改訂が決める項目だけに当てる。対象は、改訂の共通の形の骨格、status・reason・duplicateOf・writeRequestId・changeNote・把握日の状態。bodyと変えられない項目（entryChannel・importKey）は、直前と同じであることだけを確かめる（D2の解消）。  取消の取り消し（unvoid）は、有効に戻すのでbodyも静的に確かめる。  修復の再度の取消で、bodyや変えられない項目を直前から変える場合は、変えた値を静的に確かめる。 (2) 直前の版からの遷移（改訂のモデル、変えられない項目、取消・取消の取り消しのbodyと把握日、種類ごとの規則、行IDの予約、連番の増加）。 (3) 把握日の未来の検査。新しく入力した把握日に当てる。直前の版が信頼できない場合（N-P2-1）は、引き継いだ把握日も新しく入力したものとして扱う。把握日は静的な検査で許す状態（knownかunknown）でなければならない。 (4) 未検査の取消で、duplicateOfがknownのもの（N-P2-3、所有者の判断3）: その改訂の直前の連番（recordedSeq−1）の記録時点の見方で、残す方が有効な記録だったときだけ信頼する（指し合う取消を両方とも信頼しない）。検査済みの取消は、保存のときに確かめている。[修復の改訂（所有者の判断1: 信頼できない記録だけ修復を許す）] 直前の版が信頼できない記録に限り、changeNote（knownで空でない）を書いた改訂を、修復として次の場合に許す。 (a) 変えられない項目（entryChannel・importKey）の不正な値を、正しい値に直す。古いimportKeyの予約は保つ。新しいキーが別の記録に予約されていれば拒否する。 (b) 取消済みの記録を、もう一度取り消して（voided→voided）bodyを直す。直したbodyは静的に確かめる。 (c) 不正な把握日を直す。理由を問わず、新しく入力した把握日として扱う。修復でも、ほかの検査（静的な検査、種類ごとの規則、行IDの予約、関係の検査）はすべて当てる。直前の版が信頼できる記録では、修復の緩和を使わない。保存（saveRevision）と読取（isHistoryValid）は、同じ関数でこの規則を当てる。[古い版では読むだけ（所有者の判断2）] この版の表にない項目をbodyに持つ記録は、この版では読むだけにし、改訂の保存（取消を含む）を拒否する。拒否の理由はread-only-unknown-content。契約版1.0には拡張できる列挙がないので、知らない値はない。読み方は、これまでどおり保存の検査をすり抜けたデータ（save-check）として扱う。PR #36の「知らないFactの項目はないものとして扱う」と違いうるので、報告する。PR #36の文が決まれば合わせる。[後へ回すもの（理由と受入をタスク台帳に書く）] N-P3-1: T11の確定の条件に行の実在を含める。T06は作成・参照の変更のときだけ確かめる（所有者の判断P2-1）。 N-P3-3: 修復のUIは、最後に信頼できた版との差分を示す（T10）。 N-P3-2: 契約の文はPR #36。実装の振る舞いは保つ。 D11: incomeTimingKindがordinaryの明細の遡及差額の行の拒否は、PR #36のマージ後の追従で行う。 N-P3-5: 版だけの検査の結果を覚えるlocalMemoの前提を、コードとT07の受入に書く。前提は、台帳が追記だけで、同じ改訂のobjectが同じ前の改訂と印の並びの中にだけ現れること。（第2段階。main 409bd3fの取り込みのあと、これまでの指摘・所有者の判断・粗探しをまとめて読み直し、上の粗探しの2回目の方針を続ける）[所有者の全PRへの判断（2026-10-04）] project-statusに作業中のタスクを書かない（T06=#26の作業中の記載を消す）。製品の試験の範囲は、どのPRが先にマージされてもよいように、項目を足す中立の書き方にする。READMEの「製品の試験:」の項目、project-statusの表の「製品の試験」の行、testingの一覧にする。自分が最初だとは書かない。Copilotは任意（#47）。[PR #36（6417d34）との突き合わせ] 同じ意味のもの: 検査の印（saveCheck）、検査済みの改訂による回復、取消の静的な検査の範囲、取消の取り消しのbodyの検査、行の実在の確認の範囲。T06が所有者の判断（2026-10-04）で先に実装し、PR #36にまだ書かれていないもの: 修復の改訂（変えられない項目、再度の取消、把握日）、指し合う二重登録の取消、信頼できない直前から引き継ぐ把握日の検査。食い違い（選ばずに報告する）: PR #36の「読む処理が知らない項目」（共通の型の1）は、知らないFactの項目を、ないものとして読み、改訂のときは引き継いで保存できるとする。T06は、所有者の判断「古い版では読むだけにする」に従い、改訂を拒否する（read-only-unknown-content）。読むときは、保存の検査をすり抜けたデータ（save-check）として扱う。PR #36の文が決まれば合わせる。後へ回すもの（タスク台帳に受入を書いた）: N-P3-1はT11、N-P3-3はT10、N-P2-2の印の扱いはT07・T12、N-P3-5はT07、D11はPR #36のマージ後のT06の追従。（合同の粗探し（記録5976000834、head b32f23e）と所有者の判断（転記5976473053）への対応。PR #36（4171dff）の文に合わせ、食い違いは報告する）[R28-1] 修復の遷移は、直前までの履歴が信頼できないことだけで決まる（repair = 直前が信頼できない）。changeNote（knownで空でない）がなければ、transition-not-allowedで拒否する。メモのない改訂を、通常の遷移として受け付けない。保存と読取の両方で同じ。前回の試験のうち、メモのない改訂を受け付けていたものは期待を直す。[R28-4] 修復の遷移では、記録の種類ごとの値の向きの規則（明細のnew-information、予測の取り下げ）を当てない（直前の値が信頼できないため。PR #36の本文）。[所有者の判断2・R36-1] 直前までの履歴が信頼できない記録の取消（修復の取消）は、bodyを変えなくても、bodyに静的な検査を当てる。通常の取消（直前まで信頼できる）は、これまでどおり取消が決める項目だけを確かめる。bodyが妥当でない有効な記録を片付けるには、修復の訂正でbodyを直してから取り消す。activeからの修復の取消でbodyを直すことは、これまでどおり許さない（所有者の判断3。再度の取消（voided→voided）だけがbodyを直せる）。[所有者の判断1・R28-2・R36-2] 読むだけにするのは、データが読む処理（契約版1.0）より新しい契約版を名乗るときだけ。 名乗りの持ち方: 復元・取込の入口（restoreUnchecked）に、データの契約版を渡せる。読む版より新しい版を名乗った記録を、台帳の集合に覚える。 それ以外の知らない項目の扱い:  読取の静的な検査（stored）では、Factの標準の表記の知らない項目を、ないものとして飛ばす（共通の型の1）。Factの形でない知らない項目は違反にする。  修復の改訂で直せる（新しい保存は、知らない項目を受け付けない）。[所有者の判断4・R28-3・R36-3] 残す方がない二重登録（orphan-duplicate）はT06の集計で扱う。 判定: 選ばれた改訂が信頼できる取消で、duplicateOfがknownのとき、その見方で残す方が有効な記録でなければ（取消・差し替え済み・信頼できない・存在しない）、黙って除かない。 扱い: その記録自身の値で範囲に入る集計（範囲の次元・日付が分からなければ除かない）をincompleteにし、missingに派生キーorphan-duplicate・状態conflictで挙げる。 契約版2.0の台帳のTC-02-f・gと同じ結果になることを、同じ場面の単体の試験で確かめる。excludedCountはT11（タスク台帳に書く）。[R28-5] activeからの修復の取消でbodyを直さない（所有者の判断3）。いまの振る舞いを保つ。[R28-6] 後へ回す: 自分のバックアップの復元は、元のrecordedAtとsaveCheckを保つ（T12の受入）。[PR #36との突き合わせ] 次の4つは、PR #36（4171dff）の文より新しい所有者の判断に従った。PR #36の更新で合わせる。 1. 読むだけの範囲（新しい版を名乗るときだけ）。 2. 修復の取消のbodyの検査（変えなくても検査する）。 3. F11（未検査の取消のbodyをunknownとして扱う）を外すこと。 4. activeからの修復の取消でbodyを直さないこと（PR #36の本文は、voidでもbodyを変えてよいと書く）。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "T03の台帳の全ケースの場面を、共通の設定から順にdomainの保存へ渡す試験（src/domain/records/のoracleの試験）で、受け付け・拒否の理由・recordedSeq・再送（replayed）・取込のキー（existing-returned）を期待値と比べる。deposit-amount・payslip-itemの集計の検査（EX-01の銀行のみ→明細、EX-02、EX-03の同額別件、EX-08の4つの状態、TC-02のoverflow・負の値、TC-03の日付不明、TC-04の未確認の系列）を、afterOpの時点と見方で期待値と比べる。orderVariantsを持つ場面は、すべての並びで最後の検査が同じになることを確かめる。unit testで、known(0)と不明・記載なし・対象外が別に扱われること、安全な整数の上限での集計のoverflow、負の値を持てる項目と持てない項目、期間のstart＝endとstart＞endを確かめる。",
+          "expected": "銀行入金だけの間は入金額がcompleteで、明細の項目はno-records（0円にしない）。明細を追加しても入金額は変わらない。不明・記載なしは0として足さずincompleteとmissingに挙がる。対象外だけならnot-applicable。合計が安全な整数を超えればoverflowの誤り。入力順を入れ替えても同じ結果。台帳の期待と1件でも違えば試験が失敗する。"
+        },
+        {
+          "id": "history",
+          "method": "TC-01（改訂の競合、理由と状態の遷移、存在しない参照、不正な期間、把握日とAsia/Tokyoの日付、取消の先、変えられない項目）、TC-02（許す状態・符号・並びのキー）、TC-04（差し替えの系列の取消と取消の取り消し、自己参照・循環・分岐・次元の不一致、未確認の系列、把握時点の再現）、EX-03（再送、writeRequestIdの食い違い、二重登録の取消と取消の取り消し、雇用先の二重登録と正規のID、正規のIDが変わる保存の検査）、EX-04（入力誤りの訂正と記録時点・把握時点の再現、時計の巻き戻り、差し替え）、EX-07の行IDの予約、EX-09（雇用条件の期間の重なり）を、oracleの試験で期待値と比べる。selectedRevision・seqForTime・canonicalId・seriesStatusの検査を、検査のview（現在・record-seq・record-time・known-on）で導いて比べる。unit testで、拒否された保存が連番を使わず状態を変えないこと、前の改訂が残ること、取消した記録が履歴に残り取消の取り消しで戻ること、時計が巻き戻っても連番の順が変わらないことを確かめる。 回帰の試験で、importKeyが既存の記録と一致する要求のうち、entryChannelがmanual・bodyの項目の欠落・許さない状態の要求が拒否され、正しい要求だけがexisting-returnedになることと、把握日を変える入力誤りの訂正がchangeNoteなしでは拒否されchangeNoteがあれば受け付けられることを確かめる。 回帰の試験で、正常な履歴の集計、復元した反例（取消の取り消しでbodyを変える、entryChannel・importKeyの変更、直前のstatusに合わない理由、行IDの再利用、bodyがnull）がsave-checkのconflictになり例外を投げないこと、過去の見方で未来の版を使わないこと、再送の余分なキー・新規のbaseRevision・内容の変更が拒否され状態と連番が変わらないこと、重なりを残すAの訂正の拒否と解消する訂正・無関係な保存の受入、空・空白のchangeNoteの拒否を確かめる。 回帰の試験で、次を確かめる: A ← B ← CのBの取消でsupersedesを変えた履歴で、A・Cとも数えずincompleteになること。正しい取消の橋は通り過ぎること。不正な取消より前の記録時点の再現は正常なこと。不正な取消の取り消しと形の崩れた復元したマスタが正規のIDにならないこと。保存のあとで入力を変えても、履歴・連番・索引が変わらないこと。新規のbaseRevisionを拒否すること。1948年の夏時間の期間の暦日。 回帰の試験で、JSON.parseで作ったトップレベルとbodyの入れ子の\"__proto__\"について、次を確かめる: 異なる再送がwrite-request-conflictになること。新規の余分なキーがvalue-invalidになること。正しい再送が元の結果を返すこと。拒否で台帳・連番・索引が変わらないこと。 回帰の試験で、次を確かめる。(1) 復元した履歴の版1のK1と版2のK2がともに予約され、通常の再取込は元の記録を返し、別のIDの復元は拒否されること。同じIDの改訂、取消のあとの再取込、キーを変えない正常な履歴も変わらないこと。(2) 端が不正な復元した雇用条件と重なりうる新規の保存は拒否され、台帳・連番が変わらないこと。端を訂正したあとの正しい重ならない保存は受け付けること。unknownの端と取消した雇用条件の扱いが変わらないこと。 操作全体の回帰の試験で、除く順序を確かめる。 (a) 版1が100、版2が金額を999に変えた不正な取消の入金: conflict・incomplete。 (b) 正しい取消: no-recordsのまま。 (c) 不正な取消より前の見方: 100でcomplete。 (d) すべての版が範囲の外の不正な履歴: 除く。 (e) 不正な取消をした明細: 集計はconflictで、系列の状態はunconfirmed-series。 (f) 不正な取消をした雇用条件と重なる新規の保存: 拒否。正しい取消なら受け付ける。 (g) 不正な履歴の記録を残す方にする二重登録の取消: 拒否。 (h) 二重登録の取消でbodyを変えたマスタ: 正規のIDに解決しない。 (i) 循環する入力: value-invalid。 回帰の試験で、次を確かめる。(1) 同じW2でimportKeyをK2に変えた要求は、write-request-conflictになる。(2) Aの取消のあとも、取消の取り消しのあとも、W2の同じ要求は最初の結果（取消なし）を返す。(3) 別のwriteRequestIdの再取込は、その時点の状態（取消済み）を返す。(4) どれも記録・改訂・連番を作らず、拒否では台帳が変わらない。 回帰の試験で、次を確かめる。 knownのgrossPayをnew-informationで変える保存は拒否する。 unknown・not-statedの項目を情報源のメモつきのnew-informationで埋める保存は受け付け、メモがなければ拒否する。 同じ明細の入力誤りの訂正は受け付ける。 予測の行の取り下げは、correct-input-errorなら拒否し、new-informationなら受け付ける。 復元した違反はsave-checkのconflictになる。 拒否では、台帳と連番が変わらない。 回帰の試験で、次を確かめる。行IDがwholeの保存は拒否し、台帳が変わらない。記録全体のRef（line whole）と、通常の行IDのRef（予測の行）は受け付ける。行IDがwholeの復元した記録は、save-checkのconflictになる。 回帰の試験で、次を確かめる。形の崩れたknownのsupersedes（revisionが整数・lineが行ID）の起点・取消した橋で、古い資料も新しい資料も数えず、二重に数えない。形の崩れたduplicateOfの取消は、取消を根拠に除かない。雇用先が分からない雇用条件と重なる新規の保存は拒否し、台帳・連番は変わらない。 回帰の試験で、次を確かめる。 (P1-1) dep_1（v1 create、不正なv2 unvoid、保存したv3 void）は除く。v3より前の見方ではincomplete。 (P1-1) 不正な版のあとに保存した二重登録の取消で、emp_9が正規のIDに解決する。 (P1-1) 不正な版のあとに保存した取消で、雇用条件が重なりの検査から外れる。 (P2-1) fc_1のl3を消したあとでも、alc_1の取消とrejectedへの訂正ができる。toを消えた行に変える訂正は拒否する。 (P2-2) 明細の行のamount・taxTreatmentと、workPeriod.startの葉の規則。noteだけの変更を許す。 (P3-1) 形の崩れた把握日の見方。 (P3-2) 形の崩れたマスタへの参照。 (P3-3) 未検査の改訂の再送、信頼できない取消の有無、信頼できない参照先の行。 (P3-4) 集計の要求の余分な項目と形の崩れた見方。 (P3-8) 順序によらないoverflow。 (P3-9) 把握時点の見方と不正な履歴の組合せ、T03の台帳の拒否で台帳が変わらないこと。 回帰の試験で、次を確かめる。 信頼の規則の(c)（未検査の改訂は直前も信頼できるときだけ）。 修復の反例: (a) 取消済みでbodyが不正、(b) 変えられない項目が不正、(c) 把握日が不正。 PR #36のF1の反例: 行IDがwholeの記録の取消、空のimportKeyのsource。 印がない改訂を未検査とすること。 信頼できない直前からの未来の把握日の拒否。 指し合う二重登録の取消。 知らない項目を持つ記録の改訂の拒否。 どの拒否でも、台帳と連番は変わらない。",
+          "expected": "訂正の前の版は消えず、記録時点の再現では前の版、把握時点の再現では訂正後の版が選ばれる。取消は追跡でき、取消の取り消しで戻る。古い版を基にした保存は拒否される。差し替えの系列は取消した中間の記録を通り過ぎ、現在の記録だけが数えられ、未確認の系列は除かれてconflictに挙がる。拒否された保存は記録も連番も作らない。 不正な再取込の要求は既存の記録を返さずに拒否される。把握日を変える訂正は理由のメモなしでは保存されない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "not-applicable",
+      "reason": "T06の差分は、src/domain/records/の純粋なドメインのコード（I/O・DB・HTTP・UI・システム時計・乱数をimportしない。時計とID生成器は引数で受け取る）とそのunit test、整合のための文書の数行だけで、データルート・DB・journal・lock・配信物・依存・Node.jsの版に触れない。package.json・package-lock.json・.nvmrc・.npmrc・scripts/・workflowを変えない。試験は既存のnpm test（src/**/*.test.ts）で動き、新しい依存を足さない。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "git diffでpackage.json・package-lock.json・.nvmrc・.npmrc・scripts/・.github/workflows/が変わっていないことを確かめる。",
+          "expected": "依存・版・ビルドの対応を変えない。"
+        },
+        {
+          "id": "artifact",
+          "method": "差分に配信物・manifestの生成がないことを確かめる。",
+          "expected": "配信物の検証に関わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "AGENTS.md・.github/copilot-instructions.md・docs/github-agent-operations.mdの変更は、製品の試験の有無の記述を、記録ドメイン（T06）の試験があることに合わせるだけ。レビューの手順・役割・合否の条件（最新head/baseと独立レビュー、CIの合格をレビューの代わりにしない、存在しない試験を実行済みと報告しない）は変えない。.review/の条件・原因台帳・検査器は変えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分で、指摘の追跡・原因台帳・重複の扱いの記述が変わっていないことを確かめる。",
+          "expected": "指摘の追跡の規則は変わらない。"
+        },
+        {
+          "id": "trust",
+          "method": "差分で、CIの合格・Copilot・自己申告を独立レビューの代わりにしない記述が残り、製品の試験の範囲（記録ドメインだけ）を広げて書いていないことを確かめる。",
+          "expected": "合否の条件は変わらず、製品の試験はT06の記録ドメインの範囲だけと書く。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "T06の差分は、src/domain/records/の純粋なドメインのコード（I/O・DB・HTTP・UI・システム時計・乱数をimportしない。時計とID生成器は引数で受け取る）とそのunit test、整合のための文書の数行だけで、データルート・DB・journal・lock・配信物・依存・Node.jsの版に触れない。データルートの検査・作成・別名の扱いは定めない（T07）。試験は一時ファイルを作らず、リポジトリの中の台帳（tests/fixtures/ledger/）を読むだけ。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "試験がファイルを書かず、tests/fixtures/ledger/だけを読むことをコードで確かめる。",
+          "expected": "データルートの作成・初期化に関わらない。"
+        },
+        {
+          "id": "aliases",
+          "method": "差分にパスの解決・リンクの検査の処理がないことを確かめる。",
+          "expected": "保存先の同一性の判定に関わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "T06の差分は、src/domain/records/の純粋なドメインのコード（I/O・DB・HTTP・UI・システム時計・乱数をimportしない。時計とID生成器は引数で受け取る）とそのunit test、整合のための文書の数行だけで、データルート・DB・journal・lock・配信物・依存・Node.jsの版に触れない。INV-RECORDSの関連として選ばれたが、DB・journal・証憑ファイルの書込み・migration・復元の手順は定めない（T07・T12）。ドメインは保存した状態を受け取り、保存の検査と見方を純粋に導くだけ。台帳のrestoreUnchecked（検査をすり抜けたデータ）は、ドメインが検査なしで置く入口で再現し、その記録を集計のたびに同じ条件で確かめる（復元の手順の期待値ではない）。証憑ファイルはsha256の一意性と形だけを扱い、ファイルの複製・保存名の規則はT07で扱う。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分にDB・journal・migrationの処理がないことを確かめる。",
+          "expected": "rollbackに関わらない。"
+        },
+        {
+          "id": "restore",
+          "method": "差分に復元の手順・入れ替えの処理がないことを確かめる。検査をすり抜けた記録を置く入口が、集計でsave-checkのconflictとして示されることをunit testで確かめる。",
+          "expected": "復元の手順に関わらない。検査をすり抜けた記録を黙って有効にしない。"
+        },
+        {
+          "id": "manifest",
+          "method": "差分にmanifest・アーカイブの処理がないことを確かめる。",
+          "expected": "manifestに関わらない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "変える文書は整合の数行だけ: タスク台帳のT06節に成果物の所在（Issue #26）、project-statusのIssueの対応と公開済みの範囲、testingとREADMEの「製品の試験はまだない」の記述、T03の台帳の未決事項10（拒否の理由の名前は台帳の名前をそのまま使い、T06が足した名前を示す）。依存のT01・T03はmainに統合済み。共有資源（package.json・lockfile、契約、T03のfixture、migration、CI設定）は変えない。T26（#24、PR #25）は範囲（src/infrastructure/http/）が重ならず、READMEの別の行を同時に変えうるので、後からマージする側が行の競合を解消する。T07・T09・T11・T15が使う入口（保存の関数、見方、系列、正規のID、集計）と、T06で行わない検査（照合配分・判断・run）を、台帳とPRに書く。（Copilotのレビュー5400037100への対応で追加）入口の文書のうち、製品の試験がまだないと書くAGENTS.md・.github/copilot-instructions.md・docs/github-agent-operations.mdも、記録ドメイン（T06）の試験があることに合わせる。T26（PR #25）が同じ文の別の部分を変えうるので、T06の分を足す書き方にし、後からマージする側が競合を解消しやすくする。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "最新mainで、T01（契約、#8）とT03（台帳、#22）がmainにあり、T06の依存がそろっていることと、package.json・lockfile・契約・fixtureを変えないことをgit diffで確かめる。T26のPR #25の変更範囲と重ならないことを確かめる。",
+          "expected": "依存がそろい、共有資源の同時編集がない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "タスク台帳のT06節・project-status・README・testing・台帳のREADMEが、同じIssue（#26）と同じ成果物の場所を指し、製品の試験の有無の記述が食い違わないことを読み合わせる。",
+          "expected": "入口の記述が食い違わない。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        }
+      ]
+    },
+    "INV-RECORDS": {
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR11-R001",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "revision-reason-field-rules",
+          "lesson": "改訂の理由ごとに変更できる項目と状態の遷移を列挙する。取消・取消解除では本文と関係を維持・復元し、本文や把握日の訂正は訂正の改訂に分ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592713",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747549",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941"
+          ]
+        },
+        {
+          "id": "PR11-R002",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "supersession-series-current-record",
+          "lesson": "差し替え系列は、分岐・循環・別系列への誤接続・中間や末端の取消と取消解除・未確定の差し替えを含めて現在の記録が一意に決まる系列全体の規則で定め、保存条件と例を同じ規則から導く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319576",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467683",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467727",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592793",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345145",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995574"
+          ]
+        },
+        {
+          "id": "PR11-R003",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "rounding-step-association",
+          "lesson": "丸め手順を結果項目へ一意に結び付け、keyと順序の一意性、参照先の実在と一致、適用順、手順間の値の連続と方式どおりの結果を保存時に検査する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319720",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747456",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393950840",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601"
+          ]
+        },
+        {
+          "id": "PR11-R004",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "required-fact-state-constraint",
+          "lesson": "Factの既定（unknown・not-stated・not-applicableを許す）を、規則が依存する項目に残さない。確定配分の確認済み版、必須の参照、制度版・地域、把握日、軸の日付、通知の分類・金額などは、許す状態とその組合せを項目ごとに定める。 制度の規則で丸めた手順の原典参照も、省ける条件を明示しない限り必須にする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699625",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699666",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836480",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168574471",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395270955",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397903585",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149"
+          ]
+        },
+        {
+          "id": "PR11-R005",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "notice-issuer-identity",
+          "lesson": "正式通知の重複判定は、安定した発行者キーと発行者の種類の整合で行う。表示名の表記差・不明・3件以上での未判断の組を別件とみなして加算しない。 二重登録の取消はsame判断の有無によらずduplicateOfの正規先で類にまとめ、類は正規の通知の種類・年度でちょうど1つの集合に割り当てる（正規の通知の年度がunknown・not-statedなら類の値は足さずにその種類のすべての年度に不足として挙げ、残す方がない二重登録はその記録自身の種類・年度の集合に割り当てて集合全体をconflictにする）。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535788",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397600549",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398337046",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171079776",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159300",
+            "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684861"
+          ]
+        },
+        {
+          "id": "PR11-R006",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unknown-narrows-scope",
+          "lesson": "不明な期間・一覧・分類・金額・帰属の根拠は、未知のまま保持して推定で確定しない。不存在・空・0・対象外として扱って候補年や集計範囲を狭めず、影響し得る範囲を除外せずにincompleteにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394871157",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319530",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991016",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991079",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168109005",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248770",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248829",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954",
+            "https://github.com/doc-gif/kurashi-ledger/pull/14#discussion_r4170901342"
+          ]
+        },
+        {
+          "id": "PR11-R007",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "record-level-ref-line-whole",
+          "lesson": "差し替え・二重登録・判断の対象など記録全体に働く参照はline=wholeに限り、行を指す参照を保存時に拒否する。照合配分や証憑など意図した行参照は分けて維持する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366"
+          ]
+        },
+        {
+          "id": "PR11-R008",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "confirmation-identity-comparison",
+          "lesson": "照合の確定条件は勤務先・口座・支払者などの識別次元を網羅し、Factと非Factの混在を含めて1つの比較規則で判定する。未確定を一致として扱わず、推定の手掛かりは確定条件と分ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747509",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057"
+          ]
+        },
+        {
+          "id": "PR11-R009",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "calculation-result-type-scope",
+          "lesson": "共通の計算結果型が表せる値の種類と判別子を定める。非数値の判断結果は、型・状態・比較を持つ別の契約として決定先と受入条件を明記する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+          ]
+        },
+        {
+          "id": "PR11-R010",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "decision-premise-recheck",
+          "lesson": "判断や確定した関係は、根拠にしたすべての属性（入金の用途、対象の項目、確認した版、識別次元、正規の発行者ID、行の状態など）を前提として保持し、前提が変わったら要再確認として使わない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956"
+          ]
+        },
+        {
+          "id": "PR11-R011",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "run-pinned-input-completeness",
+          "lesson": "計算runに固定する入力（記録・関係の閉包、採用スナップショット、比較項目）は、計算対象と入力要求から独立に導いた必要集合と過不足なく一致することを保存時に検査する。逆向きに効く配分・判断、取消済みの橋渡し記録、直接持つマスタIDも含める。 inputsの列挙自身を根にせず、結果項目・丸め手順・証憑の紐付けの対象も必要集合に含める。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014235",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159250",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398301944"
+          ]
+        },
+        {
+          "id": "PR11-R101",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unresolvable-relation-as-absent",
+          "lesson": "参照先を解決できない・使えない関係を「関係なし」として扱わない。差し替え・帰属・比較・実績化では、壊れた関係を系列や集計のconflict・incompleteとして表に出す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638737",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995480",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169331465",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609766",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+          ]
+        },
+        {
+          "id": "PR11-R102",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "ref-revision-semantics",
+          "lesson": "参照ごとにcurrentと整数版のどちらを指すかを定め、過去時点の見方や固定した記録を未来の版へ結び付けない。関係の参照と確認済みの版を二重に固定して矛盾させない。 マスタの正規IDへの解決も各runの保存時点の値で固定し、後日の統合・取消解除で過去のrunの目的や意味を再分類しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394711089",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395565138",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398682882",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171405064"
+          ]
+        },
+        {
+          "id": "PR11-R103",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "pinned-snapshot-granularity",
+          "lesson": "runに固定するスナップショットは、実行時の判定を一意に再現できる粒度で持つ。項目別の適用状態、年と支払者ごとに1つの採用、一意なキー、再確認に使う比較値と正規IDを含める。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638670",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170073901",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394283625",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992"
+          ]
+        },
+        {
+          "id": "PR11-R104",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "annual-document-indivisible-scope",
+          "lesson": "年間資料の値は範囲全体の不可分な総額として扱う。採用・比較・説明・runへの固定は資料の年と確定範囲に一致するときだけ許し、部分範囲や支払者ごとに重ねて加算しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319878",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392035",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877085",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528442",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745593",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+          ]
+        },
+        {
+          "id": "PR11-R105",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "self-referential-step-inputs",
+          "lesson": "状態や上限の判定に、その判定の結果や対象自身を入力として含めない。段階ごとの入力集合を先に確定し、同じ計算を述べる各節で含める状態をそろえる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170365823",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170623177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397221035"
+          ]
+        },
+        {
+          "id": "PR11-R106",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "contract-type-expressiveness",
+          "lesson": "共通の型（集計値・coverage・不足状態・記録の種類）が、規則の求める全ケース（年間以外、採用未決定、採用元の混在、通知の重複、対応表の未定義、不完全な実績）を偽らずに表せるか確かめる。 負の金額、途中で失敗したrun、一次資料で確かめた制度の丸め方、年だけでは選べない規則（手続の種類・基準の時点）、丸めではない計算の段階も含める。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319780",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319842",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699707",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394879245",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398604489",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171296694",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#issuecomment-5964427430"
+          ]
+        },
+        {
+          "id": "PR11-R107",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "free-value-identity-key",
+          "lesson": "同一性・重複判定・集計に使うキーを自由な文字列や表示名にしない。型・名前空間・許す次元を定めた判別できるキーとし、集合の中での一意性か合算の規則を定める。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167391984",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876181",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170141612",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397135859",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398604489",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944726",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171296717"
+          ]
+        },
+        {
+          "id": "PR11-R108",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "restated-facts-drift",
+          "lesson": "件数・列挙・ID・連番・前提のマスタを本文や合成例で手書きで繰り返すと正本とずれる。正本を参照し、合成例はfixtureとして契約の保存条件を満たすか確かめる。 一意性の範囲（記録の中か全体か）も、定義と予約の一覧で食い違わせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170289483",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530273",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149"
+          ]
+        },
+        {
+          "id": "PR11-R109",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "lifecycle-transition-revalidation",
+          "lesson": "保存時の検査を初回の保存だけに置かない。取消・取消解除・マスタの統合・復元・取込の全経路で同じ検査を行い、参照元と参照先への影響も確かめ直す。 正規IDを変える保存では正規IDに依存するすべての保存条件を再検査し、取込キーなど冪等性のキーは取消後も予約し、保存後に要求範囲へ加わった記録も変化として検知する。 再検査で記録の保存条件を満たさなくなる保存は拒否し、確定済みの関係は拒否の理由にせず確かめ直して要再確認・前提の崩れにする。復元・取込・移行で検査をすり抜けた既存のデータは、導く判定のたびに同じ条件で確かめ、満たさないものを黙って有効とも除外ともせず、要確認（古いデータ）・使えない関係・集計のincompleteとして示す。記録のIdと版、過去の計算runと履歴は書き換えない（runは入力が変わったと示す）。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745539",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944768",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014254",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159278",
+            "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684870"
+          ]
+        },
+        {
+          "id": "PR11-R110",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "state-classification-precedence",
+          "lesson": "状態の判定表は、条件が重なるときの優先順を明示する。異常終了・取り下げ・0件（空集合）・使えない関係などの境界でも結果が一意に決まるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168169997",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609700",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397135859"
+          ]
+        },
+        {
+          "id": "PR11-R111",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "recorded-time-ordering",
+          "lesson": "版の順序を時計の時刻に頼らない。時計の後退や同じ時刻でも一意に並ぶ記録順（連番など）を使い、生の時計値どうしの比較を保存条件にしない。 取込や実行の時刻を保存時刻の代わりにしない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168108952",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345106",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434527",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014275"
+          ]
+        },
+        {
+          "id": "PR10-R001",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "focus-target-per-element",
+          "lesson": "フォーカスの表示と状態は値ではなくフォーカスできる要素ごとに定め、表示しない要素（不明を許さない項目のチェックボックス等）へのフォーカス状態を組合せから除く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245148",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167691997"
+          ]
+        },
+        {
+          "id": "PR10-R002",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "design-implementation-correspondence",
+          "lesson": "Figma・トークン・CSS・外部の形式の対応は、実装で同じ表示を再現できる方式・寸法の定義・検証条件として一意に書き、「1対1」や標準への準拠などの主張は実物と照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5393810516",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245244",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167245294",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394218551"
+          ]
+        },
+        {
+          "id": "PR10-R003",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unknown-state-accessibility-semantics",
+          "lesson": "不明の値とError・Disabled等の状態の組合せごとに、読み上げ・エラー文の関連付け・保存時のフォーカス先を定め、共通の規則と矛盾させないか、その組合せを無効にする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394143877",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167923590"
+          ]
+        },
+        {
+          "id": "PR10-R101",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "ui-contract-state-mapping",
+          "lesson": "UI部品の値の状態（空欄・金額・0・不明）は契約の金額の状態へ一意に対応付け、保存しない編集中の状態を決め、保存して再表示した状態が黙って変わらないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395958798"
+          ]
+        }
+      ]
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        },
+        {
+          "id": "PR12-R001",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "PR12-R101",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "cleanup-failure-path-contract",
+          "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+          ]
+        },
+        {
+          "id": "PR12-R102",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        },
+        {
+          "id": "PR12-R103",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "verification-on-target-runtime",
+          "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR12-R104",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "destructive-op-follows-link",
+          "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    },
+    "INV-TASKS": {
+      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+      "scenarios": [
+        {
+          "id": "dependencies",
+          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+        },
+        {
+          "id": "entrypoints",
+          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R003",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "dependency-before-consumer",
+          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+          ]
+        },
+        {
+          "id": "PR2-R008",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "entrypoint-order",
+          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+          ]
+        },
+        {
+          "id": "PR4-R019",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "review-role-spelling",
+          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R022",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "draft-open-entrypoint-coherence",
+          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+          ]
+        },
+        {
+          "id": "PR10-R004",
+          "invariant_id": "INV-TASKS",
+          "cause_key": "status-docs-current-state-coherence",
+          "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896"
+          ]
+        }
+      ]
+    },
+    "INV-REVIEW": {
+      "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+      "scenarios": [
+        {
+          "id": "duplicates",
+          "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+        },
+        {
+          "id": "trust",
+          "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR4-R001",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "workflow-self-modification",
+          "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847"
+          ]
+        },
+        {
+          "id": "PR4-R009",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "known-path-routing-gap",
+          "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+          ]
+        },
+        {
+          "id": "PR4-R014",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "multiple-plan-exemption",
+          "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+          ]
+        },
+        {
+          "id": "PR4-R018",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-task-identity",
+          "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+          ]
+        },
+        {
+          "id": "PR4-R020",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "finding-id-normalization",
+          "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R021",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "cause-key-whitespace",
+          "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+          ]
+        },
+        {
+          "id": "PR4-R023",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "batch-cause-duplication",
+          "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+          ]
+        },
+        {
+          "id": "PR11-R112",
+          "invariant_id": "INV-REVIEW",
+          "cause_key": "plan-assessment-drift",
+          "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+          ]
+        }
+      ]
+    }
+  }
+}

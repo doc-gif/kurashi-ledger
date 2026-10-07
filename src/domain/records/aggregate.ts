@@ -1,0 +1,266 @@
+// 記録だけで決まる集計（契約版1.0、common-types.mdの11、reconciliation.mdの2）: 入金額（deposit-amount）と
+// 給与明細の項目（payslip-item）。帰属・採用・実績化・正式通知の類を導く集計（payslip-by-income-year・annual-value・
+// forecast-remaining・notice-determination）はT11が行う。
+// 不明・記載なしは0として足さず、不足（missing）に挙げる。不足があればincompleteで、合計として示さない。
+// 記録はIDの順に処理し、入力順・保存順に依存しない。合計が安全な整数を超えたら誤りとして止め、丸めない。
+
+import { knownValue, stateOf } from "./fact.ts";
+import { isIdWithPrefix, recordTypeOfId } from "./ids.ts";
+import { bodyOf, compareStrings, recordIds, revisionsOf, type Ledger, type Revision } from "./ledger.ts";
+import { canonicalMasterId } from "./masters.ts";
+import { PAYSLIP_AMOUNT_ITEMS, type PayslipAmountItem } from "./schema.ts";
+import { analyzeSeries } from "./series.ts";
+import { isEffective, SeriesCache } from "./effective.ts";
+import { isHistoryValid } from "./history.ts";
+import { isInstant, isLocalDate } from "./values.ts";
+import { resolveView, selectRevision, type View } from "./views.ts";
+
+export type RecordAggregateKey = { readonly kind: "deposit-amount" } | { readonly kind: "payslip-item"; readonly item: PayslipAmountItem };
+
+export interface RecordAggregateRequest {
+  readonly key: RecordAggregateKey;
+  readonly axis: "deposit-date" | "scheduled-pay-date";
+  readonly scope: { readonly employerIds: readonly string[]; readonly accountIds: readonly string[]; readonly from: string; readonly to: string };
+}
+
+// 不足の状態（共通の型の11のMissingState）。この集計で生じるのはconflict・not-stated・unknown。
+export type MissingState = "conflict" | "adoption-needed" | "partial-scope" | "rule-pending" | "undetermined" | "not-stated" | "unknown";
+const MISSING_PRIORITY: readonly MissingState[] = ["conflict", "adoption-needed", "partial-scope", "rule-pending", "undetermined", "not-stated", "unknown"];
+
+export type FieldKey = { readonly kind: "record-item"; readonly name: string } | { readonly kind: "derived"; readonly key: "supersede-series" | "save-check" | "orphan-duplicate" };
+
+export interface MissingEntry {
+  readonly ref: { readonly id: string; readonly revision: number; readonly line: "whole" };
+  readonly field: FieldKey;
+  readonly state: MissingState;
+}
+
+export type AggregateState = "complete" | "incomplete" | "not-applicable" | "no-records";
+
+// 集計値（共通の型の11）。excludedCountは、契約の「対象外」の範囲が決まっていない（docs/test-oracles/README.mdの未決事項1）ので返さない。
+export interface AggregateValue {
+  readonly measure: RecordAggregateKey;
+  readonly axis: RecordAggregateRequest["axis"];
+  readonly scope: RecordAggregateRequest["scope"];
+  readonly state: AggregateState;
+  readonly knownSum: number;
+  readonly missing: readonly MissingEntry[];
+  readonly coverage: { readonly state: "not-applicable" };
+}
+
+export type AggregateResult =
+  | { readonly ok: true; readonly values: readonly [AggregateValue] }
+  | { readonly ok: false; readonly error: "overflow" | "rejected-request"; readonly message: string };
+
+type Obj = Readonly<Record<string, unknown>>;
+function isObj(v: unknown): v is Obj {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function rejected(message: string): AggregateResult {
+  return { ok: false, error: "rejected-request", message };
+}
+
+// 要求の検査（共通の型の11）: 表にないkind・修飾子、kindと合わないaxis、許さないscopeの次元に空でない値、from > toを拒否する。
+function parseRequest(ledger: Ledger, request: unknown): RecordAggregateRequest | string {
+  if (!isObj(request) || !isObj(request["key"]) || !isObj(request["scope"])) return "要求の形が違う";
+  // 最上位の項目はkey・axis・scopeだけ（表にない項目を黙って無視しない。P3-4）。
+  const extra = Object.keys(request).filter((k) => k !== "key" && k !== "axis" && k !== "scope");
+  if (extra.length > 0) return `要求に余分な項目: ${extra.join(", ")}`;
+  const key = request["key"];
+  const scope = request["scope"];
+  let parsedKey: RecordAggregateKey;
+  let axis: RecordAggregateRequest["axis"];
+  let dim: "employerIds" | "accountIds";
+  if (key["kind"] === "deposit-amount" && Object.keys(key).length === 1) {
+    parsedKey = { kind: "deposit-amount" };
+    axis = "deposit-date";
+    dim = "accountIds";
+  } else if (key["kind"] === "payslip-item" && Object.keys(key).length === 2 && (PAYSLIP_AMOUNT_ITEMS as readonly unknown[]).includes(key["item"])) {
+    parsedKey = { kind: "payslip-item", item: key["item"] as PayslipAmountItem };
+    axis = "scheduled-pay-date";
+    dim = "employerIds";
+  } else {
+    return `記録の集計のキーではない（deposit-amount・payslip-itemだけ。ほかの集計はT11）: ${JSON.stringify(key)}`;
+  }
+  if (request["axis"] !== axis) return `${parsedKey.kind}の日付の軸は${axis}`;
+  const employerIds = scope["employerIds"];
+  const accountIds = scope["accountIds"];
+  if (!Array.isArray(employerIds) || !Array.isArray(accountIds)) return "scopeのemployerIds・accountIdsが並びではない";
+  const other = dim === "employerIds" ? accountIds : employerIds;
+  if (other.length > 0) return `${parsedKey.kind}はscopeの${dim === "employerIds" ? "accountIds" : "employerIds"}を許さない`;
+  const ids = dim === "employerIds" ? employerIds : accountIds;
+  const prefix = dim === "employerIds" ? "emp" : "acct";
+  for (const id of ids) {
+    if (!isIdWithPrefix(id, prefix) || !ledger.revisions.has(id)) return `scopeの${dim}に登録していないID: ${String(id)}`;
+  }
+  if (new Set(ids).size !== ids.length) return `scopeの${dim}に同じIDが2回ある`;
+  const from = scope["from"];
+  const to = scope["to"];
+  if (!isLocalDate(from) || !isLocalDate(to) || from > to) return "scopeのfrom・toがLocalDateでないか、from > to";
+  if (Object.keys(scope).length !== 4) return "scopeに余分な項目";
+  return {
+    key: parsedKey,
+    axis,
+    scope: { employerIds: dim === "employerIds" ? (ids as string[]) : [], accountIds: dim === "accountIds" ? (ids as string[]) : [], from, to },
+  };
+}
+
+function fieldKeyString(f: FieldKey): string {
+  return f.kind === "record-item" ? `record-item:${f.name}` : `derived:${f.key}`;
+}
+
+// 見方の形（P3-4）。形の崩れた見方は、黙って現在の見方等に読み替えず拒否する。
+function isView(v: unknown): v is View {
+  if (!isObj(v)) return false;
+  const keys = Object.keys(v).sort().join(",");
+  if (v["kind"] === "current") return keys === "kind";
+  if (v["kind"] === "record-seq") return keys === "kind,seq" && typeof v["seq"] === "number" && Number.isSafeInteger(v["seq"]) && v["seq"] >= 0;
+  if (v["kind"] === "record-time") return keys === "kind,time" && isInstant(v["time"]);
+  if (v["kind"] === "known-on") return keys === "date,kind" && isLocalDate(v["date"]);
+  return false;
+}
+
+export function aggregateRecords(ledger: Ledger, request: unknown, view: View = { kind: "current" }): AggregateResult {
+  const parsed = parseRequest(ledger, request);
+  if (typeof parsed === "string") return rejected(parsed);
+  if (!isView(view)) return rejected(`見方の形が違う: ${JSON.stringify(view)}`);
+  const rv = resolveView(ledger, view);
+  const isDeposit = parsed.key.kind === "deposit-amount";
+  const type = isDeposit ? "bank-deposit" : "payslip";
+  const dimField = isDeposit ? "accountId" : "employerId";
+  const dateField = isDeposit ? "depositDate" : "scheduledPayDate";
+  const itemField = parsed.key.kind === "deposit-amount" ? "amount" : parsed.key.item;
+  const scopeIds = isDeposit ? parsed.scope.accountIds : parsed.scope.employerIds;
+  const scopeCanon = new Set<string>();
+  for (const id of scopeIds) {
+    const c = canonicalMasterId(ledger, id, rv);
+    if (c === undefined) return rejected(`scopeのIDが有効なマスタに解決できない: ${id}`);
+    scopeCanon.add(c);
+  }
+  const series = isDeposit ? undefined : analyzeSeries(ledger, "payslip", rv);
+  const effectiveCache = new SeriesCache(ledger, rv);
+  const missing = new Map<string, { entry: MissingEntry; date: string | undefined }>();
+  const addMissing = (rev: Revision, field: FieldKey, state: MissingState, date: string | undefined): void => {
+    const k = `${rev.id}\u0000${fieldKeyString(field)}`;
+    const prev = missing.get(k);
+    // 同じ（ref, field）の組は1行。原因が2つ以上なら優先順で1つの状態にする（共通の型の11）。
+    if (prev !== undefined && MISSING_PRIORITY.indexOf(prev.entry.state) <= MISSING_PRIORITY.indexOf(state)) return;
+    missing.set(k, { entry: { ref: { id: rev.id, revision: rev.revision, line: "whole" }, field, state }, date });
+  };
+  // 合計は、正の値の合計と負の値の合計をそれぞれBigIntで求める。どちらかが安全な整数を超えれば、足す順によっては途中で
+  // 超えうるので誤りにする（入力の順に依存しない判定。共通の型の4「途中や結果」。P3-8）。
+  let positive = 0n;
+  let negative = 0n;
+  let targets = 0;
+  let notApplicable = 0;
+  for (const id of recordIds(ledger, type)) {
+    const rev = selectRevision(ledger, id, rv);
+    if (rev === undefined) continue; // 見方にない記録は除く（選ばれた改訂がないので、値を根拠にしない）。
+    // 範囲の次元（勤務先・口座）と日付の軸で、範囲の外と確定できる記録を除く。有効なマスタに解決できない参照と、knownでない
+    // 日付では除かない（共通の型の5の「分からない値で絞り込まない」）。
+    const placement = (r: Revision): { out: boolean; canon: string | undefined; dateFact: unknown; date: string | undefined } => {
+      const body = bodyOf(r);
+      const rawDim = body[dimField];
+      const canon = typeof rawDim === "string" && recordTypeOfId(rawDim) !== undefined ? canonicalMasterId(ledger, rawDim, rv) : undefined;
+      const dateFact = body[dateField];
+      const dv = knownValue(dateFact);
+      const date = isLocalDate(dv) ? dv : undefined;
+      const outOfScope = canon !== undefined && scopeCanon.size > 0 && !scopeCanon.has(canon);
+      const outOfRange = date !== undefined && (date < parsed.scope.from || date > parsed.scope.to);
+      return { out: outOfScope || outOfRange, canon, dateFact, date };
+    };
+    // 除く根拠（取消・差し替え・範囲の外）にも、選ばれた改訂までの履歴の検査を先に当てる（所有者の判断で確定した規則。
+    // PR28-R001）。満たさない記録は、取消・差し替えでは除かない。
+    if (!isHistoryValid(ledger, rev)) {
+      // 保存の検査をすり抜けた履歴（共通の型の9。PR28-R001）。集計の根拠にせず、黙って数えも落としもしない。どの改訂の値が
+      // 正しいか分からないので、選ばれた改訂までのすべての改訂がそろって範囲の外を示すときだけ除く。
+      const versions = revisionsOf(ledger, id).filter((r) => r.revision <= rev.revision);
+      if (versions.every((r) => placement(r).out)) continue;
+      addMissing(rev, { kind: "derived", key: "save-check" }, "conflict", placement(rev).date);
+      continue;
+    }
+    if (rev.status !== "active") {
+      // 二重登録の取消で、残す方がこの見方で有効な記録でない（取消・差し替え済み・信頼できない・存在しない）ものは、残す方がない
+      // 二重登録として黙って除かない。その記録自身の値で範囲に入る集計をincompleteにし、orphan-duplicateのconflictに挙げる
+      // （所有者の判断「重複はT06、件数はT11」。契約版2.0の共通の型の9・11。R28-3）。
+      const dup = knownValue(rev.duplicateOf);
+      if (dup !== undefined) {
+        const keeper = isObj(dup) ? dup["id"] : undefined;
+        const kept = typeof keeper === "string" && isEffective(ledger, keeper, rv, effectiveCache);
+        if (!kept) {
+          const own = placement(rev);
+          if (!own.out) addMissing(rev, { kind: "derived", key: "orphan-duplicate" }, "conflict", own.date);
+        }
+      }
+      continue; // 取消した記録は除く（履歴の検査を満たすときだけ）。
+    }
+    const seriesStatus = series?.status.get(id);
+    if (seriesStatus === "superseded") continue; // 差し替え済みの記録は除く（系列の解析で、関わる記録の履歴を検査済み）。
+    const here = placement(rev);
+    if (here.out) continue;
+    const { canon, dateFact } = here;
+    const dateKnown = here.date !== undefined;
+    const d = here.date;
+    let blocked = false;
+    if (seriesStatus === "unconfirmed-series") {
+      addMissing(rev, { kind: "derived", key: "supersede-series" }, "conflict", d);
+      blocked = true;
+    }
+    if (!dateKnown) {
+      const st = stateOf(dateFact);
+      addMissing(rev, { kind: "record-item", name: dateField }, st === "not-stated" ? "not-stated" : "unknown", d);
+      blocked = true;
+    }
+    if (canon === undefined) {
+      addMissing(rev, { kind: "record-item", name: dimField }, "unknown", d);
+      blocked = true;
+    }
+    if (blocked) continue;
+    const v = bodyOf(rev)[itemField];
+    const st = stateOf(v);
+    if (st === "known") {
+      const n = knownValue(v);
+      if (typeof n !== "number") continue; // 形の違う値は上の保存の検査でsave-checkに挙がっている。
+      if (n >= 0) positive += BigInt(n);
+      else negative += BigInt(n);
+      targets += 1;
+    } else if (st === "not-applicable") {
+      targets += 1;
+      notApplicable += 1;
+    } else {
+      addMissing(rev, { kind: "record-item", name: itemField }, st === "not-stated" ? "not-stated" : "unknown", d);
+    }
+  }
+  const missingList = [...missing.values()]
+    .sort((a, b) => {
+      // 並べる順序は日付の軸の値、次にIDの文字列（共通の型の11）。日付が分からないものを後ろに置くのは、契約が決めていない
+      // 実装の決め方（決定的にするため）。
+      const da = a.date ?? "￿";
+      const db = b.date ?? "￿";
+      if (da !== db) return compareStrings(da, db);
+      if (a.entry.ref.id !== b.entry.ref.id) return compareStrings(a.entry.ref.id, b.entry.ref.id);
+      return compareStrings(fieldKeyString(a.entry.field), fieldKeyString(b.entry.field));
+    })
+    .map((m) => m.entry);
+  // 集計の状態（共通の型の11の表を上から順に）。
+  let state: AggregateState;
+  if (missingList.length > 0) state = "incomplete";
+  else if (targets === 0) state = "no-records";
+  else if (notApplicable === targets) state = "not-applicable";
+  else state = "complete";
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  if (positive > max || -negative > max) return { ok: false, error: "overflow", message: "正の値の合計か負の値の合計が、安全な整数の範囲を超える" };
+  const knownSum = Number(positive + negative);
+  // 結果は凍結して返す（呼び出し元が変えても、ほかの結果に影響しない。P3-6）。
+  const value: AggregateValue = deepFreeze({ measure: parsed.key, axis: parsed.axis, scope: parsed.scope, state, knownSum, missing: missingList, coverage: { state: "not-applicable" } });
+  return Object.freeze({ ok: true, values: Object.freeze([value]) as readonly [AggregateValue] });
+}
+
+function deepFreeze<T>(v: T): T {
+  if (typeof v === "object" && v !== null && !Object.isFrozen(v)) {
+    for (const x of Object.values(v)) deepFreeze(x);
+    Object.freeze(v);
+  }
+  return v;
+}
