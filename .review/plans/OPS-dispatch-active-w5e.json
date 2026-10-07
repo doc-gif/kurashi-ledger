@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "task_id": "OPS-dispatch-active",
- "base_sha": "e097c0f718cf42a00aa4eb42f913741e322862f8",
+ "base_sha": "b949a875c20b7c0e7cd8c69b05ca2c424ef1e2b4",
  "planned_paths": [
   ".review/plans/OPS-dispatch-active-w5e.json",
   "docs/review-dispatch-design.md",
