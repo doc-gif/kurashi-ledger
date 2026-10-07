@@ -84,7 +84,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 ```
 
 - `--agent`（必須）: どのAIのAppか。キーチェーンのserviceの既定と、IDを読む環境変数（上の表）を決める。IDは`--app-id`・`--installation-id`でも渡せる（環境変数より優先）。数字だけを受け付ける。
-- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どれも`repositories: ["kurashi-ledger"]`に縮小する。
+- `--purpose`（必須）: トークンを縮小する権限。Appがより多くの権限を持っていても、トークンは用途の分だけにする（最小権限）。どれも`--repo`で選んだ1つのrepoに縮小する。
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
@@ -95,6 +95,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ直前にAIが行う確認」） |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
+- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認・pushのURLの`extraheader`も選んだrepoに従い、ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。`merge-check`も、選んだrepoの`OWNER_MERGE_ONLY`だけを読む。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
 - 子に渡してはいけないコマンド: `env`・`printenv`、`gh auth token`、`gh auth status --show-token`等、環境変数やトークンを表示するもの。子の環境の`GH_TOKEN`は、子が動いている間、同じmacOSユーザーの`ps eww`等からも見える（下の「限界」）。
 - 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ログイン名> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、通常のファイルでないもの（symlink・FIFO・ディレクトリ）を開く前に拒み、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒む。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない。このときコマンドには標準入力を渡さない）。
