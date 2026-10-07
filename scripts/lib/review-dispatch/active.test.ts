@@ -977,6 +977,8 @@ test("W4 measure command: measured outcomes bound to the hashes, plus schema and
     const worker = calls.find((c) => c.args[1] === "run-worker")!;
     assert.ok(!worker.args.some((a) => /descendant/.test(a)));
     assert.match(String(worker.plan!["stdin"]), /Grep/);
+    // W5d: the benign run asks for a result parseResult accepts (no prose evidence).
+    assert.match(String(worker.plan!["stdin"]), /empty findings, evidence, unverified, causes and previous/);
     const refused = await measure({ badKey: true });
     assert.deepEqual(refused.external, { schema: false, groupEnded: false });
     assert.deepEqual(refused.diagnostics!.benign, { supervisorExitCode: 2, failed: "keyed", stage: null, field: null });

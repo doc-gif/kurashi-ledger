@@ -168,6 +168,20 @@ test("D10 schema forbids fabricated fields, duplicate findings and accepted with
   }
 });
 
+test("W5d prose evidence (the owner's benign measurement) still fails parseResult; only the fixed link forms pass", () => {
+  const d = database();
+  try {
+    const j = claim(d.store),
+      r = fixtureResult(j);
+    for (const evidence of [["Grepで教材を確認した"], ["pr/index.json を読んだ"], ["https://github.com/doc-gif/kurashi-ledger/issues/1"], ["https://github.com/doc-gif/kurashi-ledger/actions/runs/1 で確認"]])
+      assert.throws(() => parseResult(JSON.stringify({ ...r, evidence }), j), /Evidence link not allowed/, evidence[0]);
+    const links = ["https://github.com/doc-gif/kurashi-ledger/actions/runs/1", `https://github.com/doc-gif/kurashi-ledger/commit/${"c".repeat(40)}`];
+    assert.deepEqual(parseResult(JSON.stringify({ ...r, evidence: links }), j).evidence, links);
+  } finally {
+    d.cleanup();
+  }
+});
+
 test("R001 result prose cannot inject protocol blocks, HTML comments, mentions or multiline finding fields", () => {
   const d = database();
   try {
