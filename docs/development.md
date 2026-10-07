@@ -95,7 +95,7 @@ macOSはターミナル、WindowsはPowerShellで行う。Windowsでは実行ポ
 
 `npm run setup`は、worktreeの直下に作業中の印`.kurashi-ledger-setup.lock`を作ってから導入し、終わったら消す。同じworktreeで2つ目を起動すると、依存を変えずに止まる。
 
-Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`・`SIGHUP`）で止めると、新しい手順を始めず、動いている`npm ci`の終了を待ってから、記録と書きかけのファイルと自分の印を消して終える（終了コードはCtrl+Cで130。数秒かかることがある）。記録が残らないので、`npm run setup`をやり直す。Ctrl+Cを重ねても片付けは飛ばさない。
+Ctrl+C（WindowsはCtrl+Breakも）や終了のシグナル（macOSの`SIGTERM`・`SIGHUP`）で止めると、新しい手順を始めず、動いている`npm ci`の終了を待ってから、記録と書きかけのファイルと自分の印を消して終える（終了コードはCtrl+Cで130。数秒かかることがある。Windowsの`npm run setup`では、npmが先に1で戻り、そのあとも片付けが続くことがある。下の「Windowsのコンソールの中断の試験」）。記録が残らないので、`npm run setup`をやり直す。Ctrl+Cを重ねても片付けは飛ばさない。
 
 印が残るのは、setupを強制終了したとき（macOS: `kill -9`やアクティビティモニタの「強制終了」、Windows: タスク マネージャーでの終了やコンソールを閉じたとき、電源断）と、片付けで記録や印を消せなかったとき（そう表示する）だけ。印が残っていると、次のsetupと照合（`check:install`・`build`）が止まり、印に書いたプロセス番号と開始時刻を表示する。次の手順で消す（印は自動では消さない。ADR-0008）。
 
@@ -113,14 +113,26 @@ CI（下の「CI」）は、OSごとに、`npm test`の出力のskipした試験
 
 | 環境 | 飛ばす試験（ファイル・件数・試験の名前） | 理由 | 代わりの確認 |
 | --- | --- | --- | --- |
-| Windows | `scripts/setup-lock.test.ts`の3件（「実際のSIGINTをsetupだけに送ると、npmへ転送して終了を待ち、記録も印も残さず130で終える」「Ctrl+Cと同じくプロセスグループ全体にSIGINTを送っても、記録も印も残さず130で終える」「SIGTERMとSIGHUPでも、記録も印も残さず128+番号で終える」）、`scripts/setup.test.ts`の1件（「Ctrl+Cと同じくプロセスグループにSIGINTを送ると、npm ciの終了を待ってから、記録も作業中の印も残さずに終える」） | Node.jsは、Windowsでほかのプロセスへコンソールの制御イベント（Ctrl+C・Ctrl+Break）を送れない（`kill`は強制終了になる）。`SIGTERM`・`SIGHUP`は、Windowsのsetupが受けるシグナルではない | Windowsの実機のコンソールでのCtrl+CとCtrl+Breakの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
-| Windows | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | 印の削除だけを失敗させるPOSIXの方法（ディレクトリの書込み禁止）が使えず、読取り専用の属性はNode.jsが外して消すので、試験の中で確実に再現できない | Windowsの実機での、印を消せないときのCtrl+Cの確認（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)） |
 | Windows | `scripts/github-app-token.test.ts`の2件（「実際のファイルで: 鍵ファイルへのsymlinkとFIFOを、開く前に拒む（FIFOで止まらない）」「実際のプロセスとシグナルで: 子の実行中のSIGINT・SIGTERMを子へ転送し、子の終了後に失効させて128+番号で終える」） | WindowsのファイルシステムにはFIFOがなく、ファイルのsymlinkの作成には開発者モードか管理者の権限が要るので、試験の中で確実に作れない。Node.jsは、Windowsでほかのプロセスへシグナルを送れない（`kill`は強制終了になる） | 鍵ファイルは、同じ判定（lstatで通常のファイルでないものを開く前に拒む、開いた後の置き換えを拒む）を、純粋な関数の試験（「鍵ファイルは、symlink・置き換え・…」）と、実際のディレクトリの試験で、すべてのOSで確かめる。Windowsでは`--key-file`より`--key-stdin`を勧める（[AIのGitHub App](github-apps.md)）。シグナルは、同じ転送・失効・終了コードを、シグナルを注入した試験（「発行から失効までにシグナルを受けたら…」「確認の途中でシグナルを受けたら…」）で、すべてのOSで確かめる。Windowsの実機でのCtrl+C・Ctrl+Breakの確認はまだ行っていない（[AIのGitHub App](github-apps.md)の「確かめていないこと」） |
-| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
+| macOS・Linuxのroot | `scripts/install-record.test.ts`の1件（「印を消せなくても例外にせず、中断は128+番号のまま、成功は記録を残したまま終え、残った印と消し方を案内する」）、`scripts/setup-lock.test.ts`の1件（「実際のCtrl+Cで中断したときに印を消せなければ、130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進む」）、`scripts/setup.test.ts`の1件（「印を消せないときにCtrl+Cでnpm run setupを止めると、印が残ったことと消し方を表示し、記録を残さず、印を消すと次のsetupと照合が通る」） | rootは書込み禁止のディレクトリからもファイルを消せるので、失敗を再現できない | CIの試験を一般のユーザーで実行し、skipを照合する（GitHubのhosted runnerは一般のユーザー。下の「CI」） |
 
-件数は、macOS・Linuxの一般のユーザーで0件、Windowsで7件、macOS・Linuxのrootで1件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。Windowsの実機での確認の手順・期待する結果・記録の様式の正本は[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)にある。2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）でT05の受入条件から分けたもので、どのタスクにも依存せず、T26・T28をブロックしない。CIでは確かめていない。
+件数は、macOS・Linuxの一般のユーザーで0件、Windowsで2件、macOS・Linuxのrootで3件になる。飛ばしてよい試験の名前と件数の正本はこの表で、台帳のT05とADR一覧からはこの表を参照する（書き写さない）。
 
-飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる。
+Windowsでは、以前は飛ばしていた中断の5件の試験を、実際のコンソールの制御イベントで実行する（下の「Windowsのコンソールの中断の試験」）。
+
+飛ばさずに弱めて確かめる箇所が1つある: `scripts/install-record.test.ts`で、`node_modules`の外の通常のファイルを指す実行ファイルのリンクを、Windowsでファイルのsymlinkを作る権限がない（開発者モードでも管理者でもない）ときは、リンクがない場合として確かめ、その旨を試験の出力（diagnostic）に残す。CIは、試験の出力のdiagnosticをrunのSummaryに記録するので、WindowsのCIでこの旨が出たかをそこで確かめる（管理者のrunnerの`checks (windows)`と、一般のユーザーの`checks (windows, standard user)`。下の「CI」）。2026-10-03の時点では、GitHubのWindowsのrunnerで、管理者でも一時の一般のユーザーでもファイルのsymlinkを作れた（この旨は出なかった）ので、弱めた経路はCIでは通っていない。一般のユーザーのジョブは、symlinkを作れたかをSummaryに出す。
+
+### Windowsのコンソールの中断の試験
+
+[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)の3つの確認（`npm ci`の最中のCtrl+Cで130、Ctrl+Breakで149、印を消せないときのCtrl+C）は、手での確認をやめ、`npm test`の試験としてWindowsでも実行する（2026-10-03に所有者が実装側のチャットで「Windows環境で自動で確かめる試験を作る」と指示した）。
+
+- 制御イベントの送り方（`tests/support/windows-console.ts`）: Node.jsは、Windowsでほかのプロセスへコンソールの制御イベントを送れない（`kill`は強制終了になる）。そこで、Windowsに同梱のWindows PowerShell 5.1から、.NETのP/InvokeでWin32のAPIを呼ぶ（依存を加えない。スクリプトは`-EncodedCommand`、設定は環境変数で渡すので、実行ポリシーは関係しない）。対象を新しい見えないコンソールで起動してジョブ オブジェクトに入れ、送るときは対象のコンソールに付いて、`GenerateConsoleCtrlEvent`でそのコンソールの全員に送る。端末でCtrl+C・Ctrl+Breakを押したときと同じく、setupも子のnpmも受け取る。試験を動かすプロセスやCIのシェルとはコンソールが別なので、そちらには届かない。対象の子・孫まで全部が終わるのを待ってから確かめる。
+- 印を消せない状態（`tests/support/prevent-deletion.ts`）: Windowsでは、別のプロセスが削除の共有を許さずに印を開いたままにする（#19の手での手順と同じ方法。管理者かどうかに左右されない）。POSIXはこれまでどおり、worktreeの直下を書込み禁止にする。
+- 対応する試験: `scripts/setup-lock.test.ts`（合成のnpmで、setupを直接起動する。setup自身の終了コード130・149と、印も記録も残らず次のsetupが進むこと、npmがCtrl+Cを無視して自分では止まらないときに、setupが猶予のあとでnpmを終わらせること、印を消せないときに130で終え、印が残ったことと消し方を表示し、印を消すと次のsetupが進むこと）、`scripts/setup.test.ts`（実際のnpmで`npm run setup`を、Ctrl+C、Ctrl+Break（POSIXはSIGTERM）、印を消せないときのCtrl+Cで止める。コンソールのすべてのプロセスが終わってから、setupの表示、記録・印の有無、照合、次のsetup（印を消せないときは印を消したあと）とその後の照合を確かめる。[PR #33](https://github.com/doc-gif/kurashi-ledger/pull/33)のPR33-R001）、`scripts/install-record.test.ts`（印を消せないときの片付け）。
+- `npm run setup`の終了コード（Windows）: Windowsのnpmは、Ctrl+Cを受けると、スクリプトを動かすシェル（`cmd.exe`）を強制終了して、自分も1で終わる（npmの`@npmcli/run-script`の動き）。CIでは、`npm run setup`が1で戻った時点で、setupと子のnpmはまだ動いていて（ジョブの中に3つのプロセス）、そのあとsetupが片付けを終え（「SIGINT を受けたので中断した」と表示）、印も記録も残らなかった。印を消せないときのCtrl+Cも同じく1で、3つのプロセスが残っていた。Ctrl+Breakでは、npmはCtrl+Breakを扱わないので、OSの既定の処理で3221225786（0xC000013A）で終わり、その時点で1つのプロセスが残っていた。どの場合も、全部が終わったあとは、setupの表示どおり記録は残らなかった。つまり、Windowsで`npm run setup`をCtrl+Cで止めると、終了コードはsetupの130ではなくnpmの1で、プロンプトが戻ったあとも片付けが続くことがある（その間に次の`npm run setup`を始めると、印があるので「別の `npm run setup` が動いているか…」と表示して止まる。少し待ってからやり直す）。2026-10-03の所有者決定で、これをnpmの仕様として受け入れた（[PR #33の記録](https://github.com/doc-gif/kurashi-ledger/pull/33#issuecomment-5970070883)）。`npm run setup`経由の終了コードは0以外であればよく、保証するのは、setup自身の終了コード（Ctrl+Cで130、Ctrl+Breakで149）と、すべてのプロセスが終わったあとに記録と印が残らないこと（印を消せないときは、印が残ったことと消し方を表示すること）。setupの動きは変えない。`scripts/setup.test.ts`は、コンソールのすべてのプロセスが終わるのを待ってから確かめ、`npm run setup`の終了コードは0以外であることを確かめて、観測した終了コードと、npmが終わったときに残っていたプロセスの数を、3つの止め方ごとにdiagnosticに出す。
+- 一般のユーザー: GitHubのWindowsのrunnerは管理者で動くので、CIの`checks (windows, standard user)`で、一時の一般のローカルユーザーとしても同じ試験を実行する（下の「CI」）。
+- T26（[PR #25](https://github.com/doc-gif/kurashi-ledger/pull/25)）との関係: T26の`npm start`の実際のCtrl+C（Windowsで飛ばす`src/start.test.ts`の試験）は、T26の統合後に、この補助でコンソールへCtrl+Cを送る試験に変え、表の行を外す。T26の本人だけのACLの試験は`npm test`に含まれるので、統合後は`checks (windows, standard user)`で一般のユーザーとしても実行される。
+- 手で残る確認: `npm.cmd`（バッチファイル）で起動したときに`cmd.exe`が出す「バッチ ジョブを終了しますか (Y/N)?」の表示と、Y・Nの答えによる終了コード。`cmd.exe`の対話の表示の確認で、setupの動き（記録・印・終了コード）は上の試験で確かめている。答えを自動で入れるにはコンソールの入力を擬似する必要があり、得られるのは`cmd.exe`の表示の確認だけなので、自動にしない。キーボードのCtrl+Cを制御イベントに変える部分は、OSとターミナルの機能で、試験では制御イベントを直接生成する。
 
 ## npmの設定（`.npmrc`）
 
@@ -163,6 +175,7 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 | ジョブ | OS | 内容 |
 | --- | --- | --- |
 | `checks` | Linux・Windows・macOS | `package.json`の`devEngines.runtime`の範囲で最新のNode.jsを入れ（`actions/setup-node`の`node-version-file`。npm自身もdevEnginesで版を検査する）、`npm run setup`→`check:install`→`typecheck`→`npm test`→skipの照合（`check:test-skips`）→`build`と、`check:public`を実行する |
+| `checks (windows, standard user)` | Windows | GitHubのWindowsのrunnerは管理者で動くので、一時の一般のローカルユーザー（Usersだけに属する）を作り、`npm run setup`のあと、`npm test`と同じ試験（`package.json`のtestのscript）を、そのユーザーとしてログオンして（`Start-Process -Credential`、プロファイルを読み込む）実行する。トークンが管理者でないこと（整合性レベルがMedium、Administratorsを含まない）を確かめ、skipを照合し、そのユーザーがファイルのsymlinkを作れるかをSummaryに出す。先に自己試験を行う: 止まらない合成の処理（親・子・孫）を短い時間切れで実行し、止める前にnodeのプロセスが3つ以上動いていて、止めたあと0件になることを確かめる。失敗の注入で、プロセスの列挙の失敗・停止の失敗・プロファイルの削除の失敗が成功と報告されないこと、ユーザーを消したあとも残したSIDで残ったプロファイルを消せることも確かめる。最後に、成否にかかわらず、そのユーザーのすべてのプロセスの終了を確かめてからユーザーとプロファイルを消す。終了を確かめられない（列挙の失敗・時間内に残る）ときは、何も消さずに失敗にする。手順は`.github/scripts/windows-standard-user.ps1`（workflowから中身を読み込んで呼ぶので、実行ポリシーは関係しない）（#19。上の「Windowsのコンソールの中断の試験」）。タスク スケジューラは、S4Uのタスクの登録が拒否され、パスワードのタスクは起動されなかったので使わない |
 | `browser` | Linux・Windows・macOS | `npm run setup`→`test:browser:install`→`test:browser`（ChromiumをすべてのOS、WebKitをmacOS） |
 | `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`）。unittestは0件・skip・期待した失敗でも0で終わるので、要約の行にそれらがあれば失敗にする |
 | `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの）。計画のないPRや、baseを取り込んでいないPRでは失敗する。Quality gateに含めることは、2026-10-03の所有者決定で承認された（所有者本人の確認: PR #18のCodexの記録5965890988） |
@@ -171,9 +184,10 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 - 結果の読み方: 各runのSummaryに、`npm test`の件数とskipした試験・理由・diagnostic・表との照合（OSごと、Node.jsの版つき）、ブラウザごとの結果、Quality gateの判定と、試験したcommit・PRのhead・baseのSHAが出る。レビューでは、最新のheadとbaseに対応するrunかを、このSHAで確かめる。runのあとでbaseが進んだ場合、その結果は古いbaseに対するものなので、baseを取り込んでやり直す。
 - 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件、失敗を期待した試験（`expectFailure`。要約ではpassに数えられる）、再実行で合格した試験と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
 - 安全: 標準のhosted runner（`ubuntu-latest`・`windows-latest`・`macos-latest`）だけを使う。権限は`contents: read`だけで、secretsを使わず、checkoutの資格情報を残さない（`persist-credentials: false`）。actionはcommitのSHAで固定する。artifactをuploadしない。`pull_request_target`を使わないので、forkからのPRにも、secretsも書込みの権限も渡らない。
-- 時間の上限: `checks`・`browser`は20分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
+- 一時のローカルユーザー（`checks (windows, standard user)`）の扱い: パスワードはステップの中で暗号論的な乱数から作り、表示・ファイルへの保存・ログへの出力をせず、ユーザーの作成とそのユーザーでの起動に渡すだけにする。ユーザーはUsersだけに属する。このジョブで加える権限は、出力のディレクトリ（変更）とworkspace（読取りと実行）だけ。時間切れのときも、起動したプロセスだけでなく、そのユーザーのすべてのプロセスを止める。ジョブの最後に、成否にかかわらず、そのユーザーのプロセスがなくなったことを確かめてからユーザーとプロファイルを消す。確かめられなければ何も消さずに失敗にする。SIDはRUNNER_TEMPのファイルに残し、ユーザーを消したあとでも残ったプロファイルを探せるようにする。runnerは使い捨てのVMで、ジョブのあとに破棄される。トレードオフ: このジョブはrunnerのVMのローカルアカウントとACLを変える（使い捨てなので後に残らない）。PRのコードは、ほかのジョブと同じくrunnerの管理者でも動く（`npm run setup`等）ので、ユーザーを作ることで、PRのコードに新しい権限やsecretsが渡ることはない（このジョブもsecretsを使わず、tokenの権限は`contents: read`だけ）。
+- 時間の上限: `checks`・`browser`は20分、`checks (windows, standard user)`は30分、`review tools`は10分、`review plan`・`Quality gate`は5分。同じPRの新しいpushで、古いrunは取り消す（mainへのpushは取り消さない）。
 - 限界: `pull_request`のworkflowはPR自身が変えられるので、CIの合格は迂回を防がない（[修正前の整合確認](review-prevention.md)）。workflow・`scripts/`・`e2e/`・検査器・条件を変えるPRは、別の担当が内容をレビューする。CIの合格は、独立した内容レビュー・所有者の判断・マージの条件（[AGENTS.md](../AGENTS.md)）の代わりにならない。repoの設定は、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側（mainのセッション）が設定する（T05のPRでは変えていない）。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。必須のcheckにしても、workflowをPRで変えられる限界は変わらない。
-- CIで確かめないもの: Intel Mac・Windows（arm64）、公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）で入れたNode.js（CIは`actions/setup-node`の配布物を使う。ADR-0008の「見抜けないこと」のnpmの組込みの設定は、インストーラでは未確認のまま）、実機のSafari、Windowsのコンソールの制御イベント（[#19](https://github.com/doc-gif/kurashi-ledger/issues/19)）。
+- CIで確かめないもの: Intel Mac・Windows（arm64）、公式のインストーラ（macOSの`.pkg`、Windowsの`.msi`）で入れたNode.js（CIは`actions/setup-node`の配布物を使う。ADR-0008の「見抜けないこと」のnpmの組込みの設定は、インストーラでは未確認のまま）、実機のSafari、`npm.cmd`（バッチファイル）で起動したときの`cmd.exe`の「バッチ ジョブを終了しますか (Y/N)?」の表示（上の「Windowsのコンソールの中断の試験」）。
 - 後続タスクの試験: `scripts/`・`src/`・`tests/`に`*.test.ts`を加えれば`npm test`で、`e2e/`に`*.spec.ts`を加えれば`npm run test:browser`で、3つのOSのCIで実行される。
 
 ## branchとworktree

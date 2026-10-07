@@ -76,6 +76,67 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run check:public
 
+  # Windowsの一般のユーザー（管理者でない）での試験（Issue #19）。GitHubのWindowsのrunnerは管理者で動くので、
+  # 一時のローカルユーザー（Usersだけに属する）を作り、そのユーザーとしてログオンして（Start-Process -Credential）
+  # npm testと同じ試験を実行し、skipを照合する。作成・実行・後始末は .github/scripts/windows-standard-user.ps1。
+  # パスワードはこのジョブの中で乱数から作り、表示もファイルへの保存もしない。runnerは使い捨てのVMで、最後に
+  # そのユーザーのプロセスを止めてから、ユーザーとプロファイルを消す。
+  # docs/development.md の「CI」と「Windowsのコンソールの中断の試験」。
+  windows-standard-user:
+    name: checks (windows, standard user)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      KL_STD_USER: klstandarduser
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js (devEngines.runtime in package.json)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: package.json
+          check-latest: true
+          package-manager-cache: false
+      - name: npm run setup
+        id: setup
+        run: npm run setup
+      # 後始末の自己試験（PR33-R002）: 止まらない合成の処理（親・子・孫）を時間切れにし、止める前にnodeが3つ以上
+      # 動いていて止めたあと0件になること、列挙・停止・プロファイルの削除の失敗が成功と報告されないこと、
+      # ユーザーを消したあとも残したSIDで残ったプロファイルを消せることを確かめる。失敗しても最後の後始末が動く。
+      - name: Self-test the cleanup of the standard user
+        id: selftest
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
+          & $helper -Action SelfTest -UserName $env:KL_STD_USER -OutputDir (Join-Path $env:RUNNER_TEMP 'kl-standard-user-selftest') -StopTimeoutSeconds 10
+      - name: Run the tests of npm test as a temporary standard user
+        id: test
+        if: ${{ !cancelled() && steps.selftest.outcome == 'success' }}
+        # Windows PowerShell 5.1（Windowsに同梱。ローカルユーザーの操作のモジュールがそのまま動く）。
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
+          $dir = Join-Path $env:RUNNER_TEMP 'kl-standard-user'
+          & $helper -Action Run -UserName $env:KL_STD_USER -OutputDir $dir -Mode tests -TimeoutSeconds 900
+          if (Test-Path (Join-Path $dir 'timed-out.json')) { throw 'the tests as the standard user did not finish in time' }
+      - name: Compare the skipped tests with docs/development.md
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: npm run check:test-skips -- "$RUNNER_TEMP/kl-standard-user/npm-test.txt"
+      # 成否にかかわらず、そのユーザーのすべてのプロセスの終了を確かめてからユーザーとプロファイルを消す。終了を確かめ
+      # られなければ何も消さずに失敗にする。ユーザーがなくても、残したSIDで残ったプロファイルを探す。
+      - name: Remove the temporary user, its processes and its profile
+        if: ${{ always() }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = [scriptblock]::Create([System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE '.github\scripts\windows-standard-user.ps1'), [System.Text.Encoding]::UTF8))
+          & $helper -Action Cleanup -UserName $env:KL_STD_USER
+
   browser:
     name: browser (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -212,7 +273,7 @@ jobs:
   quality-gate:
     name: Quality gate
     if: ${{ always() }}
-    needs: [checks, browser, review-tools, review-plan]
+    needs: [checks, windows-standard-user, browser, review-tools, review-plan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -227,6 +288,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CHECKS: ${{ needs.checks.result }}
+          WINDOWS_STANDARD_USER: ${{ needs.windows-standard-user.result }}
           BROWSER: ${{ needs.browser.result }}
           REVIEW_TOOLS: ${{ needs.review-tools.result }}
           REVIEW_PLAN: ${{ needs.review-plan.result }}
@@ -236,6 +298,7 @@ jobs:
             if [ "$2" != "$3" ]; then problems+=("$1 の結果が $2（必要なのは $3）"); fi
           }
           expect checks "$CHECKS" success
+          expect windows-standard-user "$WINDOWS_STANDARD_USER" success
           expect browser "$BROWSER" success
           expect review-tools "$REVIEW_TOOLS" success
           if [ "$EVENT" = pull_request ]; then
@@ -262,6 +325,7 @@ jobs:
               echo "| PRのbase | $BASE_SHA |"
             fi
             echo "| checks（3 OS） | $CHECKS |"
+            echo "| checks（Windowsの一般のユーザー） | $WINDOWS_STANDARD_USER |"
             echo "| browser（3 OS） | $BROWSER |"
             echo "| review tools（3 OS） | $REVIEW_TOOLS |"
             echo "| review plan | $REVIEW_PLAN |"
