@@ -214,7 +214,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$logs" "$policy" "$install" "
 "${dispatch[@]}" measure --root "$root" --policy "$policy" --install "$install" --out "$etc/measurement-$(date +%Y%m%d%H%M%S).json"
 ```
 
-期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験。括弧は根拠の種類）がすべて`denied`、`schema=true`、`groupEnded=true`。続く`子processにも許す`の行は、共有profileで許す操作で、拒否の結果ではない。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
+期待: `測定:`の1行で、10項目（`deny-…`と`tool-child-confined`。中身は[設計§7](review-dispatch-design.md#claudeの起動の層o2)の否定試験。括弧は根拠の種類）のうち、`情報`の印のない3項目が`denied`、`schema=true`、`groupEnded=true`。`情報`の印の項目は、モデルが試したかで毎回変わるので合否に使わない（`inconclusive`でもよい。同じ対象は9の合成のprobeが確かめる）。続く`子processにも許す`の行は、共有profileで許す操作で、拒否の結果ではない。`allowed`なら止める。`inconclusive`・`false`なら、続く`診断`の行（測定fileの`diagnostics`と同じ。run A・A2・B・benignごとの終了コード・initの道具・`result`・benignの失敗段階）で原因を調べる。どちらもcli.sbを手で変えず、出力をIssue #50に記録する。
 
 ## 9. 否定試験（doctor）
 
@@ -240,6 +240,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$logs" "$policy" "$install" "
 | `bound-file-changed` | 試験中にcli.sbか実行ファイルが変わった。やり直す |
 | `plan:…`・`argv-hash-mismatch`・`no-launch-plan` | install記録が起動器の検査に通らない。5を見直す |
 | `probe-allowed:…`・`measured-allowed:…`・`profile:…`・`sandbox-unavailable` | 隔離が効いていない。止めてIssue #50に記録する |
+| `coverage-gap:…` | run Bの対象に対応する合成のprobeがない（コードの誤り）。止めてIssue #50に記録する |
 
 ## 10. 公開HTTPSの経路を選ぶ
 
