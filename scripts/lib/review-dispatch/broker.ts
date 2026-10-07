@@ -10,6 +10,7 @@ import { approvalBlockers, assess, reviewerEligible } from "./reducer.ts";
 import { Store } from "./store.ts";
 import { canonicalBody } from "./github.ts";
 import type { ResultVerifier } from "./provenance.ts";
+import { CAUSE_KEY, RECORD_ID, RESULT_LIMITS as L, RT_ID } from "./launcher.ts";
 import {
   EVIDENCE_SHAPE,
   blockedNotice,
@@ -28,7 +29,7 @@ export class ResultContentError extends Error {}
 // `records`: the whole-record IDs (record-<comment|review>-<id>) of this job's materials (store.runMaterials).
 // A red team may re-check such a record as a whole; any other record ID is refused (red team round 5).
 export function parseResult(raw: string, j: Job, records: readonly string[] = []): WorkerResult {
-  if (Buffer.byteLength(raw) > 32768)
+  if (Buffer.byteLength(raw) > L.bytes)
     throw new Error("Worker result too large");
   let r: WorkerResult;
   try {
@@ -89,30 +90,30 @@ export function parseResult(raw: string, j: Job, records: readonly string[] = []
     !["accepted", "changes-requested", "needs-owner"].includes(r.decision) ||
     typeof r.summary !== "string" ||
     !r.summary.trim() ||
-    r.summary.length > 1200 ||
+    r.summary.length > L.text ||
     !Array.isArray(r.findings) ||
-    r.findings.length > 30 ||
+    r.findings.length > L.findings ||
     !Array.isArray(r.evidence) ||
     !Array.isArray(r.unverified) ||
-    r.evidence.length > 30 ||
-    r.unverified.length > 30 ||
+    r.evidence.length > L.evidence ||
+    r.unverified.length > L.unverified ||
     !Array.isArray(r.causes) ||
     !Array.isArray(r.previous) ||
-    r.causes.length > 200 ||
-    r.previous.length > 100 ||
+    r.causes.length > L.causes ||
+    r.previous.length > L.previous ||
     // A review has no red-team table; a red-team record has no review IDs (PR #56 red team P2/P3).
     (j.kind !== "faultfinding" && (r.causes.length || r.previous.length))
   )
     throw new Error("Invalid worker result");
   // A table cell: one line, no column separator.
   const cell = (v: unknown): boolean =>
-    typeof v === "string" && !!v.trim() && v.length <= 600 && singleLine(v) && !v.includes("|");
+    typeof v === "string" && !!v.trim() && v.length <= L.cell && singleLine(v) && !v.includes("|");
   for (const c of r.causes)
     if (
       !c ||
       Object.keys(c).sort().join() !== "cause,judgement,where" ||
       typeof c.cause !== "string" ||
-      !/^[A-Za-z0-9._-]{1,60}(?:\/[A-Za-z0-9._-]{1,80})?$/.test(c.cause) ||
+      !CAUSE_KEY.test(c.cause) ||
       !["該当", "該当なし", "確認できない"].includes(c.judgement) ||
       !cell(c.where)
     )
@@ -122,7 +123,7 @@ export function parseResult(raw: string, j: Job, records: readonly string[] = []
       !v ||
       Object.keys(v).sort().join() !== "id,reason,status" ||
       typeof v.id !== "string" ||
-      !(/^RT-[1-9][0-9]{0,2}$/.test(v.id) || (/^record-(?:comment|review)-[0-9]{1,20}$/.test(v.id) && records.includes(v.id))) ||
+      !(RT_ID.test(v.id) || (RECORD_ID.test(v.id) && records.includes(v.id))) ||
       !["解消", "対応不要", "未解消"].includes(v.status) ||
       !cell(v.reason)
     )
@@ -144,14 +145,14 @@ export function parseResult(raw: string, j: Job, records: readonly string[] = []
       // A review uses PR<N>-R<3 digits> only; a red-team record uses the PR-local RT-<number> of the
       // canonical format (pr-review-loop.md#提出前の粗探し), which findings.ts never reads as an R ID.
       !(j.kind === "faultfinding"
-        ? /^RT-[1-9][0-9]{0,2}$/
+        ? RT_ID
         : new RegExp(`^PR${j.key.split(":")[1]}-R[0-9]{3}$`)
       ).test(f.id) ||
       [f.location, f.impact, f.completion].some(
         (v) =>
           typeof v !== "string" ||
           !v.trim() ||
-          v.length > 1200 ||
+          v.length > L.text ||
           !singleLine(v),
       )
     )
@@ -173,7 +174,7 @@ export function parseResult(raw: string, j: Job, records: readonly string[] = []
       (x) =>
         typeof x !== "string" ||
         !x.trim() ||
-        x.length > 1200 ||
+        x.length > L.text ||
         !singleLine(x),
     ) ||
     /[\u0000-\u0008\u000b-\u001f\u007f]/.test(r.summary)

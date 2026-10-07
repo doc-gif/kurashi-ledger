@@ -4,9 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  CAUSE_KEY,
   ENV_KEYS,
   FIXED_QUERY,
   LaunchError,
+  RESULT_LIMITS,
+  RESULT_SCHEMA,
   RESULT_SCHEMA_JSON,
   SANDBOX_EXEC,
   TOKEN_ENV,
@@ -22,7 +25,9 @@ import {
   type LaunchPlan,
   type LaunchRun,
 } from "./launcher.ts";
-import type { Job } from "./model.ts";
+import type { Job, WorkerResult } from "./model.ts";
+import { parseResult } from "./broker.ts";
+import { EVIDENCE_SHAPE } from "./publication.ts";
 import { policy } from "../../../tests/fixtures/review-dispatch.ts";
 
 // Synthetic paths only. Nothing here is spawned.
@@ -400,4 +405,137 @@ test("auth status runs under the same profile and env, Claude only", () => {
   const m = buildMeasurementLaunch(policy(), job(30), claudeInstall(), run(), opts);
   assert.equal(m.env["CLAUDE_CODE_TMPDIR"], run().tmp);
   assert.throws(() => buildAuthStatus(codexInstall(), run(), opts), LaunchError);
+});
+
+// ---- W5d: the result schema and jobText state what parseResult enforces ----
+
+// A minimal validator for exactly the keywords RESULT_SCHEMA uses (the repository has no JSON Schema library).
+// Any other keyword fails the test, so a new one cannot pass unchecked. Lengths count code points (JSON Schema).
+type Schema = Record<string, unknown>;
+const KEYWORDS = new Set(["type", "enum", "required", "additionalProperties", "properties", "items", "maxItems", "minLength", "maxLength", "pattern"]);
+function schemaValid(s: Schema, v: unknown): boolean {
+  for (const k of Object.keys(s)) assert.ok(KEYWORDS.has(k), `unchecked keyword ${k}`);
+  if (s["type"] === "object") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+    const o = v as Record<string, unknown>,
+      props = (s["properties"] ?? {}) as Record<string, Schema>;
+    if (((s["required"] ?? []) as string[]).some((k) => !Object.hasOwn(o, k))) return false;
+    if (s["additionalProperties"] === false && Object.keys(o).some((k) => !Object.hasOwn(props, k))) return false;
+    if (!Object.entries(o).every(([k, x]) => !props[k] || schemaValid(props[k], x))) return false;
+  } else if (s["type"] === "array") {
+    if (!Array.isArray(v)) return false;
+    if (typeof s["maxItems"] === "number" && v.length > s["maxItems"]) return false;
+    if (s["items"] && !v.every((x) => schemaValid(s["items"] as Schema, x))) return false;
+  } else if (s["type"] === "string") {
+    if (typeof v !== "string") return false;
+    const n = [...v].length;
+    if (typeof s["minLength"] === "number" && n < s["minLength"]) return false;
+    if (typeof s["maxLength"] === "number" && n > s["maxLength"]) return false;
+    if (typeof s["pattern"] === "string" && !new RegExp(s["pattern"], "u").test(v)) return false;
+  } else if (s["type"] === "integer") {
+    if (!Number.isInteger(v)) return false;
+  } else return false;
+  return !Array.isArray(s["enum"]) || s["enum"].includes(v);
+}
+const SCHEMA = JSON.parse(RESULT_SCHEMA_JSON) as Schema;
+const REPO = "https://github.com/synthetic/repository";
+const LINKS = [`${REPO}/actions/runs/123`, `${REPO}/pull/1#pullrequestreview-456`, `${REPO}/commit/${"c".repeat(40)}`];
+const ffJob = (): Job => ({ ...job(30), kind: "faultfinding" });
+const RECORD = "record-comment-75";
+const result = (j: Job, extra: Partial<WorkerResult> = {}): WorkerResult => ({
+  schema: 1,
+  run: j.run,
+  actor: j.actor,
+  generation: j.generation,
+  pair: j.pair,
+  decision: "needs-owner",
+  summary: "合成の要約です。",
+  findings: [],
+  evidence: [],
+  unverified: [],
+  causes: [],
+  previous: [],
+  ...extra,
+});
+const finding = (id: string, text = "x") => ({ id, location: text, impact: text, completion: text });
+const row = (cause: string, where = "x") => ({ cause, judgement: "該当なし" as const, where });
+
+test("W5d result schema: the limits parseResult enforces come from the same constants, the evidence shape included", () => {
+  const props = SCHEMA["properties"] as Record<string, Schema>;
+  assert.equal((props["evidence"]!["items"] as Schema)["pattern"], EVIDENCE_SHAPE.source);
+  assert.equal(new RegExp(EVIDENCE_SHAPE.source, "u").source, EVIDENCE_SHAPE.source);
+  const cause = ((props["causes"]!["items"] as Schema)["properties"] as Record<string, Schema>)["cause"]!;
+  assert.equal(cause["pattern"], CAUSE_KEY.source);
+  for (const k of ["findings", "evidence", "unverified", "causes", "previous"] as const)
+    assert.equal(props[k]!["maxItems"], RESULT_LIMITS[k], k);
+  assert.equal(props["summary"]!["maxLength"], RESULT_LIMITS.text);
+  // The argv carries this schema, so the measured argv hash binds it (an older measurement becomes stale).
+  const p = buildLaunch(policy(), job(30), claudeInstall(), run(), opts);
+  assert.equal(flagValue(p, "--json-schema"), JSON.stringify(RESULT_SCHEMA));
+  assert.match(flagValue(p, "--json-schema")!, /pullrequestreview/);
+});
+
+test("W5d result schema is never stricter than parseResult, and what it refuses parseResult also refuses", () => {
+  const r = job(30),
+    ff = ffJob();
+  const passes: [Job, WorkerResult][] = [
+    [r, result(r)],
+    [r, result(r, { decision: "changes-requested", summary: "一行目\n二行目\tタブ", findings: [finding("PR1-R001")], evidence: LINKS, unverified: ["実CLIは未検証"] })],
+    [r, result(r, { summary: "x".repeat(RESULT_LIMITS.text), unverified: ["y".repeat(RESULT_LIMITS.text)] })],
+    [r, result(r, { decision: "changes-requested", findings: Array.from({ length: RESULT_LIMITS.findings }, (_, n) => finding(`PR1-R${String(n + 1).padStart(3, "0")}`)) })],
+    [r, result(r, { decision: "changes-requested", findings: [finding("PR1-R001", "z".repeat(RESULT_LIMITS.text))] })],
+    [r, result(r, { evidence: Array.from({ length: RESULT_LIMITS.evidence }, (_, n) => `${REPO}/actions/runs/${n + 1}`) })],
+    [r, result(r, { unverified: Array.from({ length: RESULT_LIMITS.unverified }, (_, n) => `項目${n}`) })],
+    [ff, result(ff, { decision: "changes-requested", findings: [finding("RT-1")], causes: [row("INV-LOCK/restore-lock-identity", "w".repeat(RESULT_LIMITS.cell)), row("INV-ROOT")], previous: [{ id: RECORD, status: "未解消", reason: "r".repeat(RESULT_LIMITS.cell) }, { id: "RT-2", status: "解消", reason: "直った" }] })],
+    [ff, result(ff, { causes: Array.from({ length: RESULT_LIMITS.causes }, (_, n) => row(`INV-${n}`)), previous: Array.from({ length: RESULT_LIMITS.previous }, (_, n) => ({ id: `RT-${n + 1}`, status: "解消" as const, reason: "x" })) })],
+  ];
+  for (const [j, v] of passes) {
+    assert.deepEqual(parseResult(JSON.stringify(v), j, [RECORD]), v);
+    assert.ok(schemaValid(SCHEMA, v), JSON.stringify(v).slice(0, 120));
+  }
+  const fails: [Job, Partial<WorkerResult>][] = [
+    // The owner's measurement (W5d): prose instead of a link.
+    [r, { evidence: ["Grepで教材を確認した"] }],
+    [r, { evidence: ["pr/index.json"] }],
+    [r, { evidence: [`${REPO}/issues/1`] }],
+    [r, { evidence: Array.from({ length: RESULT_LIMITS.evidence + 1 }, () => LINKS[0]!) }],
+    [r, { summary: "" }],
+    [r, { summary: "x".repeat(RESULT_LIMITS.text + 1) }],
+    [r, { summary: "a\rb" }],
+    [r, { summary: "hello @participant" }],
+    [r, { summary: "<!-- marker -->" }],
+    [r, { unverified: [""] }],
+    [r, { unverified: ["x\ny"] }],
+    [r, { unverified: ["x".repeat(RESULT_LIMITS.text + 1)] }],
+    [r, { unverified: Array.from({ length: RESULT_LIMITS.unverified + 1 }, () => "x") }],
+    [r, { decision: "changes-requested", findings: [finding("R-1")] }],
+    [r, { decision: "changes-requested", findings: [{ ...finding("PR1-R001"), location: "x\ny" }] }],
+    [r, { decision: "changes-requested", findings: [finding("PR1-R001", "x".repeat(RESULT_LIMITS.text + 1))] }],
+    [r, { decision: "changes-requested", findings: Array.from({ length: RESULT_LIMITS.findings + 1 }, (_, n) => finding(`PR1-R${String(n + 1).padStart(3, "0")}`)) }],
+    [ff, { causes: [row("bad key!")] }],
+    [ff, { causes: [row("INV-LOCK", "a|b")] }],
+    [ff, { causes: [row("INV-LOCK", "x".repeat(RESULT_LIMITS.cell + 1))] }],
+    [ff, { causes: Array.from({ length: RESULT_LIMITS.causes + 1 }, (_, n) => row(`INV-${n}`)) }],
+    [ff, { previous: [{ id: "RT-0", status: "解消", reason: "x" }] }],
+    [ff, { previous: Array.from({ length: RESULT_LIMITS.previous + 1 }, (_, n) => ({ id: `RT-${n + 1}`, status: "解消" as const, reason: "x" })) }],
+  ];
+  for (const [j, extra] of fails) {
+    const v = result(j, extra);
+    assert.throws(() => parseResult(JSON.stringify(v), j, [RECORD]), JSON.stringify(extra).slice(0, 80));
+    assert.equal(schemaValid(SCHEMA, v), false, JSON.stringify(extra).slice(0, 80));
+  }
+});
+
+test("W5d jobText states the rules the schema cannot express: evidence forms of this repository, one-line items, limits", () => {
+  const stdin = buildLaunch(policy(), job(30), claudeInstall(), run(), opts).stdin;
+  for (const form of [`${REPO}/actions/runs/RUN_ID`, `${REPO}/pull/NUMBER#pullrequestreview-REVIEW_ID`, `${REPO}/commit/SHA`])
+    assert.ok(stdin.includes(form), form);
+  assert.match(stdin, /Evidence: only links of these forms, otherwise an empty list/);
+  assert.match(stdin, /Unverified: what you could not check, one line each/);
+  assert.ok(stdin.includes(`${RESULT_LIMITS.text} characters`) && stdin.includes(`${RESULT_LIMITS.cell} per table cell`));
+  assert.match(stdin, /no "<" or "@"/);
+  // Never a line the owner's measurement reads as a probe step (doctor.test.ts).
+  assert.ok(!/^- /m.test(stdin));
+  const ff = buildLaunch(policy(), ffJob(), claudeInstall(), run(), opts).stdin;
+  assert.match(ff, /Evidence: only links/);
 });

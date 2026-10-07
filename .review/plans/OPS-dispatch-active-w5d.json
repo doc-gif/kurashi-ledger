@@ -1,0 +1,481 @@
+{
+  "schema_version": 2,
+  "base_sha": "e097c0f718cf42a00aa4eb42f913741e322862f8",
+  "task_id": "OPS-dispatch-active",
+  "planned_paths": [
+    "scripts/lib/review-dispatch/active.test.ts",
+    "scripts/lib/review-dispatch/active.ts",
+    "scripts/lib/review-dispatch/broker.test.ts",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/launcher.test.ts",
+    "scripts/lib/review-dispatch/launcher.ts"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "結果の形の約束（RESULT_SCHEMA・jobText・parseResultの上限の置き場所）とbenign runの依頼文だけを変える。lock・lease・run lockの取得と受け渡しには触れない",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分にstore.ts・runtime.ts・supervisor.pyの変更がないことをgit diffで確かめる",
+          "expected": "lockの種類・パス・照合は同じ"
+        },
+        {
+          "id": "recovery",
+          "method": "既存のactive.test.ts・store.test.ts・test_dispatch_supervisor.pyのlockの試験を変えずに通す",
+          "expected": "lockの回復の規則は同じ"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "parseResultの内容の規則（Cf文字・token・ローカルパス・< @・行頭のfield名・リンクのhost・www）は変えず、上限の数値を共有定数から読むだけ。jobTextに足すのは検証済みのpolicy.repo（公開repo名）と固定文だけで、秘密・パス・実データを含まない",
+      "checks": [
+        {
+          "id": "public",
+          "method": "broker.test.ts・claude-broker.test.ts・github.test.ts: 既存の内容の規則の試験を変えずに通す。launcher.test.ts: jobTextに秘密・ローカルパスが入らない（合成のrepo名だけ）。check-public --staged",
+          "expected": "拒否される結果は同じ。公開検査が終了0"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "所有者の実機の測定（main e097c0f、Claude 2.1.289、手順8を2回）でbenignがfailed=parse stage=schema-field field=evidenceだった。parseResultはEVIDENCE_SHAPEのリンクだけを受け付けるのに、--json-schemaのschemaもjobTextもそれを伝えない。schemaで表せる上限（pattern・maxLength・maxItems・minLength）をschemaへ入れ、表せない規則をjobTextに短く書き、benignの依頼をparseResultを通る結果にする。schemaの変更でargvのhashが変わるので、既存の測定はstaleになり、再測定が要る（想定どおり）",
+      "checks": [
+        {
+          "id": "update",
+          "method": "launcher.test.ts: schemaのevidenceのitems.patternがEVIDENCE_SHAPE.sourceと等しい。試験内の小さな検証器（type・enum・required・additionalProperties・items・maxItems・maxLength・minLength・pattern（u flag））で、parseResultが受け付ける結果（review・faultfinding・上限ちょうど）はschemaも受け付け、prose・他repo外の形のevidence、上限超過、改行入りのfinding欄はschemaが拒む。jobTextがevidenceの形・repo・空の配列とunverifiedの1行を述べる。argvTemplateHashが変わる",
+          "expected": "schemaはparseResultより厳しくならず、表せる上限はすべて同じ定数から入る"
+        },
+        {
+          "id": "artifact",
+          "method": "broker.test.ts: proseのevidenceを持つ結果は引き続きparseResultで拒否される。active.test.ts: benignのstdinは本番のreviewと同じjobText（evidenceとunverifiedの規則）と最小の測定の依頼だけで、evidence・unverifiedを空にする指示を含まない（RT-1）",
+          "expected": "検証器は弱まらず、benignは本番のreviewと同じ指示の下でparseResultを通るかを確かめる"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "保存先のroot・別名・初回作成・run areaの作成と削除に触れない",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分にnewRunArea・removeRunArea・mkRunの変更がないことを確かめる",
+          "expected": "run areaの作り方は同じ"
+        },
+        {
+          "id": "aliases",
+          "method": "同上",
+          "expected": "同じ"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "DB・schema・保存の規則に触れない。測定fileの形（schema 1・2）も変えない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分にstore.tsの変更がないことを確かめる",
+          "expected": "DBのschemaは同じ"
+        },
+        {
+          "id": "restore",
+          "method": "同上",
+          "expected": "同じ"
+        },
+        {
+          "id": "manifest",
+          "method": "差分にMeasurement・MeasurementFileの型の変更がないことを確かめる",
+          "expected": "測定fileの形は同じ"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "launcher.ts RESULT_SCHEMA（Claudeの--json-schema、Codexの--output-schemaのfile）",
+      "data": "workerに返させる結果の形と上限",
+      "trust": "trusted",
+      "control": "上限はRESULT_LIMITSと共有の正規表現（EVIDENCE_SHAPE・CAUSE_KEY・RT・record ID）から作り、parseResultも同じ定数を読む。schemaはparseResultより厳しくしない（受け付ける集合が同じか広い）。判定の正本はparseResultのまま"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "launcher.ts jobText（workerのstdin）",
+      "data": "Jobの構造化した値、policy.repo、schemaで表せない規則の固定文",
+      "trust": "trusted",
+      "control": "repoはvalidatePolicyの形（owner/name）を通った値だけ。stdinの上限（MAX_STDIN）とNUL拒否は同じ。行頭を「- read:」等にせず、測定の依頼の行と混ざらない"
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": "broker.ts parseResult",
+      "data": "workerの結果（JSON）",
+      "trust": "untrusted",
+      "control": "規則は変えない。数値の上限と形の正規表現を共有定数から読むだけ。proseのevidenceはResultContentErrorのまま"
+    },
+    {
+      "id": "B4",
+      "direction": "exit",
+      "location": "active.ts measureCommandのbenign runの依頼",
+      "data": "所有者の測定の固定文",
+      "trust": "trusted",
+      "control": "本番のreviewと同じjobTextに、Grepとneeds-owner・findingsなしの最小の依頼だけを足す。evidence・unverifiedはschemaとjobTextの規則の下でモデルが埋める（RT-1）。argvとFIXED_QUERYは本番のまま"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "pattern": "検証器（parseResult）が受け付ける形と、workerへ伝える形（--json-schemaのschema・jobText）がずれ、正しい作業が形の検査で落ちる。parseResultの制約を1つずつ、schemaで表すかjobTextで述べるかに振り分ける",
+      "places": [
+        {
+          "location": "結果全体32768 bytes",
+          "result": "schemaで表せない。jobTextに上限を書く"
+        },
+        {
+          "location": "keyの集合、schema=1、decision・judgement・statusの列挙",
+          "result": "schemaに既にある（required・additionalProperties false・enum）"
+        },
+        {
+          "location": "run・actor・generation・pairの完全一致",
+          "result": "静的なschemaでは表せない。jobTextに既にある"
+        },
+        {
+          "location": "summary: 非空、1200以下、\\t\\n以外の制御文字なし",
+          "result": "schemaにminLength・maxLength・patternを足す"
+        },
+        {
+          "location": "findings: 30件以下、idの形、location・impact・completionは非空・1200以下・1行",
+          "result": "schemaにmaxItems・maxLength・minLength・1行のpattern、idは両kindを合わせた形のpatternを足す（PR番号の一致はjobTextに既にある）"
+        },
+        {
+          "location": "evidence: 30件以下、EVIDENCE_SHAPE（原因）",
+          "result": "schemaにmaxItemsとEVIDENCE_SHAPE.sourceのpatternを足す。repoがpolicyのものであること、commitがこのPRのものであること（evidenceFindings、満たさないとblocked）はjobTextに書く"
+        },
+        {
+          "location": "unverified: 30件以下、非空・1200以下・1行",
+          "result": "schemaに足し、jobTextに1件1行と書く"
+        },
+        {
+          "location": "causes: 200件以下、causeの形、whereは表のcell（600以下・1行・|なし）",
+          "result": "schemaに足す。cell・1行の規則はjobTextに既にある"
+        },
+        {
+          "location": "previous: 100件以下、idはRT-nか教材のrecord ID、reasonはcell",
+          "result": "schemaに形を足す。教材にあるrecordだけという規則はjobTextに既にある"
+        },
+        {
+          "location": "reviewではcauses・previousが空",
+          "result": "jobTextに既にある"
+        },
+        {
+          "location": "IDの重複、acceptedとfindings・未解消の矛盾",
+          "result": "schemaで表せない。jobTextに書く（faultfindingは既にある）"
+        },
+        {
+          "location": "内容の規則（< @、行頭のfield名と:、リンクのhost、www、Cf文字、token・ローカルパス）",
+          "result": "ASCIIの< @だけschemaのpatternに入れ、残りはjobTextに1行で書く。NFKC後の判定は変えない"
+        },
+        {
+          "location": "active.ts benign runの依頼",
+          "result": "依頼はneeds-owner・findingsなしのまま変えない。evidence・unverifiedは本番と同じjobTextの規則に任せる（RT-1）"
+        },
+        {
+          "location": "doctor.ts trapPrRun・injectionRunの依頼",
+          "result": "測定の判定は結果の形を読まないので変えない（run Bの扱いは所有者の判断待ちで、この変更の範囲外）"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "workerへ渡す文や結果の検査の変更で、秘密・パス・実データが外へ出る、または内容の規則が弱まる",
+      "places": [
+        {
+          "location": "launcher.ts jobText",
+          "result": "足すのはpolicy.repoと固定文だけ"
+        },
+        {
+          "location": "broker.ts parseResultの内容の規則",
+          "result": "変えない"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "lockの取得・受け渡しが変わる",
+      "places": [
+        {
+          "location": "store.ts・supervisor.py",
+          "result": "変更なし"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "保存先・run areaの作り方が変わる",
+      "places": [
+        {
+          "location": "active.ts newRunArea・doctor.ts mkRun",
+          "result": "変更なし"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "DB・測定fileの形が変わる",
+      "places": [
+        {
+          "location": "store.ts・MeasurementFile",
+          "result": "変更なし。argvのhashが変わるので既存の測定はstaleになる（parseMeasurementの既存の判定）"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R007",
+          "invariant_id": "INV-LOCK",
+          "cause_key": "restore-lock-identity",
+          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+          ]
+        }
+      ]
+    },
+    "INV-PRIVACY": {
+      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+      "scenarios": [
+        {
+          "id": "public",
+          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR12-R002",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "public-path-exception-scope",
+          "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+          ]
+        },
+        {
+          "id": "PR42-R001",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "token-scope-fail-open",
+          "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+          ]
+        },
+        {
+          "id": "PR42-R006",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "credential-tool-from-untrusted-checkout",
+          "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+          ]
+        },
+        {
+          "id": "PR37-R001",
+          "invariant_id": "INV-PRIVACY",
+          "cause_key": "logged-value-carries-data",
+          "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+            "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+          ]
+        }
+      ]
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R006",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "artifact-release-coherence",
+          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+          ]
+        },
+        {
+          "id": "PR12-R001",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "PR12-R101",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "cleanup-failure-path-contract",
+          "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+          ]
+        },
+        {
+          "id": "PR12-R102",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        },
+        {
+          "id": "PR12-R103",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "verification-on-target-runtime",
+          "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R002",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "first-use-vs-interruption",
+          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+          ]
+        },
+        {
+          "id": "PR12-R104",
+          "invariant_id": "INV-ROOT",
+          "cause_key": "destructive-op-follows-link",
+          "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+            "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+          ]
+        }
+      ]
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "PR2-R001",
+          "invariant_id": "INV-STORAGE",
+          "cause_key": "database-journal-pair",
+          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+          ]
+        }
+      ]
+    }
+  },
+  "deferred": [
+    {
+      "item": "所有者の実機での再測定（手順8）",
+      "reason": "schemaの変更でargvのhashが変わる。実CLIとsetup-tokenを使うので所有者だけが行う"
+    },
+    {
+      "item": "run Bの試行の繰り返し・和集合・依頼文の変更",
+      "reason": "所有者がrun Bで何を証明するかを再検討中。別の判断"
+    },
+    {
+      "item": "Codexの--output-schemaでmaxLength等の対応",
+      "reason": "Codexの自動起動は保留（所有者の決定）。測定の仕組みだけが同じschemaを使う"
+    }
+  ]
+}
