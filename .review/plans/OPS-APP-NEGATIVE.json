@@ -14,13 +14,8 @@
       "checks": [
         {
           "id": "public",
-          "method": "staged公開検査と差分の目視。",
-          "expected": "終了0。秘密、実データ、個人のパスを加えない。"
-        },
-        {
-          "id": "scope",
-          "method": "否定確認の表の注記、発行手順2の完全一致照合、確かめていないことの一覧を照合する。",
-          "expected": "issuesの422を合格に数えない。reviewのissues:writeがない根拠とAPI側の拒否が未確認である限界を区別する。"
+          "method": "staged公開検査と差分の目視。否定確認の注記、発行手順2、未確認一覧も照合する。",
+          "expected": "終了0。秘密、実データ、個人のパスを加えない。issuesの422を合格に数えず、発行権限の完全一致照合とAPI側の拒否が未確認である限界を区別する。"
         }
       ]
     },
@@ -36,13 +31,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "変更範囲とPR引継ぎを確認する。",
-          "expected": "文書の変更は否定確認の前置き・issues行・注記と未確認一覧。新head/baseでCI成功後にReadyと引継ぎを出し、Claudeの受付の粗探し・レビュー待ちで止まる。"
-        },
-        {
-          "id": "coherence",
-          "method": "docs、README.md、SECURITY.md、.githubの文書と.reviewの計画・台帳を403・422・issues:writeで検索し、該当行と周辺を読む。",
-          "expected": "INV-TASKS/status-docs-current-state-coherence: 現行の差分外の文書にissuesのPOSTを403とする期待はない。docs/github-apps.mdの残る403はcontents・administration・merge-check等の別要求。OPS-github-app-reviewer.jsonの403記述は当時の修正履歴で、現行issues行の合格条件ではない。"
+          "method": "変更範囲とPR引継ぎを確認する。docs、README.md、SECURITY.md、.githubの文書と.reviewの計画・台帳を403・422・issues:writeで検索し、該当行と周辺を読む。",
+          "expected": "文書の変更は否定確認の前置き・issues行・注記と未確認一覧。新head/baseでCI成功後にReadyと引継ぎを出し、Claudeの受付へ渡す。INV-TASKS/status-docs-current-state-coherence: 差分外の現行文書にissuesの403期待はない。他の403は別要求で、OPS-github-app-reviewer.jsonの一般的な403は当時の修正履歴。"
         }
       ]
     }
