@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "task_id": "OPS-dispatch-active",
- "base_sha": "c285290028f90d80824934b92d760becb1b08fbe",
+ "base_sha": "17b37921521ce5d69aad5677db669c66aec56dd8",
  "planned_paths": [
   "docs/review-dispatch-design.md",
   "scripts/lib/review-dispatch/active.test.ts",
@@ -9,7 +9,8 @@
   "scripts/lib/review-dispatch/doctor.test.ts",
   "scripts/lib/review-dispatch/doctor.ts",
   "scripts/lib/review-dispatch/runtime.ts",
-  "scripts/review-dispatch.test.ts"
+  "scripts/review-dispatch.test.ts",
+  "tools/review_dispatch/seatbelt/cli.sb"
  ],
  "conflicts": [],
  "owner_decisions": [
@@ -17,6 +18,11 @@
    "date": "2026-10-07",
    "source": "Issue #50 W8（調整係が伝えた所有者の決定。記録はIssue #50に調整係が残す）",
    "decision": "doctorのloopbackの証明を環境に依らないものにする。実行時の証明はdoctor自身が127.0.0.1の一時portに立てる待受けで行い、sandboxなしの対照は接続して目印のbyteを受け取ること、cli.sbの下では同じ接続が拒否されること。hang・timeoutはdeniedにせずinconclusive（止める）。443番がloopbackに届かないことは静的に保証する（VETTED_RULESの順でlocalhostのdenyがTCP 443のallowより後。Seatbeltでは後の規則が勝つ）。443番の実行時probeはやめる。単体試験は実の443番や固定のportに触れない。Tailscale Funnelの443番の残余リスクを設計§7の残余リスクに1か所で書く。probeのIDが変われば古いcapability・測定を拒否する"
+  },
+  {
+   "date": "2026-10-07",
+   "source": "PR #70 red team RT-1・RT-2（調整係の指示）",
+   "decision": "cli.sbの443番のallowを(remote tcp4 \"*:443\")にする（localhostのdenyはIPv4射影のIPv6アドレスに一致しないため）。loopbackのdeny行と規則の順を、443番のallowをdoctorの一時portへ移したprofileの変種で実行時に証明する（127.0.0.1・::1・::ffff:127.0.0.1。open=deny行なしでallowed、confined=出荷の順でdenied）。lintの順の検査も残す。cli.sbが変わるので所有者はマージ後に手順8・9をやり直す"
   }
  ],
  "assessments": [
@@ -52,7 +58,7 @@
   {
    "id": "INV-RELEASE",
    "disposition": "preserve",
-   "reason": "capabilityにdoctorの合成probeの集合のhash（probeSet）を加える。古い写しで記録したcapability（probeSetなし・別の集合）はboundCapabilityがcapability-probesで拒否し、起動しない。測定（schema 3）は測る項目（MEASURED_PROBES）が変わらないので版を上げず、項目が変われば既存のparseMeasurementがinvalidにする。cli.sbは変えないのでprofileHashと既存の測定はそのまま",
+   "reason": "capabilityにdoctorの合成probeの集合のhash（probeSet）を加える。古い写しで記録したcapability（probeSetなし・別の集合）はboundCapabilityがcapability-probesで拒否し、起動しない。測定（schema 3）は測る項目（MEASURED_PROBES）が変わらないので版を上げず、項目が変われば既存のparseMeasurementがinvalidにする。cli.sbは変えないのでprofileHashと既存の測定はそのまま。cli.sbの443番のallowをtcp4に変えるのでprofileHashと共有profileの一覧（tcp4-443）が変わり、既存の測定・capabilityは拒否される（所有者は手順8・9をやり直す）。tcp4でもモデルへのIPv4の443番に出られることを、tokenなしの実CLI（system/init）とsandbox内のcurl -4で確かめる",
    "checks": [
     {
      "id": "update",
@@ -147,6 +153,14 @@
    "data": "DBに記録したcapability（JSON）",
    "trust": "partially-trusted",
    "control": "版・実行ファイル・cli.sb・argvに加え、probeSetが今のPROBE_SETと一致しなければcapability-probesで起動しない"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "cli.sb network-outbound（CLIとその子の外向き通信）",
+   "data": "TCP接続の宛先アドレスとport",
+   "trust": "untrusted",
+   "control": "許可は(remote tcp4 \"*:443\")とDNSだけ。IPv6のTCPは許さないのでIPv4射影の形（::ffff:127.0.0.1、::ffff:<自分のアドレス>）も拒否。その後のlocalhostのdenyがloopbackとMac自身のIPv4アドレスを拒否する。doctorのloopback-ipv4・loopback-ipv6・loopback-mappedがこの順を実行時に証明する"
   }
  ],
  "variant_analysis": [
@@ -183,6 +197,14 @@
     {
      "location": "doctor.test.ts・active.test.ts・webhook.test.ts・review-dispatch.test.ts",
      "result": "443番や固定portへ接続・待受けしない。serveの8787はsecret・lockの検査で待受け前に拒否される（変更なし）"
+    },
+    {
+     "location": "cli.sbのallow (remote tcp \"*:443\")（PR #70 RT-1）",
+     "result": "修正: tcp4。IPv4射影の形がlocalhostのdenyをすり抜けていた"
+    },
+    {
+     "location": "doctor.ts lintProfileの順の検査（PR #70 P3）",
+     "result": "修正: localhostのdenyの後にnetworkを含むallowが1つもないことを見る（1行の完全一致ではなく）"
     }
    ]
   },
