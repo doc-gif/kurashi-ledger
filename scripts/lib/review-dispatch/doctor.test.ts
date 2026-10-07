@@ -17,6 +17,7 @@ import {
   LOOPBACK_DENY_LINE,
   TCP_443_ALLOW_LINE,
   probeOutcome,
+  profileVariant,
   SOCKET_DENY_LINE,
   SUN_PATH_MAX,
   SYNTHETIC_PROBES,
@@ -250,13 +251,12 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
     // Every rule must be a vetted one; a changed or added rule is refused whatever it means.
     [PROFILE.replace("(target self)", "(target others)"), "allow-not-vetted"],
     [PROFILE.replace('"*:443"', '"*:8443"'), "allow-not-vetted"],
+    // PR #70 RT-1: any protocol but tcp4 lets IPv4-mapped IPv6 addresses past the localhost deny.
+    [PROFILE.replace('(remote tcp4 "*:443")', '(remote tcp "*:443")'), "allow-not-vetted"],
     [PROFILE.replace('"localhost:*"', '"localhost:80"'), "deny-not-vetted"],
     // Order and number matter: a later rule wins (the localhost deny above the TCP 443 allow opens localhost:443).
     [
-      PROFILE.replace('(deny network-outbound (remote ip "localhost:*"))', "").replace(
-        '(allow network-outbound (remote tcp "*:443"))',
-        '(deny network-outbound (remote ip "localhost:*"))\n(allow network-outbound (remote tcp "*:443"))',
-      ),
+      PROFILE.replace(LOOPBACK_DENY_LINE, "").replace(TCP_443_ALLOW_LINE, `${LOOPBACK_DENY_LINE}\n${TCP_443_ALLOW_LINE}`),
       "loopback-deny-not-after-443",
     ],
     [PROFILE.replace("(allow process-fork)", "(allow process-fork)\n(allow process-fork)"), "profile-not-vetted"],
@@ -312,9 +312,11 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   assert.ok(missing.reasons.includes("profile-text-missing"));
 });
 
-test("W8: loopback-deny-after-443 is static: the lint refuses any profile whose loopback deny does not come after the TCP 443 allow", async () => {
-  // The vetted order itself: the deny comes after the allow (in Seatbelt a later rule wins).
+test("W8: loopback-deny-after-443: the lint refuses any profile with a network allow after the loopback deny", async () => {
+  // The vetted order itself: the deny comes after the allow (the later rule wins: the macOS test
+  // "PR70 RT-2 Seatbelt" below measures it with the loopback-* probes).
   assert.ok(VETTED_RULES.indexOf(LOOPBACK_DENY_LINE) > VETTED_RULES.lastIndexOf(TCP_443_ALLOW_LINE));
+  assert.equal(TCP_443_ALLOW_LINE, '(allow network-outbound (remote tcp4 "*:443"))');
   assert.ok(VETTED_RULES.lastIndexOf(TCP_443_ALLOW_LINE) >= 0);
   assert.deepEqual(lintProfile(PROFILE), []);
   // Every position of the loopback deny before the 443 allow is refused by the named check, not only by the
@@ -329,16 +331,31 @@ test("W8: loopback-deny-after-443 is static: the lint refuses any profile whose 
     assert.ok(problems.includes("loopback-deny-not-after-443"), `${k}: ${problems.join()}`);
     assert.equal((await runDoctor(input({ profileText: moved.join("\n") }))).state, "disabled", String(k));
   }
-  // A second 443 allow after the deny reopens localhost:443: refused the same way.
-  const reopened = PROFILE.replace(LOOPBACK_DENY_LINE, `${LOOPBACK_DENY_LINE}\n${TCP_443_ALLOW_LINE}`);
-  assert.ok(lintProfile(reopened).includes("loopback-deny-not-after-443"));
+  // Any network allow after the deny reopens loopback, whatever its spelling (PR #70 P3): refused the same way.
+  for (const rule of [TCP_443_ALLOW_LINE, '(allow network-outbound (remote ip "*:443"))', '(allow network-outbound (remote tcp "*:8443"))', "(allow network*)", "(allow default)"]) {
+    const reopened = PROFILE.replace(LOOPBACK_DENY_LINE, `${LOOPBACK_DENY_LINE}\n${rule}`);
+    assert.ok(lintProfile(reopened).includes("loopback-deny-not-after-443"), rule);
+  }
   // Without the deny at all.
   assert.ok(lintProfile(PROFILE.replace(LOOPBACK_DENY_LINE, "")).includes("loopback-deny-missing"));
   // No runtime probe on port 443 is left: its answer depends on what listens on the host (Tailscale Funnel).
   for (const [id, d] of Object.entries(SYNTHETIC_PROBES)) assert.ok(!id.includes("443") && !d.kind.includes("443"), id);
   assert.ok(!/\b443\b/.test(PROBE_SOURCE));
-  assert.deepEqual(RUN_B_COVERAGE.network.synthetic, ["tool-network"]);
+  assert.deepEqual(RUN_B_COVERAGE.network.synthetic, ["tool-network", "loopback-ipv4", "loopback-ipv6", "loopback-mapped"]);
   assert.deepEqual(coverageGaps(), []);
+  // The net variants move the 443 allow to the doctor's ports: confined keeps its protocol, place and the deny;
+  // open drops the deny and allows any protocol.
+  const confined = profileVariant(PROFILE, "net-confined", [40001, 40002]);
+  const opened = profileVariant(PROFILE, "net-open", [40001, 40002]);
+  assert.ok(confined.includes('(allow network-outbound (remote tcp4 "*:40001") (remote tcp4 "*:40002"))'));
+  assert.ok(confined.indexOf(LOOPBACK_DENY_LINE) > confined.indexOf('(remote tcp4 "*:40001")'));
+  assert.ok(!confined.includes('"*:443"'));
+  assert.ok(opened.includes('(allow network-outbound (remote tcp "*:40001") (remote tcp "*:40002"))'));
+  assert.ok(!opened.includes(LOOPBACK_DENY_LINE) && !opened.includes('"*:443"'));
+  assert.equal(confined.split("\n").length, PROFILE.replace(/\r\n?/g, "\n").split("\n").length);
+  assert.throws(() => profileVariant(PROFILE.replace(TCP_443_ALLOW_LINE, ""), "net-confined", [40001]), /profile shape/);
+  assert.throws(() => profileVariant(PROFILE, "net-confined", []), /profile shape/);
+  assert.throws(() => profileVariant(PROFILE, "net-open", [0]), /profile shape/);
 });
 
 test("W8: a connect outcome needs the doctor's marker for the control; a hang or timeout is never denied", async (t) => {
@@ -346,6 +363,9 @@ test("W8: a connect outcome needs the doctor's marker for the control; a hang or
   // Control: only the marker proves the connection reached the doctor's own listener.
   assert.equal(probeOutcome("connect", "control", 0, line("allowed")), "allowed");
   assert.equal(probeOutcome("connect", "control", 0, line("unmarked")), "inconclusive");
+  // The open variant is a positive control too.
+  assert.equal(probeOutcome("connect", "open", 0, line("allowed")), "allowed");
+  assert.equal(probeOutcome("connect", "open", 0, line("unmarked")), "inconclusive");
   // Under cli.sb any connection is a leak, with or without the marker.
   for (const mode of ["cli", "cli-child"] as const) {
     assert.equal(probeOutcome("connect", mode, 0, line("allowed")), "allowed");
@@ -353,7 +373,7 @@ test("W8: a connect outcome needs the doctor's marker for the control; a hang or
     assert.equal(probeOutcome("connect", mode, 0, line("denied")), "denied");
   }
   // error (the probe's timeout), a killed child (null), other text: inconclusive, never denied.
-  for (const mode of ["control", "cli", "cli-child"] as const)
+  for (const mode of ["control", "open", "cli", "cli-child"] as const)
     for (const [code, out] of [[0, line("error")], [null, ""], [0, ""], [1, line("denied")], [0, `${line("denied")}x`]] as const)
       assert.equal(probeOutcome("connect", mode, code, out), "inconclusive", `${mode} ${code} ${out}`);
   assert.equal(probeOutcome("read", "cli", 0, line("unmarked")), "inconclusive");
@@ -367,13 +387,13 @@ test("W8: a connect outcome needs the doctor's marker for the control; a hang or
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "probe.mjs"), PROBE_SOURCE);
   const open: import("node:net").Socket[] = [];
-  const listen = async (onConn: (c: import("node:net").Socket) => void) => {
+  const listen = async (onConn: (c: import("node:net").Socket) => void, host = "127.0.0.1") => {
     const server = createServer((c) => {
       open.push(c);
       c.on("error", () => {});
       onConn(c);
     });
-    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    await new Promise<void>((r) => server.listen(0, host, () => r()));
     const a = server.address();
     return { server, port: typeof a === "object" && a ? a.port : 0 };
   };
@@ -388,14 +408,26 @@ test("W8: a connect outcome needs the doctor's marker for the control; a hang or
   const closed = await listen(() => {});
   await new Promise<void>((r) => closed.server.close(() => r()));
   try {
-    assert.equal(await run(`${good.port}:${marker}`), line("allowed"));
-    assert.equal(await run(`${good.port}:${marker}`, true), line("allowed"), "relayed by the child");
-    assert.equal(await run(`${wrong.port}:${marker}`), line("unmarked"));
+    const at = (host: string, port: number) => `${host}|${port}|${marker}`;
+    assert.equal(await run(at("127.0.0.1", good.port)), line("allowed"));
+    assert.equal(await run(at("127.0.0.1", good.port), true), line("allowed"), "relayed by the child");
+    assert.equal(await run(at("127.0.0.1", wrong.port)), line("unmarked"));
     // Connected but nothing comes (a hang): unmarked after the probe's own timeout.
-    assert.equal(await run(`${silent.port}:${marker}`), line("unmarked"));
+    assert.equal(await run(at("127.0.0.1", silent.port)), line("unmarked"));
     // Refused: no connection and no EPERM, so no proof either way.
-    assert.equal(await run(`${closed.port}:${marker}`), line("error"));
-    assert.equal(probeOutcome("connect", "control", 0, await run(`${closed.port}:${marker}`)), "inconclusive");
+    assert.equal(await run(at("127.0.0.1", closed.port)), line("error"));
+    assert.equal(probeOutcome("connect", "control", 0, await run(at("127.0.0.1", closed.port))), "inconclusive");
+    if (process.platform === "darwin") {
+      // The loopback-* targets: IPv6 loopback and the IPv4-mapped form of 127.0.0.1 (the doctor runs on macOS).
+      const six = await listen((c) => c.end(marker), "::1");
+      try {
+        assert.equal(await run(at("::1", six.port)), line("allowed"));
+        assert.equal(await run(at("::ffff:127.0.0.1", good.port)), line("allowed"));
+      } finally {
+        for (const c of open) c.destroy();
+        await new Promise<void>((r) => six.server.close(() => r()));
+      }
+    }
   } finally {
     for (const c of open) c.destroy();
     for (const s of [good, wrong, silent]) await new Promise<void>((r) => s.server.close(() => r()));
@@ -573,6 +605,50 @@ test("Seatbelt integration: real sandbox-exec denies every synthetic probe and i
   } finally {
     await host.close();
   }
+});
+
+test("PR70 RT-2 Seatbelt: the loopback-* probes show the loopback deny, its order and tcp4 at run time", async (t) => {
+  if (process.platform !== "darwin") {
+    // Not a skip: there is no Seatbelt elsewhere, and the doctor disables there (the integration test above).
+    t.diagnostic(`no Seatbelt on ${process.platform}`);
+    return;
+  }
+  const work = realpathSync(mkdtempSync(join(tmpdir(), "kl-rt2-")));
+  t.after(() => rmSync(work, { recursive: true, force: true }));
+  const probes = ["loopback-ipv4", "loopback-ipv6", "loopback-mapped"] as const;
+  const outcomes = async (name: string, text: string) => {
+    writeFileSync(join(work, `${name}.sb`), text);
+    const host = seatbeltHost({ cliProfile: join(work, `${name}.sb`) });
+    try {
+      const r: Record<string, Outcome> = {};
+      for (const id of probes) for (const mode of ["control", "open", "cli", "cli-child"] as const) r[`${id}:${mode}`] = await host.run(id, mode);
+      return r;
+    } finally {
+      await host.close();
+    }
+  };
+  // Shipped: each listener is reachable unconfined and from the open variant, and denied in the shipped order.
+  const shipped = await outcomes("shipped", PROFILE);
+  t.diagnostic(`shipped: ${JSON.stringify(shipped)}`);
+  for (const id of probes) {
+    assert.equal(shipped[`${id}:control`], "allowed", id);
+    assert.equal(shipped[`${id}:open`], "allowed", id);
+    assert.equal(shipped[`${id}:cli`], "denied", id);
+    assert.equal(shipped[`${id}:cli-child`], "denied", id);
+  }
+  // Without the loopback deny, or with it before the allow (the later rule wins), IPv4 loopback connects.
+  const noDeny = await outcomes("no-deny", PROFILE.replace(LOOPBACK_DENY_LINE, ""));
+  const before = await outcomes("deny-first", PROFILE.replace(LOOPBACK_DENY_LINE, "").replace(TCP_443_ALLOW_LINE, `${LOOPBACK_DENY_LINE}\n${TCP_443_ALLOW_LINE}`));
+  t.diagnostic(`no deny: ${JSON.stringify(noDeny)}; deny first: ${JSON.stringify(before)}`);
+  for (const r of [noDeny, before]) {
+    assert.equal(r["loopback-ipv4:cli"], "allowed");
+    assert.equal(r["loopback-ipv4:cli-child"], "allowed");
+  }
+  // RT-1: with tcp instead of tcp4 the localhost deny does not stop the IPv4-mapped form.
+  const tcp = await outcomes("tcp", PROFILE.replace('(remote tcp4 "*:443")', '(remote tcp "*:443")'));
+  t.diagnostic(`tcp: ${JSON.stringify(tcp)}`);
+  assert.equal(tcp["loopback-mapped:cli"], "allowed");
+  assert.equal(tcp["loopback-ipv4:cli"], "denied");
 });
 
 test("CLI measurement harness: outcomes need attempt evidence from the CLI's events; no evidence is inconclusive", async (t) => {
@@ -1185,7 +1261,7 @@ test("W5c (ISSUE50-P001): the shared profile's allowances are reported as allowe
   for (const r of allows) assert.equal(PROFILE_ALLOWS.filter(([prefix]) => r.startsWith(prefix)).length, 1, r);
   for (const [prefix] of PROFILE_ALLOWS) assert.equal(allows.filter((r) => r.startsWith(prefix)).length, 1, prefix);
   assert.equal(PROFILE_ALLOWS.length, allows.length);
-  for (const id of ["tcp-443", "run-config-home-tmp-write", "posix-shm-any-name", "signal-same-sandbox", "mach-dns-directory-notification-trust-log"])
+  for (const id of ["tcp4-443", "run-config-home-tmp-write", "posix-shm-any-name", "signal-same-sandbox", "mach-dns-directory-notification-trust-log"])
     assert.ok(SHARED_PROFILE_ALLOWS.includes(id), id);
   for (const r of [await runDoctor(input()), await runDoctor(claudeInput())]) {
     assert.equal(r.state, "verified", JSON.stringify(r.reasons));
