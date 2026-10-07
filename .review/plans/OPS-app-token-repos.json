@@ -1,0 +1,247 @@
+{
+ "schema_version": 2,
+ "task_id": "OPS-app-token-repos",
+ "base_sha": "3a4b037824783680b02159eb16cbb0766e02d826",
+ "planned_paths": [
+  "docs/github-apps.md",
+  "scripts/github-app-token.test.ts",
+  "scripts/github-app-token.ts",
+  "scripts/lib/github-app-token.ts"
+ ],
+ "conflicts": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-07",
+   "source": "Issue #50 W12（調整係が伝えた所有者の依頼。所有者がprivate repo doc-gif/mekikiを作り、2つのApp kurashi-ledger-codex・kurashi-ledger-claudeを加えた。Installation IDは変わらない）",
+   "decision": "AIはmekikiへも自分のAppで書き、doc-gifの資格情報を使わない。トークンの道具に、doc-gifの下の固定の許可リスト（kurashi-ledger＝既定・mekiki・mekiki-claude）と任意の--repo <名前>を足す。トークンは選んだ1つのrepoだけに縮小する。既定は変えない"
+  }
+ ],
+ "assessments": [
+  {
+   "id": "INV-LOCK",
+   "disposition": "not-applicable",
+   "reason": "トークンの道具はアプリのデータルート・DB・lockを読まず書かない。排他を共有する操作を変えない",
+   "checks": [
+    {
+     "id": "identity",
+     "method": "git diffの範囲がscripts/github-app-token*.ts・scripts/lib/github-app-token.ts・docs/github-apps.md・この計画だけであることを確かめる",
+     "expected": "保存先・lockのコードに差分がない"
+    },
+    {
+     "id": "recovery",
+     "method": "同上",
+     "expected": "保存先・lockのコードに差分がない"
+    }
+   ]
+  },
+  {
+   "id": "INV-PRIVACY",
+   "disposition": "preserve",
+   "reason": "--repoの値は鍵を読む前に許可リストと完全一致で照合し、拒んだ値をエラーに出さない（鍵等を誤って渡した場合に出さない既存の扱いと同じ）。トークンは選んだ1つのrepoだけに縮小し、応答と触れるrepoの確認も選んだrepoで行う。既定ではトークンの要求・子の環境が今と同じ。試験は合成の鍵・番兵・fetchの注入だけで、キーチェーン・ネットワーク・実際のAppを使わない",
+   "checks": [
+    {
+     "id": "public",
+     "method": "github-app-token.test.ts: 許可リストの外・別のowner・../・mekiki/../x・空・大文字違い・2回指定の--repoで、run()がキーチェーンもfetchも呼ばず子を起動せず125で終え、標準エラーに渡した値が出ない。--repo mekikiで要求のbodyがrepositories:[\"mekiki\"]、応答・触れるrepoの確認がmekikiを求め、kurashi-ledgerだけの応答では失効させて子を起動しない。check-public --stagedで差分に秘密・実データがない",
+     "expected": "すべて拒否・鍵を読まない・値を出さない。公開検査は合格"
+    }
+   ]
+  },
+  {
+   "id": "INV-RELEASE",
+   "disposition": "preserve",
+   "reason": "依存・lockfile・Node.jsの版・CI・配信物を変えない。Node.jsの組込みだけを使う。信頼した写しは、この変更がレビューを経てmainに入るまで作り直さない（既存の写しd64fcfaは既定のrepoでそのまま動く）",
+   "checks": [
+    {
+     "id": "update",
+     "method": "git diffでpackage.json・package-lock.json・.github/workflowsに差分がないことを確かめる",
+     "expected": "差分なし"
+    },
+    {
+     "id": "artifact",
+     "method": "配信物・manifestを作らないことを差分で確かめる。トークン・鍵をディスクに書かない扱いは変えない",
+     "expected": "差分なし"
+    }
+   ]
+  },
+  {
+   "id": "INV-ROOT",
+   "disposition": "not-applicable",
+   "reason": "データルートの識別・作成・復元を変えない",
+   "checks": [
+    {
+     "id": "first-use",
+     "method": "git diffでデータルートのコードに差分がないことを確かめる",
+     "expected": "差分なし"
+    },
+    {
+     "id": "aliases",
+     "method": "repoの名前の別名（../・mekiki/../x・doc-gif/mekiki・大文字違い）は、パスとして解釈せず許可リストとの完全一致だけで受けるので、別の先に解決されない（試験で確かめる）",
+     "expected": "すべて拒否"
+    }
+   ]
+  },
+  {
+   "id": "INV-STORAGE",
+   "disposition": "not-applicable",
+   "reason": "DB・journal・manifest・復元に触れない",
+   "checks": [
+    {
+     "id": "rollback",
+     "method": "git diffで保存のコードに差分がないことを確かめる",
+     "expected": "差分なし"
+    },
+    {
+     "id": "restore",
+     "method": "同上",
+     "expected": "差分なし"
+    },
+    {
+     "id": "manifest",
+     "method": "同上",
+     "expected": "差分なし"
+    }
+   ]
+  },
+  {
+   "id": "INV-TASKS",
+   "disposition": "preserve",
+   "reason": "--repoと許可リストの説明はdocs/github-apps.mdの使い方の1か所だけに置く（一つの置き場所）。既定のコマンドの例は変えない。SECURITY.md・運用規約の「このrepoだけ」の記述の更新は所有者の判断に回す（PR本文に書く）",
+   "checks": [
+    {
+     "id": "dependencies",
+     "method": "package.json・lockfile・CI設定（共有資源）に差分がないことを確かめる。review-dispatchの呼出し（--repoなし）が既定のまま動くことを、既存の試験が通ることで確かめる",
+     "expected": "差分なし。既存の試験は合格"
+    },
+    {
+     "id": "entrypoints",
+     "method": "文書の例の形の試験（github-app-token.test.ts）が通り、docs/github-apps.mdに--repoの説明が1か所だけあることをgrepで確かめる",
+     "expected": "1か所。例の試験は合格"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "id": "B1",
+   "direction": "entry",
+   "location": "lib/github-app-token.ts parseArgs（--repo）",
+   "data": "対象のrepoの名前",
+   "trust": "untrusted",
+   "control": "固定の許可リスト（kurashi-ledger・mekiki・mekiki-claude）との完全一致だけを受ける。ownerは常にdoc-gifで、/を含む値・パスの形・大文字違い・2回指定は拒む。照合はparseArgsの中で、キーチェーン・鍵ファイル・標準入力を読む前、コマンドの解決の前。拒んだ値は表示しない。省略時はkurashi-ledger"
+  },
+  {
+   "id": "B2",
+   "direction": "exit",
+   "location": "tokenRequest（POST access_tokens）",
+   "data": "トークンの要求（repositoriesと権限）",
+   "trust": "trusted",
+   "control": "repositoriesは選んだ1つの名前だけ。権限は用途の表のまま（repoで変えない）。User-Agentは道具の名前（kurashi-ledger-github-app-token）で、対象のrepoではないので固定のまま"
+  },
+  {
+   "id": "B3",
+   "direction": "entry",
+   "location": "checkGrantedScope・verifyTokenRepositories（発行の応答とGET /installation/repositories）",
+   "data": "GitHubが返した権限・repoの一覧",
+   "trust": "partially-trusted",
+   "control": "repoの一覧が選んだrepoの1件だけでなければ失効させ、子を起動しない（照合する名前を選んだrepoにする）。ownerはInstallation（doc-gifのアカウントのもの）で決まるので、名前だけを照合するのは今と同じ"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "childEnvironment（gitのextraheaderの上書き）とcommandTargetProblem（子のコマンドの引数）",
+   "data": "子のコマンドとgitの設定",
+   "trust": "partially-trusted",
+   "control": "選んだrepoのpushのURLのextraheaderを空にする。発行の前（鍵を読む前）に、ghの--repo・-R・--repo=・環境変数GH_REPO・gh apiのrepos/<owner>/<name>のパス・github.comのURLの引数、gitのgithub.comのURLの引数が、選んだrepo（gitはそのpushのURLと完全一致）以外を指せば拒む。sh -c等の中は読まない（範囲の正本はトークンの縮小で、この照合は取り違えを早く止めるためのもの）"
+  }
+ ],
+ "variant_analysis": [
+  {
+   "invariant_id": "INV-PRIVACY",
+   "pattern": "repoの名前を固定して使う箇所が、選んだrepoに従わず、別のrepoを求める・確かめる・指す",
+   "places": [
+    {
+     "location": "tokenRequest の repositories",
+     "result": "修正: 選んだrepo"
+    },
+    {
+     "location": "checkOnlyThisRepository（発行の応答・触れるrepoの確認）",
+     "result": "修正: 選んだrepoの名前で照合"
+    },
+    {
+     "location": "PUSH_URL・CHILD_GIT_CONFIG（extraheaderの上書き）",
+     "result": "修正: pushUrl(repo)・childGitConfig(repo)にする"
+    },
+    {
+     "location": "USER_AGENT",
+     "result": "固定のまま: 道具の名前で、対象のrepoではない"
+    },
+    {
+     "location": "ghの--repo・-R・GH_REPO・gh apiのrepos/パス・github.comのURL、gitのURL",
+     "result": "追加: 発行の前に選んだrepoと照合し、違えば拒む（これまでこの照合はなかった）"
+    },
+    {
+     "location": "merge-check（OWNER_MERGE_ONLYの読取り）",
+     "result": "修正なしで従う: 用途は権限だけを決め、読む変数の場所はコマンドのrepos/doc-gif/<repo>/actions/variables/OWNER_MERGE_ONLY。トークンは選んだrepoだけに縮小され、パスが別のrepoなら発行の前に拒むので、選んだrepoの変数だけを読む（試験で確かめる）"
+    },
+    {
+     "location": "scripts/review-dispatch.ts・review-dispatch-claude-broker.ts（--repoを渡さない呼出し）",
+     "result": "変更なし: 既定のkurashi-ledgerのまま"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-ROOT",
+   "pattern": "名前の別名で別の先に解決される",
+   "places": [
+    {
+     "location": "parseArgs --repo",
+     "result": "許可リストとの完全一致だけ。パスとして解釈しない"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-TASKS",
+   "pattern": "説明の重複",
+   "places": [
+    {
+     "location": "docs/github-apps.md 使い方",
+     "result": "--repoの行を1つ足し、--purposeの行の「kurashi-ledgerに縮小」を「選んだrepoに縮小」にする"
+    },
+    {
+     "location": "SECURITY.md・docs/github-agent-operations.md（このrepoだけ、の記述）",
+     "result": "変更なし: 所有者の判断に回す（PR本文）"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-LOCK",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "保存・lockのコード",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-STORAGE",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "保存のコード",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RELEASE",
+   "pattern": "依存・配信物の変更",
+   "places": [
+    {
+     "location": "package.json・lockfile・workflow",
+     "result": "差分なし"
+    }
+   ]
+  }
+ ]
+}
