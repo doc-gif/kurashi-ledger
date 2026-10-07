@@ -22,7 +22,7 @@ import {
   type SupervisorChild,
 } from "./active.ts";
 import { ReviewBroker } from "./broker.ts";
-import { profileHash } from "./doctor.ts";
+import { PROBE_SET, profileHash } from "./doctor.ts";
 import { GhReader, type Transport } from "./github.ts";
 import { argvTemplateHash, scanTree, TOKEN_ENV, type LaunchInstall } from "./launcher.ts";
 import { hash, type Job, type WorkerResult } from "./model.ts";
@@ -74,6 +74,7 @@ const capability = (i: LaunchInstall): Capability & { backend: "claude" } => ({
   codeHash: EXE,
   profileHash: profileHash(PROFILE),
   argvHash: argvTemplateHash(i),
+  probeSet: PROBE_SET,
   probes,
 });
 
@@ -118,7 +119,7 @@ test("W4 install record: same trusted copy, Claude only, worker areas outside th
   assert.throws(() => parseInstall("{", root), ActiveError);
 });
 
-test("W4 doctor hashes are bound to the plan: version, executable, cli.sb and argv template must all match", () => {
+test("W4 doctor hashes are bound to the plan: version, executable, cli.sb, argv template and probe set must all match", () => {
   const i = claude("/srv/synthetic/dispatch/root");
   assert.equal(boundCapability(capability(i), i, PROFILE, EXE).reason, "bound");
   const cases: [string, unknown, LaunchInstall, string, string][] = [
@@ -131,6 +132,9 @@ test("W4 doctor hashes are bound to the plan: version, executable, cli.sb and ar
     ["capability-executable", capability(i), i, PROFILE, "f".repeat(64)],
     ["capability-profile", capability(i), i, `${PROFILE}(allow default)\n`, EXE],
     ["capability-argv", capability(i), { ...i, cliProfile: "/opt/synthetic/other/cli.sb" }, PROFILE, EXE],
+    // W8: recorded before probeSet existed, or with another synthetic probe set (such as the old loopback-443).
+    ["capability-probes", (({ probeSet: _p, ...rest }) => rest)(capability(i)), i, PROFILE, EXE],
+    ["capability-probes", { ...capability(i), probeSet: "0".repeat(64) }, i, PROFILE, EXE],
   ];
   for (const [reason, c, inst, text, exe] of cases) {
     const r = boundCapability(c, inst, text, exe);

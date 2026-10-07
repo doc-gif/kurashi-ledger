@@ -346,3 +346,54 @@ test("PR58-R003 / red team round 4: each signed delivery is taken with the whole
     d.cleanup();
   }
 });
+
+test("W9 a request without a well-formed signature header is refused with 401 before its body is read", async () => {
+  const d = database(),
+    p = policy();
+  p.mode = "shadow";
+  let loads = 0;
+  const server = serve(p, d.store, secret, () => 100, 0, () => {}, () => (loads++, p));
+  await once(server, "listening");
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const { "x-hub-signature-256": _sig, ...unsigned } = headers();
+    for (const h of [
+      unsigned,
+      { ...unsigned, "x-hub-signature-256": "sha1=" + "0".repeat(40) },
+      { ...unsigned, "x-hub-signature-256": "sha256=" + "0".repeat(63) },
+    ]) {
+      // Announce 1 MiB, send 1 KiB and never finish: only a reply that does not wait for the body arrives
+      // (the old path waited for the end and answered 408 after 5 seconds).
+      const started = Date.now();
+      const reply = await new Promise<{ status: number; connection: string | undefined }>((resolve, reject) => {
+        const req = request(
+          {
+            host: "127.0.0.1",
+            port: address.port,
+            path: "/webhook",
+            method: "POST",
+            headers: { ...h, "content-length": String(1024 * 1024) },
+          },
+          (res) => {
+            resolve({ status: res.statusCode!, connection: res.headers["connection"] });
+            res.resume();
+            req.destroy();
+          },
+        );
+        req.on("error", (e) => (req.destroyed ? undefined : reject(e)));
+        req.write(Buffer.alloc(1024, 0x7b));
+      });
+      assert.deepEqual(reply, { status: 401, connection: "close" });
+      assert.ok(Date.now() - started < 4000);
+    }
+    assert.equal(loads, 0); // the policy is never read for them
+    assert.equal(d.store.pendingInbox().length, 0);
+    // A well-formed header still goes through the full HMAC check after the body.
+    assert.equal(await post(address.port, headers(), body), 202);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    d.cleanup();
+  }
+});

@@ -3,9 +3,10 @@
 //
 // Claude (and the fixture backend): synthetic OS probes. A harmless Node.js probe child
 // runs under the reviewed cli.sb and tries to read fixture credentials and a fixture
-// keychain file, start /usr/bin/security, write a fixture policy/DB and connect to a
-// loopback port. Each probe also runs from a grandchild (the probe's own child): macOS
-// refuses a stricter sandbox inside a sandboxed process, so a CLI's tool children are
+// keychain file, start /usr/bin/security, write a fixture policy/DB and connect to the
+// doctor's own loopback listener on an ephemeral port. Each probe also runs from a
+// grandchild (the probe's own child): macOS refuses a stricter sandbox inside a
+// sandboxed process, so a CLI's tool children are
 // bounded only by the cli.sb they inherit, and "tool-child-confined" is that inheritance
 // check. An App-key-shaped item (a throwaway keychain whose item trusts /usr/bin/security)
 // must be unreadable from cli.sb. Every probe first runs unconfined (positive control);
@@ -79,9 +80,16 @@ export const SYNTHETIC_PROBES = {
   "next-run-write": { kind: "write", capability: "deny-other-run", child: true, open: false },
   "policy-read": { kind: "read", capability: "deny-policy-write", child: true, open: false },
   "policy-write": { kind: "write", capability: "deny-policy-write", child: true, open: false },
+  // The doctor's own listener on 127.0.0.1, on an ephemeral port, which answers with a marker (Issue #50 W8). Under
+  // the shipped cli.sb deny default alone refuses it. No probe uses port 443: what answers there depends on what
+  // else runs on the host (Tailscale Funnel listens on *:443).
   "tool-network": { kind: "connect", capability: "deny-network", child: true, open: false },
-  // TCP 443 is allowed for the model service, but never to loopback.
-  "loopback-443": { kind: "connect-443", capability: "deny-network", child: true, open: false },
+  // The loopback deny and its order at run time (PR #70 RT-2): cli.sb with its 443 allow moved to the doctor's own
+  // ephemeral ports ("net-confined", the shipped order and protocol) must deny; the same without the loopback deny
+  // and with IPv6 allowed ("net-open") must connect. Over IPv4, IPv6 and the IPv4-mapped form (PR #70 RT-1).
+  "loopback-ipv4": { kind: "connect", capability: "deny-network", child: true, open: true },
+  "loopback-ipv6": { kind: "connect", capability: "deny-network", child: true, open: true },
+  "loopback-mapped": { kind: "connect", capability: "deny-network", child: true, open: true },
   // The supervisor stand-in is the doctor process itself: its pid and a unix control socket.
   "supervisor-signal": { kind: "signal", capability: "deny-supervisor", child: true, open: false },
   "supervisor-pipe": { kind: "unix", capability: "deny-supervisor", child: true, open: false },
@@ -146,7 +154,7 @@ export const PROFILE_ALLOWS: readonly (readonly [string, string])[] = [
   ["(allow file-read* file-write* (subpath (param \"CONFIG_DIR\"))", "run-config-home-tmp-write"],
   ["(allow mach-lookup ", "mach-dns-directory-notification-trust-log"],
   ["(allow network-outbound (literal \"/private/var/run/mDNSResponder\"))", "dns"],
-  ["(allow network-outbound (remote tcp \"*:443\"))", "tcp-443"],
+  ["(allow network-outbound (remote tcp4 \"*:443\"))", "tcp4-443"],
   ["(allow process-info* (target self))", "process-info-self"],
 ];
 export const SHARED_PROFILE_ALLOWS: readonly string[] = PROFILE_ALLOWS.map(([, id]) => id);
@@ -172,7 +180,7 @@ export const RUN_B_COVERAGE = {
   "db-write": { measured: "deny-db", access: "write", synthetic: ["db-write"] },
   "policy-read": { measured: "deny-policy-write", access: "read", synthetic: ["policy-read"] },
   "policy-write": { measured: "deny-policy-write", access: "write", synthetic: ["policy-write"] },
-  network: { measured: "deny-network", access: "connect", synthetic: ["tool-network", "loopback-443"] },
+  network: { measured: "deny-network", access: "connect", synthetic: ["tool-network", "loopback-ipv4", "loopback-ipv6", "loopback-mapped"] },
   socket: { measured: "deny-supervisor", access: "unix", synthetic: ["supervisor-pipe"] },
 } as const satisfies Record<string, Coverage>;
 // The synthetic probe kinds that check each run B access.
@@ -180,7 +188,7 @@ const ACCESS_KINDS: Readonly<Record<RunBAccess, readonly string[]>> = {
   read: ["read"],
   write: ["write"],
   exec: ["exec", "keychain-item"],
-  connect: ["connect", "connect-443"],
+  connect: ["connect"],
   unix: ["unix"],
 };
 export function coverageGaps(
@@ -311,6 +319,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorResult> {
       profileHash: input.profileHash,
       // The measured argv template; active.ts compares it with the plan it launches (W4).
       ...(input.launch ? { argvHash: input.launch.argvHash } : {}),
+      probeSet: PROBE_SET,
       probes: { ...probes },
     };
     const state = disabled ? "disabled" : capabilityReady(capability) ? "verified" : "unverified";
@@ -512,7 +521,7 @@ export const VETTED_RULES = [
   `(allow file-read* file-write* (subpath (param "CONFIG_DIR")) (subpath (param "RUN_HOME")) (subpath (param "RUN_TMP")))`,
   `(allow mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.notification_center") (global-name "com.apple.trustd") (global-name "com.apple.trustd.agent") (global-name "com.apple.logd") (global-name "com.apple.system.logger"))`,
   `(allow network-outbound (literal "/private/var/run/mDNSResponder"))`,
-  `(allow network-outbound (remote tcp "*:443"))`,
+  `(allow network-outbound (remote tcp4 "*:443"))`,
   `(deny network-outbound (remote ip "localhost:*"))`,
   `(deny process-info*)`,
   `(allow process-info* (target self))`,
@@ -521,6 +530,11 @@ export const VETTED_RULES = [
   `(deny file-read* file-write* (regex #"/Library/Keychains(/|$)") (regex #"\\.keychain(-db)?$"))`,
   `(deny file-read* file-write* network-outbound (regex #"^/private/tmp/kl-sock-"))`,
 ];
+// loopback-deny-after-443 (design §7): cli.sb allows outbound IPv4 TCP 443 for the model service (tcp4: the
+// localhost filter does not match IPv4-mapped IPv6 addresses, PR #70 RT-1) and denies loopback after it; the later
+// rule wins. The lint requires that order; the doctor's loopback-* probes show it at run time on its own ports.
+export const TCP_443_ALLOW_LINE = '(allow network-outbound (remote tcp4 "*:443"))';
+export const LOOPBACK_DENY_LINE = '(deny network-outbound (remote ip "localhost:*"))';
 export function lintProfile(text: string): string[] {
   let texts: string[];
   try {
@@ -550,7 +564,12 @@ export function lintProfile(text: string): string[] {
   if (texts.slice(last).some((t) => t.startsWith("(allow"))) problems.push("allow-after-deny");
   const pi = texts.indexOf("(deny process-info*)");
   if (pi < 0 || texts[pi + 1] !== "(allow process-info* (target self))") problems.push("process-info-deny-missing");
-  if (!texts.includes('(deny network-outbound (remote ip "localhost:*"))')) problems.push("loopback-deny-missing");
+  // loopback-deny-after-443: no rule after the loopback deny may allow network access, whatever its spelling
+  // (network-outbound, network*, default), so the deny wins for localhost:443 (PR #70 P3).
+  const loopback = texts.lastIndexOf(LOOPBACK_DENY_LINE);
+  if (loopback < 0) problems.push("loopback-deny-missing");
+  else if (texts.slice(loopback + 1).some((t) => t.startsWith("(allow") && /network|default/.test(t)))
+    problems.push("loopback-deny-not-after-443");
   return [...new Set(problems)];
 }
 
@@ -683,23 +702,17 @@ const [first, ...rest] = process.argv.slice(2);
 let finished = false;
 const done = (r) => { if (finished) return; finished = true; process.stdout.write(JSON.stringify({ r }) + "\\n"); process.exit(0); };
 const fromError = (e) => (e && e.code === "EPERM" ? "denied" : "error");
+// "unmarked": a TCP connection was made but the doctor's marker did not come (a leak under cli.sb, no proof as a control).
 try {
   if (first === "child") {
     const r = cp.spawnSync(process.execPath, [process.argv[1], ...rest], { encoding: "utf8", timeout: 10000 });
-    const m = /^\\{"r":"(allowed|denied|error)"\\}\\n$/.exec(r.stdout || "");
+    const m = /^\\{"r":"(allowed|denied|error|unmarked)"\\}\\n$/.exec(r.stdout || "");
     done(r.error ? "error" : m ? m[1] : "error");
   } else {
     const [kind, target] = [first, rest[0]];
     if (kind === "read") { fs.readFileSync(target); done("allowed"); }
     else if (kind === "write") { fs.closeSync(fs.openSync(target, "r+")); done("allowed"); }
     else if (kind === "exec") { const r = cp.spawnSync(target, ["help"], { stdio: "ignore", timeout: 5000 }); done(r.error ? fromError(r.error) : "allowed"); }
-    else if (kind === "connect-443") {
-      // Any answer from the network stack (connected or refused) means the attempt was allowed.
-      const s = net.connect(443, target);
-      s.on("connect", () => { s.destroy(); done("allowed"); });
-      s.on("error", (e) => done(e && e.code === "ECONNREFUSED" ? "allowed" : fromError(e)));
-      setTimeout(() => done("error"), 5000);
-    }
     else if (kind === "signal") { process.kill(Number(target), 0); done("allowed"); }
     else if (kind === "unix") {
       const s = net.connect({ path: target });
@@ -708,14 +721,37 @@ try {
       setTimeout(() => done("error"), 5000);
     }
     else if (kind === "connect") {
-      const s = net.connect(Number(target), "127.0.0.1");
-      s.on("connect", () => { s.destroy(); done("allowed"); });
-      s.on("error", (e) => done(fromError(e)));
-      setTimeout(() => done("error"), 5000);
+      // target is "<host>|<port>|<marker>": allowed only when the doctor's own listener answers with its marker.
+      const [host, port, marker] = target.split("|");
+      const s = net.connect({ host, port: Number(port) });
+      let connected = false, got = "";
+      s.on("connect", () => { connected = true; });
+      s.on("data", (b) => { got += b.toString("latin1"); if (got.length >= marker.length) { s.destroy(); done(got.startsWith(marker) ? "allowed" : "unmarked"); } });
+      s.on("end", () => done("unmarked"));
+      s.on("error", (e) => done(connected ? "unmarked" : fromError(e)));
+      setTimeout(() => done(connected ? "unmarked" : "error"), 5000);
     } else done("error");
   }
 } catch (e) { done(fromError(e)); }
 `;
+// The synthetic probe set a capability was proved with: every probe ID and definition and the probe child's source.
+// The capability records it, and active.ts boundCapability refuses one recorded with another set
+// ("capability-probes"), so a changed probe list (W8 removed loopback-443) is never silently reused.
+// The host side's judgement (probeOutcome, the profile variants, seatbeltHost) is part of it too (PR #70 P3).
+export const PROBE_SET = hash(
+  ["synthetic-probes", JSON.stringify(SYNTHETIC_PROBES), PROBE_SOURCE, String(probeOutcome), String(profileVariant), String(seatbeltHost)].join("\u0000"),
+);
+
+// The probe child's answer as an outcome. Anything but one exact result line after exit 0 is inconclusive, and so
+// is "error" (a timeout or hang included): never denied. "unmarked" (connect only: a TCP connection without the
+// doctor's marker) is no proof for the control or the open variant and a leak under cli.sb.
+export function probeOutcome(kind: string, mode: Mode, code: number | null, out: string): Outcome {
+  const m = /^\{"r":"(allowed|denied|error|unmarked)"\}\n$/.exec(out);
+  if (code !== 0 || !m || m[1] === "error") return "inconclusive";
+  if (m[1] === "unmarked") return kind === "connect" && (mode === "cli" || mode === "cli-child") ? "allowed" : "inconclusive";
+  return m[1] as Outcome;
+}
+const probeJudge = (code: number | null, out: string): Outcome => probeOutcome("", "cli", code, out);
 
 const PROBE_TIMEOUT_MS = 15000;
 const SECURITY = "/usr/bin/security";
@@ -732,6 +768,7 @@ type Fixture = {
   envReader: string | null;
   envTarget: { pid: number; nonce: string; kill(): void } | null;
   server: Server;
+  server6: Server | null;
   control: ControlSockets;
 };
 
@@ -779,9 +816,25 @@ int main(int argc, char **argv) {
 }
 `;
 
-// Profile variants for the explicit-deny proofs. Each removes exactly one marked block.
-export function profileVariant(text: string, variant: "item-confined" | "item-open" | "env-open"): string {
+// Profile variants for the explicit-deny proofs. Each removes exactly one marked block. The net variants move the
+// 443 allow to the doctor's own ports (keeping its protocol and place); net-open also drops the loopback deny and
+// allows any protocol, so the listeners are shown reachable from the sandbox (PR #70 RT-2).
+export function profileVariant(
+  text: string,
+  variant: "item-confined" | "item-open" | "env-open" | "net-confined" | "net-open",
+  ports: readonly number[] = [],
+): string {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  if (variant === "net-confined" || variant === "net-open") {
+    const allow = /^\(allow network-outbound \(remote (tcp4|tcp6|tcp) "\*:443"\)\)$/;
+    const at = lines.flatMap((l, k) => (allow.test(l) ? [k] : []));
+    if (at.length !== 1 || ports.length === 0 || !ports.every((p) => Number.isInteger(p) && p > 0 && p < 65536))
+      throw new Error("profile shape");
+    const proto = variant === "net-open" ? "tcp" : allow.exec(lines[at[0]!]!)![1]!;
+    const moved = `(allow network-outbound ${ports.map((p) => `(remote ${proto} "*:${p}")`).join(" ")})`;
+    const out = lines.map((l, k) => (k === at[0] ? moved : l));
+    return (variant === "net-open" ? out.filter((l) => l !== LOOPBACK_DENY_LINE) : out).join("\n");
+  }
   const block = (name: string): [number, number] => {
     const a = lines.indexOf(`;; BEGIN ${name}`),
       b = lines.indexOf(`;; END ${name}`);
@@ -938,7 +991,13 @@ export function seatbeltHost(options: {
       const profile = readFileSync(options.cliProfile, "utf8");
       for (const v of ["item-confined", "item-open", "env-open"] as const)
         writeFileSync(join(root, `${v}.sb`), profileVariant(profile, v));
-      const server = createServer((c) => c.end());
+      // tool-network: the doctor's own listener on an ephemeral loopback port. It sends a fresh marker on every
+      // connection, so a control that gets it reached this listener and nothing else on the host (Issue #50 W8).
+      const marker = randomBytes(8).toString("hex");
+      const server = createServer((c) => {
+        c.on("error", () => {});
+        c.end(marker);
+      });
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", () => resolve());
@@ -946,6 +1005,21 @@ export function seatbeltHost(options: {
       undo.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
       const address = server.address();
       const port = typeof address === "object" && address ? address.port : 0;
+      // The same on ::1 for loopback-ipv6. Without IPv6 loopback that probe has no target (inconclusive).
+      const server6 = createServer((c) => {
+        c.on("error", () => {});
+        c.end(marker);
+      });
+      const port6 = await new Promise<number>((resolve) => {
+        server6.once("error", () => resolve(0));
+        server6.listen(0, "::1", () => {
+          const a = server6.address();
+          resolve(typeof a === "object" && a ? a.port : 0);
+        });
+      });
+      if (port6) undo.push(() => new Promise<void>((resolve) => server6.close(() => resolve())));
+      for (const v of ["net-confined", "net-open"] as const)
+        writeFileSync(join(root, `${v}.sb`), profileVariant(profile, v, port6 ? [port, port6] : [port]));
       const control = await controlSockets();
       undo.push(() => control.close());
       const home = dir("home");
@@ -985,6 +1059,7 @@ export function seatbeltHost(options: {
         home,
         tmp: dir("tmp"),
         server,
+        server6: port6 ? server6 : null,
         control,
         keychain,
         envReader,
@@ -1003,8 +1078,10 @@ export function seatbeltHost(options: {
           "next-run-write": nextRun,
           "policy-read": policy,
           "policy-write": policy,
-          "tool-network": String(port),
-          "loopback-443": "127.0.0.1",
+          "tool-network": `127.0.0.1|${port}|${marker}`,
+          "loopback-ipv4": `127.0.0.1|${port}|${marker}`,
+          "loopback-ipv6": port6 ? `::1|${port6}|${marker}` : "",
+          "loopback-mapped": `::ffff:127.0.0.1|${port}|${marker}`,
           "supervisor-signal": String(process.pid),
           // Every control socket is probed (run() below); this one names the probe.
           "supervisor-pipe": control.paths[0]!,
@@ -1045,10 +1122,6 @@ export function seatbeltHost(options: {
         resolve(judge(code, out));
       });
     });
-  const probeJudge = (code: number | null, out: string): Outcome => {
-    const m = /^\{"r":"(allowed|denied|error)"\}\n$/.exec(out);
-    return code === 0 && m ? (m[1] === "error" ? "inconclusive" : (m[1] as Outcome)) : "inconclusive";
-  };
   const params = (f: Fixture, executable: string, runtime: string) =>
     Object.entries({
       EXECUTABLE: executable,
@@ -1095,14 +1168,17 @@ export function seatbeltHost(options: {
         const [file, a] = sandboxed(f, profile, r, dirname(r), args);
         return execute(file, [...a], f.materials, env, probeJudge);
       }
-      if (mode === "open") return "inconclusive";
+      const variant = probe.startsWith("loopback-") ? join(f.root, mode === "open" ? "net-open.sb" : "net-confined.sb") : null;
+      if (mode === "open" && !variant) return "inconclusive";
+      if (variant && f.targets[probe as keyof Fixture["targets"]] === "") return "inconclusive";
       const def = SYNTHETIC_PROBES[probe];
       const script = join(f.materials, "probe.mjs");
+      const judge = (code: number | null, out: string) => probeOutcome(def.kind, mode, code, out);
       const once = (target: string) => {
         const probeArgs = [script, ...(mode === "cli-child" ? ["child"] : []), def.kind, target];
-        if (mode === "control") return execute(node, probeArgs, f.materials, env, probeJudge);
-        const [file, a] = sandboxed(f, options.cliProfile, node, nodeRoot, probeArgs);
-        return execute(file, [...a], f.materials, env, probeJudge);
+        if (mode === "control") return execute(node, probeArgs, f.materials, env, judge);
+        const [file, a] = sandboxed(f, variant ?? options.cliProfile, node, nodeRoot, probeArgs);
+        return execute(file, [...a], f.materials, env, judge);
       };
       if (probe !== "supervisor-pipe") return once(f.targets[probe]);
       // Every control socket must give the same answer: denied (or, for the control, allowed) everywhere.
@@ -1119,6 +1195,8 @@ export function seatbeltHost(options: {
       if (f.keychain) removeSyntheticKeychain(f.keychain);
       f.envTarget?.kill();
       await new Promise<void>((resolve) => f.server.close(() => resolve()));
+      const s6 = f.server6;
+      if (s6) await new Promise<void>((resolve) => s6.close(() => resolve()));
       await f.control.close();
       rmSync(f.root, { recursive: true, force: true });
     },

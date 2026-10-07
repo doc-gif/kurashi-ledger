@@ -50,9 +50,9 @@ CIはQuality gateと支持ジョブ、試験mergeの親/head/base・treeを確�
 
 dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変更として独立レビューする。1回の取得batchの間だけ縮小tokenを再利用し、全必要ページを同じ子プロセスで読む。期限を超えるbatchは破棄して再取得し、終了時に失効する。JWT/キーチェーン読取りをAPI要求ごとに繰り返さず、batch間でtokenを保存しない。
 
-GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
+GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。ghのテレメトリ（gh 2.91以降の既定）と更新確認は、`gh help environment`の変数（`GH_TELEMETRY=false`・`GH_NO_UPDATE_NOTIFIER=1`）で切る。テレメトリはGitHub API以外へ送り、切り離した子`gh send-telemetry`が消した一時HOMEを作り直す（W9。[github.ts](../scripts/lib/review-dispatch/github.ts)の`ghEnv`）。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路の方式は、設計の提案としてCloudflare Tunnelを挙げ、ownerがW4の導入手順で選ぶ。どの方式でも、localhostの受信pathだけへ転送する。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路は、shadowだけに使うA（Cloudflareのクイックトンネル。全pathが受け口に届く）と、activeに要るB（Tailscale Funnel。固定の`<host>.<tailnet>.ts.net`）。BはFunnelの取付けを`/webhook`の1つだけにし、ほかの最上位pathはFunnelが404を返して受け口に届かない。`/webhook/…`の下のpathは受け口に届く（取付けは前方一致。残る危険）が、受け口はPOSTでpathが`/webhook`と完全一致する要求以外を、bodyを読む前・署名とpolicyの検査の前に404で返し、何も処理しない（[webhook.ts](../scripts/lib/review-dispatch/webhook.ts)の`serve`）。署名のheaderが無いか形が違う要求も、bodyを読む前に401で返す。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -158,16 +158,17 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 | 読取りの範囲 | allowは資料dirに限った`Read(//<資料>/**)`だけ。denyに`Read(//<config dir>/**)`。Grep・Globも`Read()`の規則で絞る。素の`Read`・`Grep`・`Glob`を許可しない | cwd外・config dirの読取り |
 | 確認 | `--permission-mode dontAsk` | 確認を要する操作。確認なしで拒否する |
 | cwd | 取得資料だけの使い捨て領域。repo・worktreeの外。資料はrepoのpathを保たず、中立の名前で置く。cwdとその祖先に`.claude/`・`.mcp.json`・`CLAUDE.md`・`AGENTS.md`を作らない。あれば起動しない | PRのhooks・MCP・指示の自動ロード |
-| OS | `sandbox-exec`のSeatbelt profile。資料・runtime・そのrunのconfig dir・HOME・tmpだけを読め、keychainに触れない。外向きは443番だけで、localhostは塞ぐ（[net-443](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。toolの子processも同じprofile（同じ許可） | 上の層の迂回、policy/DB・別のrunの領域の書込み、keychain、localhostのサービス |
+| OS | `sandbox-exec`のSeatbelt profile。資料・runtime・そのrunのconfig dir・HOME・tmpだけを読め、keychainに触れない。外向きはIPv4の443番だけで、localhostは塞ぐ（[net-443](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)）。toolの子processも同じprofile（同じ許可） | 上の層の迂回、policy/DB・別のrunの領域の書込み、keychain、localhostのサービス |
 
 - `--bare`なしの`-p`は、cwdの`.claude/settings.json`のhooksと`.mcp.json`を信頼の確認なしで使う（headlessの記載）。そのため設定の読込み・MCP・cwdの3つの層を重ねる。
 - dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`を使う。
 - `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
 - CLIとtoolの子processが443番へ出られることは、所有者が受け入れた残余リスク（net-443、下の残余リスク）。toolはRead・Grep・Globに保つ。
+- 443番で届く先（`loopback-deny-after-443`。443番の説明はここだけ）: `cli.sb`の443番のallowは`tcp4`だけ。localhostのdenyはIPv4射影のIPv6アドレス（`::ffff:127.0.0.1`・`::ffff:<Macのアドレス>`）に一致しないので、IPv6のTCPは許さない（[PR #70 RT-1](https://github.com/doc-gif/kurashi-ledger/pull/70)）。その後のlocalhostのdenyが、loopbackとMac自身のIPv4アドレス（LAN・tailnet・`0.0.0.0`）を塞ぐ。macOS 26.5.1の実測では、443番で届くのはMacの外のIPv4の宛先だけで、射影の形・global/ULA/tailnetのIPv6・外部のIPv6を含む残りはEPERMだった。tokenなしの実CLIは`system/init`を出し、sandboxの中のcurl `-4`はAPIへTLSで届いた。lint（`doctor.ts`の`lintProfile`）は、localhostのdenyの後にnetworkの許可が無いことを要求する。doctorは443番を試さず（答えはhostで何が待ち受けるかに依る）、`cli.sb`の443番のallowだけを自分の一時portへ移した変種で実行時に示す: `loopback-ipv4`・`loopback-ipv6`・`loopback-mapped`は、出荷の順で拒否され、denyを外しIPv6も許した変種で目印を受け取る。hang・timeoutは`inconclusive`。「後の規則が勝つ」の根拠は`doctor.test.ts`の実測（`PR70 RT-2 Seatbelt`: denyを外すか前へ移すと`loopback-ipv4`が届き、`tcp`にすると`loopback-mapped`が届く）。
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
 - envの`CLAUDE_CODE_TMPDIR`をrunのtmpへ向ける。Claudeは自身の一時fileを`TMPDIR`ではなくこの変数の下（既定は`/tmp`）の`claude-<uid>/`に作る（[env-vars](https://code.claude.com/docs/en/env-vars)）。CLI用のprofileは`/tmp`を拒否するので、無いと起動時に止まる（W4e）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
-- 測定の記録（schema 3）は、各`denied`の根拠を`basis`で分ける: CLI自身の構造化したアクセス（`access`）、initの道具一覧だけ（`structural`）、その両方（`mixed`）、runの後の走査（`scan`）。子processの実際のアクセスはdoctorの合成のprobe（`:cli-child`）だけ。共有profileの許可（`sharedProfile`。一覧は下の残余リスク）は`denied`と報告しない。`deny-network`はlocalhostと443番以外の拒否の意味。
+- 測定の記録（schema 3）は、各`denied`の根拠を`basis`で分ける: CLI自身の構造化したアクセス（`access`）、initの道具一覧だけ（`structural`）、その両方（`mixed`）、runの後の走査（`scan`）。子processの実際のアクセスはdoctorの合成のprobe（`:cli-child`）だけ。共有profileの許可（`sharedProfile`。一覧は下の残余リスク）は`denied`と報告しない。`deny-network`はlocalhostとIPv4の443番以外の拒否の意味。
 
 doctorの否定試験に次を加える。1つでも拒否できなければcapabilityをdisabledにする。
 
@@ -187,7 +188,9 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 
 所有者が[2026-10-07に受け入れた](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)残余リスク（Codexの[ISSUE50-P001〜P003](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019834396)）。supervisorはworkerのprocess groupを止めて空を確かめるが（§4）、全子孫の終了は証明しない。
 
-- groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
+- groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きのIPv4のTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
+- Tailscale Funnelが`*:443`で待ち受けても、Mac自身のアドレスの443番は上の規則で拒否される（「443番で届く先」）。CLIとその子が届くのは、インターネットの誰とも同じく、Funnelの公開URLだけ。そこでは受け口が`/webhook`へのPOST以外を404にし（[webhook.ts L209-L212](../scripts/lib/review-dispatch/webhook.ts#L209-L212)）、署名が合わなければpolicyも読まずに401にする（headerの形は[L213-L222](../scripts/lib/review-dispatch/webhook.ts#L213-L222)、HMACは[L256-L264](../scripts/lib/review-dispatch/webhook.ts#L256-L264)。経路は§3）。HMACの秘密なしには何も保存できない（[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
+- 形だけ正しい偽の署名header（`sha256=`と64桁の16進）は早い401を通り、HMACの検査で401になるまで、最大25 MiBを最大5秒受信させる（memoryは`MAX_BODY`で頭打ち。接続数の上限はない）。これが受け口に残るDoSの費用（W9）。
 - 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
 - この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
 - 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。
@@ -203,7 +206,8 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 
 | ID | 所有者の決定 | 設計の提案（決定ではない） | 反映先 |
 | --- | --- | --- | --- |
-| O1 | Webhookで受ける。公開HTTPS経路と15分の照合を併用する | 経路はCloudflare Tunnelを候補とし、ownerがW4で選ぶ。受付Appは§3のCodex App | §3 |
+| O1 | Webhookで受ける。公開HTTPS経路と15分の照合を併用する | 受付Appは§3のCodex App | §3 |
+| O1-route | 公開経路のB（activeに要る）はTailscale Funnel（無料、固定URL。[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6032842834)）。Aのクイックトンネルはshadowだけ | — | §3 |
 | O2 | Claudeは購読の認証で起動する。APIキーと`--bare`は使わない | 隔離の層と具体的なflag（§7の表） | §7 |
 | O2-token | 購読の資格情報は`claude setup-token`の長期tokenで渡す。閉じ込めたClaudeはkeychainに一切触れない | supervisorが`CLAUDE_CODE_OAUTH_TOKEN`で渡す | §7 |
 | Codex | 外側のSeatbeltを掛けず、Codex自身の`--sandbox read-only`だけで起動する。keychainとAppの鍵に届かないことを実機で確かめる | `codex exec --json` | §7 |
