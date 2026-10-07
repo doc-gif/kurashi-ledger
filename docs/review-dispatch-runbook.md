@@ -252,7 +252,7 @@ ls -led "$base" "$root" "$etc" "$secrets" "$runs" "$logs" "$policy" "$install" "
 | 要るもの | なし（アカウント不要） | このMacでログインしたTailscaleのアプリ |
 | 費用 | 無料 | 無料 |
 | URL | 起動のたびに変わる。毎回Appの設定を直す | 固定（`<host>.<tailnet>.ts.net`） |
-| 転送するpath | すべて | `/webhook`とその下（ほかはFunnelが404。残る危険は[設計§3](review-dispatch-design.md#3-配置とgithubの身元)） |
+| 転送するpath | すべて | `/webhook`とその下（ほかはFunnelが404。下のpathは受け口に届き、受け口が404。[設計§3](review-dispatch-design.md#3-配置とgithubの身元)） |
 | 使える段階 | shadow のみ。残る危険（全pathが受け口に届く。受け口の404と署名で守る）（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。稼働の保証なし（[Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)） | shadowとactive。14の前に必須。アプリが起動・ログイン中でMacが起きている間だけ動く（設定は再起動後も残る） |
 
 **A.** 別のターミナルで動かし続ける。
@@ -263,7 +263,7 @@ cloudflared tunnel --url "http://127.0.0.1:${port}"
 
 期待: `https://…trycloudflare.com`の行。そのURLに`/webhook`を付けたものが11のURL。
 
-**B.** 1回だけ行う。App Store版のTailscaleでは、CLIは`/Applications/Tailscale.app/Contents/MacOS/Tailscale`（aliasか`/usr/local/bin`のlauncherで`tailscale`として呼ぶ）。
+**B.** 1回だけ行う。App Store版のTailscaleでは、CLIは`/Applications/Tailscale.app/Contents/MacOS/Tailscale`（aliasか`/usr/local/bin`のlauncherで`tailscale`として呼ぶ）。証明書の発行で、ホスト名とtailnet名がCertificate Transparencyの公開ログに載り、消せない。実名などを含まない機器名に変えてから行う。URLは秘密ではなく、守りは署名（設計§3）。
 
 ```zsh
 tailscale funnel --bg --set-path /webhook "http://127.0.0.1:${port}/webhook"
@@ -315,20 +315,19 @@ GitHubの画面で、CodexのAppの設定を開く（Settings → Developer sett
 
 期待: 新しく登録したplistが`OK`、`受け口: 401`（署名がないので拒否）。`serve`は常駐し、`cycle`は15分ごとと、配送を保存したとき（`$root/trigger`）に動く。
 
-Bのときは、Funnelが`/webhook`だけを受け口へ通すことを確かめる。
+Bのときは、Funnelの取付けと受け口の応答を確かめる。このMacではホスト名がMagicDNSでtailnetのアドレスになり、curlは公開の入口を通らない。確かめるのは取付けだけで、公開経路の到達は「Bへ移る」の5のGitHubの配送で確かめる。
 
 ```zsh
 (
-  rm -f "$etc/tunnel-b-ok"
   kl_funnel || exit 1
   w="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/webhook")"
   o="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/other")"; e="$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://${funnel_host}/webhook/extra")"
   print -r -- "webhook=${w} other=${o} extra=${e}"
-  [[ $w == 401 && $o == 404 && $e == 404 ]] && : > "$etc/tunnel-b-ok" && echo "B確認"
+  [[ $w == 401 && $o == 404 && $e == 404 ]] && echo "取付け確認"
 )
 ```
 
-期待: `webhook=401 other=404 extra=404`と`B確認`。`kl_funnel`が止めたら、表示の取付けを`tailscale funnel`で直す。
+期待: `webhook=401 other=404 extra=404`と`取付け確認`。`/other`はFunnelが、`/webhook/extra`は受け口が404を返す（設計§3）。`kl_funnel`が止めたら、表示の取付けを`tailscale funnel`で直す。
 
 ## 13. 最初のshadow
 
@@ -386,11 +385,13 @@ Bのときは、Funnelが`/webhook`だけを受け口へ通すことを確かめ
 
 activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5993511406)）。
 
+旧B（名前付きトンネル）を作っていたら、先に`launchctl bootout "$gui/${label}.tunnel"; rm -f "$agents/${label}.tunnel.plist" "$etc/tunnel.yml" "$etc/tunnel-b-ok"`で外す。
+
 1. 10のBを行う（0の`funnel_host`を入れて貼り直すまで）。
-2. 12のBの確認を行う。期待: `B確認`。
+2. 12のBの確認を行う。期待: `取付け確認`。
 3. 11の1で、Webhook URLだけを`https://${funnel_host}/webhook`に変える（秘密は変えない）。
 4. Aのターミナルで、Ctrl-Cでクイックトンネルを止める。
-5. 次の配送（またはRecent Deliveriesで直近の`ping`以外のRedeliver）の応答が`202`であることを確かめる。
+5. 次の配送（またはRecent Deliveriesで直近の`ping`以外のRedeliver）の応答が`202`であることを確かめ、`: > "$etc/tunnel-b-ok"`で印を作る。公開経路の到達の証拠はこのGitHubの配送だけ（`ping`のRedeliverが署名の検査の後の`400`でもよい）。
 6. 13の5を、Bの経路でやり直す。
 
 ## 14. 1件のPRをactiveにする
@@ -491,7 +492,7 @@ kl_mode shadow
 )
 ```
 
-期待: `外した`。`外れていない: …`なら、`kl_mode off`のあとでこのブロックをやり直す。クイックトンネルはそのターミナルでCtrl-Cで、BのFunnelは`tailscale funnel --https=443 off`で止める。次にpolicyをoffにする:
+期待: `外した`。`外れていない: …`なら、`kl_mode off`のあとでこのブロックをやり直す。クイックトンネルはそのターミナルでCtrl-Cで、BのFunnelは`tailscale funnel --https=443 off`で止め、`tailscale funnel status`にFunnelが残っていないことを確かめる。次にpolicyをoffにする:
 
 ```zsh
 kl_mode off

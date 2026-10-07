@@ -31,7 +31,7 @@
   {
    "id": "INV-TASKS",
    "disposition": "preserve",
-   "reason": "Bの方式だけを替える。0・10・12・Bへ移る・14・17と比較表を同じ変更で直し、14が読む印tunnel-b-okの名前と意味（Bの確認の合格）を保つ。Bだけが使ったlaunchdの雛形tunnel.plist.inを消す",
+   "reason": "Bの方式だけを替える。0・10・12・Bへ移る・14・17と比較表を同じ変更で直し、14が読む印tunnel-b-okの名前を保ち、作る場所をGitHubの配送が公開経路で届いた後（Bへ移るの5）にする（PR #69 RT-1）。Bだけが使ったlaunchdの雛形tunnel.plist.inを消す",
    "checks": [
     {
      "id": "dependencies",
@@ -53,7 +53,7 @@
    "location": "公開HTTPS（Tailscale Funnel、443番）→ 127.0.0.1:<port>の受け口",
    "data": "GitHubのWebhookの配送と、インターネットからの任意の要求",
    "trust": "untrusted",
-   "control": "Funnelの取付けは/webhookの1つだけ（tailscale funnel statusで確かめる）。ほかの最上位pathはFunnelが404で受け口に届かない。/webhook/*は受け口に届きうるが、webhook.tsはmethodがPOSTでurlが/webhookと完全一致する要求以外を、bodyを読む前・HMAC・policyの検査の前に404で返す。届いた/webhookは従来どおりHMACの署名・body上限・許可リストで守る"
+   "control": "Funnelの取付けは/webhookの1つだけ（tailscale funnel statusで確かめる）。ほかの最上位pathはFunnelが404で受け口に届かない。/webhook/*は取付けの前方一致で受け口に届くが、webhook.tsはmethodがPOSTでurlが/webhookと完全一致する要求以外を、bodyを読む前・HMAC・policyの検査の前に404で返す。届いた/webhookは従来どおりHMACの署名・body上限・許可リストで守る"
   },
   {
    "id": "B2",
@@ -61,7 +61,7 @@
    "location": "手順書の端末出力・repo",
    "data": "Funnelのホスト名（<host>.<tailnet>.ts.net）",
    "trust": "trusted",
-   "control": "ホスト名は所有者の端末の変数funnel_hostだけに置き、repo・Issue・PRに書かない"
+   "control": "ホスト名は所有者の端末の変数funnel_hostだけに置き、repo・Issue・PRに書かない。ホスト名はCTの公開ログに載るので、実名を含まない機器名にする（URLは秘密ではない。PR #69 RT-2）"
   }
  ],
  "variant_analysis": [
@@ -101,11 +101,11 @@
     },
     {
      "location": "runbook 12 names+=(tunnel)・@CLOUDFLARED@・@TUNNEL_CONFIG@とBの確認",
-     "result": "launchdの登録をやめ、確認をcurlとkl_funnelに替える。印tunnel-b-okは同じ"
+     "result": "launchdの登録をやめ、確認をkl_funnelとcurlにする。このMacのcurlはtailnet経由なので取付けの確認だけで、印は作らない"
     },
     {
      "location": "runbook Bへ移る",
-     "result": "12の再登録をやめ、10のB・0・12のBの確認の順にする"
+     "result": "旧Bの残り（launchdのtunnel・tunnel.yml・古い印）を外し、10のB・0・12の確認の順にする。印tunnel-b-okはGitHubの配送が202（またはpingの400）の後に作る"
     },
     {
      "location": "runbook 14 kl_svc tunnel",

@@ -52,7 +52,7 @@ dispatch-readの追加は[App手順](github-apps.md)の用途/権限制御の変
 
 GitHub通信はgh apiだけ。縮小tokenの取得・範囲検証が失敗したらghを呼ばない。GH_CONFIG_DIRとHOMEを専用の空領域へ向け、環境をallowlistで作り直す。doc-gifの保存認証、別App、広いtokenへ戻らない（PR42-R001/R004/R006）。ownerが将来読取り専用受付Appを選ぶ場合は設定を置換し、同時受信しない。誤って両Appから届いても仕事キーで重複を排除する。
 
-受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路は、shadowだけに使うA（Cloudflareのクイックトンネル。全pathが受け口に届く）と、activeに要るB（Tailscale Funnel。固定の`<host>.<tailnet>.ts.net`）。BはFunnelの取付けを`/webhook`の1つだけにし、ほかの最上位pathはFunnelが404を返して受け口に届かない。`/webhook/…`の下のpathは受け口に届きうる（残る危険）が、受け口はPOSTでpathが`/webhook`と完全一致する要求以外を、bodyを読む前・署名とpolicyの検査の前に404で返し、何も処理しない（[webhook.ts](../scripts/lib/review-dispatch/webhook.ts)の`serve`）。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
+受信はlocalhost endpointと公開HTTPS経路を分ける。公開経路は、shadowだけに使うA（Cloudflareのクイックトンネル。全pathが受け口に届く）と、activeに要るB（Tailscale Funnel。固定の`<host>.<tailnet>.ts.net`）。BはFunnelの取付けを`/webhook`の1つだけにし、ほかの最上位pathはFunnelが404を返して受け口に届かない。`/webhook/…`の下のpathは受け口に届く（取付けは前方一致。残る危険）が、受け口はPOSTでpathが`/webhook`と完全一致する要求以外を、bodyを読む前・署名とpolicyの検査の前に404で返し、何も処理しない（[webhook.ts](../scripts/lib/review-dispatch/webhook.ts)の`serve`）。raw bodyのHMAC-SHA256を定時間比較し、body上限・repo/install/eventを許可リストで確認する。永続Inboxへ保存後に2xx、保存失敗は非2xx、過大bodyは413。署名は配送元の証明であり操作権限ではない。公開URL・tunnelの設定・実配送の測定は、ownerの[導入手順](review-dispatch-runbook.md)に置く。URLはrepoへ書かない。
 
 ## 4. 記録・排他・復旧
 
@@ -204,7 +204,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | ID | 所有者の決定 | 設計の提案（決定ではない） | 反映先 |
 | --- | --- | --- | --- |
 | O1 | Webhookで受ける。公開HTTPS経路と15分の照合を併用する | 受付Appは§3のCodex App | §3 |
-| O1-route | 公開経路のB（activeに要る）はTailscale Funnel（無料、固定URL。2026-10-07、Issue #50 W7）。Aのクイックトンネルはshadowだけ | — | §3 |
+| O1-route | 公開経路のB（activeに要る）はTailscale Funnel（無料、固定URL。[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6032842834)）。Aのクイックトンネルはshadowだけ | — | §3 |
 | O2 | Claudeは購読の認証で起動する。APIキーと`--bare`は使わない | 隔離の層と具体的なflag（§7の表） | §7 |
 | O2-token | 購読の資格情報は`claude setup-token`の長期tokenで渡す。閉じ込めたClaudeはkeychainに一切触れない | supervisorが`CLAUDE_CODE_OAUTH_TOKEN`で渡す | §7 |
 | Codex | 外側のSeatbeltを掛けず、Codex自身の`--sandbox read-only`だけで起動する。keychainとAppの鍵に届かないことを実機で確かめる | `codex exec --json` | §7 |
