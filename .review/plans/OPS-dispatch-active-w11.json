@@ -1,0 +1,704 @@
+{
+ "schema_version": 2,
+ "task_id": "OPS-dispatch-active",
+ "base_sha": "6aa72646c9c22d6eab1f5f6f7a73c6643e8cc07a",
+ "planned_paths": [
+  "docs/pr-review-loop.md",
+  "scripts/lib/review-dispatch/active.test.ts",
+  "scripts/lib/review-dispatch/broker.test.ts",
+  "scripts/lib/review-dispatch/broker.ts",
+  "scripts/lib/review-dispatch/claude-broker.test.ts",
+  "scripts/lib/review-dispatch/evidence.test.ts",
+  "scripts/lib/review-dispatch/evidence.ts",
+  "scripts/lib/review-dispatch/findings.test.ts",
+  "scripts/lib/review-dispatch/findings.ts",
+  "scripts/lib/review-dispatch/launcher.test.ts",
+  "scripts/lib/review-dispatch/launcher.ts",
+  "scripts/lib/review-dispatch/model.ts",
+  "scripts/lib/review-dispatch/publication.ts"
+ ],
+ "conflicts": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-07",
+   "source": "Issue #50 W11（調整係が伝えた所有者の依頼。PR #59の自動の粗探しの投稿 pullrequestreview-5441686784 が原因台帳の55行の表を全部載せた）",
+   "decision": "投稿の原因台帳は該当・確認できないのIDと件数の1行だけにする。全原因の判定はworkerが出しBrokerが確かめる（今と同じ）が、置き場所はdispatcherの記録（DBの結果）。指摘は構造化した書式（結論1〜2行、### ID 題名、重さ／時期・場所・問題・例・やってほしいこと・完了条件、前のRTは解消を1行・未解消だけ詳しく、検証・未検証は各3行まで）にし、内容レビュー（PR<N>-R###）の投稿も同じ。書式はpr-review-loop.mdの1か所に置く（所有者承認済みの「指摘の書式を正本へ」もここで済ませる）。結果のschemaとargvが変わるので、測定（手順8・9）は所有者がやり直す"
+  }
+ ],
+ "assessments": [
+  {
+   "id": "INV-LOCK",
+   "disposition": "preserve",
+   "reason": "lock・排他は変えない（結果の形・投稿の本文・読取り・文書だけ）",
+   "checks": [
+    {
+     "id": "identity",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "recovery",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-PRIVACY",
+   "disposition": "preserve",
+   "reason": "workerの新しい文の項目（題名・重さ・時期・問題・例・やってほしいこと・完了条件）を、既存の項目と同じ検査（1行・長さ・safeProse・公開検査）に通す。投稿から外す原因の判定の全文はDBの結果（jobs.result、30日で消す既存の扱い）に残り、公開しない。試験と例は合成のデータだけ",
+   "checks": [
+    {
+     "id": "public",
+     "method": "broker.test.ts: 新しい項目ごとに長すぎ・改行・@・許可外のlinkがparseResultで拒まれ、公開検査（resultFindings）が新しい項目の秘密の形を拾う。check-public --stagedで差分に秘密・実データがない",
+     "expected": "すべて拒否・検出。公開検査は合格"
+    }
+   ]
+  },
+  {
+   "id": "INV-RELEASE",
+   "disposition": "preserve",
+   "reason": "RESULT_SCHEMA（--json-schemaでargvに入る）が変わるのでargvHashが変わり、測定とcapabilityは古くなる。所有者の決定どおり手順8・9をやり直す。cli.sb・VETTED_RULES・依存は変えない",
+   "checks": [
+    {
+     "id": "update",
+     "method": "git diffでtools/review_dispatch/seatbelt/・doctor.ts（VETTED_RULES）に差分がないこと、launcher.testの--json-schemaの値がRESULT_SCHEMA_JSONと一致することを確かめる",
+     "expected": "profileは同じ。argvはschemaの分だけ変わり、手順8・9のやり直しが要る（PR本文に書く）"
+    },
+    {
+     "id": "artifact",
+     "method": "git diffでpackage.json・lockfile・workflowに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-REVIEW",
+   "disposition": "preserve",
+   "reason": "投稿の書式を変えても、本文を読む側（findings.tsの指摘ID、evidence.tsの手動の粗探しの比較、active.tsの前のRTの収集、Brokerの印と照合）が同じ未解消を見るようにする。未解消の判定（redTeamOpen・store.faultfinding）は本文ではなく結果とOutboxのIDから作るので変わらない",
+   "checks": [
+    {
+     "id": "duplicates",
+     "method": "findings.test.ts: 見出し `### PR<N>-R001 題名` の指摘IDを拾い、引用や文中の言及は拾わない。broker.test.ts: render・renderRedTeamの本文からfindingIds・RT_ID・manualFaultfindingの読取りが元の結果と同じIDを返す",
+     "expected": "同じIDを同じ件数で返す（取りこぼしも水増しもない）"
+    },
+    {
+     "id": "trust",
+     "method": "broker.test.ts: 原因の判定の欠け・確認できない・前のRTの未解消・needs-ownerは、本文から表を外しても未解消のID（Outboxのfindings）に残る。evidence.test.ts: 手動の記録の新しい行（該当・確認できない・前のRT）を読み、旧来の表も読む",
+     "expected": "未解消は消えない。表から行へ変えても判定は緩まない"
+    }
+   ]
+  },
+  {
+   "id": "INV-ROOT",
+   "disposition": "preserve",
+   "reason": "保存先の識別は変えない",
+   "checks": [
+    {
+     "id": "first-use",
+     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "aliases",
+     "method": "git diffでhost.ts・store.tsに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-STORAGE",
+   "disposition": "preserve",
+   "reason": "DB・journal・manifestは変えない。結果は今と同じくjobs.resultに丸ごと入る",
+   "checks": [
+    {
+     "id": "rollback",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "restore",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    },
+    {
+     "id": "manifest",
+     "method": "git diffでstore.ts・supervisor.pyに差分がないことを確かめる",
+     "expected": "同じ"
+    }
+   ]
+  },
+  {
+   "id": "INV-TASKS",
+   "disposition": "preserve",
+   "reason": "Issue #50 W11。W10（runtime.ts・review-dispatch.ts・evidence.ts）と並行。evidence.tsはmanualFaultfindingに新しい行の読取りを足す最小の変更だけ",
+   "checks": [
+    {
+     "id": "dependencies",
+     "method": "baseが最新main（6aa7264、W9 #71を含む）であることをgit logで確かめる。evidence.tsの差分がmanualFaultfindingの中だけであることをgit diffで確かめる",
+     "expected": "W10の範囲と重ならない（evidence.tsは1関数だけ）"
+    },
+    {
+     "id": "entrypoints",
+     "method": "git grepで指摘の書式（重さ・場所・問題・例・やってほしいこと・完了条件）の説明がpr-review-loop.mdの1か所だけにあり、内容レビューの書式と粗探しの書式がそこへlinkすることを確かめる",
+     "expected": "置き場所は1つ"
+    }
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "id": "B1",
+   "direction": "entry",
+   "location": "broker.ts parseResult（runtime.tsとBrokerが呼ぶ）",
+   "data": "workerの結果の指摘の新しい項目（title・severity・timing・problem・example・action・completion）",
+   "trust": "untrusted",
+   "control": "項目の集合を完全一致で照合（impactは廃止）。severityはP1・P2・P3の列挙。titleは20字・timingは60字・ほかはtextの上限、どれも1行で空でない。safeProse（<・@・行頭の欄名・許可外のlink）をNFKCの後に掛ける。schemaも同じ上限と列挙を述べ、parseResultより厳しくしない"
+  },
+  {
+   "id": "B2",
+   "direction": "exit",
+   "location": "broker.ts renderRedTeam・render → canonicalBody → publicationFindings → POST",
+   "data": "粗探しの記録と内容レビューの本文",
+   "trust": "partially-trusted",
+   "control": "workerの文は固定の見出し（`- 場所:`等）の後か`> `の引用にだけ置き、行頭に出さない。見出しの行は検査済みのIDと1行の題名だけ。原因は該当・確認できないのIDと件数の行だけ（IDはCAUSE_KEYの形）。印・head/base・plan_path等の機械の行は変えない。最終の本文に公開検査を掛ける順は変えない。検証・未検証は各3件まで（RESULT_LIMITS）"
+  },
+  {
+   "id": "B3",
+   "direction": "entry",
+   "location": "findings.ts findingIds・evidence.ts manualFaultfinding・active.ts buildMaterials（RT_ID）",
+   "data": "投稿済みの記録の本文（登録した参加者のもの）",
+   "trust": "partially-trusted",
+   "control": "findingIdsは行頭（`- `・`* `・Markdownの見出しの後を含む）のPR<N>-R<3桁以上>だけを拾い、引用・文中は拾わない。manualFaultfindingは旧来の表に加え、`- 該当:`・`- 確認できない:`の行の原因を未解消、`前のRT:`の行の解消・対応不要を解消として読み、形の合わない原因はcause:unparsed。buildMaterialsは本文のどこのRT IDも拾う（変えない）"
+  },
+  {
+   "id": "B4",
+   "direction": "exit",
+   "location": "launcher.ts jobText・RESULT_SCHEMA（workerへの依頼とschema）",
+   "data": "結果の書式の説明",
+   "trust": "trusted",
+   "control": "項目と上限だけを短く述べる（文章の例は書かない）。launcher.testがjobTextに新しい項目と上限があること、schemaの上限・列挙がRESULT_LIMITSと一致することを確かめる"
+  }
+ ],
+ "variant_analysis": [
+  {
+   "invariant_id": "INV-REVIEW",
+   "pattern": "投稿の書式を変えて、本文を読む側が指摘を取りこぼす、または未解消が消える",
+   "places": [
+    {
+     "location": "findings.ts findingIds（内容レビューの指摘ID）",
+     "result": "修正: `### PR<N>-R001`の見出しも行頭として拾う"
+    },
+    {
+     "location": "evidence.ts manualFaultfinding（手動の粗探しの比較、shadowのみ）",
+     "result": "修正: 新しい行（該当・確認できない・前のRT）を読む。旧来の表も読み続ける"
+    },
+    {
+     "location": "active.ts buildMaterials（前の記録のRT ID）",
+     "result": "変更なし: 本文のどこのRT IDも拾うので、`前のRT:`の行と`### RT-n`の見出しも拾う（試験で確認）"
+    },
+    {
+     "location": "store.ts faultfinding（Outboxのfindings）・broker.ts redTeamOpen",
+     "result": "変更なし: 本文ではなく結果から未解消のIDを作る。台帳の判定の欠け・確認できないはここに残る"
+    },
+    {
+     "location": "broker.ts recover（印とbodyのhash）・evidence.ts recordField（head_sha・base_sha）",
+     "result": "変更なし: 印とhead/baseの行は同じ"
+    },
+    {
+     "location": "runtime.ts（parseResult・resultFindingsの呼出し）・active.ts resultField（測定の診断）",
+     "result": "変更なし: 呼出しの形は同じ。診断は最上位のkeyだけを見る"
+    },
+    {
+     "location": "tools/review_guard（guard.py・ci.py）",
+     "result": "変更なし: 投稿の本文を読まない"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-PRIVACY",
+   "pattern": "workerの新しい文の項目が公開検査を通らずに投稿・保存される",
+   "places": [
+    {
+     "location": "broker.ts parseResult",
+     "result": "修正: 新しい項目を1行・長さ・safeProseで検査"
+    },
+    {
+     "location": "publication.ts resultFindings",
+     "result": "修正: 新しい項目を1つの文として公開検査に入れる"
+    },
+    {
+     "location": "broker.ts submit（最終の本文の公開検査）",
+     "result": "変更なし: 本文全体に掛かる"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-RELEASE",
+   "pattern": "測定・capabilityに結び付いた入力を変える",
+   "places": [
+    {
+     "location": "launcher.ts RESULT_SCHEMA（--json-schema）",
+     "result": "変わる: 測定は古くなり、所有者が手順8・9をやり直す"
+    },
+    {
+     "location": "tools/review_dispatch/seatbelt/・doctor.ts VETTED_RULES",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-LOCK",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "store.ts・supervisor.py",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-ROOT",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "host.ts・store.ts",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-STORAGE",
+   "pattern": "変更なし",
+   "places": [
+    {
+     "location": "store.ts",
+     "result": "差分なし"
+    }
+   ]
+  },
+  {
+   "invariant_id": "INV-TASKS",
+   "pattern": "説明の重複",
+   "places": [
+    {
+     "location": "docs/pr-review-loop.md 提出前の粗探し・3節の書式・コメントを短くする",
+     "result": "指摘の書式は粗探しの節に1か所。3節と「コメントを短くする」はlinkする"
+    },
+    {
+     "location": "launcher.ts jobText",
+     "result": "項目の名前と上限だけ（説明の文はpr-review-loop.mdへ任せる）"
+    }
+   ]
+  }
+ ],
+ "deferred": [
+  {
+   "item": "所有者の実機で手順8・9（測定）をやり直す",
+   "reason": "結果のschemaがargvに入るので、このPRのマージ後に所有者が行う"
+  }
+ ],
+ "context": {
+  "INV-LOCK": {
+   "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+   "scenarios": [
+    {
+     "id": "identity",
+     "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+    },
+    {
+     "id": "recovery",
+     "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R007",
+     "invariant_id": "INV-LOCK",
+     "cause_key": "restore-lock-identity",
+     "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
+     ]
+    }
+   ]
+  },
+  "INV-PRIVACY": {
+   "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
+   "scenarios": [
+    {
+     "id": "public",
+     "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR12-R002",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "public-path-exception-scope",
+     "lesson": "公開検査の場所の規則は、通常ファイル・symlink・gitlink・ディレクトリのすべてのindexの項目と大文字小文字の違いに同じく適用して.gitignoreと一致させ、例外は通常ファイルの最後の名前だけに限る。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396182094",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352689",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508077",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168174910",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4168993848",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169251177",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233"
+     ]
+    },
+    {
+     "id": "PR42-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "token-scope-fail-open",
+     "lesson": "縮小を要求した資格情報は、付いた権限と届く範囲を、応答の欠落も含めて確かめ、確かめられなければ使わずに失効させる（fail closed）。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370934"
+     ]
+    },
+    {
+     "id": "PR42-R006",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "credential-tool-from-untrusted-checkout",
+     "lesson": "鍵やトークンを扱う道具は、レビュー済みの版から取り出した写しで実行し、PRのcheckoutから実行しない。その道具と権限の表の変更は、権限の制御の変更として独立レビューを受ける。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR37-R001",
+     "invariant_id": "INV-PRIVACY",
+     "cause_key": "logged-value-carries-data",
+     "lesson": "ログ・診断の出力に入る値は、項目ごとに伏せ字・形式の検査・作る場所の約束で守らない。すべての事象・項目を出所（定数・計算・外部の入力・OS・実行環境）、影響できるか、値の数、復元できるかで監査し、アプリが持つ閉じた集合の要素だけを記録する。外部・OS・実行環境の値は閉じた列挙・区分へ写像するか捨てる（例外のcode・name・stack、DBやファイルから読む版、数の0と1や負数・非有限を含む）。新しい項目を足すときは監査の表を同じ変更で更新する。 書くときにロガーが作った値（ID、連番、時刻、別名）も、保存先から読み戻した時点で未信頼の入力になる。読み戻す経路では出所を分け、元の値を使わずに振り直す・区分にする・閉じた集合で解析し直す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173211606",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173255445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282431",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173282445",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#discussion_r4173406961",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401017076",
+      "https://github.com/doc-gif/kurashi-ledger/pull/37#pullrequestreview-5401117904"
+     ]
+    }
+   ]
+  },
+  "INV-RELEASE": {
+   "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+   "scenarios": [
+    {
+     "id": "update",
+     "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+    },
+    {
+     "id": "artifact",
+     "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R006",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "artifact-release-coherence",
+     "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
+     ]
+    },
+    {
+     "id": "PR12-R001",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "setup-worktree-exclusion",
+     "lesson": "依存の導入と導入記録の更新は、既存の記録の削除前から最終照合までを同じworktree単位の排他で囲み、2つ目を依存・記録の変更前に止める。排他の資源は削除される木の中に置かない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+     ]
+    },
+    {
+     "id": "PR12-R101",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "cleanup-failure-path-contract",
+     "lesson": "成功したときだけ記録を残す契約を、fsync・unlink・印の書込み・解放の失敗やシグナルなど後始末の失敗経路でも保ち、失敗を握りつぶさず残った状態と終了コードを返す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352795",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170913805",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947635",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4171009135"
+     ]
+    },
+    {
+     "id": "PR12-R102",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "install-record-verification-scope",
+     "lesson": "導入記録の照合は、記録が保証すると述べる範囲（依存の宣言・lockfile・実行ファイルのリンクの解決先）をすべて確かめ、見抜けない直接操作などの限界は文書に正確に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+     ]
+    },
+    {
+     "id": "PR12-R103",
+     "invariant_id": "INV-RELEASE",
+     "cause_key": "verification-on-target-runtime",
+     "lesson": "受入の検証は固定した版と対象OSで実行し、失敗・未実行を成功と扱わない。警告の抑止など継承した環境変数で検査が素通りしないようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167352751",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5393999270"
+     ]
+    }
+   ]
+  },
+  "INV-REVIEW": {
+   "condition": "指摘は根本原因と固定IDで追跡し、合否は最新head/baseと独立レビューに結び付ける。",
+   "scenarios": [
+    {
+     "id": "duplicates",
+     "question": "同じ原因を別IDで再投稿しないか。再発・新証拠は既存IDを更新し、未解決を単に抑制していないか。"
+    },
+    {
+     "id": "trust",
+     "question": "PR自身が条件を緩めても承認扱いにならないか。構造検査・自己申告・AI評価を独立承認と取り違えないか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR4-R001",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "workflow-self-modification",
+     "lesson": "baseの検査器を呼ぶだけではworkflow自体のPR変更を防げない。強制ゲートには独立レビューの保護と迂回試験が別途必要。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5388868564",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5389036847",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029"
+     ]
+    },
+    {
+     "id": "PR4-R009",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "known-path-routing-gap",
+     "lesson": "利用者向けREADME、UI・design・application、保存・portability・migration等の既知パスを予定タスクの実パスと照合する。関連条件の向きによる漏れも確認し、必要な全シナリオの生成とassessment欠落拒否を確かめる。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272"
+     ]
+    },
+    {
+     "id": "PR4-R014",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "multiple-plan-exemption",
+     "lesson": "変更計画の個数は除外前に検査し、複数の計画で1PRの範囲・担当をすり抜けさせない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394312488"
+     ]
+    },
+    {
+     "id": "PR4-R018",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "plan-task-identity",
+     "lesson": "計画のファイル名とtask_idの一致をcore・CLI・CIの全入口で確認し、他タスクの計画を流用させない。 同じtaskの分割計画でも、ローカルCLIが読んだ計画の実パスとPRの変更計画自身を照合し、別partや別ディレクトリの計画を流用させない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
+     ]
+    },
+    {
+     "id": "PR4-R020",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "finding-id-normalization",
+     "lesson": "共有指摘IDはPR名前空間を含む正規形のみ保存し、省略形・ゼロ・非ASCII数字・前後空白による別IDを拒否する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R021",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "cause-key-whitespace",
+     "lesson": "原因キーは台帳と候補でtrim済みを要求し、前後空白による既存原因のすり抜けを拒否する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R023",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "batch-cause-duplication",
+     "lesson": "原因台帳の既存キーだけでなく、同じ入力バッチの同一条件・同一原因も照合し、重複を全体で拒否して部分結果を出さない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394853014",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252"
+     ]
+    },
+    {
+     "id": "PR11-R112",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "plan-assessment-drift",
+     "lesson": "変更前の計画の確認方法と期待結果は、実際の差分と後から加えた方針に合わせて更新し、範囲外の変更や高リスクの新しい方針を評価から漏らさない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609832",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720974",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944798"
+     ]
+    },
+    {
+     "id": "PR42-R004",
+     "invariant_id": "INV-REVIEW",
+     "cause_key": "credential-fallback-on-mint-failure",
+     "lesson": "別の身元で行う操作の手順は、その身元の資格情報が得られなかったときに、保存済みの別の資格情報（所有者・管理者）へ黙って戻らないようにし、行ったあとで身元を確かめる。 子プロセスに渡す場合も、ghとgitが読む保存済みの資格情報（.netrc、利用者・repoの設定のhelperやheader）を打ち消す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970224029",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#issuecomment-5970690565"
+     ]
+    }
+   ]
+  },
+  "INV-ROOT": {
+   "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+   "scenarios": [
+    {
+     "id": "first-use",
+     "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+    },
+    {
+     "id": "aliases",
+     "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R002",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "first-use-vs-interruption",
+     "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
+     ]
+    },
+    {
+     "id": "PR12-R104",
+     "invariant_id": "INV-ROOT",
+     "cause_key": "destructive-op-follows-link",
+     "lesson": "削除・上書き・移動の前に、信頼した実体のルートから対象までの経路のすべての要素（深い祖先のディレクトリを含む）がsymlink・junctionでないこと、または解決した実体が許可した範囲の中にあることを確かめ、リンクを経て範囲外や別worktreeを変更しない。対象と直近の親だけの確認では、上位の祖先のリンクを見逃す。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167952957",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#pullrequestreview-5398413357",
+      "https://github.com/doc-gif/kurashi-ledger/pull/16#discussion_r4171162468"
+     ]
+    }
+   ]
+  },
+  "INV-STORAGE": {
+   "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+   "scenarios": [
+    {
+     "id": "rollback",
+     "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+    },
+    {
+     "id": "restore",
+     "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+    },
+    {
+     "id": "manifest",
+     "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R001",
+     "invariant_id": "INV-STORAGE",
+     "cause_key": "database-journal-pair",
+     "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
+     ]
+    }
+   ]
+  },
+  "INV-TASKS": {
+   "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
+   "scenarios": [
+    {
+     "id": "dependencies",
+     "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
+    },
+    {
+     "id": "entrypoints",
+     "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
+    }
+   ],
+   "history": [
+    {
+     "id": "PR2-R003",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "dependency-before-consumer",
+     "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。 後続タスクの受入に共有の契約・型の変更が要る場合は、提供タスクで先に定めるか、後続タスクの範囲・共有資源に含めて調整する。 契約の確定を待つ判断を後続へ残すときは、その契約のタスクへの依存と、決める担当・受入条件を台帳に書く。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664",
+      "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395839447"
+     ]
+    },
+    {
+     "id": "PR2-R008",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "entrypoint-order",
+     "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。 成果物のディレクトリのREADME等に書いた運用手順も入口として照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4168966166"
+     ]
+    },
+    {
+     "id": "PR4-R019",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "review-role-spelling",
+     "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
+     ]
+    },
+    {
+     "id": "PR4-R022",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "draft-open-entrypoint-coherence",
+     "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
+      "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
+     ]
+    },
+    {
+     "id": "PR10-R004",
+     "invariant_id": "INV-TASKS",
+     "cause_key": "status-docs-current-state-coherence",
+     "lesson": "同じ事実（成果物の作成状況・公開範囲・タスクへの割当・必須の記入欄）を書く状態資料・実装計画・台帳・ADR・テンプレートは、最終headでまとめて更新し、互いに照合する。",
+     "sources": [
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394700750",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167964285",
+      "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5394370172",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394179233",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394323746",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394431368",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394614385",
+      "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5398208896",
+      "https://github.com/doc-gif/kurashi-ledger/pull/42#discussion_r4173370946"
+     ]
+    }
+   ]
+  }
+ }
+}
