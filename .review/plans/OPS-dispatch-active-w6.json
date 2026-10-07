@@ -3,12 +3,19 @@
  "task_id": "OPS-dispatch-active",
  "base_sha": "40ea19054f02d2b987ef646f1d6fc63c716a1380",
  "planned_paths": [
+  "docs/review-dispatch-design.md",
   "docs/review-dispatch-implementation.md",
   "scripts/lib/review-dispatch/github.test.ts",
   "scripts/lib/review-dispatch/github.ts"
  ],
  "conflicts": [],
- "owner_decisions": [],
+ "owner_decisions": [
+  {
+   "date": "2026-10-07",
+   "source": "PR #68 red team RT-1（調整係が伝えた所有者の決定。記録はIssue #50に調整係が残す）",
+   "decision": "ETagによる再検証をやめる。GhReaderはIf-None-Matchを送らず、304の扱いとcacheを持たない。ghTransportの成功は終了0かつ2xxのstatus行だけで、304を含む他はすべてEvidenceError。設計表I004から「ETag」を外す"
+  }
+ ],
  "assessments": [
   {
    "id": "INV-LOCK",
@@ -98,7 +105,7 @@
   {
    "id": "INV-TASKS",
    "disposition": "preserve",
-   "reason": "Issue #50のshadowで見つかった取得の不具合の修正。設計・運用の決定は変えない。実装文書の検査表の1行（fake ghの項目）だけを足す",
+   "reason": "Issue #50のshadowで見つかった取得の不具合の修正。設計の変更はRT-1への所有者の決定（ETagの再検証をやめる）による検証表I004の1語だけ。実装文書の検査表の1行（fake ghの項目）を直す",
    "checks": [
     {
      "id": "dependencies",
@@ -117,10 +124,10 @@
   {
    "id": "B1",
    "direction": "entry",
-   "location": "github.ts ghTransport（GhReaderの全取得）",
+   "location": "github.ts GhReader.request・ghTransport（全取得）",
    "data": "ghの終了状態・signal・stdout（--includeのHTTP応答）・stderr",
    "trust": "partially-trusted",
-   "control": "終了0で、stdoutが完全なHTTP応答（status行・header・空行）として読め、statusが2xxのときだけ応答を返す。304はghが終了1で「gh: HTTP 304」だけをstderrに書くので、終了1・signalなし・本文が空・stderrがその1行のときだけ304として返す（GhReaderのETag再検証の経路）。それ以外の非0・signal・timeout・起動失敗・maxBuffer超過・stdoutの欠落はEvidenceError。部分的なstdoutを応答として読まない。他の非2xx（404・429・5xx）は従来もGhReaderがEvidenceErrorにしていたので結果は同じ"
+   "control": "GhReaderは条件付き要求（If-None-Match）を送らず、cacheを持たない（collectの2回目のmain・PRの読取りは毎回サーバーの現在の応答）。ghTransportは終了0で、stdoutが完全なHTTP応答（status行・header・空行）として読め、statusが2xxのときだけ応答を返す。非0（ghは300以上のstatusで終了1）・signal・timeout・起動失敗・maxBuffer超過・stdoutの欠落・304を含む非2xxはEvidenceError。stderrの文言には依存しない。部分的なstdoutを応答として読まない"
   },
   {
    "id": "B2",
@@ -170,7 +177,7 @@
    "places": [
     {
      "location": "github.ts ghTransport",
-     "result": "修正: 非0・signal・timeoutはEvidenceError。304だけ明示して扱う"
+     "result": "修正: 成功は終了0かつ2xxだけ。非0・signal・timeout・304はEvidenceError"
     },
     {
      "location": "github.ts ghReviewTransport post",
@@ -225,6 +232,10 @@
     {
      "location": "docs/review-dispatch-implementation.md 検証の読み方",
      "result": "fake ghの行に非0終了・job logのescapeを足すだけ"
+    },
+    {
+     "location": "docs/review-dispatch-design.md 検証表I004",
+     "result": "所有者の決定でETagを外す"
     }
    ]
   }
