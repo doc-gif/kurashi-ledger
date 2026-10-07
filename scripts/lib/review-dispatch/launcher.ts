@@ -322,7 +322,7 @@ export function jobText(j: Job, repo: string): string {
     j.kind === "faultfinding"
       ? [
           "Task: pre-review red team of this pull request, following context/review-loop.md (section on the pre-review red team).",
-          "Judge every cause of context/findings.json as invariant_id/cause_key in causes (該当, 該当なし or 確認できない, with the places checked), use context/guard-check.json (causes_not_analyzed first), and check the plan's boundaries and variant analysis against the diff.",
+          "Judge every cause of context/findings.json as invariant_id/cause_key in causes (該当, 該当なし or 確認できない, with the places checked; 該当 means a defect of that class is still present in this head, and a class that is relevant but has no defect, or whose defect is fixed, is 該当なし), use context/guard-check.json (causes_not_analyzed first), and check the plan's boundaries and variant analysis against the diff.",
           "For every earlier red-team record in pr/previous-redteam.md (headed ## record-comment-<id> or ## record-review-<id>), re-check the whole record and every finding in it, numbered or not: add one previous entry with that heading as the id, and one per RT ID it mentions; set 解消, 対応不要 or 未解消 with the reason.",
           "Report each new defect as a finding with ID RT-1, RT-2, ... Decision: accepted only when there is no finding, no cause is 該当 or 確認できない and no earlier RT is 未解消, changes-requested otherwise, needs-owner when an owner decision is required. Do not use table separators (|) in any field.",
         ]

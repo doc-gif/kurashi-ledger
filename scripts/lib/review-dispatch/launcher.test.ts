@@ -584,6 +584,10 @@ test("W5d jobText states the rules the schema cannot express: evidence forms of 
   assert.ok(!/^- /m.test(stdin));
   const ff = buildLaunch(policy(), ffJob(), claudeInstall(), run(), opts).stdin;
   assert.match(ff, /Evidence: only links/);
+  // PR #73: 該当 stays open (redTeamOpen), so the worker is told what it means; a review job has no causes.
+  const applies = "該当 means a defect of that class is still present in this head, and a class that is relevant but has no defect, or whose defect is fixed, is 該当なし";
+  assert.ok(ff.includes(applies));
+  assert.ok(!stdin.includes(applies));
 });
 
 test("W9 every finding publicationFindings reports has its words in PUBLICATION_RULES, and following the words passes", () => {
