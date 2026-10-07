@@ -12,7 +12,11 @@ import {
   PROFILE_ALLOWS,
   SHARED_PROFILE_ALLOWS,
   PLAIN_SOCKET_PREFIX,
+  PROBE_SET,
   PROBE_SOURCE,
+  LOOPBACK_DENY_LINE,
+  TCP_443_ALLOW_LINE,
+  probeOutcome,
   SOCKET_DENY_LINE,
   SUN_PATH_MAX,
   SYNTHETIC_PROBES,
@@ -253,7 +257,7 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
         '(allow network-outbound (remote tcp "*:443"))',
         '(deny network-outbound (remote ip "localhost:*"))\n(allow network-outbound (remote tcp "*:443"))',
       ),
-      "profile-not-vetted",
+      "loopback-deny-not-after-443",
     ],
     [PROFILE.replace("(allow process-fork)", "(allow process-fork)\n(allow process-fork)"), "profile-not-vetted"],
     [PROFILE.replace("(allow system-socket)", ""), "profile-not-vetted"],
@@ -306,6 +310,103 @@ test("doctor: cli.sb lint refuses rules that open the boundary", async () => {
   const missing = await runDoctor(input({ profileText: null }));
   assert.equal(missing.state, "unverified");
   assert.ok(missing.reasons.includes("profile-text-missing"));
+});
+
+test("W8: loopback-deny-after-443 is static: the lint refuses any profile whose loopback deny does not come after the TCP 443 allow", async () => {
+  // The vetted order itself: the deny comes after the allow (in Seatbelt a later rule wins).
+  assert.ok(VETTED_RULES.indexOf(LOOPBACK_DENY_LINE) > VETTED_RULES.lastIndexOf(TCP_443_ALLOW_LINE));
+  assert.ok(VETTED_RULES.lastIndexOf(TCP_443_ALLOW_LINE) >= 0);
+  assert.deepEqual(lintProfile(PROFILE), []);
+  // Every position of the loopback deny before the 443 allow is refused by the named check, not only by the
+  // exact match, so an edit of VETTED_RULES cannot reorder them either.
+  const rules = ["(version 1)", ...VETTED_RULES];
+  const allow = rules.indexOf(TCP_443_ALLOW_LINE);
+  const without = rules.filter((r) => r !== LOOPBACK_DENY_LINE);
+  for (let k = 2; k <= allow; k++) {
+    const moved = [...without.slice(0, k), LOOPBACK_DENY_LINE, ...without.slice(k)];
+    assert.ok(moved.indexOf(LOOPBACK_DENY_LINE) < moved.indexOf(TCP_443_ALLOW_LINE), String(k));
+    const problems = lintProfile(moved.join("\n"));
+    assert.ok(problems.includes("loopback-deny-not-after-443"), `${k}: ${problems.join()}`);
+    assert.equal((await runDoctor(input({ profileText: moved.join("\n") }))).state, "disabled", String(k));
+  }
+  // A second 443 allow after the deny reopens localhost:443: refused the same way.
+  const reopened = PROFILE.replace(LOOPBACK_DENY_LINE, `${LOOPBACK_DENY_LINE}\n${TCP_443_ALLOW_LINE}`);
+  assert.ok(lintProfile(reopened).includes("loopback-deny-not-after-443"));
+  // Without the deny at all.
+  assert.ok(lintProfile(PROFILE.replace(LOOPBACK_DENY_LINE, "")).includes("loopback-deny-missing"));
+  // No runtime probe on port 443 is left: its answer depends on what listens on the host (Tailscale Funnel).
+  for (const [id, d] of Object.entries(SYNTHETIC_PROBES)) assert.ok(!id.includes("443") && !d.kind.includes("443"), id);
+  assert.ok(!/\b443\b/.test(PROBE_SOURCE));
+  assert.deepEqual(RUN_B_COVERAGE.network.synthetic, ["tool-network"]);
+  assert.deepEqual(coverageGaps(), []);
+});
+
+test("W8: a connect outcome needs the doctor's marker for the control; a hang or timeout is never denied", async (t) => {
+  const line = (r: string) => `{"r":"${r}"}\n`;
+  // Control: only the marker proves the connection reached the doctor's own listener.
+  assert.equal(probeOutcome("connect", "control", 0, line("allowed")), "allowed");
+  assert.equal(probeOutcome("connect", "control", 0, line("unmarked")), "inconclusive");
+  // Under cli.sb any connection is a leak, with or without the marker.
+  for (const mode of ["cli", "cli-child"] as const) {
+    assert.equal(probeOutcome("connect", mode, 0, line("allowed")), "allowed");
+    assert.equal(probeOutcome("connect", mode, 0, line("unmarked")), "allowed");
+    assert.equal(probeOutcome("connect", mode, 0, line("denied")), "denied");
+  }
+  // error (the probe's timeout), a killed child (null), other text: inconclusive, never denied.
+  for (const mode of ["control", "cli", "cli-child"] as const)
+    for (const [code, out] of [[0, line("error")], [null, ""], [0, ""], [1, line("denied")], [0, `${line("denied")}x`]] as const)
+      assert.equal(probeOutcome("connect", mode, code, out), "inconclusive", `${mode} ${code} ${out}`);
+  assert.equal(probeOutcome("read", "cli", 0, line("unmarked")), "inconclusive");
+  if (process.platform === "win32") {
+    // Not a skip: the probe child is the same on every platform, but the doctor runs on macOS only.
+    t.diagnostic("Windows: the doctor disables before any probe runs");
+    return;
+  }
+  // The real probe child, unconfined, against listeners this test owns on ephemeral ports (never 443 or a fixed port).
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "kl-w8-probe-")));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "probe.mjs"), PROBE_SOURCE);
+  const open: import("node:net").Socket[] = [];
+  const listen = async (onConn: (c: import("node:net").Socket) => void) => {
+    const server = createServer((c) => {
+      open.push(c);
+      c.on("error", () => {});
+      onConn(c);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const a = server.address();
+    return { server, port: typeof a === "object" && a ? a.port : 0 };
+  };
+  const run = (target: string, child = false) =>
+    new Promise<string>((res) =>
+      execFile(process.execPath, [join(dir, "probe.mjs"), ...(child ? ["child"] : []), "connect", target], { timeout: 20000 }, (_e, out) => res(String(out))),
+    );
+  const marker = "0123456789abcdef";
+  const good = await listen((c) => c.end(marker));
+  const wrong = await listen((c) => c.end("fedcba9876543210"));
+  const silent = await listen(() => {});
+  const closed = await listen(() => {});
+  await new Promise<void>((r) => closed.server.close(() => r()));
+  try {
+    assert.equal(await run(`${good.port}:${marker}`), line("allowed"));
+    assert.equal(await run(`${good.port}:${marker}`, true), line("allowed"), "relayed by the child");
+    assert.equal(await run(`${wrong.port}:${marker}`), line("unmarked"));
+    // Connected but nothing comes (a hang): unmarked after the probe's own timeout.
+    assert.equal(await run(`${silent.port}:${marker}`), line("unmarked"));
+    // Refused: no connection and no EPERM, so no proof either way.
+    assert.equal(await run(`${closed.port}:${marker}`), line("error"));
+    assert.equal(probeOutcome("connect", "control", 0, await run(`${closed.port}:${marker}`)), "inconclusive");
+  } finally {
+    for (const c of open) c.destroy();
+    for (const s of [good, wrong, silent]) await new Promise<void>((r) => s.server.close(() => r()));
+  }
+});
+
+test("W8: the capability records the synthetic probe set it was proved with", async () => {
+  assert.match(PROBE_SET, /^[a-f0-9]{64}$/);
+  const r = await runDoctor(claudeInput());
+  assert.equal(r.state, "verified", JSON.stringify(r.reasons));
+  assert.equal(r.capability.probeSet, PROBE_SET);
 });
 
 test("doctor: Claude needs setup-token auth, a clean config dir, no managed settings and a bound measurement", async () => {

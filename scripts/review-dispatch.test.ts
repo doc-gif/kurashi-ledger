@@ -305,7 +305,7 @@ async function activeCli() {
   const { HEAD, BASE } = await import("../tests/fixtures/review-dispatch.ts");
   const { fakeGitHub } = await import("../tests/fixtures/review-dispatch-github.ts");
   const { argvTemplateHash } = await import("./lib/review-dispatch/launcher.ts");
-  const { profileHash } = await import("./lib/review-dispatch/doctor.ts");
+  const { PROBE_SET, profileHash } = await import("./lib/review-dispatch/doctor.ts");
   const { REQUIRED_PROBES } = await import("./lib/review-dispatch/runtime.ts");
   const x = await cliSetup();
   const install = JSON.parse(fs.readFileSync(x.installFile, "utf8"));
@@ -320,6 +320,7 @@ async function activeCli() {
       codeHash: EXE,
       profileHash: profileHash(A.toString("utf8")),
       argvHash: argvTemplateHash(install.claude),
+      probeSet: PROBE_SET,
       probes: Object.fromEntries(REQUIRED_PROBES.map((k) => [k, true])),
     },
     1,

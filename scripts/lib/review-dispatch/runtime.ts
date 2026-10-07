@@ -29,6 +29,8 @@ export type Capability = {
   // launcher.ts argvTemplateHash(install). Required for Claude: active.ts binds all four values to the
   // plan it launches (W4); a capability measured with other flags or paths never launches.
   argvHash?: string;
+  // doctor.ts PROBE_SET: the synthetic probes it was proved with. active.ts refuses another set (Issue #50 W8).
+  probeSet?: string;
   probes: Record<string, boolean>;
 };
 // Every probe must be proven denied (doctor.ts). Missing or false keeps the backend off.

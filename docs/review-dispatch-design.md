@@ -164,6 +164,7 @@ Claudeは購読の認証で起動する。`--bare`は購読のログインもkey
 - dontAskでも、作業directory内の読取りと読取り専用のcommandは確認なしで動く。`--allowedTools`は確認を省くだけで、toolを外さない。そのため`--tools`を使う。
 - `Read`の規則はGrep・Globへ「best-effort」でだけ効く（permissionsの記載）。Seatbeltが最後の境界になる。
 - CLIとtoolの子processが443番へ出られることは、所有者が受け入れた残余リスク（net-443、下の残余リスク）。toolはRead・Grep・Globに保つ。
+- 443番でもlocalhostへ届かないことは静的な保証`loopback-deny-after-443`: `cli.sb`はTCP 443のallowの後にlocalhostのdenyを置き、Seatbeltでは後の規則が勝つ。lint（`doctor.ts`の`lintProfile`）がこの順を要求する。doctorの実行時の証明は、doctor自身が127.0.0.1の一時portに立てる待受けへの接続だけ（対照は目印のbyteを受け取り、`cli.sb`の下では拒否。hang・timeoutは`inconclusive`）。443番の答えはhostで何が待ち受けるかに依るので試さない（[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
 - envのallowlistから、[authentication](https://code.claude.com/docs/en/authentication)の優先順位でtokenより上か経路を変えるものを除く: `CLAUDE_CODE_USE_BEDROCK`・`CLAUDE_CODE_USE_VERTEX`・`CLAUDE_CODE_USE_FOUNDRY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`と連携の変数。設定の`apiKeyHelper`と`env`欄も使わない。doctorは`claude auth status`の`authMethod`を確かめる（W1）。
 - envの`CLAUDE_CODE_TMPDIR`をrunのtmpへ向ける。Claudeは自身の一時fileを`TMPDIR`ではなくこの変数の下（既定は`/tmp`）の`claude-<uid>/`に作る（[env-vars](https://code.claude.com/docs/en/env-vars)）。CLI用のprofileは`/tmp`を拒否するので、無いと起動時に止まる（W4e）。
 - `--safe-mode`・`--permission-prompts none`・`--no-session-persistence`は任意で併用してよい。採否は起動器のPRに記録する。
@@ -188,6 +189,7 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 所有者が[2026-10-07に受け入れた](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)残余リスク（Codexの[ISSUE50-P001〜P003](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019834396)）。supervisorはworkerのprocess groupを止めて空を確かめるが（§4）、全子孫の終了は証明しない。
 
 - groupを離れた子（setsid等）は、`cli.sb`のallow規則の**すべて**を持ったまま残りうる（`doctor.ts`の`PROFILE_ALLOWS`が規則ごとの一覧の正本で、試験が規則と突き合わせる）。runに閉じないのは、外向きTCP 443、名前を限らないPOSIX共有メモリの作成・読み書き（次のrunのprocessと共有しうる）、`signal (target same-sandbox)`（別の`sandbox-exec`起動へ届くかは未証明）、`notification_center`等のmach-lookup、任意のpathのmetadataの読取り。runに閉じるのは、そのrunのconfig dir・HOME・tmpの読み書きと資料・runtimeの読取り。寿命・個数・CPU・メモリ・開いたfile・diskの上限は証明しない。runのtimeoutも効かない。run領域を消しても、開いたままのfileの領域は最後の参照が閉じるまで残る。
+- `cli.sb`は443番の行き先を限らず、localhostだけを塞ぐ。Tailscale Funnelを有効にすると、Tailscaleが`*:443`（MacのLANとtailnetのアドレスを含む）で待ち受けるので、CLIとその子はMac自身のLAN・tailnetのIPの443番へ接続できる。そこで届くのはTailscale serveだけ。`/webhook`の転送先は受け口で、受け口は`/webhook`へのPOST以外を404にし（[webhook.ts L207-L210](../scripts/lib/review-dispatch/webhook.ts#L207-L210)）、署名が合わなければpolicyも読まずに401にする（[L244-L252](../scripts/lib/review-dispatch/webhook.ts#L244-L252)）。HMACの秘密なしには何も保存できない。ほかのpathはTailscale serveが404を返す（所有者の設定`--set-path /webhook`。[Issue #50 W8](https://github.com/doc-gif/kurashi-ledger/issues/50)）。
 - 起動回数の上限（§7のquota）は、残るprocessの数の上限ではない。
 - この受入れは次の範囲に限る: 対象のPRは1件、toolはRead・Grep・Globだけ、hooks・MCP・pluginsなし、CLIの実行ファイルと版を固定し、版が変われば測り直す。任意の子processやauto-fixへ広げない。
 - 最初の1PRで、所有者が資源の消費を確かめる。異常なら受付をpauseして手で戻す（[導入手順の18](review-dispatch-runbook.md#18-広げる前に測る)）。残るprocessがありうる間は、測り直しや連続の起動をしない。

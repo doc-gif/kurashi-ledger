@@ -52,6 +52,7 @@ import {
   measureCli,
   measurementRecord,
   controlSockets,
+  PROBE_SET,
   profileHash,
   removeSyntheticKeychain,
   runDoctor,
@@ -156,8 +157,9 @@ export function fileDigest(path: string): string {
   }
   return h.digest("hex");
 }
-// The doctor's record launches only if the version, the executable's sha256, the cli.sb text and the
-// argv template it measured are exactly what this launch uses. Codex never passes (capabilityReady).
+// The doctor's record launches only if the version, the executable's sha256, the cli.sb text, the
+// argv template it measured and the synthetic probe set it ran are exactly what this launch uses.
+// Codex never passes (capabilityReady).
 export function boundCapability(
   value: unknown,
   install: LaunchInstall,
@@ -171,6 +173,8 @@ export function boundCapability(
   if (c.codeHash !== executableDigest) return { capability: null, reason: "capability-executable" };
   if (c.profileHash !== profileHash(profileText)) return { capability: null, reason: "capability-profile" };
   if (c.argvHash !== argvTemplateHash(install)) return { capability: null, reason: "capability-argv" };
+  // Recorded with another synthetic probe set (or before probeSet existed): run the doctor again (Issue #50 W8).
+  if (c.probeSet !== PROBE_SET) return { capability: null, reason: "capability-probes" };
   return { capability: c, reason: "bound" };
 }
 
