@@ -32,7 +32,7 @@
         {
           "id": "entrypoints",
           "method": "AGENTS.md・CLAUDE.md・docs/external-worker.md・docs/pr-review-loop.mdで、書き方の決まり（writing、google-technical-writing、日本語）をgrepし、読み合わせる。",
-          "expected": "書き方の案内はAGENTS.mdの1か所に足し、ほかの入口と食い違わない。CLAUDE.mdはAGENTS.mdを読み込むので、Claudeにも届く。"
+          "expected": "書き方の案内はAGENTS.mdの1か所に足す。CLAUDE.mdはAGENTS.mdを読み込むので、Claudeにも届く。案内の用語集は、このrepoの手順書が決めた語（粗探し・粗探し待ち・引継ぎ・受付など）を言い換えるよう求めるので、段落に「このrepoの文書が決めた語・見出し・言い回しは、所有者が承認した言い換えのPRまで変えない。用語集はほかの自由な文に当てる」と書き、食い違いを解く（PR79 RT-1）。"
         }
       ]
     },
@@ -95,11 +95,15 @@
     },
     {
       "invariant_id": "INV-REVIEW",
-      "pattern": "書き方の決まりが、決まった書式の行（印・キー・判定の値）を言い換えさせる。",
+      "pattern": "書き方の決まりが、決まった書式の行（印・キー・判定の値）や、このrepoの手順書が決めた語・見出し（粗探し待ち、提出前の粗探しなど）を言い換えさせる（PR79 RT-1）。",
       "places": [
         {
           "location": "AGENTS.mdの新しい段落",
-          "result": "決まった書式の行は変えないと書く。mekikiの文書の「決まった書式は変えない」の節と同じ扱い。"
+          "result": "決まった書式の行と、このrepoの文書が決めた語・見出し・言い回しは変えないと書く。用語集はほかの自由な文にだけ当てる。"
+        },
+        {
+          "location": "docs/pr-review-loop.md:15（「粗探し待ち」と書く決まり）、見出し「提出前の粗探し」「受付がactiveのPR」とそのアンカー",
+          "result": "変えない。言い換えるなら、所有者が決めてから別のPRで行う。"
         }
       ]
     }
