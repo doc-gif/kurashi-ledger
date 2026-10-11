@@ -5,20 +5,26 @@ Python 3.11以上、外部パッケージ不要。Macでは版を確認した`py
 リポジトリのrootで実行する。方針は[修正前確認](../../docs/review-prevention.md)に従う。
 
 ```sh
-python3 tools/review_guard/guard.py validate
+python3 tools/review_guard/guard.py validate --catalog .review/causes/invariants.json --ledger .review/causes/findings.json --global-ids .review/mekiki/global-ids.json --config .review/config.toml
 python3 -m unittest discover -s tools/review_guard/tests -v
 python3 -m unittest discover -s .review/tests -v
 ```
 
-汎用試験は`tools/review_guard/tests`、このrepo固有のルーティング試験は`.review/tests`。別repoへ検査器を移すときは汎用試験だけを同梱し、固有試験は条件・履歴とともにこちらへ残す。
+汎用試験は`tools/review_guard/tests`、このrepo固有のルーティング試験は`.review/tests`。別repoへ検査器を移すときは汎用試験だけを同梱し、固有試験は条件・履歴とともにこちらへ残す。`test_stage4_*.py`は合成の入力`tests/stage4/fixtures.py`を読む。`guard.py`・`ci.py`・`changed_paths.py`と汎用試験はmekikiの写しで、出どころは`.review/mekiki/SOURCE.json`に書く。台帳は今2組ある（[2段の台帳と段4の移行](#2段の台帳と段4の移行)）。
+
+`.review/config.toml`があると、`guard.py`は`--config`を付けなくてもそれを読む。その`[causes.paths]`は共通のIDを指すので、`--global-ids`を付けないと終了コード1になる。このrepoのファイルを読むコマンドには、`--catalog`・`--ledger`・`--global-ids`を付ける。
 
 ## 計画を作る
 
 予定パスをUTF-8のJSON配列に保存する（例: `["src/infrastructure/storage/root.ts"]`）。renameは旧・新双方を含める。repo相対表記・大小文字を区別する。パターンは`fnmatchcase`で、`*`は`/`も含む。否定・除外パターンは提供しない。
 
 ```sh
-python3 tools/review_guard/guard.py prepare --paths-file planned-paths.json --base-sha <40文字のbaseSHA> --output .review/plans/T07-storage.json
+python3 tools/review_guard/guard.py prepare --catalog .review/causes/invariants.json --ledger .review/causes/findings.json \
+  --global-ids .review/mekiki/global-ids.json --global-catalog <共通のinvariants> --global-ledger <共通のfindings> \
+  --private-output <repoの外のファイル> --paths-file planned-paths.json --base-sha <40文字のbaseSHA> --output .review/plans/T07-storage.json
 ```
+
+共通の台帳の本文（条件・質問・教訓・出典）は非公開のmekikiにだけある。`prepare`はその本文を`--private-output`（repoの外）にだけ書き、公開する計画の`context`には固有の不変条件だけを入れる。共通の不変条件は、計画ではIDだけで書く。
 
 `--output`はUTF-8で新しいファイルを作り、既存ファイルは上書きしない。更新は既存の計画を編集するか、別の一時ファイルへprepareして差分を取り込む。PowerShellの`>`を使わない。標準出力もASCIIエスケープされたJSONなので、旧Windowsのコンソールで日本語のエンコードに失敗しない。入力はUTF-8（BOMありも可）。UTF-16は未対応。
 
@@ -68,7 +74,7 @@ python3 <base-checkout>/tools/review_guard/ci.py --candidate <candidate-checkout
 手元で指定した条件への構造検査だけを行う場合:
 
 ```sh
-python3 tools/review_guard/guard.py check --plan .review/plans/T07-storage.json --paths-file actual-paths.json --base-sha <最新baseSHA> --catalog <base-checkout>/.review/invariants.json --ledger <base-checkout>/.review/findings.json
+python3 tools/review_guard/guard.py check --plan .review/plans/T07-storage.json --paths-file actual-paths.json --base-sha <最新baseSHA> --catalog <base-checkout>/.review/causes/invariants.json --ledger <base-checkout>/.review/causes/findings.json --global-ids <base-checkout>/.review/mekiki/global-ids.json --config <base-checkout>/.review/config.toml
 ```
 
 ## 原因の照合と結果の意味
@@ -77,9 +83,20 @@ python3 tools/review_guard/guard.py check --plan .review/plans/T07-storage.json 
 python3 tools/review_guard/guard.py triage --candidates candidates.json
 ```
 
-候補JSONは`invariant_id`・`cause_key`・`evidence`を持つオブジェクトの配列。台帳のIDは`PR2-R007`形式（`PR<正整数>-R<3桁以上の正の番号>`、ASCII数字、PR番号の先頭ゼロなし）だけを受理する。台帳・候補の`cause_key`に前後空白がある入力は拒否する。 同じバッチ内の`(invariant_id, cause_key)`重複は、台帳に登録済みかどうかを問わず入力全体を拒否し、結果を出力しない。同じ原因の証拠は1候補にまとめてから入力する。異なる条件で同じ原因キーを使う候補は別候補として扱う。過去コメントの`R-007`はそのPR番号と組み合わせた同じIDで、新規指摘ではない。原因の意味の照合・投稿の重複防止・解消判断は担当レビュワーが行う。
+候補JSONは`invariant_id`・`cause_key`・`evidence`を持つオブジェクトの配列。台帳のIDは`C-0001`形式（`C-`と0で4桁にそろえた正の10進数。10000以上はそのままの桁。ASCII数字）。`--global-ids`なしの1段の台帳だけは、分割前の`PR2-R007`形式（`PR<正整数>-R<3桁以上の正の番号>`、PR番号の先頭ゼロなし）も受理する。台帳・候補の`cause_key`に前後空白がある入力は拒否する。 同じバッチ内の`(invariant_id, cause_key)`重複は、台帳に登録済みかどうかを問わず入力全体を拒否し、結果を出力しない。同じ原因の証拠は1候補にまとめてから入力する。異なる条件で同じ原因キーを使う候補は別候補として扱う。過去コメントの`R-007`はそのPR番号と組み合わせた同じIDで、新規指摘ではない。原因の意味の照合・投稿の重複防止・解消判断は担当レビュワーが行う。
 
 成功時exit 0は記入の充足のみ。入力不備・未記入・未解決の衝突・古いbase・未計画パスはexit 1。未知の版、重複キー・ID、参照不明IDも拒否する。方針の自動修正・承認・ネットワーク操作は行わない。
+
+## 2段の台帳と段4の移行
+
+mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた。所有者の決定（[mekiki #43の8〜10](https://github.com/doc-gif/mekiki/pull/43#issuecomment-6110050156)）で、段5までは次の2組を並べて置く。
+
+- 新しい組は、固有の台帳`.review/causes/invariants.json`・`findings.json`・`origins.json`（各原因の元の指摘）と、共通のID目録`.review/mekiki/global-ids.json`と、`.review/config.toml`の`[causes.paths]`だ。IDは`C-NNNN`。CIの`validate`はこの組を検査する。baseに`.review/causes/`があれば、`ci.py`は計画をこの組で検査する。
+- 古い組は`.review/invariants.json`・`.review/findings.json`だ。IDは`PR<N>-R<NNN>`。今の受付（`scripts/lib/review-dispatch/`）がbaseから読むので、段5まで消さない。`.review/tests`が古い組も検査し、どちらの組でも同じpathが同じ不変条件を選ぶことを確かめる。
+- 目録は、`condition`・`question`・`lesson`・`sources`を持たない。不変条件のID・paths・related・scenarioのIDと、原因のIDとhashだけを持つ。原因のhashは`sha256(invariant_id + "\n" + cause_key)`で、計画の`cause_key`も同じ式で照合する。
+- 固有と共通でIDや原因が重なる、共通の`related`が固有を指す、目録の形が違う、のどれでも終了コード1。固有のfindingは`cause_key`を持ち、`cause_key_hash`を書けない。
+- 目録を使う`check`は、`context`に共通のIDを持つ計画を拒否する。出力の`empty_global_paths`は、どのpathも選ばない共通の不変条件の一覧だ。
+- `[causes.paths]`は、共通の不変条件のIDにglobの配列を足す。目録の`paths`に足すだけで、狭めない。目録にないID、固有のID、配列でない値は終了コード1。`ci.py`はbaseの設定で選び、candidateの設定は形だけ確かめる。`ci.py`は目録もbaseの写しだけを読む。
 
 ## CIの配置前提
 
