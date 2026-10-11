@@ -16,7 +16,7 @@ IDと鍵はrepoに置かない。下の`<...>`は、実行するときに実際�
 | 項目 | Codex | Claude |
 | --- | --- | --- |
 | App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>`（作成済み） |
-| インストール先 | このrepoだけ | このrepoだけ |
+| インストール先 | `--repo`の許可リスト（`scripts/lib/github-app-token.ts`の`REPOSITORIES`）のrepo。トークンは1回ごとに1つのrepoへ縮小する | 同じ |
 | App ID・Installation ID | 環境変数`KL_GITHUB_APP_ID_CODEX`・`KL_GITHUB_APP_INSTALLATION_ID_CODEX` | 環境変数`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE` |
 | 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account はmacOSのログイン名、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
 
@@ -33,7 +33,7 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Checks | Read-only | CIの結果の確認（check run） |
 | Commit statuses | Read-only | CIの結果の確認（commit status） |
 | Workflows | Read and write | `.github/workflows/`を変えるcommitのpush（その用途のトークンにだけ付ける） |
-| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。使わなくなった（下の「マージ直前にAIが行う確認」）<!-- mekiki:temporary #76: merge-checkの道具を消したら消す --> |
+| Variables | Read-only | 使っていない。2つのAppから外すかは所有者が決める（[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)） |
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
@@ -43,8 +43,8 @@ webhookは、受付の受信に使うCodexのAppだけ（[導入手順](review-d
 
 2026-10-03に、所有者が次を済ませた。
 
-1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
-2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
+1. CodexのAppを作り、このrepoにインストールした（当時のインストール先はこのrepoの1つ）。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
+2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoにインストールした（同じく当時は1つ）。
 3. 同じ日の所有者決定（読み取りだけ足す）で、2つのAppに Checks と Commit statuses の Read-only を加え、インストール先で承認し直した。
 4. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
 
@@ -92,10 +92,9 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
-  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ。使わなくなった（下の「マージ直前にAIが行う確認」）<!-- mekiki:temporary #76: merge-checkの道具を消したら消す --> |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
-- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認も選んだrepoに従う（`extraheader`は`--repo`によらず3つのrepoのURLのすべてを空にする）。ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。`merge-check`も、選んだrepoの`OWNER_MERGE_ONLY`だけを読む<!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->。
+- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`・`.github`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認も選んだrepoに従う（`extraheader`は`--repo`によらず4つのrepoのURLのすべてを空にする）。`.github`は、AIが共通の公開の文書を置くrepo（2026-10-11の所有者の決定、[#79](https://github.com/doc-gif/kurashi-ledger/pull/79#issuecomment-6109240273)）。ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
 - 子に渡してはいけないコマンド: `env`・`printenv`、`gh auth token`、`gh auth status --show-token`等、環境変数やトークンを表示するもの。子の環境の`GH_TOKEN`は、子が動いている間、同じmacOSユーザーの`ps eww`等からも見える（下の「限界」）。
 - 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ログイン名> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、通常のファイルでないもの（symlink・FIFO・ディレクトリ）を開く前に拒み、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒む。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない。このときコマンドには標準入力を渡さない）。
@@ -105,7 +104,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   3. 確認がすべて済んだときだけ、コマンドを子プロセスとして実行する。トークンは子の環境の`GH_TOKEN`にだけ置く。子の環境は次のようにする（試験で確かめた範囲）。
      - 外す: `GITHUB_TOKEN`・`GH_ENTERPRISE_TOKEN`等の資格情報、`GH_HOST`、`GH_DEBUG`、gitの資格情報・SSH・設定・trace（`GIT_TRACE*`・`GIT_CURL_VERBOSE`）に関わる変数、`NODE_OPTIONS`。`GIT_TRACE_REDACT=1`にする。
      - ghには、空の一時の設定ディレクトリ（`GH_CONFIG_DIR`。所有者だけが使える権限）を渡す。`HOME`も同じディレクトリにし、環境変数`NETRC`を外す。gitのlibcurlは、資格情報のhelperより前に`.netrc`（`_netrc`）を読む（curl 8.16.0以降は、`NETRC`が指すファイルを`HOME`より前に読む）ので、利用者の`.netrc`に所有者の資格情報があっても使わない。127.0.0.1の合成のサーバーで、親の環境ではHOMEの`.netrc`の資格情報が送られ、子の環境では（親に`NETRC`があっても）送られないことを、CIの3つのOSのgitで確かめた。`NETRC`を読む新しいlibcurlでの対照は、CIのgitの版によっては確かめていない。
-     - gitは、利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や利用者の`url.*.insteadOf`を使わない）。repoの設定（`.git/config`）は読まれるので、資格情報のhelperの一覧を空に戻し、`https://github.com/`と許可リストの3つのrepoのpushのURL（`https://github.com/doc-gif/<repo>.git`。`--repo`によらず全部）の`http.*.extraheader`を空にし、`core.askPass`を空にする（一時のrepoの設定に置いた値が使われないことを、実際のgitで確かめた）。repoの設定の`url.*.insteadOf`は外せないので、pushの前に確かめる（下の「push」）。
+     - gitは、利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL`を一時のディレクトリの中の存在しないファイル、`GIT_CONFIG_NOSYSTEM=1`。macOSの`credential.helper=osxkeychain`や利用者の`url.*.insteadOf`を使わない）。repoの設定（`.git/config`）は読まれるので、資格情報のhelperの一覧を空に戻し、`https://github.com/`と許可リストの4つのrepoのpushのURL（`https://github.com/doc-gif/<repo>.git`。`--repo`によらず全部）の`http.*.extraheader`を空にし、`core.askPass`を空にする（一時のrepoの設定に置いた値が使われないことを、実際のgitで確かめた）。repoの設定の`url.*.insteadOf`は外せないので、pushの前に確かめる（下の「push」）。
      - SSHを使えない（`GIT_SSH_COMMAND=false`）。端末に聞かない（`GIT_TERMINAL_PROMPT=0`）。`https://github.com`への資格情報としてだけ、`GH_TOKEN`を返すhelperを使う。
   4. 子が終わったら、一時の設定ディレクトリを消し、トークンを失効させる（失敗したら標準エラーに伝える。トークンは1時間で失効する）。失効の応答の401は、すでに無効なので成功と同じに扱う。
 - シグナル: 発行の直前から失効が終わるまで、SIGINT・SIGTERM・SIGQUIT・SIGHUP・SIGBREAK（OSが受けられるもの）を受ける。子が動いていれば同じシグナルを子へ送り（SIGINTも）、子の終了を待つ。確認の要求は中断する。発行の要求は中断せず（中断すると、発行されたトークンを受け取れず失効できない）、15秒の上限の中で受け取ったトークンを失効させる。トークンがあれば失効させてから、128+番号で終える。SIGKILL・強制終了・電源断では失効できない（トークンは1時間で失効する）。
@@ -151,7 +150,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh api 'repos/doc-gif/kurashi-ledger/activity?ref=refs/heads/<branch>&per_page=1' --jq '.[0].actor.login + " " + .[0].after'
 ```
 
-1つ目の出力が、スクリプトが設定した次の7行だけ（順は問わない）であることを確かめる: `credential.helper`（空）、`credential.https://github.com.helper !f() …`、`http.https://github.com/.extraheader`（空）、`http.https://github.com/doc-gif/kurashi-ledger.git.extraheader`・`http.https://github.com/doc-gif/mekiki.git.extraheader`・`http.https://github.com/doc-gif/mekiki-claude.git.extraheader`（空）、`core.askpass`（空）。`url.`で始まる行や、ほかの値があれば、pushしない（repoの設定を直すか、所有者に知らせる）。
+1つ目の出力が、スクリプトが設定した次の8行だけ（順は問わない）であることを確かめる: `credential.helper`（空）、`credential.https://github.com.helper !f() …`、`http.https://github.com/.extraheader`（空）、`http.https://github.com/doc-gif/kurashi-ledger.git.extraheader`・`http.https://github.com/doc-gif/mekiki.git.extraheader`・`http.https://github.com/doc-gif/mekiki-claude.git.extraheader`・`http.https://github.com/doc-gif/.github.git.extraheader`（空）、`core.askpass`（空）。`url.`で始まる行や、ほかの値があれば、pushしない（repoの設定を直すか、所有者に知らせる）。
 最後の出力が`<claudeのAppの名前>[bot] <pushしたcommitのSHA>`であることを確かめる（pushした身元の確認）。URLを直接指定したpushは`origin/<branch>`の追跡の参照を更新しないので、続けて`git fetch origin --prune`を実行する。
 
 **PR・コメント:**
@@ -268,133 +267,6 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 `review`にissues:writeがないことは、[発行手順](#使い方スクリプトがコマンドを実行する)の2で、要求した権限と発行応答の権限が完全に一致することを照合して確かめる。余分なissues:writeが付いていれば、スクリプトはトークンを失効させ、子を実行しない。これは発行された権限の確認であり、API側で書込みが拒否されることの確認は[未確認の一覧](#確かめていないこと推測しない)に残す。有効な本文のPOSTによるIssue作成は、この確認では行わない。
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
-
-<!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->
-
-## マージ直前にAIが行う確認（merge-check）
-
-2026-10-11から、AIはマージしない（[マージ条件](github-agent-operations.md#merge-conditions)）。この確認は使わない。道具を消すまで（[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)）、作ったときの手順を記録として残す。以前は、AIがマージの直前にリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読んでいた。
-
-最初に、写しの場所を設定する。`写しがない`と出たら止め、下の「A. 信頼した写しを作り直す」を行う。
-
-```sh
-export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"
-test -f "$KL_APP_TOKEN_DIR/github-app-token.ts" || echo "写しがない。先にAを行う"
-```
-
-ClaudeのAppで読む:
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-```
-
-CodexのAppで読む:
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-```
-
-
-**所有者が済ませたこと（2026-10-04）:** 2つのAppに Variables: Read-only を足し、変数`OWNER_MERGE_ONLY`を`none`で作り、#55のマージ後に下のAとBで確かめた（[結果](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977952619)）。
-
-### マージ後の所有者の確認
-
-#### A. 信頼した写しを作り直す
-
-1. このrepoのmainのcheckout（PRのcheckoutではないもの）へ移動する。
-2. マージされたことを確かめる: `gh pr view 55 --repo doc-gif/kurashi-ledger --json state --jq .state`。期待: `MERGED`。
-3. 変数を設定する（1行ずつ実行する）:
-
-```sh
-sha=$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)
-repo=$(git rev-parse --show-toplevel)
-dir="$HOME/.local/share/kurashi-ledger-app-token/${sha}"
-echo "${sha} ${repo}"
-```
-
-   期待: 40文字のSHAと、1のcheckoutのパス。
-4. 上の「信頼した写し」のコマンドの3行目以降（`git -C "$repo" fetch`から）を、サブシェル`( … )`で囲んで実行する。期待: 何も表示されずに終わる。
-5. 写しが`sha`の中身と同じか確かめる:
-
-```sh
-for f in github-app-token.ts lib/github-app-token.ts; do git -C "$repo" cat-file blob "${sha}:scripts/${f}" | cmp - "$dir/$f" && echo "OK $f"; done
-```
-
-   期待: `OK github-app-token.ts`と`OK lib/github-app-token.ts`の2行。ほかの表示が出たら、その写しを使わない。
-6. 権限を確かめる: `ls -ld "$dir"`。期待: `drwx------`（中のファイルにほかの利用者は届かない）。
-7. 新しい用途があるか確かめる: `grep -c "'merge-check'" "$dir/lib/github-app-token.ts"`。期待: 1以上。
-
-#### B. 実際の鍵で確かめる
-
-所有者が行う。`--agent codex`は所有者だけが実行する（AIはほかのAIの鍵を読まない）。AIが`--agent claude`で行うときは、各コマンドを`$HOME`から`zsh -ic`で包んで実行する（IDの環境変数を読むため）。
-
-1. `cd "$HOME" && zsh -i`を実行する。期待: IDの環境変数を読み込んだシェルになる。
-2. 写しの場所を設定する。期待: 何も表示されない。`写しがない`と出たら止め、Aを行う。
-
-```sh
-export KL_APP_TOKEN_DIR="$HOME/.local/share/kurashi-ledger-app-token/$(gh pr view 55 --repo doc-gif/kurashi-ledger --json mergeCommit --jq .mergeCommit.oid)"
-test -f "$KL_APP_TOKEN_DIR/github-app-token.ts" || echo "写しがない。先にAを行う"
-```
-
-3. `merge-check`のトークンで、触れるrepoを読む（スクリプトは子の前にも同じ確認をする）。期待: `1`と`["doc-gif/kurashi-ledger"]`。失敗すると、この用途は使えない。スクリプトは125で終わり、コマンドを実行しない（安全側）。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api /installation/repositories --jq '.total_count, [.repositories[].full_name]'
-```
-
-4. ClaudeのAppで変数を読む。期待: `none`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-```
-
-5. CodexのAppで同じように読む（所有者だけ）。期待: `none`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-```
-
-6. `review`と`implement`では読めないことを確かめる。期待: どちらも`HTTP 403`か`HTTP 404`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose review -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
-```
-
-7. `merge-check`で変数を作れないことを確かめる（名前を空にしてあるので、権限があっても作られず422になる）。期待: `HTTP 403`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/actions/variables -f name= -f value=x
-```
-
-8. `merge-check`で変数を変えられないことを確かめる（同じ値`none`を送るので、万一通っても値は変わらない）。期待: `HTTP 403`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X PATCH repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY -f value=none
-```
-
-9. `merge-check`でsecretsの一覧を読めないことを確かめる。期待: `HTTP 403`。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/secrets
-```
-
-10. `merge-check`でcontentsとPRに書けないことを確かめる（bodyは無効）。期待: どちらも`HTTP 403`。このrepoはpublicなので、contentsとPRの読取りは権限がなくても成功しうる。トークンの権限は、スクリプトが子を起動する前に完全一致で確かめている。
-
-```sh
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/git/refs -f ref=refs/heads/kl-app-token-negative-check -f sha=0000000000000000000000000000000000000000
-env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/pulls -f title= -f head= -f base=
-```
-
-11. 結果をIssue #50に記録する。6〜10で2xxが出たら、すぐ記録する。
-
-**発行が失敗したとき:** 3〜5で期待の値が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。GitHubが発行を拒む（多くは`HTTP 422`）か、発行されたトークンが完全一致の照合で失敗する（例: `権限（actions_variables: read）が付かなかった`）。どちらでもコマンドは実行しない。そのときは:
-
-1. 標準エラーの文をIssue #50に記録する（トークン・鍵は表示されない）。
-2. 照合を緩めない。doc-gifで読まない。
-3. 原因を直すPRを待つ。
-
-**残る限界:** doc-gifは所有者と共用なので、doc-gifの資格情報で`OWNER_MERGE_ONLY`を書き換えられる。GitHubはこれを止めない。AIはdoc-gifで変数を読まず、書かない（規則）。防ぐには、AIが使えない所有者だけの身元が要る。
 
 ## レビュー受付の読取り用途
 
