@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "bbbdc2e1f8537b21f6e52bc0c91f08a94366f6c5",
+  "base_sha": "9ff589f74d44de0cd0cf95cb1c33c6f0c15fb90f",
   "task_id": "OPS-OWNER-ONLY-MERGE",
   "planned_paths": [
     ".github/copilot-instructions.md",
@@ -54,7 +54,7 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "受付の切替とrollbackの手順（pr-review-loop.md・review-dispatch-runbook.md・review-dispatch-design.md）から、OWNER_MERGE_ONLYへの依存を外したあとも手順の番号と参照が合うかを読む。PR #75に重ねるので、base_shaは#75のhead。",
+          "method": "受付の切替とrollbackの手順（pr-review-loop.md・review-dispatch-runbook.md・review-dispatch-design.md）から、OWNER_MERGE_ONLYへの依存を外したあとも手順の番号と参照が合うかを読む。#77は誤ってPR #75のbranchへマージされたので、同じ差分をmain（#75のマージ後）へ出し直す。",
           "expected": "切替の手順2は巡回の設定だけになり、導入手順14のコマンドは3だけになる。rollbackの手順3から変数の記述が消える。番号の参照（「2と3のコマンド」など）が合う。"
         },
         {
