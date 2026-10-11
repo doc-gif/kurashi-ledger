@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "6a5348e4a56dd1c08264a064913e8d4d7864c7a7",
+  "base_sha": "4fffd5256e33d4e1cc6c6d5b0aa00d376331dd51",
   "task_id": "OPS-JAPANESE-WRITING-POINTER",
   "planned_paths": [
     "AGENTS.md"
@@ -10,12 +10,12 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "非公開のdoc-gif/mekikiの文書へのリンクを1つ足すだけで、その中身は写さない。秘密・実データは扱わない。",
+      "reason": "所有者の公開repo doc-gif/.github の書き方の文書へのリンクを1つ足すだけ。非公開のrepoへのリンクや中身は書かない（PR79-R001。所有者の決定「.githubに移す案で」）。秘密・実データは扱わない。",
       "checks": [
         {
           "id": "public",
           "method": "npm run check:public -- --staged と差分の目視。",
-          "expected": "終了0。足すのはリンクと英語の案内の文だけで、非公開の文書の本文・個人のパス・実データを含まない。"
+          "expected": "終了0。リンク先は公開のdoc-gif/.githubだけで、非公開のrepoのURL・中身・個人のパスを含まない。"
         }
       ]
     },
@@ -26,8 +26,8 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "足す案内が指すmekikiのdocs/japanese-writing.mdがmekikiのmainにあることと、このPRが共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。",
-          "expected": "文書はmekiki #29でmainに入っている。差分はAGENTS.mdと計画ファイルだけ。"
+          "method": "案内が指すdoc-gif/.githubのjapanese-writing.mdが、そのrepoのmainにあることを確かめる。このPRが共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。",
+          "expected": "文書はdoc-gif/.github #1でmainに入っている。差分はAGENTS.mdと計画ファイルだけ。"
         },
         {
           "id": "entrypoints",
@@ -58,28 +58,28 @@
     {
       "id": "B1",
       "direction": "entry",
-      "location": "調整係の指示（mekiki #26の続きの作業）",
-      "data": "kurashi-ledgerのAGENTS.mdに、mekikiのdocs/japanese-writing.mdへの案内を足す",
+      "location": "所有者の決定（PR #79の「.githubに移す案で」）と調整係の指示",
+      "data": "kurashi-ledgerのAGENTS.mdに、doc-gif/.githubのjapanese-writing.mdへの案内を足す",
       "trust": "partially-trusted",
-      "control": "所有者がmekiki #29で承認した書き方の文書を指すだけにする。規則を広げず、権限も変えない。"
+      "control": "所有者が承認した書き方の文書を、公開の場所で指すだけにする。規則を広げず、権限も変えない。"
     },
     {
       "id": "B2",
       "direction": "exit",
       "location": "公開のAGENTS.md",
-      "data": "非公開のrepoへのリンク",
+      "data": "公開repoへのリンク",
       "trust": "untrusted",
-      "control": "リンクだけで中身を写さない。開けないAIは、そのことを引き継ぎメモに書く。"
+      "control": "リンク先は公開のdoc-gif/.githubだけ。非公開のrepoのURLは書かない（PR79-R001）。"
     }
   ],
   "variant_analysis": [
     {
       "invariant_id": "INV-PRIVACY",
-      "pattern": "非公開のrepoの中身を、公開のrepoへ写してしまう。",
+      "pattern": "公開のrepoに、非公開のrepoのURLや中身を書く（PR79-R001）。",
       "places": [
         {
-          "location": "AGENTS.md",
-          "result": "リンクと英語の案内の文だけ。書き方の規則の本文は写さない。"
+          "location": "AGENTS.md・PRの本文・コメント",
+          "result": "リンク先を公開のdoc-gif/.githubに直し、非公開のrepoのURLを消した。PRの本文からも消した。"
         }
       ]
     },
