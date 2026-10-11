@@ -1,6 +1,6 @@
 # PRの引継ぎとレビューのループ
 
-2026-10-02。実装側はOpenのPRと引継ぎを作成して別担当のレビューを待ち、実装していない別の担当は内容レビューと結果報告を行う。マージは、[マージ条件](github-agent-operations.md#merge-conditions)を満たした自分のPRに限り、実装側が行う。2026-10-02に製品実装の停止を解除した。受付がactiveのPRは[最後の節](#受付がactiveのpr)に従う。
+2026-10-02。実装側はOpenのPRと引継ぎを作成して別担当のレビューを待ち、実装していない別の担当は内容レビューと結果報告を行う。マージは所有者だけが行う（[マージ条件](github-agent-operations.md#merge-conditions)）。2026-10-02に製品実装の停止を解除した。受付がactiveのPRは[最後の節](#受付がactiveのpr)に従う。
 
 ## コメントを短くする
 
@@ -142,7 +142,7 @@ decision: changes-requested | accepted | needs-owner
 
 他者のレビューthreadを、コメントに返信しただけで勝手にresolveしない。解消確認は原則レビュワーが行う。新push後は検証と新しい引継ぎを作り、再レビューを待つ。Copilotから同じ指摘が繰り返された場合も、既存指摘と対応付けて重複作業を避ける。
 
-自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。[マージ条件](github-agent-operations.md#merge-conditions)とマージ後の第1親確認を満たしてから依存を解放する。
+自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。所有者がマージし、マージ後の第1親の確認（[マージ条件](github-agent-operations.md#merge-conditions)）が済んでから依存を解放する。
 
 ## 5. 重複防止と止めどころ
 
@@ -152,7 +152,7 @@ decision: changes-requested | accepted | needs-owner
 
 ## 受付がactiveのPR
 
-[受付](review-dispatch-design.md)がactiveのPRの手順。規則（AIはマージしない、粗探しの時点、記録と通知は表示だけ）は[運用規約](github-agent-operations.md#dispatch-active)、`OWNER_MERGE_ONLY`は[その項目](github-agent-operations.md#owner-merge-only)。ほかのPRは上の1〜5節を使う。
+[受付](review-dispatch-design.md)がactiveのPRの手順。規則（AIはマージしない、粗探しの時点、記録と通知は表示だけ）は[運用規約](github-agent-operations.md#dispatch-active)。ほかのPRは上の1〜5節を使う。
 
 ### 対象・旧巡回・環境
 
@@ -179,7 +179,7 @@ required_reviewers: <login/App IDの一覧>
 | 粗探し | 担当reviewerのうち独立性を満たす1者。AIなら粗探しJobとBroker、人なら同じ書式で手動。実装担当のAppは投稿しない。書式は[提出前の粗探し](#提出前の粗探し) |
 | 内容レビュー | 担当reviewer。AIならレビューJobとBroker（[3節](#3-別担当による内容レビュー)のv1本文）、人なら標準のApprove。COMMENTのacceptedは数えない |
 | 修正 | 実装担当が手動で行う。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効 |
-| マージ | 所有者（[規則](github-agent-operations.md#dispatch-active)） |
+| マージ | 所有者（[マージ条件](github-agent-operations.md#merge-conditions)） |
 
 ### 実装担当の手順
 
@@ -203,12 +203,12 @@ required_reviewers: <login/App IDの一覧>
 
 ### 切替（PRごと）
 
-前提: [導入手順](review-dispatch-runbook.md)の1〜13が済んでいる（doctorの合格、host検査、Webhook、shadow）。2と3のコマンドは導入手順の14。
+前提: [導入手順](review-dispatch-runbook.md)の1〜13が済んでいる（doctorの合格、host検査、Webhook、shadow）。3のコマンドは導入手順の14。
 
 初期の範囲（[start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）: 対象PRは1件、必要なreviewerは1者、自動起動は実機で証明したClaudeだけ、修正は手動。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出たとownerが判断してから広げる。
 
 1. ownerが、そのPRの旧担当（レビュー担当・粗探し・T23の巡回）を止め、終了を確かめる。
-2. ownerが、巡回の設定でそのPRを飛ばし、`OWNER_MERGE_ONLY`に加える。
+2. ownerが、巡回の設定でそのPRを飛ばす。
 3. ownerがpolicyでそのPRを`targets`に置き、modeをactiveにする（新しいrevision、切替時刻の`readyAfter`）。
 4. 調整係が受領記録を、受付が通知を出す。ownerは、実装担当のReadyの前にどちらかが出ていることを確かめる（周知のため）。
 5. 受付が最新のpair・Ready・指摘を取り直す。切替前のCOMMENTのaccepted、手動の粗探し、shadowの記録は使わない。
@@ -218,10 +218,9 @@ required_reviewers: <login/App IDの一覧>
 
 1. ownerがpolicyからそのPRを外すか、modeを`shadow`か`off`にする。
 2. 受付のJobの終了（process tree）を確かめる。uncertainのOutboxは、GitHub上の投稿を確かめて解消してから戻す。
-3. ownerが巡回の設定を戻す。`OWNER_MERGE_ONLY`には残す。
+3. ownerが巡回の設定を戻す。
 4. 実装担当が完了報告を出し直し、上の1〜5節でレビューを続ける。
 5. 受付の停止やdoctorの不合格でも同じ手順。受付は旧巡回を自動で起動しない。
 
-例: rollback後に起動した旧方式のworkerは、過去の記録や通知を見なくても、`OWNER_MERGE_ONLY`にPRがあるのでマージしない。記録や通知を足しても消しても、結果は同じ。
 
 残余リスクは[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)。

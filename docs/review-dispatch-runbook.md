@@ -397,28 +397,12 @@ activeの前に、Aで動かしているshadowをBへ移す（[所有者決定](
 
 ## 14. 1件のPRをactiveにする
 
-[切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは2と3。
+[切替（PRごと）](pr-review-loop.md#切替prごと)の1〜6に従う。コマンドが要るのは3。
 
-2の`OWNER_MERGE_ONLY`（所有者のghで行う）:
-
-```zsh
-(
-  cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
-  list=",${${cur//$'\n'/,}// /},"
-  [[ $list == *",${target_pr},"* ]] && { echo "既にある: ${cur}"; exit 0; }
-  [[ $cur == none ]] && new="${target_pr}" || new="${cur},${target_pr}"
-  gh variable set OWNER_MERGE_ONLY --repo "$repo_slug" --body "$new" && gh variable get OWNER_MERGE_ONLY --repo "$repo_slug"
-)
-```
-
-期待: 対象のPR番号を含む一覧。
-
-3のpolicy。変数とcapabilityを確かめてから切り替える。
+3のpolicy。capabilityを確かめてから切り替える。
 
 ```zsh
 (
-  cur="$(gh variable get OWNER_MERGE_ONLY --repo "$repo_slug")" || exit 1
-  [[ ",${${cur//$'\n'/,}// /}," == *",${target_pr},"* ]] || { echo "OWNER_MERGE_ONLYにPRがない。2を行う"; exit 1; }
   "${daemon[@]}" "${dispatch[@]}" status --root "$root" --policy "$policy" 2>/dev/null | grep -q 'capability(claude): 記録あり' || { echo "capabilityがない。9を行う"; exit 1; }
   test -s "$etc/r006-ok" || { echo "R006が未完了。13の4を行う"; exit 1; }
   test -e "$etc/tunnel-b-ok" && kl_funnel || { echo "BのFunnelでない。「Bへ移る」を行う"; exit 1; }

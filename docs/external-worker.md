@@ -22,11 +22,8 @@ WORK
 3. Use the concise handoff format. Wait for independent review.
 
 MERGE
-- Immediately before merging, read OWNER_MERGE_ONLY with your own App's merge-check
-  purpose, never with doc-gif (docs/github-agent-operations.md#owner-merge-only).
-- IF the PR is listed, OR the read fails, OR the value is malformed
-  THEN do not merge. Stop at the handoff; the owner merges.
-- ELSE merge only your own PR under docs/github-agent-operations.md#merge-conditions.
+- Never merge. Stop at the handoff; only the owner merges
+  (docs/github-agent-operations.md#merge-conditions).
 
 NEVER
 - Self-assign, enable auto-merge, deploy, start another AI or buy services.
@@ -44,7 +41,7 @@ NEVER
 
 ## GitHub identity
 
-- Do Claude-side pushes, PRs, comments and merges through Claude's App (`--agent claude --purpose implement`), and reviews with `--purpose review` ([AI GitHub Apps](github-apps.md)).
+- Do Claude-side pushes, PRs and comments through Claude's App (`--agent claude --purpose implement`), and reviews with `--purpose review` ([AI GitHub Apps](github-apps.md)).
 - Run the token script only from a copy taken from a reviewed main SHA, never from a PR checkout.
 - Never read another AI's key.
-- Before the [App migration](github-apps.md), keep the current method for other operations. Never read `OWNER_MERGE_ONLY` with doc-gif, before or after the migration.
+- Before the [App migration](github-apps.md), keep the current method for other operations.
