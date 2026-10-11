@@ -56,6 +56,7 @@ import {
   type FetchLike,
   type KeyStream,
   type Purpose,
+  type Repository,
 } from './lib/github-app-token.ts';
 
 const SCRIPT = join(import.meta.dirname, 'github-app-token.ts');
@@ -547,7 +548,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_GLOBAL: join(CONFIG_DIR, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
     GIT_TRACE_REDACT: '1',
-    GIT_CONFIG_COUNT: '7',
+    GIT_CONFIG_COUNT: '8',
     GIT_CONFIG_KEY_0: 'credential.helper',
     GIT_CONFIG_VALUE_0: '',
     GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
@@ -560,8 +561,10 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_VALUE_4: '',
     GIT_CONFIG_KEY_5: 'http.https://github.com/doc-gif/mekiki-claude.git.extraheader',
     GIT_CONFIG_VALUE_5: '',
-    GIT_CONFIG_KEY_6: 'core.askPass',
+    GIT_CONFIG_KEY_6: 'http.https://github.com/doc-gif/.github.git.extraheader',
     GIT_CONFIG_VALUE_6: '',
+    GIT_CONFIG_KEY_7: 'core.askPass',
+    GIT_CONFIG_VALUE_7: '',
   });
   assert.equal(pushUrl(DEFAULT_REPOSITORY), 'https://github.com/doc-gif/kurashi-ledger.git');
   // helperはトークンの値を含まず、子の環境のGH_TOKENを読む。
@@ -1486,7 +1489,7 @@ const repoListed = (repository: string) => ({ status: 200, body: JSON.stringify(
 
 test('--repoの既定はkurashi-ledgerで、省略したときの要求・確認・子の環境は今と同じ', async () => {
   assert.equal(DEFAULT_REPOSITORY, 'kurashi-ledger');
-  assert.deepEqual([...REPOSITORIES], ['kurashi-ledger', 'mekiki', 'mekiki-claude']);
+  assert.deepEqual([...REPOSITORIES], ['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github']);
   const parsed = parseArgs(['--agent', 'claude', '--purpose', 'implement', ...ID_ARGS, '--', 'true'], {});
   assert.ok(!parsed.help);
   assert.equal(parsed.options.repository, 'kurashi-ledger');
@@ -1495,12 +1498,12 @@ test('--repoの既定はkurashi-ledgerで、省略したときの要求・確認
   assert.equal(await run(args, h.deps), 0);
   assert.deepEqual(JSON.parse(h.calls[0]?.init.body ?? '{}').repositories, ['kurashi-ledger']);
   assert.equal(h.children[0]?.env['GIT_CONFIG_KEY_3'], 'http.https://github.com/doc-gif/kurashi-ledger.git.extraheader');
-  assert.equal(h.children[0]?.env['GIT_CONFIG_COUNT'], '7');
+  assert.equal(h.children[0]?.env['GIT_CONFIG_COUNT'], '8');
   assert.equal(h.calls[0]?.init.headers['User-Agent'], 'kurashi-ledger-github-app-token');
 });
 
 test('--repo mekikiは、トークンの要求・応答と触れるrepoの確認・pushのURLのextraheaderをmekikiにする', async () => {
-  for (const repository of ['mekiki', 'mekiki-claude'] as const) {
+  for (const repository of ['mekiki', 'mekiki-claude', '.github'] as const) {
     assert.deepEqual(JSON.parse(tokenRequest(INSTALLATION_ID, 'x', 'implement', repository).body), {
       repositories: [repository],
       permissions: PURPOSES.implement,
@@ -1558,6 +1561,14 @@ test('許可リストの外・別のowner・パスの形の--repoは、鍵を読
     'mekiki ',
     ' mekiki',
     'mekiki.git',
+    // .githubは名前の完全一致だけを受ける（似た名前・大文字違い・パスの形は拒む）。
+    '_github',
+    '.github.git',
+    '.GitHub',
+    'doc-gif/.github',
+    '.github/../mekiki',
+    '..github',
+    '.github/',
     'mekiki%2F..%2Fx',
     'mekiki\u0000',
     'https://github.com/doc-gif/mekiki',
@@ -1573,7 +1584,7 @@ test('許可リストの外・別のowner・パスの形の--repoは、鍵を読
     assert.deepEqual(h.children, []);
     assert.deepEqual(h.events, [], '引数の誤りでコマンドの解決まで進んだ');
     const err = h.err.join('');
-    assert.match(err, /--repoは kurashi-ledger・mekiki・mekiki-claude のどれか/);
+    assert.match(err, /--repoは kurashi-ledger・mekiki・mekiki-claude・\.github のどれか/);
     // 使い方の文の前の、エラーの文に値を出さない。
     const message = err.split('\n\n')[0] ?? '';
     if (value.trim().length >= 3) assert.ok(!message.includes(value), `拒んだ値が出力にある: ${JSON.stringify(value)}`);
@@ -1653,6 +1664,60 @@ test('--repoとghの--repo・gh apiのパス・URL・GH_REPO・gitのpushの先�
   ];
   for (const c of accepted) {
     assert.equal(commandTargetProblem(c.command, c.repo, c.env ?? {}), null, `${c.repo} ${JSON.stringify(c.command)}`);
+  }
+});
+
+test('--repo .githubは、doc-gif/.githubだけに縮小し、ほかのrepoを指すコマンドは鍵を読む前に拒む', async () => {
+  // 2026-10-11の所有者の決定（PR #79）: AIが共通の公開の文書をdoc-gif/.githubに置く。
+  assert.deepEqual(JSON.parse(tokenRequest(INSTALLATION_ID, 'x', 'implement', '.github').body), {
+    repositories: ['.github'],
+    permissions: PURPOSES.implement,
+  });
+  assert.equal(pushUrl('.github'), 'https://github.com/doc-gif/.github.git');
+  const push = ['git', '-C', '/synthetic/worktree', 'push', 'https://github.com/doc-gif/.github.git', 'HEAD:refs/heads/docs/x'];
+  const h = harness([{ status: 201, body: repoGranted('implement', '.github') }, repoListed('.github'), REVOKED]);
+  assert.equal(await run(['--agent', 'claude', '--purpose', 'implement', '--repo', '.github', ...ID_ARGS, '--', ...push], h.deps), 0, h.err.join(''));
+  assert.deepEqual(JSON.parse(h.calls[0]?.init.body ?? '{}'), { repositories: ['.github'], permissions: PURPOSES.implement });
+  assert.deepEqual(h.children[0]?.command, ['/synthetic/bin/git', ...push.slice(1)]);
+  // .githubを選んで、応答や触れるrepoが別のrepoなら、失効させて子を起動しない。
+  for (const replies of [
+    [{ status: 201, body: repoGranted('implement', 'mekiki') }, REVOKED],
+    [{ status: 201, body: repoGranted('implement', '.github') }, repoListed('mekiki'), REVOKED],
+  ]) {
+    const bad = harness(replies);
+    assert.equal(await run(['--agent', 'claude', '--purpose', 'implement', '--repo', '.github', ...ID_ARGS, '--', 'true'], bad.deps), EXIT_OWN_FAILURE);
+    assert.deepEqual(bad.children, []);
+    assert.equal(bad.calls.at(-1)?.init.method, 'DELETE');
+  }
+  // .githubを指すコマンドは通し、別のrepo・似た名前を指すコマンドは拒む。逆向き（既定で.githubを指す）も拒む。
+  const accepted: [string, ...string[]][] = [
+    ['gh', 'pr', 'create', '-R', 'doc-gif/.github', '--draft', '--body-file', '/synthetic/body.md'],
+    ['gh', 'api', 'repos/doc-gif/.github/pulls?state=open'],
+    ['gh', 'pr', 'view', 'https://github.com/doc-gif/.github/pull/1'],
+    ['git', 'push', 'https://github.com/doc-gif/.github.git', 'HEAD:refs/heads/x'],
+  ];
+  for (const command of accepted) assert.equal(commandTargetProblem(command, '.github', {}), null, JSON.stringify(command));
+  const mismatched: { repo: Repository; command: [string, ...string[]] }[] = [
+    { repo: '.github', command: ['gh', 'pr', 'view', '1', '--repo', 'doc-gif/kurashi-ledger'] },
+    { repo: '.github', command: ['gh', 'api', 'repos/doc-gif/mekiki/pulls'] },
+    { repo: '.github', command: ['gh', 'api', 'repos/doc-gif/github/pulls'] },
+    { repo: '.github', command: ['gh', 'pr', 'list', '--repo', 'doc-gif/.GitHub'] },
+    { repo: '.github', command: ['gh', 'pr', 'list', '--repo', 'someone/.github'] },
+    { repo: '.github', command: ['git', 'push', 'https://github.com/doc-gif/mekiki.git', 'HEAD'] },
+    { repo: '.github', command: ['git', 'push', 'https://github.com/someone/.github.git', 'HEAD'] },
+    { repo: 'kurashi-ledger', command: ['gh', 'pr', 'view', '1', '--repo', 'doc-gif/.github'] },
+    { repo: 'kurashi-ledger', command: ['git', 'push', 'https://github.com/doc-gif/.github.git', 'HEAD'] },
+    { repo: 'mekiki', command: ['gh', 'api', 'repos/doc-gif/.github/contents/README.md'] },
+  ];
+  for (const c of mismatched) {
+    const label = `${c.repo} ${JSON.stringify(c.command)}`;
+    assert.notEqual(commandTargetProblem(c.command, c.repo, {}), null, label);
+    const r = harness([], { env: { PATH: '/usr/bin' } });
+    const args = ['--agent', 'claude', '--purpose', 'implement', ...(c.repo === 'kurashi-ledger' ? [] : ['--repo', c.repo]), ...ID_ARGS, '--', ...c.command];
+    assert.equal(await run(args, r.deps), EXIT_OWN_FAILURE, label);
+    assert.deepEqual(r.keychainCalls, [], label);
+    assert.deepEqual(r.calls, [], label);
+    assert.deepEqual(r.children, [], label);
   }
 });
 
