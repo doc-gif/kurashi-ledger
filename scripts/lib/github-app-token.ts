@@ -21,8 +21,9 @@ export const API_VERSION = '2022-11-28';
 export const REPOSITORY_OWNER = 'doc-gif';
 // トークンを縮小できるrepo（固定の許可リスト。ownerは常にdoc-gif）。2026-10-07の所有者の依頼（Issue #50 W12）:
 // 2つのAppをmekikiにも加えたので、AIはmekikiへも自分のAppで書く。--repoで1つを選び、省略時は既定。
+// 2026-10-11の所有者の決定（kurashi-ledger PR #79）: AIが共通の公開の文書を置くdoc-gif/.githubを加える。
 // この表の変更は権限の制御の変更なので、独立したレビューを受ける（docs/github-apps.md）。
-export const REPOSITORIES = Object.freeze(['kurashi-ledger', 'mekiki', 'mekiki-claude'] as const);
+export const REPOSITORIES = Object.freeze(['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github'] as const);
 export type Repository = (typeof REPOSITORIES)[number];
 export const DEFAULT_REPOSITORY: Repository = 'kurashi-ledger';
 // 文書のpushのURL（利用者名なし。範囲を限った資格情報のhelperが当たる）。

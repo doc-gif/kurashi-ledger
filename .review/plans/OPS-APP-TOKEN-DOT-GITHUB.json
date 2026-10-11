@@ -1,0 +1,243 @@
+{
+  "schema_version": 2,
+  "base_sha": "2d53a6fab9814483ae263f1498912c4ecb4081e5",
+  "task_id": "OPS-APP-TOKEN-DOT-GITHUB",
+  "planned_paths": [
+    "SECURITY.md",
+    "docs/github-apps.md",
+    "docs/project-status.md",
+    "scripts/github-app-token.test.ts",
+    "scripts/github-app-token.ts",
+    "scripts/lib/github-app-token.ts"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "トークンの道具はアプリのデータルート・DB・lockを読まず書かない。排他を共有する操作を変えない",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "git diffの範囲が、計画のplanned_pathsとこの計画だけであることを確かめる",
+          "expected": "保存先・lockのコードに差分がない"
+        },
+        {
+          "id": "recovery",
+          "method": "git diffの範囲が、計画のplanned_pathsとこの計画だけであることを確かめる",
+          "expected": "保存先・lockのコードに差分がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "許可リストに、所有者の公開repo doc-gif/.githubを1つ足す。秘密・実データは扱わない。試験は合成の値だけを使う。.githubのmainには保護がないので、Appのインストールの前に所有者が保護を決める（B5、PR81 RT-1）。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・実データ・個人のパスを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "依存・lockfile・Node.jsの版・CI・配信物を変えない。用途と権限は変えず、トークンを縮小できるrepoを1つ足すだけ。信頼した写し（b5b7d67）は、この変更がmainに入ったあと所有者が作り直す。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "git diffでpackage.json・package-lock.json・.github/workflowsに差分がないことを確かめる。用途ごとの権限の試験が変わらず成功することを確かめる。",
+          "expected": "差分なし。権限の試験が成功する。"
+        },
+        {
+          "id": "artifact",
+          "method": "配信物・manifestを作らないことを差分で確かめる。トークン・鍵をディスクに書かない扱いは変えない。",
+          "expected": "差分なし"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "データルートの識別・作成・復元を変えない",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "git diffでデータルートのコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "aliases",
+          "method": "--repo .githubの別名（_github・.GitHub・.github.git・doc-gif/.github・.github/../mekiki・..github・.github/）を、パスとして解釈せず許可リストとの完全一致だけで拒むことを試験で確かめる",
+          "expected": "すべて拒否し、鍵を読まない"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "DB・journal・manifest・復元に触れない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "restore",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "manifest",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "所有者の決定（PR #79の「.githubに移す案で」）の1つ目の手順。調整係の割り当て。書き方の文書をdoc-gif/.githubへ置くPRは、このPRのマージと信頼した写しの作り直しの後に出す。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#80（merge-checkの削除）がmainに入っていることと、ほかのopen PRがscripts/lib/github-app-token.tsを変えていないことを確かめる。docs/github-apps.mdは停止中の#38も変えるので、行が重ならないことを確かめる。",
+          "expected": "#80はmainにある。#38の変更は168・213・229行目付近で、このPRの97・107・153行目と重ならない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n 'mekiki-claude' -- docs scripts README.md AGENTS.md で、許可リストを並べる箇所をすべて読む。",
+          "expected": "許可リストを並べる箇所（文書の--repoの説明・extraheaderの数・確認の行の一覧、使い方のコメント）が4つのrepoにそろう。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "コマンドの引数 --repo",
+      "data": "repoの名前",
+      "trust": "untrusted",
+      "control": "許可リストとの完全一致だけで受ける。.githubに似た名前・大文字違い・パスの形は、鍵を読む前にUsageErrorで止める。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "GitHubのトークンの要求（POST /app/installations/{id}/access_tokens）",
+      "data": "縮小するrepoの名前",
+      "trust": "trusted",
+      "control": "repositoriesを['.github']だけにする。応答と触れるrepoの確認が.githubでなければ失効させ、子を起動しない。"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "子のコマンド（gh・git）",
+      "data": "指す先のrepo",
+      "trust": "untrusted",
+      "control": "ghの--repo・gh apiのパス・URL・gitのpushのURLが、選んだrepoと違えば発行の前に拒む。.githubを選んで別のrepoを指す場合と、別のrepoを選んで.githubを指す場合の両方を試験する。"
+    },
+    {
+      "id": "B4",
+      "direction": "exit",
+      "location": "子の環境のgitの設定（extraheader）",
+      "data": "pushのURLごとの資格情報",
+      "trust": "trusted",
+      "control": "許可リストの4つのpushのURLのextraheaderを、選んだrepoによらず空にする（PR74 RT-1の試験が許可リスト全体を回す）。"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "doc-gif/.github のmain（公開repo）",
+      "data": "AIのimplementのトークンでのpush",
+      "trust": "untrusted",
+      "control": "事前の確認はpushのURLだけを見て、refspecを見ない。.githubのmainには、今はrulesetもbranch protectionもない。Appをインストールする前に、所有者がmainの保護（削除・強制pushの禁止とPR必須のrulesetなど）を決める。決まるまでAIは--repo .githubを使わない（PR81 RT-1）。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "データルート・DB・lockのコード（src/infrastructure/storage/**など）",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "新しいrepoの名前が、似た名前やパスの形で別の先に解決される。",
+      "places": [
+        {
+          "location": "parseArgsの--repo、commandTargetProblem（GITHUB_URL_REPO・API_REPO）",
+          "result": "名前が.で始まっても完全一致で比べる。.githubを含む受け入れと拒否の例を試験に足した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "許可リストに足したrepoを、ほかの箇所（使い方の文・使い方のコメント・extraheaderの数・文書の一覧）が数え漏らす。",
+      "places": [
+        {
+          "location": "scripts/lib/github-app-token.ts のREPOSITORIES・USAGE（REPOSITORIESから作る）・CHILD_GIT_CONFIG（REPOSITORIESから作る）",
+          "result": "REPOSITORIESに足した。USAGEとextraheaderは一覧から作るので自動でそろう。試験が両方を確かめる。"
+        },
+        {
+          "location": "scripts/github-app-token.ts の使い方のコメント",
+          "result": "直した。"
+        },
+        {
+          "location": "docs/github-apps.md 97・107・153行目",
+          "result": "4つのrepo、8行に直した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "データルートの識別・作成・復元のコード",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "DB・journal・manifest・復元のコード",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "許可リストやAppのインストール先を書く文書が、古い数や「このrepoだけ」のまま残る（PR81 RT-2）。",
+      "places": [
+        {
+          "location": "docs/github-apps.md（--repoの説明・extraheaderの数・確認の行の一覧・インストール先の表・2026-10-03の経緯）",
+          "result": "直した。インストール先は許可リストを参照する形にし、経緯の行は当時の事実と分かる形にした。"
+        },
+        {
+          "location": "SECURITY.md（GitHub App keysの節）",
+          "result": "インストール先と届く範囲を、許可リストを参照し、トークンを1つのrepoに縮小する形に直した。"
+        },
+        {
+          "location": "scripts/github-app-token.test.ts のコメント2か所（許可リストの3つ）",
+          "result": "「許可リストのすべて」に直した。"
+        },
+        {
+          "location": "docs/project-status.md のAIのGitHub Appの行",
+          "result": "インストール先を許可リストを参照する形に直した。"
+        }
+      ]
+    }
+  ]
+}
