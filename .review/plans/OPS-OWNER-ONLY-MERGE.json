@@ -145,7 +145,7 @@
       "places": [
         {
           "location": "docs/project-status.md・docs/review-dispatch-design.md（offとshadowのマージの権限、§5の分け方）・docs/review-dispatch-runbook.md 14",
-          "result": "所有者がマージする形に直し、OWNER_MERGE_ONLYへの依存を外す。design.mdの決定の表（owner-merge-only・active-merge）は当時の決定の記録なので変えない。"
+          "result": "所有者がマージする形に直し、OWNER_MERGE_ONLYへの依存を外す。design.mdの決定の表は当時の決定の記録として残す。owner-merge-onlyの行だけ、使わなくなったことと#76を書き足し、消したアンカーへのリンクをmerge-conditionsへ直す。active-mergeの行は変えない。"
         }
       ]
     }
