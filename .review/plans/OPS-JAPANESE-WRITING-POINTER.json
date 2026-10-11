@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "base_sha": "6a5348e4a56dd1c08264a064913e8d4d7864c7a7",
+  "task_id": "OPS-JAPANESE-WRITING-POINTER",
+  "planned_paths": [
+    "AGENTS.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "非公開のdoc-gif/mekikiの文書へのリンクを1つ足すだけで、その中身は写さない。秘密・実データは扱わない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。足すのはリンクと英語の案内の文だけで、非公開の文書の本文・個人のパス・実データを含まない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "AIの入口（AGENTS.md）に、日本語で書くときの決まりの場所を足す。作業の範囲・担当・終了地点は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "足す案内が指すmekikiのdocs/japanese-writing.mdがmekikiのmainにあることと、このPRが共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。",
+          "expected": "文書はmekiki #29でmainに入っている。差分はAGENTS.mdと計画ファイルだけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS.md・CLAUDE.md・docs/external-worker.md・docs/pr-review-loop.mdで、書き方の決まり（writing、google-technical-writing、日本語）をgrepし、読み合わせる。",
+          "expected": "書き方の案内はAGENTS.mdの1か所に足し、ほかの入口と食い違わない。CLAUDE.mdはAGENTS.mdを読み込むので、Claudeにも届く。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "レビューの手順・書式・マージの条件は変えない。決まった書式の行（印・キー・判定の値）は書き方の決まりの対象外だと、案内に書く。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分がAGENTS.mdの1段落だけで、指摘のID・原因台帳・docs/pr-review-loop.mdの書式に触れないことを確かめる。",
+          "expected": "指摘の追跡の仕組みの差分が0行。案内の文が、印・キー・判定の値を変えないと明記している。"
+        },
+        {
+          "id": "trust",
+          "method": "docs/github-agent-operations.mdのマージの条件と、レビューの合否の決まりの差分を確かめる。",
+          "expected": "差分が0行。書き方の決まりは文の書き方だけで、承認やマージの条件にならない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "調整係の指示（mekiki #26の続きの作業）",
+      "data": "kurashi-ledgerのAGENTS.mdに、mekikiのdocs/japanese-writing.mdへの案内を足す",
+      "trust": "partially-trusted",
+      "control": "所有者がmekiki #29で承認した書き方の文書を指すだけにする。規則を広げず、権限も変えない。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "公開のAGENTS.md",
+      "data": "非公開のrepoへのリンク",
+      "trust": "untrusted",
+      "control": "リンクだけで中身を写さない。開けないAIは、そのことを引き継ぎメモに書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "非公開のrepoの中身を、公開のrepoへ写してしまう。",
+      "places": [
+        {
+          "location": "AGENTS.md",
+          "result": "リンクと英語の案内の文だけ。書き方の規則の本文は写さない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "同じ決まりの案内が入口ごとに違う。",
+      "places": [
+        {
+          "location": "AGENTS.mdの最後の節（Google-based writing skill の段落の直後）",
+          "result": "書き方の案内を1か所に足す。docs/external-worker.mdはAGENTS.mdを読むよう指すので、写さない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "書き方の決まりが、決まった書式の行（印・キー・判定の値）を言い換えさせる。",
+      "places": [
+        {
+          "location": "AGENTS.mdの新しい段落",
+          "result": "決まった書式の行は変えないと書く。mekikiの文書の「決まった書式は変えない」の節と同じ扱い。"
+        }
+      ]
+    }
+  ]
+}
