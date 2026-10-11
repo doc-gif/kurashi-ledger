@@ -12,6 +12,7 @@
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
 | レビュー受付（[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)、[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)） | activeのPRだけで、起動条件の判定、粗探し・レビューの起動と投稿、表示用の通知 | マージしない（[規則](#dispatch-active)） |
 
+<a id="owner-merge-only"></a>
 <a id="merge-conditions"></a>
 
 ## マージ条件（正本）
@@ -26,7 +27,7 @@
 - 最新mainを取り込んでおり、確認したbaseが変わっておらず、競合がない。
 - PRのheadが、レビューしたheadと同じ（CLIなら`--match-head-commit`）。マージコミットで1件ずつマージする。auto-mergeは使わない。
 
-マージ直前にmain先端と確認したbase_shaを照合する。headの一致はheadだけを固定するので、マージ後に、実装担当がマージコミットの第1親とそのbase_shaの一致を確かめる。異なれば組み合わせを確かめ直し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
+所有者は、マージの直前にmain先端と確認したbase_shaを照合する。headの一致はheadだけを固定するので、マージのあと、所有者がマージコミットの第1親とそのbase_shaの一致も確かめる。異なれば組み合わせを確かめ直し、必要なら実装担当に修正PRを頼む。デプロイは所有者の明示指示まで行わない。
 
 **Copilotレビューは任意（2026-10-04の[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
 

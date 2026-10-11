@@ -269,9 +269,9 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
 
-## マージ直前にAIが行う確認（merge-check）
-
 <!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->
+
+## マージ直前にAIが行う確認（merge-check）
 
 2026-10-11から、AIはマージしない（[マージ条件](github-agent-operations.md#merge-conditions)）。この確認は使わない。道具を消すまで（[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)）、作ったときの手順を記録として残す。以前は、AIがマージの直前にリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読んでいた。
 
