@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "base_sha": "4fffd5256e33d4e1cc6c6d5b0aa00d376331dd51",
+  "task_id": "OPS-APP-INSTALL-VS-ALLOWLIST",
+  "planned_paths": [
+    "SECURITY.md",
+    "docs/github-apps.md",
+    "docs/project-status.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "文書の3行の言い方を直すだけ。秘密・実データは扱わない。IDやインストールのIDは書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・実データ・個人のパス・IDを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "#81のCodexのP3（PR81-R001）: 許可リストを今のインストール先として書いていた。インストール先はAppごとに確かめた事実だけを書く。ClaudeのAppは.githubへの読取りのトークンを発行できた（2026-10-11）。CodexのAppの.githubは未確認。インストールの範囲（選んだrepoだけか、すべてか）は所有者が確かめる（PR82 RT-1、RT-2）。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#81がmainに入っていることと、ほかのopen PRが同じ行を変えていないことを確かめる。",
+          "expected": "#81はmainにある。停止中の#38はdocs/github-apps.mdの168・213・229行目付近を変え、19行目と重ならない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n -e 'インストール' -e 'installed' -- SECURITY.md docs README.md AGENTS.md で、Appのインストール先を書く箇所をすべて読む。",
+          "expected": "今のインストール先はdocs/github-apps.mdの表の1か所に書き、ほかは表を指す。許可リストをインストールの証拠として書く文がない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "公開の文書（SECURITY.md・docs/github-apps.md・docs/project-status.md）",
+      "data": "Appのインストール先と、トークンの届く範囲",
+      "trust": "untrusted",
+      "control": "インストール先はrepoの名前だけを書き、IDは書かない。許可リストとインストール先を分けて書く。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "doc-gif/.github のmain（公開repo）",
+      "data": "ClaudeのAppのimplementのトークンでのpush・強制push・削除",
+      "trust": "untrusted",
+      "control": "ClaudeのAppは.githubに届き、mainにはrulesetも保護もない。今の対策は「所有者が保護を決めるまでAIはmainへ書かない」という運用の約束だけ（技術的には止まらない）。所有者に、rulesetを急ぐか、保護が付くまでインストールを外すかの判断を#81で頼んだ（PR82 RT-2）。AIは.githubへはbranchとPRだけを出す。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "許可リストを、今のインストール先として書く（PR81-R001）。",
+      "places": [
+        {
+          "location": "docs/github-apps.md 19行目（Appの表のインストール先）",
+          "result": "インストール先をAppの列ごとに、確かめた事実だけで書いた。Codexの.githubは未確認、Claudeの.githubはトークンを発行できたことで確かめた。表の下に、許可リストはインストールの証拠ではないことと、.githubのmainへ書かない約束を書いた。"
+        },
+        {
+          "location": "docs/project-status.md 28行目",
+          "result": "インストール先はgithub-apps.mdの表を指す形にした。"
+        },
+        {
+          "location": "SECURITY.md GitHub App keysの節",
+          "result": "許可リストはトークンを縮小できるrepoの一覧で、インストール先ではないと書いた。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "インストール先を書くときに、IDや非公開のrepoの中身を書く。",
+      "places": [
+        {
+          "location": "3つの文書の変えた行",
+          "result": "repoの名前だけ。mekiki・mekiki-claudeの名前はすでに公開の文書にある。"
+        }
+      ]
+    }
+  ]
+}
