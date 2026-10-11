@@ -1,52 +1,37 @@
 # GitHubを介した実装AIとレビューAIの運用
 
-更新日: 2026-10-04。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。2026-10-02に所有者が製品実装の停止を解除し、マージの条件を決めた。
+更新日: 2026-10-11。以前の「条件付き自動マージ」案を、この文書の運用に置き換える。2026-10-02に所有者が製品実装の停止を解除し、マージの条件を決めた。2026-10-11に、マージするのは所有者だけにした。
 
 ## 分担
 
 | 担当 | 行うこと | 終了地点 |
 | --- | --- | --- |
-| 所有者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定 | 範囲と担当を明示 |
-| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応。条件を満たした自分のPRをマージ（[例外](#owner-merge-only)） | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。条件を満たせばマージ |
+| 所有者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定。マージは所有者だけが行う | 範囲と担当を明示 |
+| 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応 | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。マージはしない |
 | レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
 | レビュー受付（[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)、[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)） | activeのPRだけで、起動条件の判定、粗探し・レビューの起動と投稿、表示用の通知 | マージしない（[規則](#dispatch-active)） |
 
+<a id="owner-merge-only"></a>
 <a id="merge-conditions"></a>
 
 ## マージ条件（正本）
 
-実装担当は、自分のPRに限り、最新head/baseで次をすべて確認してからマージする。
+マージするのは所有者（doc-gif）だけ。AIはどのPRもマージせず、auto-mergeも有効にしない。AIは、ready-for-reviewの引継ぎやレビューの記録を出したところで止まる（2026-10-11の所有者決定）。
 
-- 実装していない側の`decision: accepted`がある。自己承認しない。
-- 提出前に実装していない担当が粗探しを完了し、設計段階の未解消の指摘がない。原因台帳・不変条件ごとの同種箇所も確認する。
-- 必須チェック`Quality gate`が成功している。関連ジョブと試験commitが対象head/baseに対応することも確認する。
+所有者は、最新head/baseで次をすべて確かめてからマージする。
+
+- 実装していない側の`decision: accepted`がある。実装した担当の承認は数えない。
+- 提出前に実装していない担当が粗探しを完了し、設計段階の未解消の指摘がない。原因台帳・不変条件ごとの同種箇所も確認されている。
+- 必須チェック`Quality gate`が成功している。関連ジョブと試験commitが対象head/baseに対応している。
 - 最新mainを取り込んでおり、確認したbaseが変わっておらず、競合がない。
-- `--match-head-commit`付きのマージコミットで、1件ずつマージする。auto-mergeは使わない。
-- そのPRが[`OWNER_MERGE_ONLY`](#owner-merge-only)にない。
+- PRのheadが、レビューしたheadと同じ（CLIなら`--match-head-commit`）。マージコミットで1件ずつマージする。auto-mergeは使わない。
 
-マージ直前にmain先端と確認したbase_shaを照合する。`--match-head-commit`はheadだけを固定するので、マージ後に第1親がそのbase_shaと一致することも確認する。異なれば組み合わせを再検証し、必要なら修正PRを出す。デプロイは所有者の明示指示まで行わない。
+所有者は、マージの直前にmain先端と確認したbase_shaを照合する。headの一致はheadだけを固定するので、マージのあと、所有者がマージコミットの第1親とそのbase_shaの一致も確かめる。異なれば組み合わせを確かめ直し、必要なら実装担当に修正PRを頼む。デプロイは所有者の明示指示まで行わない。
 
 **Copilotレビューは任意（2026-10-04の[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
-
-<a id="owner-merge-only"></a>
-
-### 所有者だけがマージするPR（OWNER_MERGE_ONLY）
-
-2026-10-04の所有者決定で、全PRに足した条件（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)、[読み方](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）。
-
-| 項目 | 内容 |
-| --- | --- |
-| 置き場所 | リポジトリ変数`OWNER_MERGE_ONLY`だけ。写しを作らない |
-| 書き手 | 所有者だけ。AIのAppは読取りだけ |
-| 書式 | PR番号をカンマか改行で区切る。`none`は「なし」。ほかの値は読めない扱い |
-| 読み方 | マージの直前に、自分のAppの`merge-check`用途（[App手順](github-apps.md#マージ直前にaiが行う確認merge-check)）で`gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value`。doc-gifでは読まない |
-| 判定 | 一覧にある、または読めない（404・認証の失敗・書式の誤り）なら、AIはマージしない |
-| 変更 | 受付がactiveにしたPRは所有者が必ず加え、rollback後も残す。外すのも所有者だけ。受領記録・通知・ラベルでは変わらない |
-
-導入の順序: 所有者が変数（`none`）とAppの「Variables: Read-only」を置いてから、#51をマージする。
 
 <a id="dispatch-active"></a>
 
@@ -54,7 +39,7 @@
 
 2026-10-04の所有者決定（[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。手順は[PR書式](pr-review-loop.md#受付がactiveのpr)。
 
-- AIはマージしない。所有者がGitHubの画面でマージする。`--match-head-commit`の代わりに、headが`APPROVE`のcommit_idと同じことを確かめ、マージコミットで1件ずつマージする。
+- レビューしたheadは、`APPROVE`のcommit_idで確かめる。
 - 受付のpolicyに登録した参加者（必要なreviewer以外も含む。所有者・Codex・Claude等）の最新の`CHANGES_REQUESTED`や未解消の指摘があればマージしない。登録していない第三者のものは参考にとどめる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。
 - 受付は、粗探しとレビューの起動と投稿だけを行う。
 - 粗探しの時点を読み替える（所有者承認）: Readyはレビューの依頼。粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。
@@ -72,7 +57,7 @@ Issueにはtask_id、目的、非対象、spec_revision、承認したrevision�
 
 `backlog → ready → claimed → working → ready-for-review → reviewing → changes-requested → working`
 
-修正不要なら `reviewing → accepted → merged → done`。実装担当がマージの条件を確かめてマージし（[例外](#owner-merge-only)は所有者）（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
+修正不要なら `reviewing → accepted → merged → done`。所有者がマージの条件を確かめてマージし（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
 
 Open PRだから完成、Draftだから絶対未完成とはみなさない。完了したhead/baseと検証結果を明記した引継ぎで判定する。作業中の古いready報告は無効。
 
