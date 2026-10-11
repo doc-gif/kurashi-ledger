@@ -33,7 +33,7 @@ Update the applicable README in the same PR when usage, setup, commands, structu
 
 Each AI has its own GitHub App identity; see [AI GitHub Apps](docs/github-apps.md). Run its token script only from a copy taken from a reviewed main commit, never from a PR checkout. Never read another AI's key, and never approve a PR you implemented or pushed to.
 
-Use the [PR protocol](docs/pr-review-loop.md) for Draft/working/ready, exact head/base, evidence, independent review and stable finding IDs. Include Issue, reason, acceptance evidence and remaining scope. Only the final PR completing a split task closes its Issue. On interruption, record task/spec/branch/head/base, scope, actual verification, next action, claim/worker state and whether another worker may take over.
+Use the [PR protocol](docs/pr-review-loop.md) for Draft/working/ready, exact head/base, evidence, independent review and stable finding IDs. Write the PR body under the headings of the account-wide [shared template](https://github.com/doc-gif/.github/blob/main/pull_request_template.md): the reason, Task ID and Issue under 目的; acceptance evidence and the [public-diff check](docs/public-data.md) under 確認; remaining scope under 懸念点と残りの作業. Only the final PR completing a split task closes its Issue. On interruption, record task/spec/branch/head/base, scope, actual verification, next action, claim/worker state and whether another worker may take over.
 
 ## Merge and authority
 
