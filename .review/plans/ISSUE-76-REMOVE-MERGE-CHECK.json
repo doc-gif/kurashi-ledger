@@ -1,0 +1,219 @@
+{
+  "schema_version": 2,
+  "base_sha": "6a5348e4a56dd1c08264a064913e8d4d7864c7a7",
+  "task_id": "ISSUE-76-REMOVE-MERGE-CHECK",
+  "planned_paths": [
+    "docs/github-apps.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "scripts/github-app-token.test.ts",
+    "scripts/github-app-token.ts",
+    "scripts/lib/github-app-token.ts"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "トークンの道具はアプリのデータルート・DB・lockを読まず書かない。排他を共有する操作を変えない",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "git diffの範囲が、計画のplanned_pathsとこの計画だけであることを確かめる",
+          "expected": "保存先・lockのコードに差分がない"
+        },
+        {
+          "id": "recovery",
+          "method": "git diffの範囲が、計画のplanned_pathsとこの計画だけであることを確かめる",
+          "expected": "保存先・lockのコードに差分がない"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "使わなくなった用途と、その説明と試験を消すだけ。秘密・実データは扱わない。試験は合成の値だけを使う。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・実データ・個人のパスを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "依存・lockfile・Node.jsの版・CI・配信物を変えない。用途を1つ減らすだけで、残る用途の権限と照合は変えない。信頼した写し（b5b7d67）は、この変更がmainに入っても作り直さない。写しは今のまま動き、merge-checkを使う人はいない。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "git diffでpackage.json・package-lock.json・.github/workflowsに差分がないことを確かめる。PURPOSESの残る4つの用途の権限が変わらないことを、既存の試験（権限の表の試験）で確かめる。",
+          "expected": "差分なし。残る用途の試験が成功する。"
+        },
+        {
+          "id": "artifact",
+          "method": "配信物・manifestを作らないことを差分で確かめる。トークン・鍵をディスクに書かない扱いは変えない。",
+          "expected": "差分なし"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "データルートの識別・作成・復元を変えない",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "git diffでデータルートのコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "aliases",
+          "method": "--repoの別名の試験（許可リストとの完全一致だけで受ける）を変えていないことを差分で確かめる",
+          "expected": "--repoの拒否の試験は、例のパスを書き換えた3件のほかは変わらず、すべて成功する"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "DB・journal・manifest・復元に触れない",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "restore",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        },
+        {
+          "id": "manifest",
+          "method": "git diffで保存のコードに差分がないことを確かめる",
+          "expected": "差分なし"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "Issue #76の「消すもの」と受け入れ条件に従う。所有者だけがマージする決まり（#78）がmainに入ったので、着手の条件を満たす。担当は調整係の割り当て。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#78がmainに入っていることと、ほかのopen PRがscripts/lib/github-app-token.tsとdocs/github-apps.mdを変えていないことを確かめる。",
+          "expected": "#78はmainにある。重なるopen PRはない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n 'merge-check\\|OWNER_MERGE_ONLY' と git grep -n 'mekiki:temporary #76' を実行し、残る行を1行ずつ読む。",
+          "expected": "残るのは、.review/の履歴、docs/review-dispatch-design.mdの決定の表の1行、merge-checkが無いことを確かめる新しい試験だけ。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "コマンドの引数 --purpose",
+      "data": "用途の名前",
+      "trust": "untrusted",
+      "control": "merge-checkは知らない用途として、鍵を読む前にUsageErrorで止める。ほかの知らない用途と同じ終了コード。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "GitHubのトークンの要求（POST /app/installations/{id}/access_tokens）",
+      "data": "縮小した権限",
+      "trust": "trusted",
+      "control": "actions_variablesを要求する用途がなくなる。残る用途の権限は変えない。"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "docs/github-apps.md・docs/project-status.md・docs/review-dispatch-design.md",
+      "data": "道具の説明",
+      "trust": "trusted",
+      "control": "merge-checkの節・表の行・確認の手順と#76の目印を消す。Variablesの行は、所有者が権限を外すまで残し、使っていないと書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "消した用途を、ほかの箇所（使い方の文・型・名前の一覧・コメント）が使い続ける。",
+      "places": [
+        {
+          "location": "scripts/lib/github-app-token.ts のPurpose型・PURPOSES・PURPOSE_NAMES・USAGE・implementのコメント",
+          "result": "すべてから消した。新しい試験が、型以外の3つを確かめる。型は型検査が確かめる。"
+        },
+        {
+          "location": "scripts/github-app-token.ts の使い方のコメント",
+          "result": "消した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "道具を消したのに、状態資料や手順書が道具を今も使うように書く。",
+      "places": [
+        {
+          "location": "docs/github-apps.md の権限の表・用途の表・--repoの説明・merge-checkの節（A・Bの確認の手順を含む）",
+          "result": "消した。Aの写しの作り直しの手順は#55の写しの手順で、merge-checkの有無を確かめる。一般の写しの手順は「信頼した写し」の節に残る。"
+        },
+        {
+          "location": "docs/project-status.md 2026-10-11の決定",
+          "result": "消したと書き直した。"
+        },
+        {
+          "location": "docs/review-dispatch-design.md 決定の表のowner-merge-onlyの行",
+          "result": "当時の記録として残し、目印と「道具は#76で消す」だけを消した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "試験の例のパスを書き換えるときに、合成でない値を入れる。",
+      "places": [
+        {
+          "location": "scripts/github-app-token.test.ts の--repoの試験の3つの例",
+          "result": "repos/doc-gif/<repo>/pulls/1 の合成の形にした。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "データルート・DB・lockのコード（src/infrastructure/storage/**など）",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "データルートの識別・作成・復元のコード",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "道具の用途を消す変更が、保存やlockのコードに及ぶ。",
+      "places": [
+        {
+          "location": "DB・journal・manifest・復元のコード",
+          "result": "差分なし。変えたのはトークンの道具と、その文書と試験だけ。"
+        }
+      ]
+    }
+  ]
+}
