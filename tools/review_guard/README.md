@@ -107,7 +107,7 @@ mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた
 - 段5の前に、その時点のmainの古い台帳と計画から、mekikiで分割を作り直す（C-NNNNはmekikiが振る）。そのPRで、`.review/causes/`、`.review/mekiki/global-ids.json`、`.review/mekiki/SOURCE.json`を作り直す。
 - そのPRでは、`SOURCE.json`の`split.input.commit`が、そのPRの`base_sha`と同じことを確かめる。違えば、2つのcommitの間で`.review/invariants.json`・`.review/findings.json`が変わっていないことを`git diff`で確かめる。変わっていれば作り直す。
 - `ci.py`の`policy_changes_to_review`と`ledger_changed`は、`.review/causes/`の変更だけを出す。`.review/mekiki/global-ids.json`、`.review/config.toml`、古い台帳の変更は出さない。段5まで、これらを変えるPRは、レビューの担当が差分を読んで確かめる。
-- 古い台帳の原因のうち次の17件は、分割で新しい共通の不変条件（INV-DATA-DURABILITY・INV-DESIGN-IMPL・INV-DEV-BOUNDARY・INV-FAIL-CLOSED・INV-FS-BOUNDARY・INV-SPEC-COHERENCE）へ移った。この6つは目録の`paths`が空で、`[causes.paths]`にも`related`にもないので、新しい組の`check`は選ばず、`causes_not_analyzed`にも出さない。所有者が決めるまで、この17件は新しい組の計画の検査から外れる（粗探しは古い台帳で見る）。
+- 古い台帳の原因のうち次の17件は、分割で新しい共通の不変条件（INV-DATA-DURABILITY・INV-DESIGN-IMPL・INV-DEV-BOUNDARY・INV-FAIL-CLOSED・INV-FS-BOUNDARY・INV-SPEC-COHERENCE）へ移った。この6つは目録の`paths`が空で、`[causes.paths]`にも`related`にもないので、新しい組の`check`は選ばず、`causes_not_analyzed`にも出さない。所有者の決定（[PR #83の案B](https://github.com/doc-gif/kurashi-ledger/pull/83#issuecomment-6110696598)）で、段5まではこの17件を新しい組の計画の検査から外したままにする（粗探しは古い台帳で見る）。6つにpathを足すのは、段5の後の別のPRで行う。
   - PR2-R001（C-0001）、PR2-R002（C-0002）、PR2-R004（C-0004）、PR2-R005（C-0005）、PR2-R006（C-0006）、PR2-R007（C-0007）
   - PR10-R001（C-0057）、PR10-R002（C-0058）、PR10-R003（C-0059）
   - PR11-R009（C-0034）、PR11-R105（C-0046）、PR11-R107（C-0049）、PR11-R110（C-0054）、PR11-R111（C-0055）
