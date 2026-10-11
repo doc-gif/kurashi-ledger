@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "4fffd5256e33d4e1cc6c6d5b0aa00d376331dd51",
+  "base_sha": "e14f20e8f6a3b4ac19f2c897e152b16a5261e21a",
   "task_id": "OPS-JAPANESE-WRITING-POINTER",
   "planned_paths": [
     "AGENTS.md"
