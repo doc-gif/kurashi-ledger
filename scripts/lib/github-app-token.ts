@@ -43,7 +43,7 @@ export const JWT_BACKDATE_SECONDS = 60;
 export const JWT_LIFETIME_SECONDS = 9 * 60;
 
 export type Agent = 'codex' | 'claude';
-export type Purpose = 'review' | 'dispatch-read' | 'implement' | 'implement-workflows' | 'merge-check';
+export type Purpose = 'review' | 'dispatch-read' | 'implement' | 'implement-workflows';
 export type PermissionLevel = 'read' | 'write';
 
 // AIの身元（GitHub App）ごとの設定。2つのAppは同じ権限を持ち、どちらのAIも実装とレビューを行う。
@@ -78,16 +78,13 @@ export const PURPOSES: Readonly<Record<Purpose, Readonly<Record<string, Permissi
   // ので、issues:writeは入れない（Issueへの書込みが要る作業はimplementで行う）。
   'dispatch-read': { contents: 'read', pull_requests: 'read', issues: 'read', ...CI_READ },
   review: { pull_requests: 'write', contents: 'read', ...CI_READ },
-  // branchのpush、PR・Issue・コメントの作成、マージ。.github/workflows/は変えられない。
+  // branchのpush、PR・Issue・コメントの作成。.github/workflows/は変えられない。
   implement: IMPLEMENT,
   // .github/workflows/を変えるcommitのpushが要るときだけ使う（2026-10-03の所有者決定: 必要なときだけ付ける）。
   'implement-workflows': { ...IMPLEMENT, workflows: 'write' },
-  // マージの直前にリポジトリ変数OWNER_MERGE_ONLYを読むだけ（2026-10-04の所有者決定、Issue #50）。
-  // GitHubの権限名はactions_variables（Appの設定の「Variables」）。doc-gifでは読まない。
-  'merge-check': { actions_variables: 'read' },
 };
 
-export const PURPOSE_NAMES: readonly Purpose[] = Object.freeze(['dispatch-read', 'review', 'implement', 'implement-workflows', 'merge-check']);
+export const PURPOSE_NAMES: readonly Purpose[] = Object.freeze(['dispatch-read', 'review', 'implement', 'implement-workflows']);
 
 // GitHubがトークンの権限に必ず加えるもの。
 const IMPLICIT_PERMISSIONS: Readonly<Record<string, PermissionLevel>> = { metadata: 'read' };
@@ -137,7 +134,6 @@ PRのcheckoutから実行しない（docs/github-apps.md の「信頼した写�
                                     review:              ${permissionList('review')}
                                     implement:           ${permissionList('implement')}
                                     implement-workflows: ${permissionList('implement-workflows')}
-                                    merge-check:         ${permissionList('merge-check')}
   --repo <名前>                   トークンを縮小する${REPOSITORY_OWNER}のrepo（${REPOSITORIES.join('・')}）。既定は${DEFAULT_REPOSITORY}。
                                     ghの--repo・gh apiのrepos/…・github.comのURLの引数が別のrepoを指せば拒む
   --app-id <数字>                 既定は環境変数（codex: ${AGENTS.codex.appIdEnv}、claude: ${AGENTS.claude.appIdEnv}）
