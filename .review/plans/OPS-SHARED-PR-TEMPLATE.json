@@ -1,0 +1,143 @@
+{
+  "schema_version": 2,
+  "base_sha": "02c1629f8213bbedaf93787d6b0ee3afa20e1413",
+  "task_id": "OPS-SHARED-PR-TEMPLATE",
+  "planned_paths": [
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "AGENTS.md",
+    "docs/development.md",
+    "docs/project-status.md",
+    "docs/public-data.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "所有者の指示で、repo独自のPRテンプレートを消し、アカウント共通のテンプレート（doc-gif/.github）を使う。公開差分の点検は消さず、PR本文の「確認」に書くとpublic-data.mdとAGENTS.mdに書く。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。public-data.mdの手順6とAGENTS.mdの文を読み合わせる。",
+          "expected": "終了0。秘密・実データ・個人のパスを加えない。公開差分の点検を書く場所（PR本文の「確認」）が、public-data.mdの手順6とAGENTS.mdの1文で同じになる。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "旧テンプレートの引継ぎの項目（head/base・worker_status・計画・粗探しの時点・Draft）は、pr-review-loop.mdが正とする。テンプレートを消しても、これらの規則は変えない。旧テンプレートのマージの1文は消し、マージ条件はgithub-agent-operations.mdだけに置く。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "旧テンプレートの各項目を、pr-review-loop.md・review-prevention.md・github-agent-operations.md・public-data.md・AGENTS.mdでgrepし、置き場所を1つずつ確かめる。",
+          "expected": "どの項目も置き場所が1つある。新しい文は既存の規則を言い直さず、見出しと置き場所だけを書く。"
+        },
+        {
+          "id": "trust",
+          "method": "差分にマージ条件・粗探し・レビューの条件を緩める文がないことを目視する。",
+          "expected": "マージ・粗探し・レビューの条件の文言は変わらない。消すのはテンプレートの中の写しだけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "PRの書き方を示す入口（AGENTS.md・development.md・project-status.md・public-data.md）を、共通テンプレートに合わせて同じPRで直す。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "共通テンプレートの見出しをGitHub APIで読み、AGENTS.mdの文の見出し名と照合する。",
+          "expected": "見出し名（目的・変更内容・影響範囲・懸念点と残りの作業・確認・マージの順）と一致する。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "repo全体でPULL_REQUEST_TEMPLATEと「テンプレート」をgrepし、現行の入口を直す。Draft・working・ready-for-reviewの規則がpr-review-loop.mdとexternal-worker.mdに残ることを確かめる。",
+          "expected": "現行の文書に旧テンプレートを指す記述が残らない。docs/adr/README.mdの表はT00時点の記録なので変えない。.review/の台帳と既存の計画は履歴なので変えない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "https://github.com/doc-gif/.github/blob/main/pull_request_template.md",
+      "data": "アカウント共通のPRテンプレートの見出し",
+      "trust": "trusted",
+      "control": "所有者が作った公開repo。見出し名だけを参照し、中身をこのrepoへ写さない。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "PRの本文（GitHub）",
+      "data": "目的・確認などの見出しに書くタスクIDと受入条件の確認の記録",
+      "trust": "untrusted",
+      "control": "合成データだけを書く。公開差分の点検は「確認」に書く（public-data.md）。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "テンプレートを消したときに、公開差分の点検を書く場所が消える。",
+      "places": [
+        {
+          "location": "docs/public-data.md 公開前の点検の手順6",
+          "result": "「テンプレートの…」をやめ、PR本文の「確認」に書くとした。"
+        },
+        {
+          "location": "AGENTS.md Validate and hand off",
+          "result": "PR本文の見出しの1文で、公開差分の点検を「確認」に置くと書いた。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "テンプレートの中にだけあった規則が、消すと同時に失われる。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.md 提出前の粗探し・1. 実装側の完了報告",
+          "result": "Draft・working・粗探し待ち・粗探しの記録が出るまでready-for-reviewを出さない・head/base・worker_status・plan_path・plan_commit・plan_recheck・agent_id・spec_revision・task_id・未対応事項・レビュー中は差分を変えない、がすべてある。"
+        },
+        {
+          "location": "docs/review-prevention.md 変更前の手順3",
+          "result": "関連する不変条件・既存の指摘・既存仕様との衝突・操作全体のシナリオ（初回・更新・復元・途中終了）の確認は計画に書くとある。"
+        },
+        {
+          "location": "docs/github-agent-operations.md マージ条件",
+          "result": "マージの規則はここが正。旧テンプレートのマージの1文は写しなので消す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "draft-open-entrypoint-coherence",
+      "pattern": "作業中Draft・レビュー依頼Openの規約が、入口の1つを消したことで食い違う。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.md・docs/external-worker.md・docs/development.md・README.md",
+          "result": "Draftの規則はこれらに残る。development.mdの行はDraftの文を保ったまま、テンプレートの参照だけを直した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "テンプレートの有無を書く状態資料が、消したあとも古いまま残る。",
+      "places": [
+        {
+          "location": "docs/project-status.md 公開済みの範囲",
+          "result": "「PRテンプレート」を一覧から外した。"
+        },
+        {
+          "location": "docs/development.md commit・Issue・PR・引継ぎ",
+          "result": "共通テンプレートの見出しで書くと直した。"
+        },
+        {
+          "location": "docs/adr/README.md T00の判断の表",
+          "result": "T00時点の記録（package.json等の行も当時の状態のまま）なので変えない。"
+        }
+      ]
+    }
+  ]
+}
