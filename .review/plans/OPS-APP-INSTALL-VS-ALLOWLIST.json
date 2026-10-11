@@ -57,7 +57,7 @@
       "places": [
         {
           "location": "docs/github-apps.md 19行目（Appの表のインストール先）",
-          "result": "今のインストール先を書き、許可リストは選べるrepoの一覧と書いた。.githubは所有者の決定待ちと書いた。"
+          "result": "今のインストール先を書き、許可リストは選べるrepoの一覧と書いた。.githubはClaudeのAppで読取りのトークンを発行できることを確かめた事実だけを書き、CodexのAppは未確認とした。mainの保護が決まるまでAIは.githubに書かないと書いた。"
         },
         {
           "location": "docs/project-status.md 28行目",
