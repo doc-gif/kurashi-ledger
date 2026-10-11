@@ -60,7 +60,7 @@
         {
           "id": "entrypoints",
           "method": "external-worker.mdのMERGEの節、AGENTS.mdのMerge and authority、README.mdの冒頭、pr-review-loop.mdの冒頭と4節、review-prevention.mdの冒頭と担当の節、implementation-plan.mdの到達点と開始プロンプト、project-status.md、copilot-instructions.mdを読み合わせる。",
-          "expected": "どの入口も、AIはマージせず所有者がマージする、と同じことを指す。merge-checkの説明を残す箇所には、#76の印（mekiki:temporary）が付く。"
+          "expected": "どの入口も、AIはマージせず所有者がマージする、と同じことを指す。merge-checkの説明を残す箇所には、#76の印（mekiki:temporary）が付く。 マージ前のbaseの照合とマージ後の第1親の確認は、マージする所有者が行う（PR77 RT-1）。実装AIの入口にマージ後の手順は要らない。"
         }
       ]
     }
@@ -130,22 +130,49 @@
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "entrypoint-order",
-      "pattern": "accepted後の自己PRマージの時系列が、入口ごとに違う。",
+      "pattern": "accepted後の自己PRマージの時系列が、入口ごとに違う。 マージ後の第1親の確認を、引継ぎで止まる実装担当に割り当てる（PR77 RT-1）。",
       "places": [
         {
           "location": "implementation-plan.md の到達点と開始プロンプト、external-worker.md のMERGE",
           "result": "accepted後も実装AIは止まり、所有者がマージすると直す。"
+        },
+        {
+          "location": "docs/github-agent-operations.md マージ条件・状態遷移",
+          "result": "所有者がマージの場で照合と第1親の確認を行う、と直す。"
+        },
+        {
+          "location": "docs/pr-review-loop.md 4節、docs/implementation-plan.md、AGENTS.md、docs/external-worker.md",
+          "result": "担当を書かずに正本へリンクする文、または実装AIは止まるという文なので、正本と食い違わない。"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "status-docs-current-state-coherence",
-      "pattern": "マージの権限を書く状態資料・設計・手順が、古いまま残る。",
+      "pattern": "マージの権限を書く状態資料・設計・手順が、古いまま残る。 #76の印のないmerge-checkの記述が残り、#76の受け入れ条件と合わない（PR77 RT-2）。",
       "places": [
         {
           "location": "docs/project-status.md・docs/review-dispatch-design.md（offとshadowのマージの権限、§5の分け方）・docs/review-dispatch-runbook.md 14",
           "result": "所有者がマージする形に直し、OWNER_MERGE_ONLYへの依存を外す。design.mdの決定の表は当時の決定の記録として残す。owner-merge-onlyの行だけ、使わなくなったことと#76を書き足し、消したアンカーへのリンクをmerge-conditionsへ直す。active-mergeの行は変えない。"
+        },
+        {
+          "location": "docs/project-status.md 2026-10-11の決定",
+          "result": "merge-checkの文に印を付ける。"
+        },
+        {
+          "location": "docs/review-dispatch-design.md 決定の表のowner-merge-onlyの行",
+          "result": "当時の記録として残す。#76の本文の非対象に書き、受け入れ条件のgrepから外す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-assessment-drift",
+      "pattern": "別repo（doc-gif/mekiki）の文書が、このrepoの古い規則とアンカーを参照する（PR77 RT-3）。",
+      "places": [
+        {
+          "location": "doc-gif/mekiki の文書",
+          "result": "調整係の指示で、このPRでは別repoに触れない。所有者と調整係の判断に回し、PR本文の懸念点に書く。#owner-merge-onlyのアンカーはmerge-conditionsの直前に残し、古いリンクが規則の節に届くようにする。"
         }
       ]
     }
