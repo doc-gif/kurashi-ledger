@@ -1,0 +1,153 @@
+{
+  "schema_version": 2,
+  "base_sha": "bbbdc2e1f8537b21f6e52bc0c91f08a94366f6c5",
+  "task_id": "OPS-OWNER-ONLY-MERGE",
+  "planned_paths": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "README.md",
+    "docs/external-worker.md",
+    "docs/github-agent-operations.md",
+    "docs/github-apps.md",
+    "docs/implementation-plan.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-dispatch-runbook.md",
+    "docs/review-prevention.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "規則の文書だけを変える。秘密・実データは扱わない。merge-checkの道具（scripts/lib/github-app-token.ts）とその試験は、製品の実装の停止中なので変えない。消す作業はIssue #76に分ける。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・実データ・個人のパスを加えない。scripts/とtests/に差分がない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "2026-10-11の所有者決定（「決まりも所有者だけがマージする形に直して」）で、マージするのを所有者だけにする。所有者がマージ前に確かめる条件（accepted・粗探し・Quality gate・base・head）は弱めない。規則はgithub-agent-operations.md#merge-conditionsだけに置き、ほかの文書はリンクにする。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "docs/・AGENTS.md・CLAUDE.md・README.md・.github/copilot-instructions.md・.agents/で、マージ・merge・OWNER_MERGE_ONLY・merge-check・--match-head-commit・自分のPRをgrepし、1行ずつ読む。",
+          "expected": "マージの条件を言い直す文がmerge-conditionsのほかにない。AGENTS.mdは条件の一覧を写さず、リンクだけにする。AIに自分のPRのマージを許す文が残らない。"
+        },
+        {
+          "id": "trust",
+          "method": "merge-conditionsの新旧を並べ、条件が1つも消えていないことを確かめる。消すのはOWNER_MERGE_ONLYの条件だけ（全PRを所有者のマージにしたので要らない）。",
+          "expected": "accepted・粗探し・Quality gate・最新baseと競合なし・headの一致・マージコミットで1件ずつ・auto-mergeなし・第1親の確認・デプロイは明示指示まで、が残る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "実装AIの入口（AGENTS.md・external-worker.md・pr-review-loop.md・README.md・copilot-instructions.md・implementation-plan.md・review-prevention.md・project-status.md）が、同じ終了地点（ready-for-reviewの引継ぎで止まり、所有者がマージする）を指すようにする。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "受付の切替とrollbackの手順（pr-review-loop.md・review-dispatch-runbook.md・review-dispatch-design.md）から、OWNER_MERGE_ONLYへの依存を外したあとも手順の番号と参照が合うかを読む。PR #75に重ねるので、base_shaは#75のhead。",
+          "expected": "切替の手順2は巡回の設定だけになり、導入手順14のコマンドは3だけになる。rollbackの手順3から変数の記述が消える。番号の参照（「2と3のコマンド」など）が合う。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "external-worker.mdのMERGEの節、AGENTS.mdのMerge and authority、README.mdの冒頭、pr-review-loop.mdの冒頭と4節、review-prevention.mdの冒頭と担当の節、implementation-plan.mdの到達点と開始プロンプト、project-status.md、copilot-instructions.mdを読み合わせる。",
+          "expected": "どの入口も、AIはマージせず所有者がマージする、と同じことを指す。merge-checkの説明を残す箇所には、#76の印（mekiki:temporary）が付く。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "所有者の指示（調整係を通したチャット）",
+      "data": "「決まりも所有者だけがマージする形に直して」",
+      "trust": "partially-trusted",
+      "control": "所有者の言葉をそのままPR本文とproject-status.mdに残す。権限を狭める変更（AIのマージをなくす）だけで、広げる変更はしない。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "実装AIとレビューAIが読む入口の文書（AGENTS.md・external-worker.md・pr-review-loop.md・copilot-instructions.md）",
+      "data": "マージの権限と終了地点",
+      "trust": "untrusted",
+      "control": "規則はmerge-conditionsの1か所。入口はリンクで指す。古い入口が残ってAIがマージしないよう、grepで全件を読む。"
+    },
+    {
+      "id": "B3",
+      "direction": "exit",
+      "location": "docs/github-apps.md のmerge-checkの節と表の行",
+      "data": "使わなくなった道具の説明",
+      "trust": "trusted",
+      "control": "道具を消すまで説明を残し、<!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->の印を付ける。scripts/github-app-token.test.tsの文書の検査（例が10件以上）を壊さない。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "規則の変更に合わせて、道具のコードや鍵の扱いを変えてしまう。",
+      "places": [
+        {
+          "location": "scripts/lib/github-app-token.ts・scripts/github-app-token.test.ts",
+          "result": "変えない。消す作業はIssue #76。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "credential-fallback-on-mint-failure",
+      "pattern": "merge-checkの発行に失敗したときの手順が、AIのマージを前提にしたまま残る。",
+      "places": [
+        {
+          "location": "docs/github-apps.md 「発行が失敗したとき」の2と、Bの11",
+          "result": "「マージしない」「AIのマージを止めたままにする」をやめ、記録だけにする。doc-gifで読まない規則は残す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "AIに自分のPRのマージを許す文が、正本の外に残る。",
+      "places": [
+        {
+          "location": "AGENTS.md・README.md・external-worker.md・pr-review-loop.md・review-prevention.md・implementation-plan.md・project-status.md・copilot-instructions.md・github-apps.md・review-dispatch-design.md",
+          "result": "grepした行を1行ずつ読み、マージを許す文を消すか、所有者がマージすると直す。"
+        },
+        {
+          "location": "docs/github-apps.md のrulesetの試験（Appでのgh pr mergeが拒否される試験）",
+          "result": "試験の期待（拒否）なので変えない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "entrypoint-order",
+      "pattern": "accepted後の自己PRマージの時系列が、入口ごとに違う。",
+      "places": [
+        {
+          "location": "implementation-plan.md の到達点と開始プロンプト、external-worker.md のMERGE",
+          "result": "accepted後も実装AIは止まり、所有者がマージすると直す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "マージの権限を書く状態資料・設計・手順が、古いまま残る。",
+      "places": [
+        {
+          "location": "docs/project-status.md・docs/review-dispatch-design.md（offとshadowのマージの権限、§5の分け方）・docs/review-dispatch-runbook.md 14",
+          "result": "所有者がマージする形に直し、OWNER_MERGE_ONLYへの依存を外す。design.mdの決定の表（owner-merge-only・active-merge）は当時の決定の記録なので変えない。"
+        }
+      ]
+    }
+  ]
+}
