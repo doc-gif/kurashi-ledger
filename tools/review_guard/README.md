@@ -89,7 +89,7 @@ python3 tools/review_guard/guard.py triage --candidates candidates.json
 
 ## 2段の台帳と段4の移行
 
-mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた。所有者の決定（[mekiki #43の8〜10](https://github.com/doc-gif/mekiki/pull/43#issuecomment-6110050156)）で、段5までは次の2組を並べて置く。
+mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた。所有者の決定（2026-10-12、非公開のmekikiで記録）で、段5までは次の2組を並べて置く。
 
 - 新しい組は、固有の台帳`.review/causes/invariants.json`・`findings.json`・`origins.json`（各原因の元の指摘）と、共通のID目録`.review/mekiki/global-ids.json`と、`.review/config.toml`の`[causes.paths]`だ。IDは`C-NNNN`。CIの`validate`はこの組を検査する。baseに`.review/causes/`があれば、`ci.py`は計画をこの組で検査する。
 - 古い組は`.review/invariants.json`・`.review/findings.json`だ。IDは`PR<N>-R<NNN>`。今の受付（`scripts/lib/review-dispatch/`）がbaseから読むので、段5まで消さない。`.review/tests`が古い組も検査し、どちらの組でも同じpathが同じ不変条件を選ぶことを確かめる。

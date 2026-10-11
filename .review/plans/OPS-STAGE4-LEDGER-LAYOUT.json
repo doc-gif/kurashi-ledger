@@ -73,7 +73,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "所有者の決定（mekiki #43の8〜10、https://github.com/doc-gif/mekiki/pull/43#issuecomment-6110050156 ）のとおり、新しい台帳を古い台帳の隣に足す。検査器と台帳を同じPRで変えるので、このPRはbaseの古いci.pyと古い台帳で検査される。マージ後は、次のPRから新しいci.pyと新しい台帳がbaseになる。",
+      "reason": "所有者の決定（2026-10-12、非公開のmekikiで記録。段5まで古い台帳を残す）のとおり、新しい台帳を古い台帳の隣に足す。検査器と台帳を同じPRで変えるので、このPRはbaseの古いci.pyと古い台帳で検査される。マージ後は、次のPRから新しいci.pyと新しい台帳がbaseになる。",
       "checks": [
         {
           "id": "duplicates",
