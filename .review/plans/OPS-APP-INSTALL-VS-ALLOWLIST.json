@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "base_sha": "4fffd5256e33d4e1cc6c6d5b0aa00d376331dd51",
+  "task_id": "OPS-APP-INSTALL-VS-ALLOWLIST",
+  "planned_paths": [
+    "SECURITY.md",
+    "docs/github-apps.md",
+    "docs/project-status.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "文書の3行の言い方を直すだけ。秘密・実データは扱わない。IDやインストールのIDは書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・実データ・個人のパス・IDを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "#81のCodexのP3（PR81-R001）: 許可リストを今のインストール先として書いていた。選べるrepoとインストール済みのrepoを分け、.githubは所有者の決定と作業待ちと書く。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#81がmainに入っていることと、ほかのopen PRが同じ行を変えていないことを確かめる。",
+          "expected": "#81はmainにある。停止中の#38はdocs/github-apps.mdの168・213・229行目付近を変え、19行目と重ならない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n -e 'インストール' -e 'installed' -- SECURITY.md docs README.md AGENTS.md で、Appのインストール先を書く箇所をすべて読む。",
+          "expected": "今のインストール先はdocs/github-apps.mdの表の1か所に書き、ほかは表を指す。許可リストをインストールの証拠として書く文がない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "公開の文書（SECURITY.md・docs/github-apps.md・docs/project-status.md）",
+      "data": "Appのインストール先と、トークンの届く範囲",
+      "trust": "untrusted",
+      "control": "インストール先はrepoの名前だけを書き、IDは書かない。許可リストとインストール先を分けて書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "許可リストを、今のインストール先として書く（PR81-R001）。",
+      "places": [
+        {
+          "location": "docs/github-apps.md 19行目（Appの表のインストール先）",
+          "result": "今のインストール先を書き、許可リストは選べるrepoの一覧と書いた。.githubは所有者の決定待ちと書いた。"
+        },
+        {
+          "location": "docs/project-status.md 28行目",
+          "result": "インストール先はgithub-apps.mdの表を指す形にした。"
+        },
+        {
+          "location": "SECURITY.md GitHub App keysの節",
+          "result": "許可リストはトークンを縮小できるrepoの一覧で、インストール先ではないと書いた。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "インストール先を書くときに、IDや非公開のrepoの中身を書く。",
+      "places": [
+        {
+          "location": "3つの文書の変えた行",
+          "result": "repoの名前だけ。mekiki・mekiki-claudeの名前はすでに公開の文書にある。"
+        }
+      ]
+    }
+  ]
+}
