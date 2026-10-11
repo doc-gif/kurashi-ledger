@@ -80,8 +80,11 @@ python3 tools/review_guard/guard.py check --plan .review/plans/T07-storage.json 
 ## 原因の照合と結果の意味
 
 ```sh
-python3 tools/review_guard/guard.py triage --candidates candidates.json
+python3 tools/review_guard/guard.py triage --catalog .review/causes/invariants.json --ledger .review/causes/findings.json \
+  --global-ids .review/mekiki/global-ids.json --config .review/config.toml --candidates candidates.json
 ```
+
+段5までは、原因を古い台帳に足す（[段5までの扱い](#段5までの扱い)）。足す前に既存のIDを古い台帳で照合するときは、`--catalog .review/invariants.json --ledger .review/findings.json`を付け、`--config`には存在しないpath（例: `.review/none.toml`）を渡す。`[causes.paths]`は共通のIDを指すので、目録なしの古い台帳とは一緒に読めない。
 
 候補JSONは`invariant_id`・`cause_key`・`evidence`を持つオブジェクトの配列。台帳のIDは`C-0001`形式（`C-`と0で4桁にそろえた正の10進数。10000以上はそのままの桁。ASCII数字）。`--global-ids`なしの1段の台帳だけは、分割前の`PR2-R007`形式（`PR<正整数>-R<3桁以上の正の番号>`、PR番号の先頭ゼロなし）も受理する。台帳・候補の`cause_key`に前後空白がある入力は拒否する。 同じバッチ内の`(invariant_id, cause_key)`重複は、台帳に登録済みかどうかを問わず入力全体を拒否し、結果を出力しない。同じ原因の証拠は1候補にまとめてから入力する。異なる条件で同じ原因キーを使う候補は別候補として扱う。過去コメントの`R-007`はそのPR番号と組み合わせた同じIDで、新規指摘ではない。原因の意味の照合・投稿の重複防止・解消判断は担当レビュワーが行う。
 
@@ -98,9 +101,21 @@ mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた
 - 目録を使う`check`は、`context`に共通のIDを持つ計画を拒否する。出力の`empty_global_paths`は、どのpathも選ばない共通の不変条件の一覧だ。
 - `[causes.paths]`は、共通の不変条件のIDにglobの配列を足す。目録の`paths`に足すだけで、狭めない。目録にないID、固有のID、配列でない値は終了コード1。`ci.py`はbaseの設定で選び、candidateの設定は形だけ確かめる。`ci.py`は目録もbaseの写しだけを読む。
 
+### 段5までの扱い
+
+- 新しい原因は、今までどおり古い台帳（`.review/findings.json`、IDは`PR<N>-R<番号>`）にだけ足す。`.review/causes/`と目録は手で直さない。だから段5までに足した原因は、CIの計画の検査には出ない。粗探しは、受付が渡す古い台帳で全部の原因を見る。
+- 段5の前に、その時点のmainの古い台帳と計画から、mekikiで分割を作り直す（C-NNNNはmekikiが振る）。そのPRで、`.review/causes/`、`.review/mekiki/global-ids.json`、`.review/mekiki/SOURCE.json`を作り直す。
+- そのPRでは、`SOURCE.json`の`split.input.commit`が、そのPRの`base_sha`と同じことを確かめる。違えば、2つのcommitの間で`.review/invariants.json`・`.review/findings.json`が変わっていないことを`git diff`で確かめる。変わっていれば作り直す。
+- `ci.py`の`policy_changes_to_review`と`ledger_changed`は、`.review/causes/`の変更だけを出す。`.review/mekiki/global-ids.json`、`.review/config.toml`、古い台帳の変更は出さない。段5まで、これらを変えるPRは、レビューの担当が差分を読んで確かめる。
+- 古い台帳の原因のうち次の17件は、分割で新しい共通の不変条件（INV-DATA-DURABILITY・INV-DESIGN-IMPL・INV-DEV-BOUNDARY・INV-FAIL-CLOSED・INV-FS-BOUNDARY・INV-SPEC-COHERENCE）へ移った。この6つは目録の`paths`が空で、`[causes.paths]`にも`related`にもないので、新しい組の`check`は選ばず、`causes_not_analyzed`にも出さない。所有者が決めるまで、この17件は新しい組の計画の検査から外れる（粗探しは古い台帳で見る）。
+  - PR2-R001（C-0001）、PR2-R002（C-0002）、PR2-R004（C-0004）、PR2-R005（C-0005）、PR2-R006（C-0006）、PR2-R007（C-0007）
+  - PR10-R001（C-0057）、PR10-R002（C-0058）、PR10-R003（C-0059）
+  - PR11-R009（C-0034）、PR11-R105（C-0046）、PR11-R107（C-0049）、PR11-R110（C-0054）、PR11-R111（C-0055）
+  - PR12-R101（C-0066）、PR12-R103（C-0069）、PR12-R104（C-0070）
+
 ## CIの配置前提
 
-`adapters/github-actions.yml`はテンプレート。このrepoでは、T05で同じ内容を`.github/workflows/ci.yml`の`review plan`・`review tools`のジョブとして配置した（actionの版と`setup-python`を合わせ、3つのOSで試験する）。ほかのrepoへ移すときは、このテンプレートから配置する。
+`adapters/github-actions.yml`はテンプレート。このrepoでは、T05で同じ内容を`.github/workflows/ci.yml`の`review plan`・`review tools`のジョブとして配置した（actionの版と`setup-python`を合わせ、3つのOSで試験する）。ほかのrepoへ移すときは、このテンプレートから配置する。テンプレートはmekikiの写しのまま変えておらず、`guard.py validate`に引数がない。`.review/config.toml`を置くrepoでは、`ci.yml`と同じく`--catalog`・`--ledger`・`--global-ids`・`--config`を付けて配置する。
 
 **このテンプレート単独では、PRによる検査の迂回を防げない。** `pull_request`のworkflow自体をPRで変更できるため、base側の検査器を呼ぶstepを削除されれば保証はない。このrepoでは、必須のstatus checkを`Quality gate`だけにすることと、「Require branches to be up to date before merging」を有効にすることは、2026-10-03の所有者決定（所有者本人の確認: PR #18のCodexの記録5965890988）で、T05のマージのあとに実装側が設定する。workflow・検査器・条件・原因台帳の変更に独立レビューを必須にする保護と、その迂回試験は、T23で扱う。その保護と迂回試験を確認するまでは、必須ゲートとして扱わない。CODEOWNERSファイルだけでは強制にならず、同一アカウントのCOMMENTもGitHub上の独立承認に数えない。今回は権限付きイベントへの切替えや保護設定をしない。
 

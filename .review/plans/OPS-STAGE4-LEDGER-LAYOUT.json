@@ -11,6 +11,7 @@
     ".review/mekiki/SOURCE.json",
     ".review/mekiki/global-ids.json",
     ".review/tests/test_repository_routing.py",
+    "docs/pr-review-loop.md",
     "docs/review-prevention.md",
     "tests/stage4/fixtures.py",
     "tools/review_guard/README.md",
@@ -129,7 +130,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "古い台帳は段5まで残す（受付が読む）。CIの変更はvalidateの1行だけ。READMEとdocs/review-prevention.mdに、2組の台帳が並ぶことと新しいコマンドを書いた。",
+      "reason": "古い台帳は段5まで残す（受付が読む）。CIの変更はvalidateの1行だけ。READMEの「段5までの扱い」を、段5までの原因の足し方・分割の作り直し・人が読む変更・検査から外れる17件の唯一の置き場所にし、docs/review-prevention.mdとdocs/pr-review-loop.mdはそこを指す（粗探しRT-2）。",
       "checks": [
         {
           "id": "dependencies",
@@ -139,7 +140,7 @@
         {
           "id": "entrypoints",
           "method": "git grep -n -e 'findings.json' -e 'invariants.json' -e 'PR<正整数>' -e 'guard.py validate' -e 'guard.py prepare' -- docs README.md AGENTS.md CLAUDE.md tools/review_guard で、台帳の場所とIDの形を書く箇所をすべて読む。",
-          "expected": "tools/review_guard/README.mdのvalidate・prepare・checkのコマンドは新しい組を指す。docs/review-prevention.mdは、古い台帳のIDの形と、隣に2段の台帳があることを書く。docs/pr-review-loop.mdの粗探しは、受付が読む古い台帳を指したままで正しい。"
+          "expected": "tools/review_guard/README.mdのvalidate・prepare・check・triageのコマンドは新しい組を指し、古い台帳での照合の方法も書く。段5までは原因を古い台帳に足すという規則はREADMEの1か所にあり、docs/review-prevention.mdとdocs/pr-review-loop.mdはリンクで指す。adapters/github-actions.ymlはmekikiの写しのまま変えず、違いをREADMEに書く。"
         }
       ]
     }
@@ -324,15 +325,15 @@
       "places": [
         {
           "location": "tools/review_guard/README.md",
-          "result": "validate・prepare・checkのコマンド、IDの形、2組の台帳の節を新しい組に合わせた。"
+          "result": "コマンド・IDの形・2組の台帳の節を新しい組に合わせた。「段5までの扱い」に、原因の足し方、分割の作り直しとSOURCE.jsonの入力commitの照合、人が読む変更、外れる17件を書いた。"
         },
         {
           "location": "docs/review-prevention.md",
-          "result": "古い台帳のIDの形と、2段の台帳が隣にあることを書いた。"
+          "result": "古い台帳のIDの形と、隣に2段の台帳があることを書き、原因の足し方と計画の作り方はREADMEを指す。"
         },
         {
           "location": "docs/pr-review-loop.md",
-          "result": "粗探しは受付が読む古い台帳を指す。段5まで正しいので変えない。"
+          "result": "RTを台帳に入れる段落で、段5までは古い台帳に足すことをREADMEへのリンクで書いた。粗探しは受付が渡す古い台帳を見るので、それ以外は変えない。"
         }
       ]
     },
