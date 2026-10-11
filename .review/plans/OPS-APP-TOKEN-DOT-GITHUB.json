@@ -3,7 +3,9 @@
   "base_sha": "2d53a6fab9814483ae263f1498912c4ecb4081e5",
   "task_id": "OPS-APP-TOKEN-DOT-GITHUB",
   "planned_paths": [
+    "SECURITY.md",
     "docs/github-apps.md",
+    "docs/project-status.md",
     "scripts/github-app-token.test.ts",
     "scripts/github-app-token.ts",
     "scripts/lib/github-app-token.ts"
@@ -30,7 +32,7 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "許可リストに、所有者の公開repo doc-gif/.githubを1つ足すだけ。秘密・実データは扱わない。試験は合成の値だけを使う。",
+      "reason": "許可リストに、所有者の公開repo doc-gif/.githubを1つ足す。秘密・実データは扱わない。試験は合成の値だけを使う。.githubのmainには保護がないので、Appのインストールの前に所有者が保護を決める（B5、PR81 RT-1）。",
       "checks": [
         {
           "id": "public",
@@ -68,7 +70,7 @@
         },
         {
           "id": "aliases",
-          "method": "--repo .githubの別名（github・_github・.GitHub・.github.git・doc-gif/.github・.github/../mekiki・..github・.github/）を、パスとして解釈せず許可リストとの完全一致だけで拒むことを試験で確かめる",
+          "method": "--repo .githubの別名（_github・.GitHub・.github.git・doc-gif/.github・.github/../mekiki・..github・.github/）を、パスとして解釈せず許可リストとの完全一致だけで拒むことを試験で確かめる",
           "expected": "すべて拒否し、鍵を読まない"
         }
       ]
@@ -145,6 +147,14 @@
       "data": "pushのURLごとの資格情報",
       "trust": "trusted",
       "control": "許可リストの4つのpushのURLのextraheaderを、選んだrepoによらず空にする（PR74 RT-1の試験が許可リスト全体を回す）。"
+    },
+    {
+      "id": "B5",
+      "direction": "exit",
+      "location": "doc-gif/.github のmain（公開repo）",
+      "data": "AIのimplementのトークンでのpush",
+      "trust": "untrusted",
+      "control": "事前の確認はpushのURLだけを見て、refspecを見ない。.githubのmainには、今はrulesetもbranch protectionもない。Appをインストールする前に、所有者がmainの保護（削除・強制pushの禁止とPR必須のrulesetなど）を決める。決まるまでAIは--repo .githubを使わない（PR81 RT-1）。"
     }
   ],
   "variant_analysis": [
@@ -209,11 +219,23 @@
     {
       "invariant_id": "INV-TASKS",
       "cause_key": "status-docs-current-state-coherence",
-      "pattern": "許可リストを書く文書が古い数のまま残る。",
+      "pattern": "許可リストやAppのインストール先を書く文書が、古い数や「このrepoだけ」のまま残る（PR81 RT-2）。",
       "places": [
         {
-          "location": "docs/github-apps.md",
-          "result": "直した。ほかの文書は許可リストを並べていない（git grepで確かめた）。"
+          "location": "docs/github-apps.md（--repoの説明・extraheaderの数・確認の行の一覧・インストール先の表・2026-10-03の経緯）",
+          "result": "直した。インストール先は許可リストを参照する形にし、経緯の行は当時の事実と分かる形にした。"
+        },
+        {
+          "location": "SECURITY.md（GitHub App keysの節）",
+          "result": "インストール先と届く範囲を、許可リストを参照し、トークンを1つのrepoに縮小する形に直した。"
+        },
+        {
+          "location": "scripts/github-app-token.test.ts のコメント2か所（許可リストの3つ）",
+          "result": "「許可リストのすべて」に直した。"
+        },
+        {
+          "location": "docs/project-status.md のAIのGitHub Appの行",
+          "result": "インストール先を許可リストを参照する形に直した。"
         }
       ]
     }

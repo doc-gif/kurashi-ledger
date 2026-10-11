@@ -16,7 +16,7 @@ IDと鍵はrepoに置かない。下の`<...>`は、実行するときに実際�
 | 項目 | Codex | Claude |
 | --- | --- | --- |
 | App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>`（作成済み） |
-| インストール先 | このrepoだけ | このrepoだけ |
+| インストール先 | `--repo`の許可リスト（`scripts/lib/github-app-token.ts`の`REPOSITORIES`）のrepo。トークンは1回ごとに1つのrepoへ縮小する | 同じ |
 | App ID・Installation ID | 環境変数`KL_GITHUB_APP_ID_CODEX`・`KL_GITHUB_APP_INSTALLATION_ID_CODEX` | 環境変数`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE` |
 | 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account はmacOSのログイン名、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
 
@@ -43,8 +43,8 @@ webhookは、受付の受信に使うCodexのAppだけ（[導入手順](review-d
 
 2026-10-03に、所有者が次を済ませた。
 
-1. CodexのAppを作り、このrepoだけにインストールした。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
-2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoだけにインストールした。
+1. CodexのAppを作り、このrepoにインストールした（当時のインストール先はこのrepoの1つ）。最初は Pull requests R/W・Contents R・Actions R・Metadata R で作り、そのあと Contents・Issues・Workflows を Read and write に広げ（Settings → Permissions & events）、インストール先で権限の変更を承認し直した（Installed GitHub Apps → Configure → Review request）。
+2. ClaudeのAppを、同じ権限・webhookなし・このアカウントだけにインストールできる、で作り、このrepoにインストールした（同じく当時は1つ）。
 3. 同じ日の所有者決定（読み取りだけ足す）で、2つのAppに Checks と Commit statuses の Read-only を加え、インストール先で承認し直した。
 4. 2つの秘密鍵を、キーチェーンのservice `kurashi-ledger-codex-reviewer`・`kurashi-ledger-claude-implementer`に登録し（下の「鍵の保管」）、2つのApp IDとInstallation IDを控えた（repoには書かない）。
 

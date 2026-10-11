@@ -1517,7 +1517,7 @@ test('--repo mekikiは、トークンの要求・応答と触れるrepoの確認
   const child = h.children[0];
   assert.ok(child !== undefined);
   assert.deepEqual(child.command, ['/synthetic/bin/git', ...push.slice(1)]);
-  // 選んだrepoによらず、許可リストの3つのpushのURLのextraheaderを空にする（PR74 RT-1）。
+  // 選んだrepoによらず、許可リストのすべてのpushのURLのextraheaderを空にする（PR74 RT-1）。
   const emptied = Object.keys(child.env)
     .filter((k) => /^GIT_CONFIG_KEY_\d+$/.test(k) && /^http\.https:\/\/github\.com\/doc-gif\/.+\.extraheader$/.test(child.env[k] ?? ''))
     .map((k) => [child.env[k], child.env[k.replace('KEY', 'VALUE')]]);
@@ -1726,7 +1726,7 @@ test('PR74 RT-1: どの--repoでも、repoの設定にある許可リストの�
   try {
     const repo = join(dir, 'repo');
     assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
-    // 合成のrepoの設定に、許可リストの3つのrepoのURLそれぞれ用のheader（所有者の資格情報の代わり）を置く。
+    // 合成のrepoの設定に、許可リストのすべてのrepoのURLそれぞれ用のheader（所有者の資格情報の代わり）を置く。
     for (const r of REPOSITORIES) {
       assert.equal(spawnSync('git', ['-C', repo, 'config', `http.${pushUrl(r)}.extraheader`, `AUTHORIZATION: synthetic-owner-${r}`]).status, 0, r);
     }
