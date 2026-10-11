@@ -24,7 +24,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "#81のCodexのP3（PR81-R001）: 許可リストを今のインストール先として書いていた。選べるrepoとインストール済みのrepoを分け、.githubは所有者の決定と作業待ちと書く。",
+      "reason": "#81のCodexのP3（PR81-R001）: 許可リストを今のインストール先として書いていた。インストール先はAppごとに確かめた事実だけを書く。ClaudeのAppは.githubへの読取りのトークンを発行できた（2026-10-11）。CodexのAppの.githubは未確認。インストールの範囲（選んだrepoだけか、すべてか）は所有者が確かめる（PR82 RT-1、RT-2）。",
       "checks": [
         {
           "id": "dependencies",
@@ -47,6 +47,14 @@
       "data": "Appのインストール先と、トークンの届く範囲",
       "trust": "untrusted",
       "control": "インストール先はrepoの名前だけを書き、IDは書かない。許可リストとインストール先を分けて書く。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "doc-gif/.github のmain（公開repo）",
+      "data": "ClaudeのAppのimplementのトークンでのpush・強制push・削除",
+      "trust": "untrusted",
+      "control": "ClaudeのAppは.githubに届き、mainにはrulesetも保護もない。今の対策は「所有者が保護を決めるまでAIはmainへ書かない」という運用の約束だけ（技術的には止まらない）。所有者に、rulesetを急ぐか、保護が付くまでインストールを外すかの判断を#81で頼んだ（PR82 RT-2）。AIは.githubへはbranchとPRだけを出す。"
     }
   ],
   "variant_analysis": [
@@ -57,7 +65,7 @@
       "places": [
         {
           "location": "docs/github-apps.md 19行目（Appの表のインストール先）",
-          "result": "今のインストール先を書き、許可リストは選べるrepoの一覧と書いた。.githubはClaudeのAppで読取りのトークンを発行できることを確かめた事実だけを書き、CodexのAppは未確認とした。mainの保護が決まるまでAIは.githubに書かないと書いた。"
+          "result": "インストール先をAppの列ごとに、確かめた事実だけで書いた。Codexの.githubは未確認、Claudeの.githubはトークンを発行できたことで確かめた。表の下に、許可リストはインストールの証拠ではないことと、.githubのmainへ書かない約束を書いた。"
         },
         {
           "location": "docs/project-status.md 28行目",
