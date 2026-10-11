@@ -26,14 +26,14 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 
 | 権限 | 水準 | 使う場面 |
 | --- | --- | --- |
-| Contents | Read and write | branchのpush、マージ |
+| Contents | Read and write | branchのpush |
 | Pull requests | Read and write | PRの作成、レビュー（APPROVE等）、PRへのコメント |
 | Issues | Read and write | Issueの作成・コメント |
 | Actions | Read-only | CIの結果の確認 |
 | Checks | Read-only | CIの結果の確認（check run） |
 | Commit statuses | Read-only | CIの結果の確認（commit status） |
 | Workflows | Read and write | `.github/workflows/`を変えるcommitのpush（その用途のトークンにだけ付ける） |
-| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。所有者が足す（下の「マージ直前にAIが行う確認」） |
+| Variables | Read-only | `OWNER_MERGE_ONLY`の読取り（`merge-check`）。使わなくなった（下の「マージ直前にAIが行う確認」）<!-- mekiki:temporary #76: merge-checkの道具を消したら消す --> |
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
@@ -90,12 +90,12 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
   | --- | --- | --- |
   | `dispatch-read` | contents・pull_requests・issues・actions・checks・statuses:read（metadata:readは追加分） | Codex Appによる受付の取得・shadow照合。書込み・worker用認証には使わない |
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
-  | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、マージ、CIの確認 |
+  | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
-  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ（下の「マージ直前にAIが行う確認」） |
+  | `merge-check` | actions_variables:read（Appの設定の「Variables」） | マージの直前に`OWNER_MERGE_ONLY`を読むだけ。使わなくなった（下の「マージ直前にAIが行う確認」）<!-- mekiki:temporary #76: merge-checkの道具を消したら消す --> |
 
   `review`にissues:writeを入れない理由: PRへのコメントとレビューはpull_requests:writeで書ける。Issueへの書込みが要る作業は`implement`で行う。
-- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認も選んだrepoに従う（`extraheader`は`--repo`によらず3つのrepoのURLのすべてを空にする）。ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。`merge-check`も、選んだrepoの`OWNER_MERGE_ONLY`だけを読む。
+- `--repo <名前>`（任意。既定は`kurashi-ledger`）: トークンを縮小するrepo。`doc-gif`の下の固定の許可リスト（`kurashi-ledger`・`mekiki`・`mekiki-claude`）の名前だけを受け、ほかの値・別のowner・パスの形は鍵を読む前に拒む。権限の確認も選んだrepoに従う（`extraheader`は`--repo`によらず3つのrepoのURLのすべてを空にする）。ghの`--repo`・`-R`・`GH_REPO`・`gh api`の`repos/…`・github.comのURL、gitのURL（選んだrepoのpushのURLと完全一致）が別のrepoを指せば発行の前に拒む（`sh -c`の中は読まない。範囲の正本はトークンの縮小）。`merge-check`も、選んだrepoの`OWNER_MERGE_ONLY`だけを読む<!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->。
 - `--`のあとが、実行するコマンドとその引数（シェルを通さない。パイプやリダイレクトが要るときは、子の出力を親のシェルで受ける）。コマンドは、**発行の前に**絶対パスへ解決する（PATHのうち絶対パスの場所だけを探し、相対パスの指定は受け付けない）。見つからなければ、発行せずに127で終える。Windowsでは`.exe`・`.com`だけを探し、`.cmd`・`.bat`（`npm.cmd`等）は実行できない。`gh`・`git`は実行できる。
 - 子に渡してはいけないコマンド: `env`・`printenv`、`gh auth token`、`gh auth status --show-token`等、環境変数やトークンを表示するもの。子の環境の`GH_TOKEN`は、子が動いている間、同じmacOSユーザーの`ps eww`等からも見える（下の「限界」）。
 - 鍵の取り出し方（どれか1つ）: 既定はmacOSのキーチェーン（`/usr/bin/security find-generic-password -s <service> -a <ログイン名> -w`をシェルなしで呼び、base64をメモリの中で戻す）。`--keychain-service <名前>`でserviceを変えられる。`--key-file <パス>`はPEMのファイルで、通常のファイルでないもの（symlink・FIFO・ディレクトリ）を開く前に拒み、macOS・Linuxでは所有者だけが読める権限（`chmod 600`）で所有者が実行中のユーザーでなければ拒む。`--key-stdin`は標準入力からPEM（またはそのbase64）を読む（端末からは読まない。このときコマンドには標準入力を渡さない）。
@@ -139,7 +139,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 - **自分が実装した、または自分のAppでpushしたPRを承認しない。** GitHubは、PRの作者による承認を受け付けない。rulesetの「最新のpushの承認」は、最後にpushした身元の承認を数えない。それでも、規則として、AIは自分の差分を承認しない（下の「ruleset」の前提を参照）。
 - rulesetの承認の規則を設定するまでは、Appの承認もマージの必須条件ではない。マージの条件は[マージ条件の正本](github-agent-operations.md#merge-conditions)のまま（Copilotは任意の補助レビュー）。
 
-## 実装側の操作（push・PR・コメント・マージ）
+## 実装側の操作（push・PR・コメント）
 
 `--purpose implement`（`.github/workflows/`を変えるcommitのpushだけ`implement-workflows`）を使う。
 
@@ -154,7 +154,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 1つ目の出力が、スクリプトが設定した次の7行だけ（順は問わない）であることを確かめる: `credential.helper`（空）、`credential.https://github.com.helper !f() …`、`http.https://github.com/.extraheader`（空）、`http.https://github.com/doc-gif/kurashi-ledger.git.extraheader`・`http.https://github.com/doc-gif/mekiki.git.extraheader`・`http.https://github.com/doc-gif/mekiki-claude.git.extraheader`（空）、`core.askpass`（空）。`url.`で始まる行や、ほかの値があれば、pushしない（repoの設定を直すか、所有者に知らせる）。
 最後の出力が`<claudeのAppの名前>[bot] <pushしたcommitのSHA>`であることを確かめる（pushした身元の確認）。URLを直接指定したpushは`origin/<branch>`の追跡の参照を更新しないので、続けて`git fetch origin --prune`を実行する。
 
-**PR・コメント・マージ:**
+**PR・コメント:**
 
 ```sh
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr create --repo doc-gif/kurashi-ledger --draft --head <branch> --base main --title <タイトル> --body-file <本文のファイル>
@@ -162,7 +162,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose implement -- gh pr comment <番号> --repo doc-gif/kurashi-ledger --body-file <引継ぎのファイル>
 ```
 
-PRの作者が自分のAppのbotであることを2つ目で確かめる。マージも同じ用途のトークンで、[マージ条件の正本](github-agent-operations.md#merge-conditions)と`--match-head-commit`を守る（`… -- gh pr merge <番号> --repo doc-gif/kurashi-ledger --merge --match-head-commit <SHA>`）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
+PRの作者が自分のAppのbotであることを2つ目で確かめる。AIはマージしない（[マージ条件の正本](github-agent-operations.md#merge-conditions)）。`gh pr create`はpushしていないbranchをpushしようとするので、先に上の手順でpushしておく。
 
 **commitの作者（任意。所有者が決める）:** 既定は変えない（いまのgitの設定のまま。commitは子の外で作る）。Appの身元を作者にしたい場合は、そのcommitだけ`git -c user.name='<appの名前>[bot]' -c user.email='<botのユーザーID>+<appの名前>[bot]@users.noreply.github.com' commit ...`とする。botのユーザーIDは`gh api 'users/<appの名前>[bot]' --jq .id`で分かる（App IDとは別）。
 
@@ -234,7 +234,7 @@ PRの作者が自分のAppのbotであることを2つ目で確かめる。マ�
 
 1. **実際の鍵で確かめる**（下の「実際の鍵での確認」。肯定と否定の両方）。この文書を作った担当は、実際の鍵を読まず、実際のAppを呼んでいない。
 2. **Appが作者のPRに進む前に、次を済ませる:** (a) Appが作者の合成のDraft PR（マージしない）で、Copilotの自動レビューと依頼が動くかを確かめる。(b) T23の巡回の後続（[タスク台帳](implementation-tasks.md)のT23）を済ませる。
-3. **作業をAppに切り替える。** Claude側のpush・PR・コメント・マージをClaudeのApp、Codex側の作業をCodexのAppで行い、レビューは各AIのAppの`review`で行う。
+3. **作業をAppに切り替える。** Claude側のpush・PR・コメントをClaudeのApp、Codex側の作業をCodexのAppで行い、レビューは各AIのAppの`review`で行う。
 4. **rulesetの承認の規則を所有者が確認して設定し、迂回試験を行う**（上の「ruleset」）。
 
 ## 実際の鍵での確認
@@ -269,9 +269,11 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex -
 
 ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflowsの有無（`implement`と`implement-workflows`の違い）は、`.github/workflows/`を変える合成のcommitを`ruleset-test/**`のbranchへpushして確かめる（`implement`では拒否、`implement-workflows`では成功）。
 
+<!-- mekiki:temporary #76: merge-checkの道具を消したら消す -->
+
 ## マージ直前にAIが行う確認（merge-check）
 
-AIはマージの直前に、リポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読む。書式と判定の正本は[運用規約](github-agent-operations.md#owner-merge-only)。
+2026-10-11から、AIはマージしない（[マージ条件](github-agent-operations.md#merge-conditions)）。この確認は使わない。道具を消すまで（[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)）、作ったときの手順を記録として残す。以前は、AIがマージの直前にリポジトリ変数`OWNER_MERGE_ONLY`を自分のAppで読んでいた。
 
 最初に、写しの場所を設定する。`写しがない`と出たら止め、下の「A. 信頼した写しを作り直す」を行う。
 
@@ -292,7 +294,6 @@ CodexのAppで読む:
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent codex --purpose merge-check -- gh api repos/doc-gif/kurashi-ledger/actions/variables/OWNER_MERGE_ONLY --jq .value
 ```
 
-終了コードが0でない、または値の書式が違えば、マージしない。
 
 **所有者が済ませたこと（2026-10-04）:** 2つのAppに Variables: Read-only を足し、変数`OWNER_MERGE_ONLY`を`none`で作り、#55のマージ後に下のAとBで確かめた（[結果](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977952619)）。
 
@@ -385,12 +386,12 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude 
 env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent claude --purpose merge-check -- gh api -X POST repos/doc-gif/kurashi-ledger/pulls -f title= -f head= -f base=
 ```
 
-11. 結果をIssue #50に記録する。6〜10で2xxが出たら、すぐ記録し、AIのマージを止めたままにする。
+11. 結果をIssue #50に記録する。6〜10で2xxが出たら、すぐ記録する。
 
 **発行が失敗したとき:** 3〜5で期待の値が出ず、標準エラーに`トークンを発行できなかった。コマンドは実行していない`と出て、終了コードが125になる。GitHubが発行を拒む（多くは`HTTP 422`）か、発行されたトークンが完全一致の照合で失敗する（例: `権限（actions_variables: read）が付かなかった`）。どちらでもコマンドは実行しない。そのときは:
 
 1. 標準エラーの文をIssue #50に記録する（トークン・鍵は表示されない）。
-2. AIは変数を読めない扱いのままにし、マージしない。照合を緩めない。doc-gifで読まない。
+2. 照合を緩めない。doc-gifで読まない。
 3. 原因を直すPRを待つ。
 
 **残る限界:** doc-gifは所有者と共用なので、doc-gifの資格情報で`OWNER_MERGE_ONLY`を書き換えられる。GitHubはこれを止めない。AIはdoc-gifで変数を読まず、書かない（規則）。防ぐには、AIが使えない所有者だけの身元が要る。
