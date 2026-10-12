@@ -6,7 +6,7 @@
 
 - **実装フェーズ**。2026-10-02に製品停止を台帳全体で解除した。着手には所有者または調整係の担当割当が必要。[実装計画](implementation-plan.md)の依存成果物を確認する。予定・ラベル・AIの自己申告は許可ではない。
 - T00はADR、README、状態資料、アーキテクチャ、台帳、計画の整合とT26–T28の設計まで含め、PR #2で完了した。T01/T02/T04はClaude側へ並行割当され、mainに統合済み。T03（#22）とT05（#17）も完了し、mainに統合済み。T05は統合済みT02の上でCIを整備した。
-- 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)は所有者が確かめる。
+- 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)はマージ担当が確かめる。
 - 使い方・構成・運用変更ではREADMEも更新し、引継ぎに有無と理由を記す（[AGENTS](../AGENTS.md)）。設計段階の欠陥は同じPRで直し、実装時の確認は担当タスクの受入条件へ渡す。理由と解消の証跡をスレッドに記録し、別担当が確認する。Copilotは任意の補助レビューとし、[現行マージ条件](github-agent-operations.md#merge-conditions)に従う。両立しない要求は所有者判断へ戻す。
 - 2026-10-11の決定: 所有者の言葉は「決まりも所有者だけがマージする形に直して」。マージは所有者だけが行い、AIはマージしない（[マージ条件](github-agent-operations.md#merge-conditions)）。AIがマージの直前に変数を読んでいた道具は、[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)で消した。
 - 所有者の印と本人確認は[AGENTS](../AGENTS.md)に従う。印だけで権限を広げない。
@@ -26,7 +26,7 @@
 | 外部実装AI | 担当ごとに1ジョブ、所有者指定の10分を現在の基準とする。頻度・ID・状態はその環境を正本とし、引継ぎで共有。[起動指示](external-worker.md)だけでは起動しない |
 | Copilot | main向け自動レビューruleset設定済み。repo設定はDraft対象外・新push対象。2026-10-04の所有者決定で任意の補助レビューとした。指摘は評価・対応するが、応答・利用枠不足・未対応指摘の有無は独立したマージ条件にしない。[正本](github-agent-operations.md#merge-conditions) |
 | AIのGitHub App | 2026-10-03の所有者決定（[#41](https://github.com/doc-gif/kurashi-ledger/issues/41)）。CodexとClaudeに1つずつ、同じ権限（Administrationなし）のApp（AIの身元）を所有者が作成し、このrepoにインストールした。今のインストール先は[AIのGitHub App](github-apps.md)の表に書く（`--repo`の許可リストは選べるrepoの一覧で、インストールの証拠ではない）。トークンは`scripts/github-app-token.ts`が1つのrepoへ縮小して発行し、コマンドを実行する（表示しない）。mainのrulesetに削除の制限と強制pushの禁止を加えた。実際の鍵での確認・移行・承認の規則は所有者の確認待ち。手順は[AIのGitHub App](github-apps.md) |
-| レビュー受付 | [Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)・[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)。基盤（#48）と、start-smallのactiveまでのPR（#51〜#56、#58）はmainに統合済み。既定はoff。実機の測定・shadow・1件のactiveへの切替は所有者が[導入手順](review-dispatch-runbook.md)で行う（未実施）。activeのPRは所有者がマージする（[規則](github-agent-operations.md#dispatch-active)） |
+| レビュー受付 | [Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)・[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)。基盤（#48）と、start-smallのactiveまでのPR（#51〜#56、#58）はmainに統合済み。既定はoff。実機の測定・shadow・1件のactiveへの切替は管理者が[導入手順](review-dispatch-runbook.md)で行う（未実施）。activeのPRはマージ担当がマージする（[規則](github-agent-operations.md#dispatch-active)） |
 | 診断と保守 | 設計は[ADR-0010](adr/0010-diagnostics-and-maintainability.md)（[Issue #35](https://github.com/doc-gif/kurashi-ledger/issues/35)）、実装は[台帳](implementation-tasks.md)のT29〜T32。依存の更新の提案（Dependabot、`.github/dependabot.yml`）を設定済み。Dependabotの提案のPRの取り込みは[開発環境](development.md)の「依存の更新（Dependabot）」 |
 | 未決事項 | OpenFiscaは評価候補。ライセンス未選択で、publicだけではOSS再利用を許諾しない |
 
