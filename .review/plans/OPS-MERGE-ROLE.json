@@ -41,7 +41,7 @@
         {
           "id": "entrypoints",
           "method": "AGENTS.md、CLAUDE.md、.github/copilot-instructions.md、README.md、docs/*.mdで、マージする人・確かめる人を書く文（「所有者」「owner」と「マージ」が同じ行）をgrepし、読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。アンカーmerge-conditionsとowner-merge-onlyへのリンクもgrepする。",
-          "expected": "今も効く規則として、マージする人・確かめる人を書く文は、すべて「マージ担当」。残すのは3か所で、理由を書く: docs/project-status.mdの2026-10-11の決定の記録（当時の言葉）、docs/github-agent-operations.mdの3行目（更新の経緯）、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」（アンカーが変わるので、リンクと一緒に別の言い換えのPRで直す）。定義元の分担の表で、管理者が、ほかの文書の「所有者」とAGENTS.mdの「owner」と同じ人だと書く。2つのアンカーは残り、リンクはすべて有効。"
+          "expected": "今も効く規則として、マージする人・確かめる人を書く文は、すべて「マージ担当」。「所有者」がマージする書き方が残るのは、variant_analysis（INV-TASKS）の「変えない」の場所だけで、それぞれに理由がある。定義元の分担の表で、管理者が、ほかの文書の「所有者」とAGENTS.mdの「owner」と同じ人だと書く。2つのアンカーは残り、リンクはすべて有効。"
         }
       ]
     },
@@ -58,7 +58,7 @@
         {
           "id": "trust",
           "method": "docs/github-agent-operations.mdのマージ条件の箇条書きの差分を確かめる。",
-          "expected": "箇条書き5つの差分が0行。変わるのは、確かめる人の名前と、分担の表の行だけ。"
+          "expected": "箇条書き5つの差分が0行。マージ条件の節で変わるのは、確かめる人の名前（マージ担当）、分担の表の行、33行目のリンクの文字（「所有者決定」→「管理者の決定」）だけ。"
         }
       ]
     }
@@ -105,8 +105,8 @@
           "result": "マージ担当にそろえ、定義元へリンクする。"
         },
         {
-          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印、docs/review-dispatch-design.mdの100行目（見出しのアンカーへのリンク）",
-          "result": "変えない。当時の言葉の記録、更新の経緯、アンカーが変わる見出し、決まった書式だから。見出しは別の言い換えのPRで、リンクと一緒に直す。"
+          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印、docs/review-dispatch-design.mdの100行目（見出しのアンカーへのリンク）、docs/review-dispatch-design.mdの221行目（2026-10-11に全PRを所有者のマージにした、という過去の経緯）",
+          "result": "変えない。当時の言葉の記録、更新の経緯、過去の経緯、アンカーが変わる見出しとそのリンク、決まった書式だから。見出しは別の言い換えのPRで、リンクと一緒に直す。"
         }
       ]
     },
