@@ -22,7 +22,7 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "PRを作るときに本文の見出しを埋める手順を1文足す。作業の範囲・担当・終了地点・依存は変えない。",
+      "reason": "PRの本文の決まりはAGENTS.md（#75）を正とし、1節はそこへリンクして、足りない点（見出しの文字を変えない、空にしない、APIで作るときはテンプレートを読む）だけを足す。作業の範囲・担当・終了地点・依存は変えない。",
       "checks": [
         {
           "id": "dependencies",
@@ -31,8 +31,8 @@
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS.md・CLAUDE.md・docs/external-worker.md・docs/github-agent-operations.mdで、PRの本文に書くこと（関連Issue、変更理由、受入条件の証跡、対象SHA、検証、未対応範囲）をgrepし、テンプレートの見出しと読み合わせる。",
-          "expected": "AGENTS.mdが求める項目は、テンプレートの6つの見出しのどれかに入る（目的に関連Issueと理由、確認に検証、懸念点と残りの作業に未対応範囲）。食い違う決まりはない。"
+          "method": "baseのAGENTS.mdの「Validate and hand off」、docs/development.mdの「commit・Issue・PR・引継ぎ」、docs/public-data.mdの手順6で、PRの本文の決まりをgrepし、1節の新しい文と読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。",
+          "expected": "見出しごとに書くことを決める文はAGENTS.mdの1か所だけ。development.mdはAGENTS.mdを指し、public-data.mdの手順6は「確認」に点検を書くとだけ言い、AGENTS.mdと同じ。1節の新しい文はAGENTS.mdへリンクし、見出しごとに書くことを書き直さない。"
         }
       ]
     },
@@ -44,7 +44,7 @@
         {
           "id": "duplicates",
           "method": "差分が1節の1文、提出前の粗探しの範囲の5、3節の1文だけで、書式のブロックと指摘のID・原因台帳に触れないことを確かめる。",
-          "expected": "書式のブロックと指摘の追跡の仕組みの差分が0行。"
+          "expected": "書式のブロックと指摘の追跡の仕組みの差分が0行。範囲の5と3節は、見出しの数を書かずにAGENTS.mdの決まりへリンクする。"
         },
         {
           "id": "trust",
@@ -61,7 +61,7 @@
       "location": "所有者の決定（2026-10-12の「この案で」、非公開のrepoのPRのコメント）と調整係の指示",
       "data": "PRの本文をdoc-gif/.githubのテンプレートの6つの見出しで書く決まり",
       "trust": "partially-trusted",
-      "control": "所有者が承認した範囲（規則・レビューの確認・CIの検査）のうち、規則とレビューの確認だけをこのPRで足す。CIの検査はdoc-gif/.github #2のTDDの後の別のPRで足す。"
+      "control": "所有者が承認した範囲（規則・レビューの確認・CIの検査）のうち、レビューの確認と、AGENTS.mdに足りない点だけをこのPRで足す。CIの検査はdoc-gif/.github #2のTDDの後の別のPRで足す。"
     },
     {
       "id": "B2",
@@ -89,17 +89,29 @@
       "places": [
         {
           "location": "docs/pr-review-loop.mdの提出前の粗探しの範囲と、3節",
-          "result": "両方に同じ確認（本文が6つの見出しを埋めている）を足し、1節の決まりへリンクする。"
+          "result": "両方に同じ確認（本文がAGENTS.mdの決まりと1節のとおりか）を足す。見出しの数は書かない。"
         }
       ]
     },
     {
       "invariant_id": "INV-TASKS",
-      "pattern": "PRの本文の決まりが、入口ごとに違う。",
+      "pattern": "PRの本文の決まりが、入口ごとに違う（C-0060）。",
       "places": [
         {
-          "location": "docs/pr-review-loop.mdの1節",
-          "result": "決まりはここに1か所だけ書く。AGENTS.mdのPRの本文の項目は、テンプレートの見出しに入るので変えない。"
+          "location": "AGENTS.mdの「Validate and hand off」",
+          "result": "正とする。変えない。テンプレートの見出しで書くことと、目的・確認・懸念点と残りの作業に書くことを決めている。"
+        },
+        {
+          "location": "docs/development.mdの「commit・Issue・PR・引継ぎ」",
+          "result": "AGENTS.mdを指している。変えない。"
+        },
+        {
+          "location": "docs/public-data.mdの手順6",
+          "result": "「確認」に点検を書く。AGENTS.mdと同じなので変えない。"
+        },
+        {
+          "location": "docs/pr-review-loop.mdの1節・範囲の5・3節",
+          "result": "AGENTS.mdへリンクし、見出しの文字を変えない・空にしない・APIで作るときはテンプレートを読む、だけを足す。"
         }
       ]
     }
