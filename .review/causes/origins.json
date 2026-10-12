@@ -1,0 +1,1340 @@
+{
+  "C-0011": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 4,
+      "kind": "review",
+      "id": "5394729197",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197",
+      "finding": "R009"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 4,
+      "kind": "review",
+      "id": "5395100228",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228",
+      "finding": "R009"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 4,
+      "kind": "review",
+      "id": "5395333883",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395333883",
+      "finding": "R009"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 4,
+      "kind": "review",
+      "id": "5395378272",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395378272",
+      "finding": "R009"
+    }
+  ],
+  "C-0020": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R001"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167592713",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592713",
+      "finding": "R001"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167747549",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747549",
+      "finding": "R001"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395101941",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+      "finding": "R001"
+    }
+  ],
+  "C-0022": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319576",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319576",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167467683",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467683",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167467727",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467727",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167592793",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592793",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168345145",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345145",
+      "finding": "R002"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168995574",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995574",
+      "finding": "R002"
+    }
+  ],
+  "C-0023": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R003"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319720",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319720",
+      "finding": "R003"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167747456",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747456",
+      "finding": "R003"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5393950840",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393950840",
+      "finding": "R003"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394098601",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+      "finding": "R003"
+    }
+  ],
+  "C-0025": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167699625",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699625",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167699666",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699666",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167836480",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836480",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168574471",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168574471",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394098601",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394572610",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394786049",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395101941",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395270955",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395270955",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395437829",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397903585",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397903585",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398413865",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+      "finding": "R004"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398383149",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149",
+      "finding": "R004"
+    }
+  ],
+  "C-0027": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170535788",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535788",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394098601",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397600549",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397600549",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398337046",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398337046",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398413865",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171079776",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171079776",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171159300",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159300",
+      "finding": "R005"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 21,
+      "kind": "review-comment",
+      "id": "4171684861",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684861",
+      "finding": ""
+    }
+  ],
+  "C-0029": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394144458",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394871157",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394871157",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319530",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319530",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167991016",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991016",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167991079",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991079",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168109005",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168109005",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168248770",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248770",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168248829",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248829",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168877170",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168995536",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394098601",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394389954",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954",
+      "finding": "R006"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 14,
+      "kind": "review-comment",
+      "id": "4170901342",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/14#discussion_r4170901342",
+      "finding": ""
+    }
+  ],
+  "C-0031": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396093034",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+      "finding": "R007"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396049366",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+      "finding": "R007"
+    }
+  ],
+  "C-0033": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396093034",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+      "finding": "R008"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167747509",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747509",
+      "finding": "R008"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394572610",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+      "finding": "R008"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396049366",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+      "finding": "R008"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397343057",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057",
+      "finding": "R008"
+    }
+  ],
+  "C-0036": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398071753",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398044049",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319462",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167467615",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167836523",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170720915",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5393864511",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
+      "finding": "R010"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394994956",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956",
+      "finding": "R010"
+    }
+  ],
+  "C-0038": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398071753",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398044049",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169528374",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169876122",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169952138",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170535724",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170535756",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397389693",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398413865",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171014235",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014235",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171159250",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159250",
+      "finding": "R011"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398301944",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398301944",
+      "finding": "R011"
+    }
+  ],
+  "C-0040": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168638737",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638737",
+      "finding": "R101"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168995480",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995480",
+      "finding": "R101"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169331465",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169331465",
+      "finding": "R101"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169609766",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609766",
+      "finding": "R101"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396221637",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637",
+      "finding": "R101"
+    }
+  ],
+  "C-0042": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319639",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319639",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394711089",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394711089",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394786049",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395565138",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395565138",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398682882",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398682882",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171405064",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171405064",
+      "finding": "R102"
+    }
+  ],
+  "C-0044": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168638670",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638670",
+      "finding": "R103"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168995601",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995601",
+      "finding": "R103"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170073901",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170073901",
+      "finding": "R103"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394283625",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394283625",
+      "finding": "R103"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395101941",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+      "finding": "R103"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397837992",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
+      "finding": "R103"
+    }
+  ],
+  "C-0045": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319878",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319878",
+      "finding": "R104"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167392035",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392035",
+      "finding": "R104"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168877085",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877085",
+      "finding": "R104"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169528442",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528442",
+      "finding": "R104"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169745593",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745593",
+      "finding": "R104"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396221637",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637",
+      "finding": "R104"
+    }
+  ],
+  "C-0048": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319780",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319780",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167319842",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319842",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167392077",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392077",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4167699707",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699707",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5394879245",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394879245",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5395101941",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396367197",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397343057",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398604489",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398604489",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170944750",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944750",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171296694",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171296694",
+      "finding": "R106"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "issue-comment",
+      "id": "5964427430",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#issuecomment-5964427430",
+      "finding": "R106"
+    }
+  ],
+  "C-0051": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170289483",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170289483",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170471760",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397791070",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397837992",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5397953279",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 10,
+      "kind": "review-comment",
+      "id": "4167530273",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530273",
+      "finding": ""
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398413865",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+      "finding": "R108"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398383149",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149",
+      "finding": "R108"
+    }
+  ],
+  "C-0053": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4168434467",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169446979",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4169745539",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745539",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5396987055",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review",
+      "id": "5398413865",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4170944768",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944768",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171014254",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014254",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 11,
+      "kind": "review-comment",
+      "id": "4171159278",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159278",
+      "finding": "R109"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 21,
+      "kind": "review-comment",
+      "id": "4171684870",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684870",
+      "finding": ""
+    }
+  ],
+  "C-0062": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 10,
+      "kind": "review",
+      "id": "5395958798",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395958798",
+      "finding": "R101"
+    }
+  ],
+  "C-0064": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review",
+      "id": "5396006639",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+      "finding": "R001"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4169111451",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451",
+      "finding": "R001"
+    }
+  ],
+  "C-0068": [
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4167508133",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4167659740",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4167780189",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4170947655",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review-comment",
+      "id": "4170947673",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+      "finding": "R102"
+    },
+    {
+      "forge": "github.com",
+      "repo": "doc-gif/kurashi-ledger",
+      "pr": 12,
+      "kind": "review",
+      "id": "5394684638",
+      "url": "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638",
+      "finding": "R102"
+    }
+  ]
+}

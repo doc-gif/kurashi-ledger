@@ -1,0 +1,420 @@
+{
+  "schema_version": 1,
+  "invariants": [
+    {
+      "id": "INV-TASKS",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "dependencies"
+        },
+        {
+          "id": "entrypoints"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "paths": [
+        "*"
+      ],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "public"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "paths": [],
+      "related": [
+        "INV-TASKS"
+      ],
+      "scenarios": [
+        {
+          "id": "duplicates"
+        },
+        {
+          "id": "trust"
+        }
+      ]
+    },
+    {
+      "id": "INV-FAIL-CLOSED",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "unknown"
+        },
+        {
+          "id": "partial"
+        },
+        {
+          "id": "cleanup"
+        },
+        {
+          "id": "stale"
+        }
+      ]
+    },
+    {
+      "id": "INV-FS-BOUNDARY",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "links"
+        },
+        {
+          "id": "lock-placement"
+        },
+        {
+          "id": "lock-identity"
+        }
+      ]
+    },
+    {
+      "id": "INV-SPEC-COHERENCE",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "identity"
+        },
+        {
+          "id": "single-source"
+        },
+        {
+          "id": "decision-table"
+        },
+        {
+          "id": "ordering"
+        },
+        {
+          "id": "versions"
+        },
+        {
+          "id": "types"
+        },
+        {
+          "id": "write-paths"
+        }
+      ]
+    },
+    {
+      "id": "INV-DESIGN-IMPL",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "reproducible"
+        },
+        {
+          "id": "claims"
+        },
+        {
+          "id": "states"
+        },
+        {
+          "id": "round-trip"
+        }
+      ]
+    },
+    {
+      "id": "INV-DATA-DURABILITY",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "pair"
+        },
+        {
+          "id": "interrupted"
+        }
+      ]
+    },
+    {
+      "id": "INV-DEV-BOUNDARY",
+      "paths": [],
+      "related": [],
+      "scenarios": [
+        {
+          "id": "dev-entry"
+        },
+        {
+          "id": "dev-csp"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "C-0001",
+      "invariant_id": "INV-DATA-DURABILITY",
+      "cause_key_hash": "b5a321ccd48207f99bbd71e1338e1ccc58aaeeea599403b883dfce175dbdd5bb"
+    },
+    {
+      "id": "C-0002",
+      "invariant_id": "INV-DATA-DURABILITY",
+      "cause_key_hash": "a379b10d86351dd398beef13b5c563e7bcf461f588e2ede766375bdbb6c13a75"
+    },
+    {
+      "id": "C-0003",
+      "invariant_id": "INV-TASKS",
+      "cause_key_hash": "86dafe30189da0fc23756c453795741138841bfe1f8a2888b92691fd968226d8"
+    },
+    {
+      "id": "C-0004",
+      "invariant_id": "INV-DEV-BOUNDARY",
+      "cause_key_hash": "ec8598d7cb6ee71a00e72c89beb34649cd5d05d31ce111ededfe0718ad46ec41"
+    },
+    {
+      "id": "C-0005",
+      "invariant_id": "INV-DEV-BOUNDARY",
+      "cause_key_hash": "aa445cbe2c6f77fbff23993fe0079ee2f42830d666e7154f4a60393d97c478da"
+    },
+    {
+      "id": "C-0006",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "ed3ca0bff61d2392c9ebae8a7aa7f0d8f3971f56fafd76293107f311890d4e94"
+    },
+    {
+      "id": "C-0007",
+      "invariant_id": "INV-FS-BOUNDARY",
+      "cause_key_hash": "a576c0954c559960b2b220aeb93c91f1c95cdb12c5800de6f47c7fc65b608f0f"
+    },
+    {
+      "id": "C-0008",
+      "invariant_id": "INV-TASKS",
+      "cause_key_hash": "e9c32de3332180b2f3ec863eb7314d5d0491625864ea7e3e4f300687df36a048"
+    },
+    {
+      "id": "C-0009",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "370d45b3cc84307d846e96475e3c0f2bcc63077ce7ad9a1c6054f3949876528e"
+    },
+    {
+      "id": "C-0010",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "dd8ba4d21166e717d3d6791b49cdea1aa405f22cafbe501c898db96202fa9c76"
+    },
+    {
+      "id": "C-0012",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "60afa6768bc0fc41ca87eeb8aa661b85e2574497a5e175a88f946872f44cbef6"
+    },
+    {
+      "id": "C-0013",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "9c0618285a64ba6911a985ca12d4112336da6fb73f954b42dfd10f14ef16445f"
+    },
+    {
+      "id": "C-0014",
+      "invariant_id": "INV-TASKS",
+      "cause_key_hash": "249a504caa509c2b4afa0c5882850a7aa0e4cfd699550e7b81aff3e2d4f6460c"
+    },
+    {
+      "id": "C-0015",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "d3b764fd5337986a05f55dad17f71c4ae6d3a3d48d02eec8917bba904abbf141"
+    },
+    {
+      "id": "C-0016",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "d88d5809cb84d688c1d722a55f84a0ea8eb89037e076123d53424f47be7fb086"
+    },
+    {
+      "id": "C-0017",
+      "invariant_id": "INV-TASKS",
+      "cause_key_hash": "7751b7e2f407be12f126c7d3e8b96cc2ff07c5b7fc17918d48ae3e536df85128"
+    },
+    {
+      "id": "C-0018",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "a042b690f7946fb6ded470a9e2017a6b6d88e02fe81071b7c53a1f2a73a1b06f"
+    },
+    {
+      "id": "C-0019",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "4da705790f8c427cc4e14a7e6799d57a12f518222a3a42b21012b44d0070dbed"
+    },
+    {
+      "id": "C-0021",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "560c76cd7377e0d2fe7d11948dac519bc1569dbf19c8e245fe8107d9fe25394e"
+    },
+    {
+      "id": "C-0024",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "1d0f405746706039538aa09f0ac3ec4290d00826f7cb40c8283ee8fd8ca64bee"
+    },
+    {
+      "id": "C-0026",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "bde613c5b893c62be838596a9dbb3d032fa695c2f819812813dc949c5e982efe"
+    },
+    {
+      "id": "C-0028",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "5795b4fd865602c068b3ac7c25bd19476ae2090b286acb5b9f4a3f7dcb196edc"
+    },
+    {
+      "id": "C-0030",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "154592996466796f4ff12c843d10656737be47ab26558368a879ef3c2d7babf4"
+    },
+    {
+      "id": "C-0032",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "8be95a82c9cd2888713fedc23fcb2bf480ecf985a8c3d6fb405729a929b5f995"
+    },
+    {
+      "id": "C-0034",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "f9938723e268ef2ada8f70a0b98517258ed438d9b12640756eb66c12d2e57a1d"
+    },
+    {
+      "id": "C-0035",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "b8c854f707d4970dde660ab756e9eb35e9637cbd5282be0c9b6cd1fe194a01cc"
+    },
+    {
+      "id": "C-0037",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "e3cb6f5b24a39350df393a02520192309bf688367aaf58182406e2b8db7575d2"
+    },
+    {
+      "id": "C-0039",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "1159b56d8135cebaee4a3c3b7044e4cc9d2d83a6d55d14b5c1b5589fb3a36a04"
+    },
+    {
+      "id": "C-0041",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "c4446a014daa503bcd46a946a63e12b1928dafb5fa33b6fcb83e1eb4e27a3ab1"
+    },
+    {
+      "id": "C-0043",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "20fd2f4fa63191aec89a132d9173c0cb2be510872f320af37356862db01c05db"
+    },
+    {
+      "id": "C-0046",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "d5c2027bc9221f5531307622e79f8e64b5d791e6dcf3f587477d1ae8c353d91b"
+    },
+    {
+      "id": "C-0047",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "3fc7d298cc30ab2d6c252876678d37b33038cfb2989ad5d36490d7d360d3b446"
+    },
+    {
+      "id": "C-0049",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "9036cdf9fb0992ee2c96ea142e9ee0e3361234e8b1d97fa24fc4698db1dc1c59"
+    },
+    {
+      "id": "C-0050",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "8e08f9c12b319d040df854aa0ef1ea5641bfde07673d79489c8702f0fae368f8"
+    },
+    {
+      "id": "C-0052",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "e487dff8de42e142d2e8d0be073b7d6ccf282b2f3aec42e5b63f572f3e60561b"
+    },
+    {
+      "id": "C-0054",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "6fb86b092594dad8297c061388875f404238a3d3bd556cff835f3e38530f9a7d"
+    },
+    {
+      "id": "C-0055",
+      "invariant_id": "INV-SPEC-COHERENCE",
+      "cause_key_hash": "8e15c11bcba7a9556a1494f3e88959f7d4502b2d640bf22aeec86d44325ddee5"
+    },
+    {
+      "id": "C-0056",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "c6401e17952bd2461c77b1cbe9c1c09ebb96e219c7c081e081784f4a97901508"
+    },
+    {
+      "id": "C-0057",
+      "invariant_id": "INV-DESIGN-IMPL",
+      "cause_key_hash": "f9f97d14678370f9991156f9cbadc3fb4b5bda0deba6b2d82d3c3d41c6d14e85"
+    },
+    {
+      "id": "C-0058",
+      "invariant_id": "INV-DESIGN-IMPL",
+      "cause_key_hash": "52685763ec658b5185dfb3d8a5daa5132a0fd0983f77856a4d73e275fe5708f1"
+    },
+    {
+      "id": "C-0059",
+      "invariant_id": "INV-DESIGN-IMPL",
+      "cause_key_hash": "6d5be7fb8e467179c16c293dbd22f60cb8c8be3d7eef559cbe24ee0beb74d89c"
+    },
+    {
+      "id": "C-0060",
+      "invariant_id": "INV-TASKS",
+      "cause_key_hash": "fdebe3200bb39ec8d1716ae493786c0192f539acc4238622d483146ca890a446"
+    },
+    {
+      "id": "C-0061",
+      "invariant_id": "INV-DESIGN-IMPL",
+      "cause_key_hash": "4359cd1f7889cf199db5605989098a9c0e6db04b1c702cdc7de69751d05f8c55"
+    },
+    {
+      "id": "C-0063",
+      "invariant_id": "INV-FS-BOUNDARY",
+      "cause_key_hash": "bdbd95582ffbe666f9f5892af8964466eba5f1b1ea72ea7755d68eebdf2d6cad"
+    },
+    {
+      "id": "C-0065",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key_hash": "4a7f4f8573ba9f5d2fd1854fccf5b68474ba42cbb55ec560d14fcc8ad170704f"
+    },
+    {
+      "id": "C-0066",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "86af73d27f260c72b693d09a606b7b6f6622d54d28ae83aff027a627ee1f5060"
+    },
+    {
+      "id": "C-0067",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "e3bc4281161e5cc8225c46cf6e21f0e70cd7c5b32b625a7297f8caa1cfccd106"
+    },
+    {
+      "id": "C-0069",
+      "invariant_id": "INV-FAIL-CLOSED",
+      "cause_key_hash": "1072eab221116129dd9cdcdcaa0deb5d5e4c7e91945188eb3deab730f91257c8"
+    },
+    {
+      "id": "C-0070",
+      "invariant_id": "INV-FS-BOUNDARY",
+      "cause_key_hash": "db14e4c9c586adab4b5b1871db9bbc4a9d9b8e00fb8c086074720f4183312553"
+    },
+    {
+      "id": "C-0071",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key_hash": "f5fd6c7a9669de54c622ca4e5fc49d5eee687ea772f13c4f05b8177659c2e236"
+    },
+    {
+      "id": "C-0072",
+      "invariant_id": "INV-REVIEW",
+      "cause_key_hash": "3336a1f3d8a1df650abbae05de5a9f7762b8224392e6e94cd44146062944bb77"
+    },
+    {
+      "id": "C-0073",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key_hash": "e45d0bfc258a0a4df49c5469594a2b1e47b869fa2746a2f2ad0fc9de14527c45"
+    },
+    {
+      "id": "C-0074",
+      "invariant_id": "INV-PRIVACY",
+      "cause_key_hash": "41ddd646abfc0ad9bb52e684a9b08c7a1830d18aa3c55005d78e706602186102"
+    }
+  ]
+}

@@ -14,6 +14,11 @@ spec.loader.exec_module(guard)
 
 class ReviewGuardTests(unittest.TestCase):
     def setUp(self):
+        # The CLI reads <review-dir>/config.toml of the working directory by default. Each test runs in an empty
+        # directory, so the repository's own .review/config.toml never changes a synthetic case.
+        area = tempfile.TemporaryDirectory()
+        self.addCleanup(area.cleanup)
+        self.enterContext(contextlib.chdir(area.name))
         self.base = "a" * 40
         self.catalog = {"schema_version": 1, "invariants": [
             {"id": "root", "condition": "root keeps identity", "paths": ["storage/*"],
