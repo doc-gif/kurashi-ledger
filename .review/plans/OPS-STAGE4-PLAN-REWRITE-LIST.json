@@ -20,7 +20,7 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "mekiki main（#49のマージ、415d643）の検査器のコードと合成のデータだけのテスト、分割の対応の表（split-map.json）、書き換えの一覧を足す。表と一覧には、ID・原因のキー・ファイル名・hashだけがあり、共通の台帳の本文（条件・質問・教訓・出典）はない。表には、kurashiでまだ公開していない共通の原因のキーが17件あり、その公開は所有者が決めた（mekiki Issue #44の所有者のコメント、2026-10-12）。",
+      "reason": "mekikiの検査器のコード（#49のマージ、415d643）と、合成のデータだけのテスト（#65、68ac0ea）、分割の対応の表（split-map.json）、書き換えの一覧を足す。表と一覧には、ID・原因のキー・ファイル名・hashだけがあり、共通の台帳の本文（条件・質問・教訓・出典）はない。表には、kurashiでまだ公開していない共通の原因のキーが17件あり、その公開は所有者が決めた（mekiki Issue #44の所有者のコメント、2026-10-12）。",
       "checks": [
         {
           "id": "public",
@@ -53,13 +53,13 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "コピーの元がmekiki #49のマージ（415d643）であることを確かめる。一覧に載せる計画を、mekikiのrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
-          "expected": "一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
+          "method": "検査器のコピーの元がmekiki #49のマージ（415d643）で、テストのコピーの元がmekiki #65（68ac0ea）であることを確かめる。#65のマージのあと、そのマージのコミットとコピーした8ファイルをバイト単位で比べ、SOURCE.jsonのcommitをそのコミットに直す。一覧に載せる計画を、mekikiのrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
+          "expected": "このPRのマージは、mekiki #65のマージのあと。SOURCE.jsonのcommitはmekikiのmainにあり、コピーした8ファイルはそのコミットと同じ。一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
         },
         {
           "id": "entrypoints",
           "method": "tools/review_guard/README.mdと.review/mekiki/SOURCE.jsonで、コピーしたファイルの一覧と出どころが一致するかを読む。",
-          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。書き換えの経路を通るテスト19件（mekiki 68ac0eaでhostの2件を分けたもの）をコピーし、kurashiのtools/review_guard/testsで流す。hostの2件はmekikiにだけあることをREADMEに書く。"
+          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。実際のci.pyを通すテスト19件（mekiki 68ac0eaでhostの2件を分けたもの）をコピーし、kurashiのtools/review_guard/testsで流す。hostの2件はmekikiにだけあることをREADMEに書く。"
         }
       ]
     }
@@ -93,7 +93,7 @@
         },
         {
           "location": "tools/review_guard/tests/plan_rewrite_fixtures.py・test_plan_rewrites*.py",
-          "result": "合成の文とexample.invalid・synthetic/plan-rewritesのURLだけ。"
+          "result": "合成の文と、example.invalidのURLだけ。"
         },
         {
           "location": "tools/review_guard/README.md・この計画",
@@ -125,7 +125,7 @@
         },
         {
           "location": "tools/review_guard/tests",
-          "result": "書き換えの経路を通るテスト19件をコピーし、kurashiのCIで流す。"
+          "result": "実際のci.pyを通すテスト19件をコピーし、kurashiのCIで流す。"
         }
       ]
     }
