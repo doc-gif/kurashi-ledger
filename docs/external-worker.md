@@ -22,7 +22,7 @@ WORK
 3. Use the concise handoff format. Wait for independent review.
 
 MERGE
-- Never merge. Stop at the handoff; only the owner merges
+- Never merge. Stop at the handoff; only the merger (マージ担当) merges
   (docs/github-agent-operations.md#merge-conditions).
 
 NEVER

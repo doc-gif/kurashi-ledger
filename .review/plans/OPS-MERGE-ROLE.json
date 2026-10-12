@@ -1,0 +1,118 @@
+{
+  "schema_version": 2,
+  "base_sha": "d8c5c9e025ecbcc0e5d5657f3335d55e11889f40",
+  "task_id": "OPS-MERGE-ROLE",
+  "planned_paths": [
+    "AGENTS.md",
+    "docs/external-worker.md",
+    "docs/github-agent-operations.md",
+    "docs/pr-review-loop.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "マージの決まりの語を役割の名前に変えるだけ。管理者の決定は日付だけを書き、非公開の資料の原文・URL・識別子は書かない（PR79-R001、PR85-R001）。秘密・実データは扱わない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。差分・PRの本文・コメントに、非公開の資料の原文・URL・識別子がない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "マージの決まりの定義元（docs/github-agent-operations.md#merge-conditions）を役割（マージ担当）で書き直し、誰がマージするかを書く入口（AGENTS.md、docs/external-worker.md、docs/pr-review-loop.mdの1か所）を同じ語にそろえる。決まりの中身（AIはマージしない、マージの前に確かめること）は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "このPRが共有資源（lockfile・migration・CIの権限）に触れないことと、開いているPRで同じ文を変えるものを確かめる。",
+          "expected": "差分は文書4つと計画だけ。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを変えるが、このPRの変える行（9〜30行目）とは重ならない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS.md、CLAUDE.md、docs/external-worker.md、docs/pr-review-loop.md、docs/development.md、docs/project-status.mdで「owner merges」「所有者がマージ」「マージは所有者」をgrepし、マージする人を書く文を読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。アンカーmerge-conditionsとowner-merge-onlyへのリンクもgrepする。",
+          "expected": "マージする人を書く文は、定義元と3つの入口だけで、どれも「マージ担当（今はdoc-gif）」。docs/project-status.mdの2026-10-11の決定の引用は、当時の言葉なので変えない。2つのアンカーは残り、リンクはすべて有効。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "マージの条件（accepted、粗探し、Quality gate、最新main、headの一致、第1親の確認）は変えず、それを確かめる人の名前だけを変える。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分が、指摘のID・原因台帳・docs/pr-review-loop.mdの書式に触れないことを確かめる。",
+          "expected": "指摘の追跡の仕組みと書式のブロックの差分が0行。"
+        },
+        {
+          "id": "trust",
+          "method": "docs/github-agent-operations.mdのマージ条件の箇条書きの差分を確かめる。",
+          "expected": "箇条書き5つの差分が0行。変わるのは、確かめる人の名前と、分担の表の行だけ。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "2026-10-12の管理者の決定と調整係の指示",
+      "data": "マージの決まりを役割（マージ担当）で書き、決める人を管理者と呼ぶ",
+      "trust": "partially-trusted",
+      "control": "語を変えるだけで、権限と条件を変えない。AGENTS.mdの【所有者】の印は決まった書式なので変えない。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "公開のAGENTS.mdとdocs/",
+      "data": "役割の名前と、今のマージ担当のGitHubのアカウント名",
+      "trust": "untrusted",
+      "control": "アカウント名doc-gifはすでに公開の文書にある。非公開の資料は書かない。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開のrepoに、非公開の資料の原文・URL・識別子を書く（PR79-R001、PR85-R001）。",
+      "places": [
+        {
+          "location": "差分の4ファイル、計画、PRの本文",
+          "result": "管理者の決定は日付だけを書く。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "マージする人の書き方が、入口ごとに違う（C-0060）。",
+      "places": [
+        {
+          "location": "docs/github-agent-operations.mdの分担の表とマージ条件",
+          "result": "定義元。「マージ担当（今はdoc-gif）」で書く。"
+        },
+        {
+          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの4節",
+          "result": "同じ語にそろえ、定義元へリンクする。"
+        },
+        {
+          "location": "docs/project-status.mdの2026-10-11の決定、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印",
+          "result": "変えない。引用、見出しのアンカー、決まった書式だから。見出しの語は#26の言い換えのPRで扱う。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "語を変えるときに、マージの条件そのものを変えてしまう。",
+      "places": [
+        {
+          "location": "docs/github-agent-operations.mdのマージ条件の箇条書き",
+          "result": "変えない。"
+        }
+      ]
+    }
+  ]
+}

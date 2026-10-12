@@ -142,7 +142,7 @@ decision: changes-requested | accepted | needs-owner
 
 他者のレビューthreadを、コメントに返信しただけで勝手にresolveしない。解消確認は原則レビュワーが行う。新push後は検証と新しい引継ぎを作り、再レビューを待つ。Copilotから同じ指摘が繰り返された場合も、既存指摘と対応付けて重複作業を避ける。
 
-自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。所有者がマージし、マージ後の第1親の確認（[マージ条件](github-agent-operations.md#merge-conditions)）が済んでから依存を解放する。
+自分のPRがreviewingなら待つ。acceptedでも、マージされるまでは依存タスクの完了条件を満たさない。マージ担当がマージし、マージ後の第1親の確認（[マージ条件](github-agent-operations.md#merge-conditions)）が済んでから依存を解放する。
 
 ## 5. 重複防止と止めどころ
 
