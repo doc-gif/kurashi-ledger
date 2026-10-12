@@ -1,0 +1,132 @@
+{
+  "schema_version": 2,
+  "base_sha": "929d073909b6cf1836e9b86ac5dccdd5dadb1697",
+  "task_id": "OPS-STAGE4-PLAN-REWRITE-LIST",
+  "planned_paths": [
+    ".review/mekiki/SOURCE.json",
+    ".review/mekiki/plan-rewrites.json",
+    ".review/mekiki/split-map.json",
+    ".review/plans/OPS-STAGE4-PLAN-REWRITE-LIST.json",
+    "tools/review_guard/README.md",
+    "tools/review_guard/ci.py",
+    "tools/review_guard/plan_rewrites.py",
+    "tools/review_guard/tests/plan_rewrite_fixtures.py",
+    "tools/review_guard/tests/test_plan_rewrites.py"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "mekiki main（#49のマージ、415d643）の検査器のコードと合成のデータだけのテスト、分割の対応の表（split-map.json）、書き換えの一覧を足す。表と一覧には、ID・原因のキー・ファイル名・hashだけがあり、共通の台帳の本文（条件・質問・教訓・出典）はない。表には、kurashiでまだ公開していない共通の原因のキーが17件あり、その公開は所有者が決めた（mekiki Issue #44の所有者のコメント、2026-10-12）。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "mekikiからコピーした4ファイルを、mekiki 415d643のファイルとバイト単位で比べる。split-map.jsonを、mekikiのsplitの出力とバイト単位で比べる。追加した行を、共通の台帳のすべての文字列の24文字のn-gramと照合する。npm run check:publicを流す。",
+          "expected": "コピーしたファイルと表はmekikiと同じ。共通の台帳の本文のn-gramは、追加した行に0件。公開する原因のキーは、所有者が決めた17件と、すでに公開の計画にある1件だけ。check:publicは終了0。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "検査器と一覧を同じPRで足すが、このPRのCIはbaseの古いci.pyで検査される。書き換えの例外は、一覧がbaseにあるときだけ効くので、このPRのマージの後の、計画を書き換えるPRからだけ使える。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "台帳（.review/causes/findings.json・.review/findings.json）を変えていないことを、差分のpathで確かめる。",
+          "expected": "原因の足し替えも、IDの付け直しもない。"
+        },
+        {
+          "id": "trust",
+          "method": "CIのreview planが、baseのci.pyでこの計画を検査することを、手元で同じ手順で確かめる。新しいci.pyが一覧の無いPRを今までどおりに検査することを、mekikiのテスト（test_ci.pyと書き換えのテスト）で確かめる。",
+          "expected": "baseのci.pyは終了0（metadata-complete）。一覧が無い間は、1つのPRで変えられる計画は1件のままで、検査は緩まない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "計画を書き換える前に、検査器のコピーと一覧をbaseに置く。書き換えは、このPRのマージの後の別のPRでする。そのPRで一覧を消す。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "コピーの元がmekiki #49のマージ（415d643）であることを確かめる。一覧に載せる計画を、mekikiのrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
+          "expected": "一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "tools/review_guard/README.mdと.review/mekiki/SOURCE.jsonで、コピーしたファイルの一覧と出どころが一致するかを読む。",
+          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。コピーしなかったテストの2ファイル（21件）と、そのうち19件はkurashiでも動くことをREADMEに書く。19件は、mekikiで同じコードに対して流している。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "tools/review_guard/ci.py・plan_rewrites.py（mekiki #49のコピー）",
+      "data": "次のPRからCIの計画の検査を決めるコード",
+      "trust": "untrusted",
+      "control": "このPRのCIは、このコードを計画の検査に使わない（baseのci.pyだけ）。mekikiとバイト単位で同じにし、sha256をSOURCE.jsonに書き、.review/testsで照合する。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": ".review/mekiki/split-map.json・plan-rewrites.json（公開repo）",
+      "data": "古い原因IDと新しいIDの対応、原因のキー、書き換える計画のファイル名",
+      "trust": "untrusted",
+      "control": "split-map.jsonはmekikiのsplitの出力とバイト単位で同じ。共通の台帳の本文のn-gramを照合して0件。原因のキーの公開は所有者が決めた。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "非公開の共通の台帳の本文や、kurashiで公開していない共通の原因のキーを、公開repoへコピーする。",
+      "places": [
+        {
+          "location": ".review/mekiki/split-map.json・plan-rewrites.json",
+          "result": "ID・原因のキー・ファイル名・JSON Pointer・hashだけ。共通の台帳の本文はない。"
+        },
+        {
+          "location": "tools/review_guard/tests/plan_rewrite_fixtures.py・test_plan_rewrites.py",
+          "result": "合成の文とexample.invalidのURLだけ。"
+        },
+        {
+          "location": "tools/review_guard/README.md・この計画",
+          "result": "規則の説明だけで、共通の本文はない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "PRが検査器を変えて、自分の検査を緩める。",
+      "places": [
+        {
+          "location": "review plan",
+          "result": "baseのci.pyで検査される。新しいci.pyと一覧はマージ後にだけ効く。"
+        },
+        {
+          "location": "新しいci.pyの書き換えの例外",
+          "result": "baseの一覧に載った計画だけに効く。一覧の計画を書き換えるPRでは、一覧を消さないとCIが失敗する。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "使う基盤より先に、それを使う作業を進める。",
+      "places": [
+        {
+          "location": "kurashiの計画の書き換え",
+          "result": "このPRのマージの後に、書き換えるPRを出す。"
+        },
+        {
+          "location": "tools/review_guard/tests",
+          "result": "書き換えの経路を通るテスト19件は、Codexがhostの2件を分けたあとにコピーする。"
+        }
+      ]
+    }
+  ],
+  "context": {}
+}

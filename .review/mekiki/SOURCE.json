@@ -3,7 +3,7 @@
   "note": "mekikiから写したファイルの出どころ。CIはこのファイルを読まない（段4）。写しを更新したら、この記録も同じPRで更新する。",
   "repository": "doc-gif/mekiki",
   "guard": {
-    "commit": "d19df9b242fd3603d0f781957a320fe35fafd880",
+    "commit": "415d643d35a79033175904a340a657b1aaeb3ec0",
     "sha256": {
       "tools/review_guard/guard.py": "40278d06a0d0b0e5ae21f39e89763fbfdcf3d6852180756e416afb8f6ca6d76d",
       "tools/review_guard/ci.py": "26a8f490b91f73c6ba74ec95d35e5760b3b733f8d4aa0e1c088d963d4f36eba0",
@@ -25,7 +25,8 @@
       ".review/mekiki/global-ids.json": "9d2c8773236daef71c725173a0a8ecfd00f135ab638a52fc2e0c4be63edc63b0",
       ".review/causes/invariants.json": "59d42917116f0aea101055c7466c389f92da55956b364c8d9f25f18f4b13f533",
       ".review/causes/findings.json": "defab451ea0a4f8153ef252080baa89f423777c1250153e6561ca815bf7276fc",
-      ".review/causes/origins.json": "ceec3d4c76b96432d173bfc37e7e559abdd3d17004c007748f1feca9d4abc9a3"
+      ".review/causes/origins.json": "ceec3d4c76b96432d173bfc37e7e559abdd3d17004c007748f1feca9d4abc9a3",
+      ".review/mekiki/split-map.json": "43d22764157fb39f82999a0741d4d41f7a55f6b9909e1c7aeb5c955f5a2613ad"
     }
   }
 }

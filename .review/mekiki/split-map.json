@@ -1,0 +1,1050 @@
+{
+  "schema_version": 1,
+  "repo": "doc-gif/kurashi-ledger",
+  "new_invariants": [
+    "INV-FAIL-CLOSED",
+    "INV-FS-BOUNDARY",
+    "INV-SPEC-COHERENCE",
+    "INV-DESIGN-IMPL",
+    "INV-DATA-DURABILITY",
+    "INV-DEV-BOUNDARY"
+  ],
+  "findings": [
+    {
+      "source_id": "PR2-R001",
+      "id": "C-0001",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-STORAGE",
+        "cause_key": "database-journal-pair"
+      },
+      "to": {
+        "invariant_id": "INV-DATA-DURABILITY",
+        "cause_key": "database-journal-pair"
+      }
+    },
+    {
+      "source_id": "PR2-R002",
+      "id": "C-0002",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-ROOT",
+        "cause_key": "first-use-vs-interruption"
+      },
+      "to": {
+        "invariant_id": "INV-DATA-DURABILITY",
+        "cause_key": "first-use-vs-interruption"
+      }
+    },
+    {
+      "source_id": "PR2-R003",
+      "id": "C-0003",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "dependency-before-consumer"
+      },
+      "to": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "dependency-before-consumer"
+      }
+    },
+    {
+      "source_id": "PR2-R004",
+      "id": "C-0004",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-HTTP",
+        "cause_key": "development-origin"
+      },
+      "to": {
+        "invariant_id": "INV-DEV-BOUNDARY",
+        "cause_key": "development-origin"
+      }
+    },
+    {
+      "source_id": "PR2-R005",
+      "id": "C-0005",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-HTTP",
+        "cause_key": "development-csp"
+      },
+      "to": {
+        "invariant_id": "INV-DEV-BOUNDARY",
+        "cause_key": "development-csp"
+      }
+    },
+    {
+      "source_id": "PR2-R006",
+      "id": "C-0006",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "artifact-release-coherence"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "artifact-release-coherence"
+      }
+    },
+    {
+      "source_id": "PR2-R007",
+      "id": "C-0007",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-LOCK",
+        "cause_key": "restore-lock-identity"
+      },
+      "to": {
+        "invariant_id": "INV-FS-BOUNDARY",
+        "cause_key": "restore-lock-identity"
+      }
+    },
+    {
+      "source_id": "PR2-R008",
+      "id": "C-0008",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "entrypoint-order"
+      },
+      "to": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "entrypoint-order"
+      }
+    },
+    {
+      "source_id": "PR4-R001",
+      "id": "C-0009",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "workflow-self-modification"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "workflow-self-modification"
+      }
+    },
+    {
+      "source_id": "PR4-R009",
+      "id": "C-0010",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "known-path-routing-gap"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "planned-path-routing"
+      }
+    },
+    {
+      "source_id": "PR4-R009",
+      "id": "C-0011",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "known-path-routing-gap"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "known-path-routing-gap"
+      }
+    },
+    {
+      "source_id": "PR4-R014",
+      "id": "C-0012",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "multiple-plan-exemption"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "multiple-plan-exemption"
+      }
+    },
+    {
+      "source_id": "PR4-R018",
+      "id": "C-0013",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "plan-task-identity"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "plan-task-identity"
+      }
+    },
+    {
+      "source_id": "PR4-R019",
+      "id": "C-0014",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "review-role-spelling"
+      },
+      "to": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "review-role-spelling"
+      }
+    },
+    {
+      "source_id": "PR4-R020",
+      "id": "C-0015",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "finding-id-normalization"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "finding-id-normalization"
+      }
+    },
+    {
+      "source_id": "PR4-R021",
+      "id": "C-0016",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "cause-key-whitespace"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "cause-key-whitespace"
+      }
+    },
+    {
+      "source_id": "PR4-R022",
+      "id": "C-0017",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "draft-open-entrypoint-coherence"
+      },
+      "to": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "draft-open-entrypoint-coherence"
+      }
+    },
+    {
+      "source_id": "PR4-R023",
+      "id": "C-0018",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "batch-cause-duplication"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "batch-cause-duplication"
+      }
+    },
+    {
+      "source_id": "PR11-R001",
+      "id": "C-0019",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "revision-reason-field-rules"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "change-kind-field-rules"
+      }
+    },
+    {
+      "source_id": "PR11-R001",
+      "id": "C-0020",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "revision-reason-field-rules"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "revision-reason-field-rules"
+      }
+    },
+    {
+      "source_id": "PR11-R002",
+      "id": "C-0021",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "supersession-series-current-record"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "replacement-chain-current"
+      }
+    },
+    {
+      "source_id": "PR11-R002",
+      "id": "C-0022",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "supersession-series-current-record"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "supersession-series-current-record"
+      }
+    },
+    {
+      "source_id": "PR11-R003",
+      "id": "C-0023",
+      "scope": "project",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "rounding-step-association"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "rounding-step-association"
+      }
+    },
+    {
+      "source_id": "PR11-R004",
+      "id": "C-0024",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "required-fact-state-constraint"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "permissive-default-on-required-field"
+      }
+    },
+    {
+      "source_id": "PR11-R004",
+      "id": "C-0025",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "required-fact-state-constraint"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "required-fact-state-constraint"
+      }
+    },
+    {
+      "source_id": "PR11-R005",
+      "id": "C-0026",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "notice-issuer-identity"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "duplicate-by-stable-issuer"
+      }
+    },
+    {
+      "source_id": "PR11-R005",
+      "id": "C-0027",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "notice-issuer-identity"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "notice-issuer-identity"
+      }
+    },
+    {
+      "source_id": "PR11-R006",
+      "id": "C-0028",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unknown-narrows-scope"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "unknown-as-absent"
+      }
+    },
+    {
+      "source_id": "PR11-R006",
+      "id": "C-0029",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unknown-narrows-scope"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unknown-narrows-scope"
+      }
+    },
+    {
+      "source_id": "PR11-R007",
+      "id": "C-0030",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "record-level-ref-line-whole"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "whole-record-reference-scope"
+      }
+    },
+    {
+      "source_id": "PR11-R007",
+      "id": "C-0031",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "record-level-ref-line-whole"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "record-level-ref-line-whole"
+      }
+    },
+    {
+      "source_id": "PR11-R008",
+      "id": "C-0032",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "confirmation-identity-comparison"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "match-confirmation-dimensions"
+      }
+    },
+    {
+      "source_id": "PR11-R008",
+      "id": "C-0033",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "confirmation-identity-comparison"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "confirmation-identity-comparison"
+      }
+    },
+    {
+      "source_id": "PR11-R009",
+      "id": "C-0034",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "calculation-result-type-scope"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "calculation-result-type-scope"
+      }
+    },
+    {
+      "source_id": "PR11-R010",
+      "id": "C-0035",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "decision-premise-recheck"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "stale-decision-premise"
+      }
+    },
+    {
+      "source_id": "PR11-R010",
+      "id": "C-0036",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "decision-premise-recheck"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "decision-premise-recheck"
+      }
+    },
+    {
+      "source_id": "PR11-R011",
+      "id": "C-0037",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "run-pinned-input-completeness"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "pinned-inputs-complete"
+      }
+    },
+    {
+      "source_id": "PR11-R011",
+      "id": "C-0038",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "run-pinned-input-completeness"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "run-pinned-input-completeness"
+      }
+    },
+    {
+      "source_id": "PR11-R101",
+      "id": "C-0039",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unresolvable-relation-as-absent"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "unresolvable-reference-as-absent"
+      }
+    },
+    {
+      "source_id": "PR11-R101",
+      "id": "C-0040",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unresolvable-relation-as-absent"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unresolvable-relation-as-absent"
+      }
+    },
+    {
+      "source_id": "PR11-R102",
+      "id": "C-0041",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ref-revision-semantics"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "reference-version-target"
+      }
+    },
+    {
+      "source_id": "PR11-R102",
+      "id": "C-0042",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ref-revision-semantics"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ref-revision-semantics"
+      }
+    },
+    {
+      "source_id": "PR11-R103",
+      "id": "C-0043",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "pinned-snapshot-granularity"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "snapshot-granularity"
+      }
+    },
+    {
+      "source_id": "PR11-R103",
+      "id": "C-0044",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "pinned-snapshot-granularity"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "pinned-snapshot-granularity"
+      }
+    },
+    {
+      "source_id": "PR11-R104",
+      "id": "C-0045",
+      "scope": "project",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "annual-document-indivisible-scope"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "annual-document-indivisible-scope"
+      }
+    },
+    {
+      "source_id": "PR11-R105",
+      "id": "C-0046",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "self-referential-step-inputs"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "self-referential-step-inputs"
+      }
+    },
+    {
+      "source_id": "PR11-R106",
+      "id": "C-0047",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "contract-type-expressiveness"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "shared-type-expressiveness"
+      }
+    },
+    {
+      "source_id": "PR11-R106",
+      "id": "C-0048",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "contract-type-expressiveness"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "contract-type-expressiveness"
+      }
+    },
+    {
+      "source_id": "PR11-R107",
+      "id": "C-0049",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "free-value-identity-key"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "free-value-identity-key"
+      }
+    },
+    {
+      "source_id": "PR11-R108",
+      "id": "C-0050",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "restated-facts-drift"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "restated-facts-drift"
+      }
+    },
+    {
+      "source_id": "PR11-R108",
+      "id": "C-0051",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "restated-facts-drift"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "restated-facts-drift"
+      }
+    },
+    {
+      "source_id": "PR11-R109",
+      "id": "C-0052",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "lifecycle-transition-revalidation"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "same-check-on-every-write-path"
+      }
+    },
+    {
+      "source_id": "PR11-R109",
+      "id": "C-0053",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "lifecycle-transition-revalidation"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "lifecycle-transition-revalidation"
+      }
+    },
+    {
+      "source_id": "PR11-R110",
+      "id": "C-0054",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "state-classification-precedence"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "state-classification-precedence"
+      }
+    },
+    {
+      "source_id": "PR11-R111",
+      "id": "C-0055",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "recorded-time-ordering"
+      },
+      "to": {
+        "invariant_id": "INV-SPEC-COHERENCE",
+        "cause_key": "recorded-time-ordering"
+      }
+    },
+    {
+      "source_id": "PR11-R112",
+      "id": "C-0056",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "plan-assessment-drift"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "plan-assessment-drift"
+      }
+    },
+    {
+      "source_id": "PR10-R001",
+      "id": "C-0057",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "focus-target-per-element"
+      },
+      "to": {
+        "invariant_id": "INV-DESIGN-IMPL",
+        "cause_key": "focus-target-per-element"
+      }
+    },
+    {
+      "source_id": "PR10-R002",
+      "id": "C-0058",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "design-implementation-correspondence"
+      },
+      "to": {
+        "invariant_id": "INV-DESIGN-IMPL",
+        "cause_key": "design-implementation-correspondence"
+      }
+    },
+    {
+      "source_id": "PR10-R003",
+      "id": "C-0059",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "unknown-state-accessibility-semantics"
+      },
+      "to": {
+        "invariant_id": "INV-DESIGN-IMPL",
+        "cause_key": "unknown-state-accessibility-semantics"
+      }
+    },
+    {
+      "source_id": "PR10-R004",
+      "id": "C-0060",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "status-docs-current-state-coherence"
+      },
+      "to": {
+        "invariant_id": "INV-TASKS",
+        "cause_key": "status-docs-current-state-coherence"
+      }
+    },
+    {
+      "source_id": "PR10-R101",
+      "id": "C-0061",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ui-contract-state-mapping"
+      },
+      "to": {
+        "invariant_id": "INV-DESIGN-IMPL",
+        "cause_key": "ui-state-to-stored-state"
+      }
+    },
+    {
+      "source_id": "PR10-R101",
+      "id": "C-0062",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ui-contract-state-mapping"
+      },
+      "to": {
+        "invariant_id": "INV-RECORDS",
+        "cause_key": "ui-contract-state-mapping"
+      }
+    },
+    {
+      "source_id": "PR12-R001",
+      "id": "C-0063",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "setup-worktree-exclusion"
+      },
+      "to": {
+        "invariant_id": "INV-FS-BOUNDARY",
+        "cause_key": "lock-inside-deleted-tree"
+      }
+    },
+    {
+      "source_id": "PR12-R001",
+      "id": "C-0064",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "setup-worktree-exclusion"
+      },
+      "to": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "setup-worktree-exclusion"
+      }
+    },
+    {
+      "source_id": "PR12-R002",
+      "id": "C-0065",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "public-path-exception-scope"
+      },
+      "to": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "public-path-exception-scope"
+      }
+    },
+    {
+      "source_id": "PR12-R101",
+      "id": "C-0066",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "cleanup-failure-path-contract"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "cleanup-failure-path-contract"
+      }
+    },
+    {
+      "source_id": "PR12-R102",
+      "id": "C-0067",
+      "scope": "global",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "install-record-verification-scope"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "record-claim-coverage"
+      }
+    },
+    {
+      "source_id": "PR12-R102",
+      "id": "C-0068",
+      "scope": "project",
+      "both": true,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "install-record-verification-scope"
+      },
+      "to": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "install-record-verification-scope"
+      }
+    },
+    {
+      "source_id": "PR12-R103",
+      "id": "C-0069",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-RELEASE",
+        "cause_key": "verification-on-target-runtime"
+      },
+      "to": {
+        "invariant_id": "INV-FAIL-CLOSED",
+        "cause_key": "verification-on-target-runtime"
+      }
+    },
+    {
+      "source_id": "PR12-R104",
+      "id": "C-0070",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-ROOT",
+        "cause_key": "destructive-op-follows-link"
+      },
+      "to": {
+        "invariant_id": "INV-FS-BOUNDARY",
+        "cause_key": "destructive-op-follows-link"
+      }
+    },
+    {
+      "source_id": "PR42-R001",
+      "id": "C-0071",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "token-scope-fail-open"
+      },
+      "to": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "token-scope-fail-open"
+      }
+    },
+    {
+      "source_id": "PR42-R004",
+      "id": "C-0072",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "credential-fallback-on-mint-failure"
+      },
+      "to": {
+        "invariant_id": "INV-REVIEW",
+        "cause_key": "credential-fallback-on-mint-failure"
+      }
+    },
+    {
+      "source_id": "PR42-R006",
+      "id": "C-0073",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "credential-tool-from-untrusted-checkout"
+      },
+      "to": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "credential-tool-from-untrusted-checkout"
+      }
+    },
+    {
+      "source_id": "PR37-R001",
+      "id": "C-0074",
+      "scope": "global",
+      "both": false,
+      "from": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "logged-value-carries-data"
+      },
+      "to": {
+        "invariant_id": "INV-PRIVACY",
+        "cause_key": "logged-value-carries-data"
+      }
+    }
+  ]
+}
