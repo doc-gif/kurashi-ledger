@@ -353,8 +353,18 @@
       ]
     },
     {
-      "invariant_id": "INV-RELEASE",
+      "invariant_id": "INV-FAIL-CLOSED",
       "cause_key": "verification-on-target-runtime",
+      "pattern": "対象のOSで動かしていない検証を成功と書く。",
+      "places": [
+        {
+          "location": "review toolsの3つのOS",
+          "result": "手元ではmacOS（Python 3.11.17）だけで動かした。LinuxとWindowsはこのPRのCIで確かめる。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
       "pattern": "対象のOSで動かしていない検証を成功と書く。",
       "places": [
         {

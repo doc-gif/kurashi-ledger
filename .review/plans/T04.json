@@ -172,29 +172,6 @@
           "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
         }
       ],
-      "history": [
-        {
-          "id": "PR2-R007",
-          "invariant_id": "INV-LOCK",
-          "cause_key": "restore-lock-identity",
-          "lesson": "強制終了後の解放だけでなく、ルート交換と別名アクセスを通じたlockの同一性を確認する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025597",
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163066668"
-          ]
-        }
-      ]
-    },
-    "INV-PRIVACY": {
-      "condition": "公開物・検証は合成情報だけを使い、秘密と実データを扱わない。",
-      "scenarios": [
-        {
-          "id": "public",
-          "question": "差分・ログ・artifact・例・新しい外部サービスへ個人情報や秘密を出していないか。"
-        }
-      ],
       "history": []
     },
     "INV-RECORDS": {
@@ -223,19 +200,7 @@
           "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
         }
       ],
-      "history": [
-        {
-          "id": "PR2-R006",
-          "invariant_id": "INV-RELEASE",
-          "cause_key": "artifact-release-coherence",
-          "lesson": "ソースのタグだけで生成済みUIは保証できない。成果物検証と対象OSで成立する更新手順を一緒に確認する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388505706",
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#discussion_r4163025564"
-          ]
-        }
-      ]
+      "history": []
     },
     "INV-ROOT": {
       "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
@@ -249,17 +214,7 @@
           "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
         }
       ],
-      "history": [
-        {
-          "id": "PR2-R002",
-          "invariant_id": "INV-ROOT",
-          "cause_key": "first-use-vs-interruption",
-          "lesson": "実体パス検査は未作成ルートでも成立し、復元途中の部分欠落は初期化しない。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
-          ]
-        }
-      ]
+      "history": []
     },
     "INV-STORAGE": {
       "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
@@ -277,71 +232,7 @@
           "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
         }
       ],
-      "history": [
-        {
-          "id": "PR2-R001",
-          "invariant_id": "INV-STORAGE",
-          "cause_key": "database-journal-pair",
-          "lesson": "DBファイルだけのrollbackはhot journalとの対を壊す。操作全体と異常終了点を確認する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5387464766"
-          ]
-        }
-      ]
-    },
-    "INV-TASKS": {
-      "condition": "仕様の決定・依存・共有資源・外部AIへの入口が矛盾しない。予定は着手許可ではない。",
-      "scenarios": [
-        {
-          "id": "dependencies",
-          "question": "必要な基盤が先行タスクで提供され、並行作業とlockfile等の同時編集制約が両立するか。"
-        },
-        {
-          "id": "entrypoints",
-          "question": "状態資料・開始プロンプト・台帳・PR引継ぎが同じ開始条件を指すか。古い記載の扱いを明示したか。"
-        }
-      ],
-      "history": [
-        {
-          "id": "PR2-R003",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "dependency-before-consumer",
-          "lesson": "試験基盤の提供タスクが、その基盤を必要とするタスクより後にならないようにする。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388042664"
-          ]
-        },
-        {
-          "id": "PR2-R008",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "entrypoint-order",
-          "lesson": "並行可能なタスクを状態資料だけが直列と指示しないよう入口を照合する。 実装・レビューの役割が交代する入口と、ready後のレビュー待機・accepted後の条件付き自己PRマージの時系列も、実行用指示を含めて整合させる。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/2#pullrequestreview-5388471205",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395228821"
-          ]
-        },
-        {
-          "id": "PR4-R019",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "review-role-spelling",
-          "lesson": "レビューroleの正表記・旧表記・書式例を全入口で照合し、実装者と別担当のレビューを一貫して読み取れるようにする。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394554238",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394729197"
-          ]
-        },
-        {
-          "id": "PR4-R022",
-          "invariant_id": "INV-TASKS",
-          "cause_key": "draft-open-entrypoint-coherence",
-          "lesson": "作業中Draft・レビュー依頼Openの規約は、AGENTS・実装側指示・状態資料・READMEだけでなくPRテンプレートも照合する。",
-          "sources": [
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5394915252",
-            "https://github.com/doc-gif/kurashi-ledger/pull/4#pullrequestreview-5395100228"
-          ]
-        }
-      ]
+      "history": []
     }
   }
 }

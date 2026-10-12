@@ -269,8 +269,22 @@
   ],
   "variant_analysis": [
     {
-      "invariant_id": "INV-LOCK",
+      "invariant_id": "INV-FS-BOUNDARY",
       "cause_key": "restore-lock-identity",
+      "pattern": "署名がlockによる終了の証明とずれる",
+      "places": [
+        {
+          "location": "supervisor.py run",
+          "result": "lockを取り直せたときだけ署名。取消・例外・子孫の残存では署名しない"
+        },
+        {
+          "location": "supervisor.py inspect",
+          "result": "判定は変えず、署名の有無だけ足す"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
       "pattern": "署名がlockによる終了の証明とずれる",
       "places": [
         {
@@ -400,7 +414,7 @@
       ]
     },
     {
-      "invariant_id": "INV-RELEASE",
+      "invariant_id": "INV-FAIL-CLOSED",
       "cause_key": "verification-on-target-runtime",
       "pattern": "実機で確かめていない動作を確認済みとする",
       "places": [
@@ -415,8 +429,32 @@
       ]
     },
     {
-      "invariant_id": "INV-ROOT",
+      "invariant_id": "INV-RELEASE",
+      "pattern": "実機で確かめていない動作を確認済みとする",
+      "places": [
+        {
+          "location": "wrapper・キーチェーン・中継の結合",
+          "result": "未検証として報告。fakeだけで試験"
+        },
+        {
+          "location": "supervisorのメモリへの到達",
+          "result": "W1のdeny-supervisor"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-FS-BOUNDARY",
       "cause_key": "destructive-op-follows-link",
+      "pattern": "symlinkを辿って書く",
+      "places": [
+        {
+          "location": "署名済み結果ファイル",
+          "result": "O_EXCL・O_NOFOLLOWで作る"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
       "pattern": "symlinkを辿って書く",
       "places": [
         {

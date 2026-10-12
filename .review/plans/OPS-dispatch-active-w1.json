@@ -330,7 +330,7 @@
       ]
     },
     {
-      "invariant_id": "INV-RELEASE",
+      "invariant_id": "INV-FAIL-CLOSED",
       "cause_key": "verification-on-target-runtime",
       "pattern": "未実行・別OSの検査を合格と扱う。",
       "places": [
@@ -341,7 +341,7 @@
       ]
     },
     {
-      "invariant_id": "INV-RELEASE",
+      "invariant_id": "INV-FAIL-CLOSED",
       "cause_key": "artifact-release-coherence",
       "pattern": "版やprofileが変わっても古い証拠で起動する。",
       "places": [
@@ -363,8 +363,18 @@
       ]
     },
     {
-      "invariant_id": "INV-ROOT",
+      "invariant_id": "INV-FS-BOUNDARY",
       "cause_key": "destructive-op-follows-link",
+      "pattern": "別名・linkで保護領域へ届く。",
+      "places": [
+        {
+          "location": "launcher.ts のパスと資料の検査",
+          "result": "正規化・重なりの拒否。資料のlinkと特殊ファイルを拒否。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
       "pattern": "別名・linkで保護領域へ届く。",
       "places": [
         {
