@@ -53,8 +53,8 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "検査器とテストのコピーの元のコミットを確かめる。テストのコピーの元はまだmainにないので、それがmainに入ったあと、そのコミットとコピーした8ファイルをバイト単位で比べ、SOURCE.jsonのcommitをそのコミットに直す。一覧に載せる計画を、分割の道具のrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
-          "expected": "このPRのマージは、テストのコピーの元がmainに入ったあと。SOURCE.jsonのcommitはコピーの元のmainにあり、コピーした8ファイルはそのコミットと同じ。一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
+          "method": "コピーした8ファイル（検査器の4つとテストの4つ）を、SOURCE.jsonのcommit（コピーの元のmainのコミット）とバイト単位で比べる。一覧に載せる計画を、分割の道具のrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
+          "expected": "SOURCE.jsonのcommitはコピーの元のmainにあり、コピーした8ファイルはそのコミットと同じ。一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
         },
         {
           "id": "entrypoints",

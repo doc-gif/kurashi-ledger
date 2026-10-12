@@ -3,7 +3,7 @@
   "note": "mekikiから写したファイルの出どころ。CIはこのファイルを読まない（段4）。写しを更新したら、この記録も同じPRで更新する。",
   "repository": "doc-gif/mekiki",
   "guard": {
-    "commit": "415d643d35a79033175904a340a657b1aaeb3ec0",
+    "commit": "2a6601e1ffcc77dba45ac00c02dff38c80fb65f9",
     "sha256": {
       "tools/review_guard/guard.py": "40278d06a0d0b0e5ae21f39e89763fbfdcf3d6852180756e416afb8f6ca6d76d",
       "tools/review_guard/ci.py": "26a8f490b91f73c6ba74ec95d35e5760b3b733f8d4aa0e1c088d963d4f36eba0",
