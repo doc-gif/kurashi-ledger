@@ -1,0 +1,662 @@
+{
+  "schema_version": 2,
+  "base_sha": "29cab0c3b25d61ae554dfff744f03a0cfc03ac12",
+  "task_id": "OPS-STAGE5-REMOVE-DISPATCHER",
+  "planned_paths": [
+    ".review/plans/OPS-STAGE5-REMOVE-DISPATCHER.json",
+    ".review/tests/test_dispatch_supervisor.py",
+    "scripts/lib/review-dispatch/active.test.ts",
+    "scripts/lib/review-dispatch/active.ts",
+    "scripts/lib/review-dispatch/broker.test.ts",
+    "scripts/lib/review-dispatch/broker.ts",
+    "scripts/lib/review-dispatch/claude-broker.test.ts",
+    "scripts/lib/review-dispatch/claude-broker.ts",
+    "scripts/lib/review-dispatch/doctor.test.ts",
+    "scripts/lib/review-dispatch/doctor.ts",
+    "scripts/lib/review-dispatch/evidence.test.ts",
+    "scripts/lib/review-dispatch/evidence.ts",
+    "scripts/lib/review-dispatch/findings.test.ts",
+    "scripts/lib/review-dispatch/findings.ts",
+    "scripts/lib/review-dispatch/github.test.ts",
+    "scripts/lib/review-dispatch/github.ts",
+    "scripts/lib/review-dispatch/host.test.ts",
+    "scripts/lib/review-dispatch/host.ts",
+    "scripts/lib/review-dispatch/launcher.test.ts",
+    "scripts/lib/review-dispatch/launcher.ts",
+    "scripts/lib/review-dispatch/model.ts",
+    "scripts/lib/review-dispatch/provenance.test.ts",
+    "scripts/lib/review-dispatch/provenance.ts",
+    "scripts/lib/review-dispatch/publication.ts",
+    "scripts/lib/review-dispatch/reducer.test.ts",
+    "scripts/lib/review-dispatch/reducer.ts",
+    "scripts/lib/review-dispatch/runtime.test.ts",
+    "scripts/lib/review-dispatch/runtime.ts",
+    "scripts/lib/review-dispatch/store.test.ts",
+    "scripts/lib/review-dispatch/store.ts",
+    "scripts/lib/review-dispatch/webhook.test.ts",
+    "scripts/lib/review-dispatch/webhook.ts",
+    "scripts/review-dispatch-claude-broker.ts",
+    "scripts/review-dispatch.test.ts",
+    "scripts/review-dispatch.ts",
+    "tests/fixtures/review-dispatch-github.ts",
+    "tests/fixtures/review-dispatch-run-channel.ts",
+    "tests/fixtures/review-dispatch-run-signature.json",
+    "tests/fixtures/review-dispatch-run-signer.ts",
+    "tests/fixtures/review-dispatch-v1-bodies.json",
+    "tests/fixtures/review-dispatch.ts",
+    "tools/review_dispatch/ci-trust-digest.sh",
+    "tools/review_dispatch/launchd/cycle.plist.in",
+    "tools/review_dispatch/launchd/serve.plist.in",
+    "tools/review_dispatch/seatbelt/cli.sb",
+    "tools/review_dispatch/supervisor.py"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "recovery",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "消すだけで、新しい内容を足さない。計画にも、非公開のrepoの名前・番号・本文を書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "追加した行（この計画だけ）を読み、npm run check:publicを流す。",
+          "expected": "追加した行は計画だけで、共通の本文も非公開の識別子もない。check:publicは終了0。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RECORDS",
+      "disposition": "not-applicable",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "checks": [
+        {
+          "id": "meaning",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "history",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "not-applicable",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "artifact",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "レビュー窓口の切替（段階5）のあとに、kurashiの古い受付のコードを消す。切替の前にマージすると、今動いている受付のコードの元が無くなるので、マージは切替のあとにする。CIの計画の検査（tools/review_guard/）は消さない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "台帳（.review/causes/・.review/findings.json）を変えていないことを、差分のpathで確かめる。",
+          "expected": "原因の追加やIDの付け直しはない。"
+        },
+        {
+          "id": "trust",
+          "method": "tools/review_guard/と.review/mekiki/が残り、CIの計画の検査の入口（.github/workflows/ci.yml）が変わらないことを確かめる。baseのci.pyでこの計画を検査する。",
+          "expected": "CIの計画の検査は今までどおり動く。baseのci.pyはmetadata-complete。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "aliases",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "restore",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        },
+        {
+          "id": "manifest",
+          "method": "消すファイルが、scripts/lib/review-dispatch/・scripts/review-dispatch*.ts・tests/fixtures/review-dispatch*・tools/review_dispatch/・.review/tests/test_dispatch_supervisor.pyだけであることを、差分のpathで確かめる。ほかのコードがそれらをimportしていないことをgit grepで確かめる。",
+          "expected": "アプリのコードと保守コマンドは変わらない。typecheckとnpm testが通る。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "段階5の切替のあとに消す。マージの順をPR本文に書く。レビュー窓口の文書（docs/review-dispatch-*.md）と、それを指す文書の直しは、このPRの残りの作業にする。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "切替が済んだことを、管理者の記録で確かめてからReadyにする。",
+          "expected": "切替の前はDraftのまま。マージは切替のあと。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grepで、消したファイルを指す文書を探す。",
+          "expected": "指す文書は、Readyにする前にこのPRで直す。Draftの間は残りの作業としてPR本文に書く。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "このPRで消すファイル",
+      "data": "レビュー窓口のコードとテスト",
+      "trust": "trusted",
+      "control": "消すだけで、CIの計画の検査（tools/review_guard/）とその設定は残す。マージは段階5の切替のあと。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "アプリの保存先・排他・記録・配布の処理を変える。",
+      "places": [
+        {
+          "location": "src/・scripts/setup.ts・scripts/build.ts",
+          "result": "変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開repoに、非公開の内容を書く。",
+      "places": [
+        {
+          "location": "この計画",
+          "result": "非公開のrepoの名前・番号・本文はない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RECORDS",
+      "pattern": "アプリの保存先・排他・記録・配布の処理を変える。",
+      "places": [
+        {
+          "location": "src/・scripts/setup.ts・scripts/build.ts",
+          "result": "変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "アプリの保存先・排他・記録・配布の処理を変える。",
+      "places": [
+        {
+          "location": "src/・scripts/setup.ts・scripts/build.ts",
+          "result": "変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "レビューの仕組みを変えるPRで、PR自身の検査を緩める。",
+      "places": [
+        {
+          "location": "review plan",
+          "result": "baseのci.pyで検査される。tools/review_guard/は変えない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "アプリの保存先・排他・記録・配布の処理を変える。",
+      "places": [
+        {
+          "location": "src/・scripts/setup.ts・scripts/build.ts",
+          "result": "変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "アプリの保存先・排他・記録・配布の処理を変える。",
+      "places": [
+        {
+          "location": "src/・scripts/setup.ts・scripts/build.ts",
+          "result": "変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "使う基盤より先に、それを消す。",
+      "places": [
+        {
+          "location": "段階5の切替",
+          "result": "切替のあとにだけマージする。Draftで止める。"
+        }
+      ]
+    }
+  ],
+  "context": {
+    "INV-LOCK": {
+      "condition": "アプリと保守コマンドは同じ保存先に対する排他を、作成・復元・異常終了を通じて共有する。",
+      "scenarios": [
+        {
+          "id": "identity",
+          "question": "ルートの退避・交換や別名アクセスの前後でも、同じlockを保持するか。別のlockとして二重取得できないか。"
+        },
+        {
+          "id": "recovery",
+          "question": "同時取得・生存判定不能・強制終了・PID再利用・空環境で安全に取得／再取得できるか。Mac/Windows双方の根拠は何か。"
+        }
+      ],
+      "history": []
+    },
+    "INV-RECORDS": {
+      "condition": "未知値と0、銀行入金と給与、実績と見込みと正式通知を区別し、二重計上せず計算履歴を再現する。",
+      "scenarios": [
+        {
+          "id": "meaning",
+          "question": "銀行のみ→明細→年間資料の順で取り込んでも同じ収入を加算しないか。未知値を推定で確定しないか。"
+        },
+        {
+          "id": "history",
+          "question": "制度の年・地域・出典・丸め・計算版と独立した期待値を保持し、遡及訂正前の判断を再現できるか。"
+        }
+      ],
+      "history": [
+        {
+          "id": "C-0020",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "revision-reason-field-rules",
+          "lesson": "取消・取消解除では本文と関係を維持・復元する。本文や把握日の訂正は、訂正の改訂に分ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592713",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747549",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941"
+          ]
+        },
+        {
+          "id": "C-0022",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "supersession-series-current-record",
+          "lesson": "差し替え系列では、中間や末端の取消と取消解除、未確定の差し替えも含めて現在の記録を決め、保存条件と例を系列全体の規則から導く。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319576",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467683",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467727",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167592793",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168345145",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995574"
+          ]
+        },
+        {
+          "id": "C-0023",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "rounding-step-association",
+          "lesson": "丸め手順を結果項目へ一意に結び付け、keyと順序の一意性、参照先の実在と一致、適用順、手順間の値の連続と方式どおりの結果を保存時に検査する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319720",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747456",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393950840",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601"
+          ]
+        },
+        {
+          "id": "C-0025",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "required-fact-state-constraint",
+          "lesson": "Factの既定（unknown・not-stated・not-applicable）をそのまま使わない項目として、確定配分の確認済み版、必須の参照、制度版・地域、把握日、軸の日付、通知の分類・金額を個別に定める。制度の規則で丸めた手順の原典参照も、省ける条件を明示しない限り必須にする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699625",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699666",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836480",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168574471",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395270955",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395437829",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397903585",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149"
+          ]
+        },
+        {
+          "id": "C-0027",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "notice-issuer-identity",
+          "lesson": "正式通知の二重登録の取消は、same判断の有無によらずduplicateOfの正規先で類にまとめ、類は正規の通知の種類・年度でちょうど1つの集合に割り当てる。正規の通知の年度がunknown・not-statedなら、類の値は足さずにその種類のすべての年度に不足として挙げる。残す方がない二重登録は、その記録自身の種類・年度の集合に割り当てて集合全体をconflictにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535788",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397600549",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398337046",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171079776",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159300",
+            "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684861"
+          ]
+        },
+        {
+          "id": "C-0029",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unknown-narrows-scope",
+          "lesson": "候補年と集計範囲は、期間・一覧・分類・金額・帰属の根拠が不明でも狭めない。影響しうる年と範囲を残したまま、集計をincompleteにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394144458",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394871157",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319530",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991016",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167991079",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168109005",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248770",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168248829",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877170",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995536",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394098601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394389954",
+            "https://github.com/doc-gif/kurashi-ledger/pull/14#discussion_r4170901342"
+          ]
+        },
+        {
+          "id": "C-0031",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "record-level-ref-line-whole",
+          "lesson": "差し替え・二重登録・判断の対象の参照はline=wholeに限る。照合配分や証憑の行参照は、別に維持する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366"
+          ]
+        },
+        {
+          "id": "C-0033",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "confirmation-identity-comparison",
+          "lesson": "照合の確定条件の識別次元には勤務先・口座・支払者を含め、Factと非Factが混ざる場合も同じ比較規則で判定する。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396093034",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167747509",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394572610",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396049366",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057"
+          ]
+        },
+        {
+          "id": "C-0036",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "decision-premise-recheck",
+          "lesson": "判断と確定した関係の前提には、入金の用途、対象の項目、確認した版、識別次元、正規の発行者ID、行の状態を含め、前提が変わったら要再確認にする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319462",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167467615",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167836523",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170720915",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5393864511",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394994956"
+          ]
+        },
+        {
+          "id": "C-0038",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "run-pinned-input-completeness",
+          "lesson": "計算runの必要集合には、記録・関係の閉包、採用スナップショット、比較項目、逆向きに効く配分・判断、取消済みの橋渡し記録、直接持つマスタIDを含める。結果項目・丸め手順・証憑の紐付けの対象も含め、inputsの列挙を根にしない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398071753",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398044049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528374",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169876122",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169952138",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535724",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170535756",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397389693",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014235",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159250",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398301944"
+          ]
+        },
+        {
+          "id": "C-0040",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "unresolvable-relation-as-absent",
+          "lesson": "差し替え・帰属・比較・実績化で関係が壊れていたら、系列や集計のconflictかincompleteにする。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638737",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995480",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169331465",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169609766",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+          ]
+        },
+        {
+          "id": "C-0042",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "ref-revision-semantics",
+          "lesson": "参照のcurrentと整数版の使い分けを参照ごとに定める。マスタの正規IDへの解決も各runの保存時点の値で固定し、後日の統合・取消解除で過去のrunの目的や意味を再分類しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394711089",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394786049",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395565138",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398682882",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171405064"
+          ]
+        },
+        {
+          "id": "C-0044",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "pinned-snapshot-granularity",
+          "lesson": "runに固定するスナップショットには、項目別の適用状態、年と支払者ごとに1つの採用、一意なキー、再確認に使う比較値と正規IDを含める。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168638670",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168995601",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170073901",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394283625",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992"
+          ]
+        },
+        {
+          "id": "C-0045",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "annual-document-indivisible-scope",
+          "lesson": "年間資料の値は範囲全体の不可分な総額として扱う。採用・比較・説明・runへの固定は資料の年と確定範囲に一致するときだけ許し、部分範囲や支払者ごとに重ねて加算しない。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319878",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392035",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168877085",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169528442",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745593",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396221637"
+          ]
+        },
+        {
+          "id": "C-0048",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "contract-type-expressiveness",
+          "lesson": "集計値・coverage・不足状態・記録の種類の型が、年間以外、採用未決定、採用元の混在、通知の重複、対応表の未定義、不完全な実績、負の金額、途中で失敗したrun、一次資料で確かめた制度の丸め方、年だけでは選べない規則（手続の種類・基準の時点）、丸めではない計算の段階を表せるか確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319780",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167319842",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167392077",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4167699707",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5394879245",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5395101941",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396367197",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397343057",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398604489",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944750",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171296694",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#issuecomment-5964427430"
+          ]
+        },
+        {
+          "id": "C-0051",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "restated-facts-drift",
+          "lesson": "前提のマスタも手書きで繰り返さない。合成例はfixtureとして契約の保存条件を満たすか確かめ、一意性の範囲（記録の中か全体か）を定義と予約の一覧でそろえる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170289483",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170471760",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397791070",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397837992",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5397953279",
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#discussion_r4167530273",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398383149"
+          ]
+        },
+        {
+          "id": "C-0053",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "lifecycle-transition-revalidation",
+          "lesson": "取消・取消解除・マスタの統合・復元・取込の後も、記録の保存条件を同じく満たすか確かめる。正規IDを変える保存では、正規IDに依存する保存条件をすべて再検査する。取込キーは取消の後も予約し、保存の後で要求範囲に加わった記録も変化として検知する。確定済みの関係は拒否の理由にせず、要再確認か前提の崩れにする。満たさない既存の記録は、要確認（古いデータ）・使えない関係・集計のincompleteとして示す。記録のIdと版、過去の計算runと履歴は書き換えず、runには入力が変わったと示す。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4168434467",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169446979",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4169745539",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5396987055",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#pullrequestreview-5398413865",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4170944768",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171014254",
+            "https://github.com/doc-gif/kurashi-ledger/pull/11#discussion_r4171159278",
+            "https://github.com/doc-gif/kurashi-ledger/pull/21#discussion_r4171684870"
+          ]
+        },
+        {
+          "id": "C-0062",
+          "invariant_id": "INV-RECORDS",
+          "cause_key": "ui-contract-state-mapping",
+          "lesson": "金額の入力の空欄・金額・0・不明は、契約の金額の状態へ一意に対応付ける。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/10#pullrequestreview-5395958798"
+          ]
+        }
+      ]
+    },
+    "INV-RELEASE": {
+      "condition": "実利用するソース・依存・ランタイム・配信成果物が対応し、未検証の組合せで実データを開かない。",
+      "scenarios": [
+        {
+          "id": "update",
+          "question": "初回・更新・旧版へのrollbackでNode、依存、UI、DB版は対応するか。build省略・失敗時はDBを開く前に停止するか。"
+        },
+        {
+          "id": "artifact",
+          "question": "既存の非空成果物がある場合と入れ替え途中の終了を、対象OSで実現可能な手順で扱えるか。manifest自身の扱いは明確か。"
+        }
+      ],
+      "history": [
+        {
+          "id": "C-0064",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "setup-worktree-exclusion",
+          "lesson": "依存の導入（`npm run setup`）と導入記録の更新は、既存の記録を削除する前から最終照合までを、同じworktree単位の排他で囲む。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5396006639",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4169111451"
+          ]
+        },
+        {
+          "id": "C-0068",
+          "invariant_id": "INV-RELEASE",
+          "cause_key": "install-record-verification-scope",
+          "lesson": "導入記録の照合では、依存の宣言、lockfile、実行ファイルのリンクの解決先を確かめる。",
+          "sources": [
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167508133",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167659740",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4167780189",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947655",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#discussion_r4170947673",
+            "https://github.com/doc-gif/kurashi-ledger/pull/12#pullrequestreview-5394684638"
+          ]
+        }
+      ]
+    },
+    "INV-ROOT": {
+      "condition": "同じ実体の保存先を一貫して識別し、新規作成と復元途中を区別する。",
+      "scenarios": [
+        {
+          "id": "first-use",
+          "question": "まだ存在しないルートの検査・作成は可能か。復元の退避物や部分欠落を初期化で消さないか。"
+        },
+        {
+          "id": "aliases",
+          "question": "symlink・junction・大小文字等の別表記でも同じ保存先として判定し、禁止先への迂回を拒否できるか。"
+        }
+      ],
+      "history": []
+    },
+    "INV-STORAGE": {
+      "condition": "DBとjournal、証憑参照の整合を復元・migration・異常終了の前後で維持する。",
+      "scenarios": [
+        {
+          "id": "rollback",
+          "question": "migration途中で終了しhot journalがあっても、DBとjournalの対を崩さず戻せるか。"
+        },
+        {
+          "id": "restore",
+          "question": "空環境・既存環境の復元と、各入れ替え境界での強制終了後に、再開または巻戻しできるか。"
+        },
+        {
+          "id": "manifest",
+          "question": "manifestは何をハッシュ対象とし、自己参照・未知の版・過大アーカイブ・参照漏れをどう扱うか。"
+        }
+      ],
+      "history": []
+    }
+  }
+}
