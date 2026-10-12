@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "e14f20e8f6a3b4ac19f2c897e152b16a5261e21a",
+  "base_sha": "8d092e1e530b598abbd314105445057ac6aebc45",
   "task_id": "OPS-CODEX-DOT-GITHUB-VERIFIED",
   "planned_paths": [
     "docs/github-apps.md"
