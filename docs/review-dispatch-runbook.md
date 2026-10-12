@@ -2,7 +2,7 @@
 
 所有者がMacで、レビュー受付をstart-smallのactiveにする手順。
 
-**範囲（[所有者決定 start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）:** 対象のPRは1件、必要なreviewerはClaudeの1者、修正は手動、マージは所有者。[18](#18-広げる前に測る)の値を見てから広げる。
+**範囲（[管理者の決定 start-small](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)）:** 対象のPRは1件、必要なreviewerはClaudeの1者、修正は手動、マージはマージ担当。[18](#18-広げる前に測る)の値を見てから広げる。
 
 規則の正本: 切替とrollbackは[PR書式](pr-review-loop.md#受付がactiveのpr)、マージは[運用規約](github-agent-operations.md#dispatch-active)、部品は[実装](review-dispatch-implementation.md)、隔離の層は[設計§7](review-dispatch-design.md#7-workerの隔離と往復上限)。
 

@@ -1,0 +1,124 @@
+{
+  "schema_version": 2,
+  "base_sha": "929d073909b6cf1836e9b86ac5dccdd5dadb1697",
+  "task_id": "OPS-MERGE-ROLE",
+  "planned_paths": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+    "README.md",
+    "docs/external-worker.md",
+    "docs/github-agent-operations.md",
+    "docs/implementation-plan.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-dispatch-runbook.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "マージの決まりの語を役割の名前に変えるだけ。管理者の決定は日付だけを書き、非公開の資料の原文・URL・識別子は書かない（PR79-R001、PR85-R001）。秘密・実データは扱わない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。planned_pathsの10ファイル・計画・PRの本文・コメントに、非公開の資料の原文・URL・識別子がない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "マージの決まりの定義元（docs/github-agent-operations.md#merge-conditions）を役割（マージ担当）で書き直し、マージする人・確かめる人を書く文を、planned_pathsのすべてのファイルで同じ語にそろえる。決まりの中身（AIはマージしない、マージの前に確かめること）は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "このPRが共有資源（lockfile・migration・CIの権限）に触れないことと、開いているPRで同じ文を変えるものを確かめる。",
+          "expected": "差分はplanned_pathsの10ファイルと計画だけで、共有資源に触れない。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを、PR #85はdocs/pr-review-loop.mdの1節と3節を変えるが、このPRの変える行とは重ならない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS.md、CLAUDE.md、.github/copilot-instructions.md、README.md、docs/*.mdで、マージする人・確かめる人を書く文（「所有者」「owner」と「マージ」が同じ行）をgrepし、読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。アンカーmerge-conditionsとowner-merge-onlyへのリンクもgrepする。",
+          "expected": "今も効く規則として、マージする人・確かめる人を書く文は、すべて「マージ担当」。「所有者」がマージする書き方が残るのは、variant_analysis（INV-TASKS）の「変えない」の場所だけで、それぞれに理由がある。定義元の分担の表で、管理者が、ほかの文書の「所有者」とAGENTS.mdの「owner」と同じ人だと書く。2つのアンカーは残り、リンクはすべて有効。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "マージの条件（accepted、粗探し、Quality gate、最新main、headの一致、第1親の確認）は変えず、それを確かめる人の名前だけを変える。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分が、指摘のID・原因台帳・docs/pr-review-loop.mdの書式に触れないことを確かめる。",
+          "expected": "指摘の追跡の仕組みと書式のブロックの差分が0行。"
+        },
+        {
+          "id": "trust",
+          "method": "docs/github-agent-operations.mdのマージ条件の箇条書きの差分を確かめる。",
+          "expected": "箇条書き5つの差分が0行。マージ条件の節で変わるのは、確かめる人の名前（マージ担当）、分担の表の行、33行目のリンクの文字（「所有者決定」→「管理者の決定」）だけ。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "2026-10-12の管理者の決定と調整係の指示",
+      "data": "マージの決まりを役割（マージ担当）で書き、決める人を管理者と呼ぶ",
+      "trust": "partially-trusted",
+      "control": "語を変えるだけで、権限と条件を変えない。AGENTS.mdの【所有者】の印は決まった書式なので変えない。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "公開のplanned_pathsの10ファイル（README.md、AGENTS.md、.github/copilot-instructions.md、docs/の7ファイル）",
+      "data": "役割の名前と、今のマージ担当のGitHubのアカウント名",
+      "trust": "untrusted",
+      "control": "アカウント名doc-gifはすでに公開の文書にある。非公開の資料は書かない。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開のrepoに、非公開の資料の原文・URL・識別子を書く（PR79-R001、PR85-R001）。",
+      "places": [
+        {
+          "location": "planned_pathsの10ファイル、計画、PRの本文",
+          "result": "管理者の決定は日付だけを書く。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "マージする人の書き方が、入口ごとに違う（C-0060）。",
+      "places": [
+        {
+          "location": "docs/github-agent-operations.mdの分担の表・マージ条件・状態遷移",
+          "result": "定義元。「マージ担当（今はdoc-gif）」で書き、管理者がほかの文書の「所有者」と同じ人だと書く。"
+        },
+        {
+          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの冒頭・担当の表・例・4節、docs/project-status.mdの9行目、docs/review-dispatch-design.mdの4か所、docs/review-dispatch-runbook.mdの範囲、.github/copilot-instructions.mdの18行目、docs/implementation-plan.mdの22行目、docs/project-status.mdの29行目、README.mdの5行目、docs/implementation-plan.mdの128行目、docs/review-dispatch-design.mdの143行目",
+          "result": "マージ担当にそろえ、定義元へリンクする。"
+        },
+        {
+          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印、docs/review-dispatch-design.mdの100行目（見出しのアンカーへのリンク）、docs/review-dispatch-design.mdの221行目（2026-10-11に全PRを所有者のマージにした、という過去の経緯）",
+          "result": "変えない。当時の言葉の記録、更新の経緯、過去の経緯、アンカーが変わる見出しとそのリンク、決まった書式だから。見出しは別の言い換えのPRで、リンクと一緒に直す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "語を変えるときに、マージの条件そのものを変えてしまう。",
+      "places": [
+        {
+          "location": "docs/github-agent-operations.mdのマージ条件の箇条書き",
+          "result": "変えない。"
+        }
+      ]
+    }
+  ]
+}
