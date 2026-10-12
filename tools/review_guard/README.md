@@ -128,14 +128,14 @@ mekikiの`node scripts/ledger.ts rewrite-plans`（hostで動かす）で書き�
 - 一覧に載り、baseとcandidateの両方にある計画だけを、「変える計画は1つ」と「`base_sha`がPRのbase」の検査から外す。新しい計画と消した計画は外さない。
 - 外した計画で許す変更は次の4つだけだ。ほかの変更が1つでもあれば、終了コード1。
   - `context`から共通の不変条件のキーを外す。共通とは、`split-map.json`の`new_invariants`と`scope: global`の移す先、baseの目録の不変条件だ。
-  - 残す`context`の`history`を、baseの固有の台帳の行に置き換える（管理者の決定、mekiki Issue #46のI46-R002）。元の並びのまま、各項目を、`split-map.json`がその項目のIDに付けた`scope: project`の行（`both`なら固有の側）のIDで、baseの台帳から引いた行そのものにする。共通の側にだけ移した項目は外す。対応が1つに決まらない項目や、baseの台帳に無い行があれば、置き換えられない。`history`を元のまま残すこともできる。`history`以外の固有のキーは変えない。
+  - 残す`context`の`history`を、baseの固有の台帳の行に置き換える（所有者の決定、mekiki Issue #46のI46-R002）。元の並びのまま、各項目を、`split-map.json`がその項目のIDに付けた`scope: project`の行（`both`なら固有の側）のIDで、baseの台帳から引いた行そのものにする。共通の側にだけ移した項目は外す。対応が1つに決まらない項目や、baseの台帳に無い行があれば、置き換えられない。`history`を元のまま残すこともできる。`history`以外の固有のキーは変えない。
   - `variant_analysis`の移した原因のキーを、`split-map.json`のとおりに置き換える。`both`のキー、行の順、キー以外の項目は変えない。元の不変条件をguardが選び、それを名指す行が無くなるときは、移した行の`invariant_id`・`pattern`・`places`だけの行をちょうど1つ足す（mekiki Issue #44のB）。
   - `editable_text`がJSON Pointerで名指した`conflicts`の`description`・`resolution`の文字列を言い換える。`state`と判定の項目（`disposition`・`reason`・`checks`）は、名指しても変えられない。項目の追加・削除もできない。
 - 外した計画も、baseの台帳・目録・設定で`check`する。`base_sha`はその計画自身の値で、pathはその計画だけだ。
 - 一覧に無い計画は今までどおりだ。外した計画を除いて1つまでで、PRのbaseで`check`する。外した計画だけのPRは、ほかに`split-map.json`と一覧の削除しか変えられない。
-- 一覧の計画を書き換えるPRは、一覧を消す（管理者の決定、mekiki PR #49）。candidateに一覧が残れば、中身が同じでも終了コード1。一覧が残ると、後のPRでも名指しした自由文を言い換えられるためだ。
+- 一覧の計画を書き換えるPRは、一覧を消す（所有者の決定、mekiki PR #49）。candidateに一覧が残れば、中身が同じでも終了コード1。一覧が残ると、後のPRでも名指しした自由文を言い換えられるためだ。
 - 自由文の公開前の検査は、pushの前にhostの`rewrite-plans`がかける。CIは名指しした場所だけが変わったことを確かめ、共通の本文を持たない。
-- この規則の試験は、APIの試験（`test_plan_rewrites.py`）だけを写した。実際の`ci.py`を通す試験（`test_plan_rewrites_ci.py`）は、hostの`scripts/ledger.ts`を使うので、mekikiにだけある。
+- この規則の試験は、APIの試験（`test_plan_rewrites.py`）だけを写した。実際の`ci.py`を通す試験の2ファイル（`test_plan_rewrites_ci.py`の16件と`test_plan_rewrites_null_list.py`の5件）は写していない。`test_plan_rewrites_ci.py`は、hostの`scripts/ledger.ts`を使う2件と、`guard.py`・`ci.py`だけで動く14件が同じファイルにある。`test_plan_rewrites_null_list.py`は、そのファイルを読み込む。そのため今は、`ci.py`の書き換えの経路（`check_with_rewrites`）をkurashiの試験は通らない。一覧を足すPRより前に、mekikiでhostの2件を別のファイルに分け、残りの19件をここへ写す。
 
 ## CIの配置前提
 

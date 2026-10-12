@@ -16,12 +16,12 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "mekiki main（#49）の検査器のコードと、合成のデータだけのテストを写す。共通の台帳の本文も、kurashiで公開していない共通の原因のキーも入れない。",
+      "reason": "mekiki main（#49）の検査器のコードと、合成のデータだけのテストをコピーする。共通の台帳の本文も、kurashiで公開していない共通の原因のキーも入れない。",
       "checks": [
         {
           "id": "public",
-          "method": "写した5ファイルを、mekiki #49のheadのファイルとバイト単位で比べる。テストの入力が合成だけで、example.invalidのURLしかないことを読む。npm run check:public -- --stagedを流す。",
-          "expected": "写したファイルはmekikiと同じ。テストの文とURLは合成だけ。check:publicは終了0。"
+          "method": "mekikiからコピーした4ファイル（ci.py・plan_rewrites.py・2つのテスト）を、mekiki #49のheadのファイルとバイト単位で比べる。READMEはkurashi向けの文なので、追加した節を読む。テストの入力が合成だけで、example.invalidのURLしかないことを読む。npm run check:public -- --stagedを流す。",
+          "expected": "コピーしたファイルはmekikiと同じ。テストの文とURLは合成だけ。check:publicは終了0。"
         }
       ]
     },
@@ -45,17 +45,17 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "kurashiの計画を書き換える前に、検査器の写しをmekikiの規則に合わせる。書き換えの一覧と分割の対応の表（split-map）をどう公開するかは、まだ決まっていないので、このPRに入れない。",
+      "reason": "kurashiの計画を書き換える前に、検査器のコピーをmekikiの規則に合わせる。書き換えの一覧と分割の対応の表（split-map）をどう公開するかは、まだ決まっていないので、このPRに入れない。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "写す元がmekiki #49のhead（d19df9b）で、#49がmainへマージされたことを確かめる。guard.pyとchanged_paths.pyが50e5f81から変わっていないことを確かめる。",
-          "expected": "Ready（レビューの依頼）は#49のマージの後。マージされた内容がd19df9bと違えば、写しを作り直す。"
+          "method": "コピーの元がmekiki #49のhead（d19df9b）で、#49がmainへマージされたことを確かめる。guard.pyとchanged_paths.pyが50e5f81から変わっていないことを確かめる。",
+          "expected": "Ready（レビューの依頼）は#49のマージの後。マージされた内容がd19df9bと違えば、コピーを作り直す。"
         },
         {
           "id": "entrypoints",
-          "method": "tools/review_guard/README.mdと.review/mekiki/SOURCE.jsonで、写したファイルの一覧と出どころが一致するかを読む。",
-          "expected": "READMEの写しの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。写さなかったテスト（test_plan_rewrites_ci.py）とその理由をREADMEに書く。"
+          "method": "tools/review_guard/README.mdと.review/mekiki/SOURCE.jsonで、コピーしたファイルの一覧と出どころが一致するかを読む。",
+          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。コピーしなかったテストの2ファイル（21件）と、そのうち19件はkurashiでも動くこと、今はci.pyの書き換えの経路をkurashiのテストが通らないことをREADMEに書く。一覧を足すPRより前に、残りの19件をコピーする。"
         }
       ]
     }
@@ -64,7 +64,7 @@
     {
       "id": "B1",
       "direction": "entry",
-      "location": "tools/review_guard/ci.py・plan_rewrites.py（mekiki #49の写し）",
+      "location": "tools/review_guard/ci.py・plan_rewrites.py（mekiki #49のコピー）",
       "data": "次のPRからCIの計画の検査を決めるコード",
       "trust": "untrusted",
       "control": "このPRのCIは、このコードを計画の検査に使わない（baseのci.pyだけ）。mekikiとバイト単位で同じにし、sha256をSOURCE.jsonに書き、.review/testsで照合する。"
@@ -73,7 +73,7 @@
   "variant_analysis": [
     {
       "invariant_id": "INV-PRIVACY",
-      "pattern": "非公開の共通の台帳の本文や、kurashiで公開していない共通の原因のキーを、公開repoへ写す。",
+      "pattern": "非公開の共通の台帳の本文や、kurashiで公開していない共通の原因のキーを、公開repoへコピーする。",
       "places": [
         {
           "location": "tools/review_guard/tests/plan_rewrite_fixtures.py・test_plan_rewrites.py",
@@ -106,6 +106,10 @@
         {
           "location": "kurashiの計画の書き換え",
           "result": "このPRのマージの後、一覧を足すPR、書き換えるPRの順に進める。一覧の公開の仕方が決まるまで、一覧のPRは出さない。"
+        },
+        {
+          "location": "tools/review_guard/tests",
+          "result": "書き換えの経路を通るテスト19件は、mekikiでhostの2件を分けたあと、一覧を足すPRより前にコピーする。"
         }
       ]
     }
