@@ -10,7 +10,7 @@ python3 -m unittest discover -s tools/review_guard/tests -v
 python3 -m unittest discover -s .review/tests -v
 ```
 
-汎用試験は`tools/review_guard/tests`、このrepo固有のルーティング試験は`.review/tests`。別repoへ検査器を移すときは汎用試験だけを同梱し、固有試験は条件・履歴とともにこちらへ残す。`test_stage4_*.py`は合成の入力`tests/stage4/fixtures.py`を読む。`guard.py`・`ci.py`・`changed_paths.py`と汎用試験はmekikiの写しで、出どころは`.review/mekiki/SOURCE.json`に書く。台帳は今2組ある（[2段の台帳と段4の移行](#2段の台帳と段4の移行)）。
+汎用試験は`tools/review_guard/tests`、このrepo固有のルーティング試験は`.review/tests`。別repoへ検査器を移すときは汎用試験だけを同梱し、固有試験は条件・履歴とともにこちらへ残す。`test_stage4_*.py`は合成の入力`tests/stage4/fixtures.py`を読む。`guard.py`・`ci.py`・`changed_paths.py`・`plan_rewrites.py`と汎用試験はmekikiの写しで、出どころは`.review/mekiki/SOURCE.json`に書く。台帳は今2組ある（[2段の台帳と段4の移行](#2段の台帳と段4の移行)）。
 
 `.review/config.toml`があると、`guard.py`は`--config`を付けなくてもそれを読む。その`[causes.paths]`は共通のIDを指すので、`--global-ids`を付けないと終了コード1になる。このrepoのファイルを読むコマンドには、`--catalog`・`--ledger`・`--global-ids`を付ける。
 
@@ -112,6 +112,30 @@ mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた
   - PR10-R001（C-0057）、PR10-R002（C-0058）、PR10-R003（C-0059）
   - PR11-R009（C-0034）、PR11-R105（C-0046）、PR11-R107（C-0049）、PR11-R110（C-0054）、PR11-R111（C-0055）
   - PR12-R101（C-0066）、PR12-R103（C-0069）、PR12-R104（C-0070）
+
+## 既存の計画の書き換え（mekiki Issue #46）
+
+mekikiの`node scripts/ledger.ts rewrite-plans`（hostで動かす）で書き換えた既存の計画は、baseの一覧に載っていれば、1つのPRでまとめて変えられる。一覧は`<review-dir>/mekiki/plan-rewrites.json`に置く。
+
+```json
+{"schema_version": 1, "split_map_sha256": "<split-map.jsonのbytesのSHA-256>",
+ "plans": [{"path": ".review/plans/OPS-LEDGER-PR10-PR12.json", "editable_text": ["/conflicts/5/resolution"]}]}
+```
+
+- 権限はbaseの一覧だけが持つ。candidateの一覧は形だけを確かめ、その中身は効かない。
+- 一覧のファイルがあれば、中身が`null`でも一覧として扱う（mekiki PR #49のPR49-R001）。形が違えば、baseでもcandidateでも終了コード1。
+- 一覧の計画を変えるPRでは、`ci.py`は`<review-dir>/mekiki/split-map.json`をcandidateから読む（無ければbaseから）。そのbytesのSHA-256がbaseの一覧の`split_map_sha256`と違えば、終了コード1。
+- 一覧に載り、baseとcandidateの両方にある計画だけを、「変える計画は1つ」と「`base_sha`がPRのbase」の検査から外す。新しい計画と消した計画は外さない。
+- 外した計画で許す変更は次の4つだけだ。ほかの変更が1つでもあれば、終了コード1。
+  - `context`から共通の不変条件のキーを外す。共通とは、`split-map.json`の`new_invariants`と`scope: global`の移す先、baseの目録の不変条件だ。
+  - 残す`context`の`history`を、baseの固有の台帳の行に置き換える（管理者の決定、mekiki Issue #46のI46-R002）。元の並びのまま、各項目を、`split-map.json`がその項目のIDに付けた`scope: project`の行（`both`なら固有の側）のIDで、baseの台帳から引いた行そのものにする。共通の側にだけ移した項目は外す。対応が1つに決まらない項目や、baseの台帳に無い行があれば、置き換えられない。`history`を元のまま残すこともできる。`history`以外の固有のキーは変えない。
+  - `variant_analysis`の移した原因のキーを、`split-map.json`のとおりに置き換える。`both`のキー、行の順、キー以外の項目は変えない。元の不変条件をguardが選び、それを名指す行が無くなるときは、移した行の`invariant_id`・`pattern`・`places`だけの行をちょうど1つ足す（mekiki Issue #44のB）。
+  - `editable_text`がJSON Pointerで名指した`conflicts`の`description`・`resolution`の文字列を言い換える。`state`と判定の項目（`disposition`・`reason`・`checks`）は、名指しても変えられない。項目の追加・削除もできない。
+- 外した計画も、baseの台帳・目録・設定で`check`する。`base_sha`はその計画自身の値で、pathはその計画だけだ。
+- 一覧に無い計画は今までどおりだ。外した計画を除いて1つまでで、PRのbaseで`check`する。外した計画だけのPRは、ほかに`split-map.json`と一覧の削除しか変えられない。
+- 一覧の計画を書き換えるPRは、一覧を消す（管理者の決定、mekiki PR #49）。candidateに一覧が残れば、中身が同じでも終了コード1。一覧が残ると、後のPRでも名指しした自由文を言い換えられるためだ。
+- 自由文の公開前の検査は、pushの前にhostの`rewrite-plans`がかける。CIは名指しした場所だけが変わったことを確かめ、共通の本文を持たない。
+- この規則の試験は、APIの試験（`test_plan_rewrites.py`）だけを写した。実際の`ci.py`を通す試験（`test_plan_rewrites_ci.py`）は、hostの`scripts/ledger.ts`を使うので、mekikiにだけある。
 
 ## CIの配置前提
 

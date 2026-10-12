@@ -3,11 +3,12 @@
   "note": "mekikiから写したファイルの出どころ。CIはこのファイルを読まない（段4）。写しを更新したら、この記録も同じPRで更新する。",
   "repository": "doc-gif/mekiki",
   "guard": {
-    "commit": "50e5f81428f1e18cbfc9a209d5980475cee372b6",
+    "commit": "d19df9b242fd3603d0f781957a320fe35fafd880",
     "sha256": {
       "tools/review_guard/guard.py": "40278d06a0d0b0e5ae21f39e89763fbfdcf3d6852180756e416afb8f6ca6d76d",
-      "tools/review_guard/ci.py": "4df69ed5577db0517e95fd089cc60647718a2d076880a15f97c6a32dc4c791f7",
-      "tools/review_guard/changed_paths.py": "48697f4ffe3c979fe61e9bfce832d9be5ab94df40c7debcdb310bc89342893ab"
+      "tools/review_guard/ci.py": "26a8f490b91f73c6ba74ec95d35e5760b3b733f8d4aa0e1c088d963d4f36eba0",
+      "tools/review_guard/changed_paths.py": "48697f4ffe3c979fe61e9bfce832d9be5ab94df40c7debcdb310bc89342893ab",
+      "tools/review_guard/plan_rewrites.py": "fbb7b534e9de9e8178128bddb88c332ae80a53a2cef03913be164f9d56be0f80"
     }
   },
   "split": {
