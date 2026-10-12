@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "base_sha": "d8c5c9e025ecbcc0e5d5657f3335d55e11889f40",
+  "task_id": "OPS-CODEX-DOT-GITHUB-VERIFIED",
+  "planned_paths": [
+    "docs/github-apps.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "表の1行を、Codex担当が確かめた事実に合わせるだけ。IDや秘密は書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。秘密・ID・個人のパスを加えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "#82のCodexのP3（PR82-R001）: CodexのAppの.githubへの読取りは確かめ済みなのに、表が未確認のままだった。確かめた日と操作を書く。インストールの範囲は未確認のまま残す。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "#82がmainに入っていることと、ほかのopen PRがdocs/github-apps.mdの19行目を変えていないことを確かめる。",
+          "expected": "#82はmainにある。停止中の#38の変更は別の行。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n -e '未確認' -e 'インストール' -- docs/github-apps.md docs/project-status.md SECURITY.md で、インストール先の記述を読む。",
+          "expected": "インストール先は表の1か所で、両方のAppの.githubへの読取りを確かめた事実と、範囲は未確認であることが一致して書いてある。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": "公開の文書 docs/github-apps.md",
+      "data": "Appのインストール先",
+      "trust": "untrusted",
+      "control": "確かめた日と操作だけを書き、IDは書かない。インストールの範囲は推定で書かない。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "確かめた事実が、状態の文書に反映されていない（PR82-R001）。",
+      "places": [
+        {
+          "location": "docs/github-apps.md 19行目と表の下の段落",
+          "result": "Codexの列を確かめた事実に直し、範囲は所有者が確かめると表の下に書いた。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "確認の記録として、IDやトークンを書く。",
+      "places": [
+        {
+          "location": "docs/github-apps.md 19行目",
+          "result": "レビューへのリンクと日付だけ。"
+        }
+      ]
+    }
+  ]
+}

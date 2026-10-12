@@ -16,11 +16,11 @@ IDと鍵はrepoに置かない。下の`<...>`は、実行するときに実際�
 | 項目 | Codex | Claude |
 | --- | --- | --- |
 | App | `<codexのAppの名前>`（作成済み） | `<claudeのAppの名前>`（作成済み） |
-| インストール先 | `kurashi-ledger`・`mekiki`・`mekiki-claude`。`.github`は未確認 | `kurashi-ledger`・`mekiki`・`mekiki-claude`・`.github`（`.github`は2026-10-11に読取りのトークンを発行できたことで確かめた。インストールの範囲が選んだrepoだけか、すべてかは所有者が確かめる） |
+| インストール先 | `kurashi-ledger`・`mekiki`・`mekiki-claude`・`.github`（`.github`は2026-10-11に、信頼したmainのコピーで`.github`だけへ縮小した読取りのトークンを発行し、公開の情報を読めたことで確かめた。[記録](https://github.com/doc-gif/kurashi-ledger/pull/82#pullrequestreview-5483621500)） | `kurashi-ledger`・`mekiki`・`mekiki-claude`・`.github`（`.github`は2026-10-11に読取りのトークンを発行できたことで確かめた） |
 | App ID・Installation ID | 環境変数`KL_GITHUB_APP_ID_CODEX`・`KL_GITHUB_APP_INSTALLATION_ID_CODEX` | 環境変数`KL_GITHUB_APP_ID_CLAUDE`・`KL_GITHUB_APP_INSTALLATION_ID_CLAUDE` |
 | 秘密鍵の置き場所 | macOSのログインキーチェーンの汎用パスワード。service `kurashi-ledger-codex-reviewer`、account はmacOSのログイン名、値はPEMのbase64 | 同じ形。service `kurashi-ledger-claude-implementer` |
 
-`--repo`の許可リスト（`scripts/lib/github-app-token.ts`の`REPOSITORIES`）は、トークンを縮小できるrepoの一覧で、インストール先の証拠ではない。トークンは1回ごとに1つのrepoへ縮小する。`.github`のmainには保護がまだないので、所有者が保護を決めるまで、AIは`.github`のmainへ書かない（[#81](https://github.com/doc-gif/kurashi-ledger/pull/81#issuecomment-6109341975)）。
+`--repo`の許可リスト（`scripts/lib/github-app-token.ts`の`REPOSITORIES`）は、トークンを縮小できるrepoの一覧で、インストール先の証拠ではない。トークンは1回ごとに1つのrepoへ縮小する。インストールの範囲が選んだrepoだけか、すべてかは、所有者が確かめる。`.github`のmainには保護がまだないので、所有者が保護を決めるまで、AIは`.github`のmainへ書かない（[#81](https://github.com/doc-gif/kurashi-ledger/pull/81#issuecomment-6109341975)）。
 
 serviceの名前に入っている`reviewer`・`implementer`は、所有者が最初に登録したときの名前で、役割の意味を持たない。鍵を登録し直さずに使うため、スクリプトの既定にした（`--keychain-service`で変えられる）。accountは、スクリプトが`os.userInfo()`で調べるmacOSのログイン名を使う（環境変数`USER`ではない。ふつうは同じ。`sudo`等で違うと「項目がない」になる）。
 
