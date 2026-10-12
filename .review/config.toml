@@ -1,0 +1,25 @@
+# このrepoの設定（mekikiの設計8節・9節）。いまの検査器が読むのは[causes.paths]だけ。
+# [causes.paths]: 共通の不変条件のIDに、このrepoで選ぶpathを足す。.review/mekiki/global-ids.jsonのpathsに足すだけで、狭めない。
+# 値は、分割前の.review/invariants.jsonの同じ不変条件のpathsと同じ（mekiki 3204b4fの分割のcauses-paths.json）。
+# 分割で新しく作った共通の不変条件には、まだpathを足さない。
+
+[causes.paths]
+INV-TASKS = [
+  "README.md",
+  "docs/**",
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".github/**",
+  ".review/**",
+  "tools/review_guard/**",
+]
+INV-REVIEW = [
+  ".review/**",
+  "tools/review_guard/**",
+  ".github/**",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "docs/pr-review-loop.md",
+  "docs/review-prevention.md",
+  "docs/github-agent-operations.md",
+]

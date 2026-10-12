@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "note": "mekikiから写したファイルの出どころ。CIはこのファイルを読まない（段4）。写しを更新したら、この記録も同じPRで更新する。",
+  "repository": "doc-gif/mekiki",
+  "guard": {
+    "commit": "50e5f81428f1e18cbfc9a209d5980475cee372b6",
+    "sha256": {
+      "tools/review_guard/guard.py": "40278d06a0d0b0e5ae21f39e89763fbfdcf3d6852180756e416afb8f6ca6d76d",
+      "tools/review_guard/ci.py": "4df69ed5577db0517e95fd089cc60647718a2d076880a15f97c6a32dc4c791f7",
+      "tools/review_guard/changed_paths.py": "48697f4ffe3c979fe61e9bfce832d9be5ab94df40c7debcdb310bc89342893ab"
+    }
+  },
+  "split": {
+    "commit": "3204b4f0aa5516baaa3091a9a39cc075564867f7",
+    "table": "causes/split.json",
+    "input": {
+      "repository": "doc-gif/kurashi-ledger",
+      "commit": "4fffd5256e33d4e1cc6c6d5b0aa00d376331dd51",
+      "catalog": ".review/invariants.json",
+      "ledger": ".review/findings.json",
+      "plans": ".review/plans/"
+    },
+    "sha256": {
+      ".review/mekiki/global-ids.json": "9d2c8773236daef71c725173a0a8ecfd00f135ab638a52fc2e0c4be63edc63b0",
+      ".review/causes/invariants.json": "59d42917116f0aea101055c7466c389f92da55956b364c8d9f25f18f4b13f533",
+      ".review/causes/findings.json": "defab451ea0a4f8153ef252080baa89f423777c1250153e6561ca815bf7276fc",
+      ".review/causes/origins.json": "ceec3d4c76b96432d173bfc37e7e559abdd3d17004c007748f1feca9d4abc9a3"
+    }
+  }
+}

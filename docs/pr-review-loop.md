@@ -47,7 +47,7 @@ plan_path: <計画のパス>
 
 空の行は省く。
 
-`role:`とdecisionは書かない。印がhandoff・reviewと別なので、レビュー記録として数えない。自分の印のほかに、ほかの印（handoff・review・dispatch）を本文に引用しない（引継ぎの読み取りが本文の中の印を拾うため）。`RT-<番号>`はそのPRの中だけの番号。RTを台帳に入れるときや共有のIDが要るときは、内容レビューの担当が`PR<N>-R<3桁以上の番号>`を付け、どのRTに当たるかを書く。同じ原因なら既存のIDへまとめる（`triage`）。実装担当は、`RT-<番号>`ごとに修正のcommitか対応不要の理由を書き、ready-for-reviewの引継ぎの「実行した検証」に、粗探しのコメントへのリンクとその対象headを書く。
+`role:`とdecisionは書かない。印がhandoff・reviewと別なので、レビュー記録として数えない。自分の印のほかに、ほかの印（handoff・review・dispatch）を本文に引用しない（引継ぎの読み取りが本文の中の印を拾うため）。`RT-<番号>`はそのPRの中だけの番号。RTを台帳に入れるときや共有のIDが要るときは、内容レビューの担当が`PR<N>-R<3桁以上の番号>`を付け、どのRTに当たるかを書く。同じ原因なら既存のIDへまとめる（`triage`）。段5までは古い台帳（`.review/findings.json`）に足す（[段5までの扱い](../tools/review_guard/README.md#段5までの扱い)）。実装担当は、`RT-<番号>`ごとに修正のcommitか対応不要の理由を書き、ready-for-reviewの引継ぎの「実行した検証」に、粗探しのコメントへのリンクとその対象headを書く。
 
 受付がactiveのPRの時点と投稿者は、[受付がactiveのPR](#受付がactiveのpr)に従う。
 
