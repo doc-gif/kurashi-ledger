@@ -6,7 +6,7 @@
 
 | 担当 | 行うこと | 終了地点 |
 | --- | --- | --- |
-| 管理者・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定 | 範囲と担当を明示 |
+| 管理者（今はdoc-gif。ほかの文書の「所有者」、`AGENTS.md`の「owner」と同じ人）・調整係 | 仕様の承認、実装再開、担当割当、優先順位、マージの条件の決定 | 範囲と担当を明示 |
 | マージ担当（今はdoc-gif） | [マージ条件](#merge-conditions)を確かめて、PRをマージする | マージ |
 | 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応 | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。マージはしない |
 | レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
@@ -30,7 +30,7 @@
 
 マージ担当は、マージの直前にmain先端と確認したbase_shaを照合する。headの一致はheadだけを固定するので、マージのあと、マージ担当がマージコミットの第1親とそのbase_shaの一致も確かめる。異なれば組み合わせを確かめ直し、必要なら実装担当に修正PRを頼む。デプロイは管理者の明示指示まで行わない。
 
-**Copilotレビューは任意（2026-10-04の[所有者決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
+**Copilotレビューは任意（2026-10-04の[管理者の決定](https://github.com/doc-gif/kurashi-ledger/issues/45#issuecomment-5974925503)）。** 応答・利用枠不足の証拠・未対応指摘の有無を独立したマージ条件にはしない。指摘があれば妥当性を評価し、対応する。重大な欠陥を残したまま独立レビューや粗探しを完了扱いしない。以前の[利用枠不足の暫定条件](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5970160060)は過去のマージ証跡として保持する。
 
 詳細な投稿形式・完了判定・再レビュー手順は [PRレビューループ](pr-review-loop.md)。外部AIへ渡す起動用の指示は [実装側の定期確認](external-worker.md)。現在の設定と停止状態は [project-status.md](project-status.md)。
 
@@ -58,7 +58,7 @@ Issueにはtask_id、目的、非対象、spec_revision、承認したrevision�
 
 `backlog → ready → claimed → working → ready-for-review → reviewing → changes-requested → working`
 
-修正不要なら `reviewing → accepted → merged → done`。所有者がマージの条件を確かめてマージし（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
+修正不要なら `reviewing → accepted → merged → done`。マージ担当がマージの条件を確かめてマージし（merged）、マージ直後のbaseの確認（マージコミットの第1親が確認したbase_shaであること。違えば組み合わせの再確認と、必要な修正）が済んでからdoneにする。blocked、needs-owner、pausedを横断状態として使う。ラベルは表示補助であり、実PR・SHA・引継ぎ・レビュー記録を確認する。
 
 Open PRだから完成、Draftだから絶対未完成とはみなさない。完了したhead/baseと検証結果を明記した引継ぎで判定する。作業中の古いready報告は無効。
 

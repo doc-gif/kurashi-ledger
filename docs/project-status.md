@@ -6,7 +6,7 @@
 
 - **実装フェーズ**。2026-10-02に製品停止を台帳全体で解除した。着手には所有者または調整係の担当割当が必要。[実装計画](implementation-plan.md)の依存成果物を確認する。予定・ラベル・AIの自己申告は許可ではない。
 - T00はADR、README、状態資料、アーキテクチャ、台帳、計画の整合とT26–T28の設計まで含め、PR #2で完了した。T01/T02/T04はClaude側へ並行割当され、mainに統合済み。T03（#22）とT05（#17）も完了し、mainに統合済み。T05は統合済みT02の上でCIを整備した。
-- 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)は所有者が確かめる。
+- 内容レビューは別担当が行う。Claude実装はCodex、Codex実装はClaudeへ回し、自分や自分のサブエージェントの差分をレビューしない。[マージ条件](github-agent-operations.md#merge-conditions)はマージ担当が確かめる。
 - 使い方・構成・運用変更ではREADMEも更新し、引継ぎに有無と理由を記す（[AGENTS](../AGENTS.md)）。設計段階の欠陥は同じPRで直し、実装時の確認は担当タスクの受入条件へ渡す。理由と解消の証跡をスレッドに記録し、別担当が確認する。Copilotは任意の補助レビューとし、[現行マージ条件](github-agent-operations.md#merge-conditions)に従う。両立しない要求は所有者判断へ戻す。
 - 2026-10-11の決定: 所有者の言葉は「決まりも所有者だけがマージする形に直して」。マージは所有者だけが行い、AIはマージしない（[マージ条件](github-agent-operations.md#merge-conditions)）。AIがマージの直前に変数を読んでいた道具は、[#76](https://github.com/doc-gif/kurashi-ledger/issues/76)で消した。
 - 所有者の印と本人確認は[AGENTS](../AGENTS.md)に従う。印だけで権限を広げない。

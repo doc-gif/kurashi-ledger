@@ -1,6 +1,6 @@
 # PRの引継ぎとレビューのループ
 
-2026-10-02。実装側はOpenのPRと引継ぎを作成して別担当のレビューを待ち、実装していない別の担当は内容レビューと結果報告を行う。マージは所有者だけが行う（[マージ条件](github-agent-operations.md#merge-conditions)）。2026-10-02に製品実装の停止を解除した。受付がactiveのPRは[最後の節](#受付がactiveのpr)に従う。
+2026-10-02。実装側はOpenのPRと引継ぎを作成して別担当のレビューを待ち、実装していない別の担当は内容レビューと結果報告を行う。マージするのはマージ担当だけ（[マージ条件](github-agent-operations.md#merge-conditions)）。2026-10-02に製品実装の停止を解除した。受付がactiveのPRは[最後の節](#受付がactiveのpr)に従う。
 
 ## コメントを短くする
 
@@ -179,7 +179,7 @@ required_reviewers: <login/App IDの一覧>
 | 粗探し | 担当reviewerのうち独立性を満たす1者。AIなら粗探しJobとBroker、人なら同じ書式で手動。実装担当のAppは投稿しない。書式は[提出前の粗探し](#提出前の粗探し) |
 | 内容レビュー | 担当reviewer。AIならレビューJobとBroker（[3節](#3-別担当による内容レビュー)のv1本文）、人なら標準のApprove。COMMENTのacceptedは数えない |
 | 修正 | 実装担当が手動で行う。auto-fixは、実装Jobの隔離の設計が別に受け入れられるまで無効 |
-| マージ | 所有者（[マージ条件](github-agent-operations.md#merge-conditions)） |
+| マージ | マージ担当（[マージ条件](github-agent-operations.md#merge-conditions)） |
 
 ### 実装担当の手順
 
@@ -199,7 +199,7 @@ required_reviewers: <login/App IDの一覧>
 - ほかの[マージ条件](github-agent-operations.md#merge-conditions)は変わらない。mainが進めば、新しいReady・粗探し・レビューが要る。
 - 人の操作の結合を受付の記録で証明できなければ保留する。SHAの自己申告で補わない（GitHubのReviewにbaseはない）。
 
-例（人だけ）: 人がDraft→Readyにする。受付がそのReadyを今のpairと認可済みの身元に結び付け、粗探しJobを起動する。未解消のRTがなければ、人のreviewerへ標準のレビュー依頼を送る。reviewerが画面でApproveし、受付がその結合を保存する。所有者が結合・粗探し・CIを確かめてマージする。
+例（人だけ）: 人がDraft→Readyにする。受付がそのReadyを今のpairと認可済みの身元に結び付け、粗探しJobを起動する。未解消のRTがなければ、人のreviewerへ標準のレビュー依頼を送る。reviewerが画面でApproveし、受付がその結合を保存する。マージ担当が結合・粗探し・CIを確かめてマージする。
 
 ### 切替（PRごと）
 

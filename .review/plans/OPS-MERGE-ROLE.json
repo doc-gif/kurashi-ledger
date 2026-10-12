@@ -6,7 +6,10 @@
     "AGENTS.md",
     "docs/external-worker.md",
     "docs/github-agent-operations.md",
-    "docs/pr-review-loop.md"
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-dispatch-runbook.md"
   ],
   "conflicts": [],
   "assessments": [
@@ -30,12 +33,12 @@
         {
           "id": "dependencies",
           "method": "このPRが共有資源（lockfile・migration・CIの権限）に触れないことと、開いているPRで同じ文を変えるものを確かめる。",
-          "expected": "差分は文書4つと計画だけ。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを変えるが、このPRの変える行（9〜30行目）とは重ならない。"
+          "expected": "差分は文書7つと計画だけ。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを、PR #85はdocs/pr-review-loop.mdの1節と3節を変えるが、このPRの変える行とは重ならない。"
         },
         {
           "id": "entrypoints",
-          "method": "AGENTS.md、CLAUDE.md、docs/external-worker.md、docs/pr-review-loop.md、docs/development.md、docs/project-status.mdで「owner merges」「所有者がマージ」「マージは所有者」をgrepし、マージする人を書く文を読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。アンカーmerge-conditionsとowner-merge-onlyへのリンクもgrepする。",
-          "expected": "マージする人を書く文は、定義元と3つの入口だけで、どれも「マージ担当（今はdoc-gif）」。docs/project-status.mdの2026-10-11の決定の引用は、当時の言葉なので変えない。2つのアンカーは残り、リンクはすべて有効。"
+          "method": "AGENTS.md、CLAUDE.md、.github/copilot-instructions.md、README.md、docs/*.mdで、マージする人・確かめる人を書く文（「所有者」「owner」と「マージ」が同じ行）をgrepし、読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。アンカーmerge-conditionsとowner-merge-onlyへのリンクもgrepする。",
+          "expected": "今も効く規則として、マージする人・確かめる人を書く文は、すべて「マージ担当」。残すのは3か所で、理由を書く: docs/project-status.mdの2026-10-11の決定の記録（当時の言葉）、docs/github-agent-operations.mdの3行目（更新の経緯）、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」（アンカーが変わるので、リンクと一緒に別の言い換えのPRで直す）。定義元の分担の表で、管理者が、ほかの文書の「所有者」とAGENTS.mdの「owner」と同じ人だと書く。2つのアンカーは残り、リンクはすべて有効。"
         }
       ]
     },
@@ -91,16 +94,16 @@
       "pattern": "マージする人の書き方が、入口ごとに違う（C-0060）。",
       "places": [
         {
-          "location": "docs/github-agent-operations.mdの分担の表とマージ条件",
-          "result": "定義元。「マージ担当（今はdoc-gif）」で書く。"
+          "location": "docs/github-agent-operations.mdの分担の表・マージ条件・状態遷移",
+          "result": "定義元。「マージ担当（今はdoc-gif）」で書き、管理者がほかの文書の「所有者」と同じ人だと書く。"
         },
         {
-          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの4節",
-          "result": "同じ語にそろえ、定義元へリンクする。"
+          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの冒頭・担当の表・例・4節、docs/project-status.mdの9行目、docs/review-dispatch-design.mdの4か所、docs/review-dispatch-runbook.mdの範囲",
+          "result": "マージ担当にそろえ、定義元へリンクする。"
         },
         {
-          "location": "docs/project-status.mdの2026-10-11の決定、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印",
-          "result": "変えない。引用、見出しのアンカー、決まった書式だから。見出しの語は#26の言い換えのPRで扱う。"
+          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印",
+          "result": "変えない。当時の言葉の記録、更新の経緯、アンカーが変わる見出し、決まった書式だから。見出しは別の言い換えのPRで、リンクと一緒に直す。"
         }
       ]
     },

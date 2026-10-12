@@ -96,7 +96,7 @@ POST応答が不明なら全必要ページからmarker、actor、commit、本�
 | --- | --- | --- | --- |
 | Ready/accepted | 現行正本のhandoff・exact-pair decision。COMMENT可 | 現行判定が効力を持つ。標準Ready/native Reviewとの差を記録 | §1/2のReady、独立APPROVEとpair証跡。旧COMMENTを正式承認へ変換しない |
 | Copilot/粗探し | Copilot任意・粗探し必須（現行条件） | 同じ条件との差を記録 | Copilotは補助情報。担当reviewerの粗探しJobと人の証跡を判定へ集約 |
-| マージの権限 | 所有者（[マージ条件](github-agent-operations.md#merge-conditions)） | 同じ | 同じ |
+| マージの権限 | マージ担当（[マージ条件](github-agent-operations.md#merge-conditions)） | 同じ | 同じ |
 | 証跡の形 | AIはv1本文、人は標準操作 | 同じ | AIはv1本文、人は標準操作と受付が保存した結合（[確かめ方](pr-review-loop.md#所有者がマージ前に確かめる記録)） |
 | 判定/通知 | 現行手順/T23の担当 | 現行側だけ投稿。新受付は判定記録のみ | Issue45受付/Brokerだけ。T23の重複判定/通知を委譲 |
 | T24/既存巡回 | 現行方式 | 現行方式、AIの二重起動なし | 移行したPRだけ新Job管理へ。旧workerの停止を確認してから切替 |
@@ -105,7 +105,7 @@ activeの前提だった**正本移行**は、Issue #50のW0で行った。pr-re
 
 activeのReviewはAPPROVEが候補、CHANGES_REQUESTEDは修正待ち、COMMENTED/行指摘は認可済みの参考/指摘、DISMISSED/編集は集合を再計算する。複数reviewerは必要集合/人数を満たし、重大未解消指摘やRequest changesを多数決で無視しない。人のApproveもReview commitと成立時pairを証明できなければ保留する。状態変化後の投稿はstaleとして履歴に残す。
 
-起動の方式（policy）とマージの権限を分ける。マージはmodeによらず所有者だけが行うので、rollbackでも変わらない（PR51-R001）。受付はマージしない。repo保護設定の変更は別のowner作業。
+起動の方式（policy）とマージの権限を分ける。マージはmodeによらずマージ担当だけがするので、rollbackでも変わらない（PR51-R001）。受付はマージしない。repo保護設定の変更は別のowner作業。
 
 ## 6. 身元を結ぶBrokerと通知
 
@@ -215,11 +215,11 @@ doctorの否定試験に次を加える。1つでも拒否できなければcapa
 | net-443 | 閉じ込めたClaudeが443番へ出られることを残る危険として受け入れる。localhostは塞ぐ。toolはRead・Grep・Glob（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)） | — | §7 |
 | O3 | 別のOSユーザーでの分離は見送る | 残余リスクとして記録する | §7 |
 | Windows | 受付はMacだけで動かす。Windowsでは現行の手動レビュー手順を使う | Windowsのbackendは作らない | §3、[PR書式](pr-review-loop.md#受付がactiveのpr) |
-| active-merge | 受付がactiveのPRはAIがマージせず、所有者が画面でマージする。受領記録と通知は表示だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)） | — | [運用規約](github-agent-operations.md#dispatch-active) |
+| active-merge | 受付がactiveのPRはAIがマージせず、マージ担当が画面でマージする。受領記録と通知は表示だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)） | — | [運用規約](github-agent-operations.md#dispatch-active) |
 | 粗探しの時点 | activeのPRでは、粗探しをReadyのあと・レビューJobの前に同じhead/baseで行う | — | [運用規約](github-agent-operations.md#dispatch-active) |
 | keychain | 閉じ込めたAIからAppの鍵（または同じACLの合成項目）が読めたら、Appの鍵を専用keychain fileへ移す。それまで自動起動は無効 | 移動はApp手順の変更として別PR | §7 |
 | owner-merge-only | 全PRで、AIは`OWNER_MERGE_ONLY`にあるか読めないPRをマージしない。値はリポジトリ変数の1か所だけ（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977666899)）。AIは自分のAppで読み、doc-gifでは読まない（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977715281)）。2026-10-11に全PRを所有者のマージにしたので、使わなくなった | 読取りは`merge-check`用途（[#55](https://github.com/doc-gif/kurashi-ledger/pull/55)） | [マージ条件](github-agent-operations.md#merge-conditions) |
-| start-small | 初期運用は、対象PR 1件、必要なreviewer 1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージは所有者。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出てから広げる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)） | — | [PR書式](pr-review-loop.md#切替prごと) |
+| start-small | 初期運用は、対象PR 1件、必要なreviewer 1者、自動起動は実機で証明したbackend（Claude）だけ、修正は手動、マージはマージ担当。AIの起動回数・重複起動・Readyから結果までの時間を測り、効果が出てから広げる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977629581)） | — | [PR書式](pr-review-loop.md#切替prごと) |
 | R009 | 時計の後退を許す幅は5秒 | — | [host検査](review-dispatch-implementation.md#host検査pr48-r009r011) |
 | group-end | 子孫の終了の証明（fdの継承）をやめ、process groupを止めて空を確かめる。空は必要条件で十分条件ではない。groupを離れた子の残余リスクをstart-smallで受け入れ、`CLAUDE_CONFIG_DIR`はrunごと（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-6019871945)） | — | §4、§7の残余リスク |
 | R008 | workflowの信頼を記録する単位は、CIの判定を決めるファイル: `.github`全体、`package.json`、`tools/review_guard/`、`scripts/check-test-skips.ts`とその読む部品、`.npmrc`（[追加の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977523656)、W4で実装）。試験の中身は含めず、独立した内容レビューで守る（[置換の受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977404200)） | — | [workflowの信頼](review-dispatch-implementation.md#workflowの信頼pr48-r008) |
