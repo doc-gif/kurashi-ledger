@@ -24,19 +24,19 @@
         {
           "id": "public",
           "method": "npm run check:public -- --staged と差分の目視。",
-          "expected": "終了0。差分・PRの本文・コメントに、非公開の資料の原文・URL・識別子がない。"
+          "expected": "終了0。planned_pathsの10ファイル・計画・PRの本文・コメントに、非公開の資料の原文・URL・識別子がない。"
         }
       ]
     },
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "マージの決まりの定義元（docs/github-agent-operations.md#merge-conditions）を役割（マージ担当）で書き直し、誰がマージするかを書く入口（AGENTS.md、docs/external-worker.md、docs/pr-review-loop.mdの1か所）を同じ語にそろえる。決まりの中身（AIはマージしない、マージの前に確かめること）は変えない。",
+      "reason": "マージの決まりの定義元（docs/github-agent-operations.md#merge-conditions）を役割（マージ担当）で書き直し、マージする人・確かめる人を書く文を、planned_pathsのすべてのファイルで同じ語にそろえる。決まりの中身（AIはマージしない、マージの前に確かめること）は変えない。",
       "checks": [
         {
           "id": "dependencies",
           "method": "このPRが共有資源（lockfile・migration・CIの権限）に触れないことと、開いているPRで同じ文を変えるものを確かめる。",
-          "expected": "差分は文書7つと計画だけ。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを、PR #85はdocs/pr-review-loop.mdの1節と3節を変えるが、このPRの変える行とは重ならない。"
+          "expected": "差分はplanned_pathsの10ファイルと計画だけで、共有資源に触れない。止めているPR #25・#28はdocs/github-agent-operations.mdの67行目の近くを、PR #85はdocs/pr-review-loop.mdの1節と3節を変えるが、このPRの変える行とは重ならない。"
         },
         {
           "id": "entrypoints",
@@ -75,7 +75,7 @@
     {
       "id": "B2",
       "direction": "exit",
-      "location": "公開のAGENTS.mdとdocs/",
+      "location": "公開のplanned_pathsの10ファイル（README.md、AGENTS.md、.github/copilot-instructions.md、docs/の7ファイル）",
       "data": "役割の名前と、今のマージ担当のGitHubのアカウント名",
       "trust": "untrusted",
       "control": "アカウント名doc-gifはすでに公開の文書にある。非公開の資料は書かない。"
@@ -87,7 +87,7 @@
       "pattern": "公開のrepoに、非公開の資料の原文・URL・識別子を書く（PR79-R001、PR85-R001）。",
       "places": [
         {
-          "location": "差分の4ファイル、計画、PRの本文",
+          "location": "planned_pathsの10ファイル、計画、PRの本文",
           "result": "管理者の決定は日付だけを書く。"
         }
       ]
