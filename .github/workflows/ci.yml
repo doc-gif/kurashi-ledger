@@ -138,7 +138,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Validate the catalog and the ledger
-        run: python -E -s tools/review_guard/guard.py validate
+        run: python -E -s tools/review_guard/guard.py validate --catalog .review/causes/invariants.json --ledger .review/causes/findings.json --global-ids .review/mekiki/global-ids.json --config .review/config.toml
       # unittestは、0件・skip・期待した失敗（expectedFailure）でも0で終わるので、要約の行も照合する
       # （ブラウザ試験のPR18-R002と同じ穴を塞ぐ）。
       - name: Test the generic tool and the repository routing

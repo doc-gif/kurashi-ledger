@@ -1,0 +1,397 @@
+{
+  "schema_version": 2,
+  "base_sha": "e14f20e8f6a3b4ac19f2c897e152b16a5261e21a",
+  "task_id": "OPS-STAGE4-LEDGER-LAYOUT",
+  "planned_paths": [
+    ".github/workflows/ci.yml",
+    ".review/causes/findings.json",
+    ".review/causes/invariants.json",
+    ".review/causes/origins.json",
+    ".review/config.toml",
+    ".review/mekiki/SOURCE.json",
+    ".review/mekiki/global-ids.json",
+    ".review/tests/test_repository_routing.py",
+    "docs/pr-review-loop.md",
+    "docs/review-prevention.md",
+    "tests/stage4/fixtures.py",
+    "tools/review_guard/README.md",
+    "tools/review_guard/ci.py",
+    "tools/review_guard/guard.py",
+    "tools/review_guard/tests/test_guard.py",
+    "tools/review_guard/tests/test_stage2b_review_dir.py",
+    "tools/review_guard/tests/test_stage4_ledgers.py",
+    "tools/review_guard/tests/test_stage4_redteam.py",
+    "tools/review_guard/tests/test_stage4_split_ids.py"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "INV-RELEASE→INV-STORAGEのrelatedで選ばれただけ。アプリと保守コマンドの排他には触れない。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分のpathにsrc/・scripts/がないことを確かめる。",
+          "expected": "lockの処理は変えない。"
+        },
+        {
+          "id": "recovery",
+          "method": "同上。",
+          "expected": "lockの処理は変えない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "共通の台帳の本文は非公開のmekikiにある。このPRで公開するのは、固有の台帳（分割前の公開の台帳から作った）と、IDとhashだけの目録。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "mekiki 3204b4fでsplitを作り直し、公開する5つのファイルとバイト単位で比べる。追加した行と、共通の台帳の本文の24文字のn-gramを照合する（共通の本文はrepoの外にだけ置く）。npm run check:public -- --staged。",
+          "expected": "splitの出力と一致する。今のmainにない共通の本文のn-gramは、追加した行に0件。URLはdoc-gif/kurashi-ledgerだけ。check:publicは終了0。試験の入力は合成だけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": ".github/workflows/ci.ymlの変更で選ばれた。変えるのはreview toolsのvalidateの1行だけ。製品の依存・build・配信物は変えない。新しいguard.pyはtomllib（Python 3.11以上）を使い、CIのsetup-pythonは3.11。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "git diff origin/main -- .github/workflows/ci.yml を読む。手元のPython 3.11.17で、CIと同じvalidate・strict_unittestを動かす。npm run setup・check:install・typecheck・test・build を動かす。",
+          "expected": "ci.ymlの差分はvalidateの1行だけ。validateは終了0。試験はskipなしで全部成功。npmの手順も全部終了0。Node・依存・DBの版は変わらない。"
+        },
+        {
+          "id": "artifact",
+          "method": "package.json・package-lock.json・scripts/build.tsを変えないことを差分で確かめる。",
+          "expected": "配信物・manifestには触れない。npm run buildは今までどおり何も作らない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "所有者の決定（2026-10-12、非公開のmekikiで記録。段5まで古い台帳を残す）のとおり、新しい台帳を古い台帳の隣に足す。検査器と台帳を同じPRで変えるので、このPRはbaseの古いci.pyと古い台帳で検査される。マージ後は、次のPRから新しいci.pyと新しい台帳がbaseになる。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "分割の対応（mekiki 3204b4fのsplit-map.json）で、古いIDと新しいC-NNNNが1対1か確かめる。.review/testsで、PR4-R022・R023の原因をtriageすると新しい組でもupdate-existingになるか確かめる。",
+          "expected": "新しい組のvalidateは終了0（不変条件15件、原因74件）。PR4-R022はC-0017、PR4-R023はC-0018に当たる。同じ原因を別IDで足していない。"
+        },
+        {
+          "id": "trust",
+          "method": "CIのreview planが、baseのci.pyと古い台帳だけでこの計画を検査することを、手元で同じ手順で確かめる。tools/review_guard/と.github/の変更は、所有者がci-trust-digest.shで記録するまで信頼しないことを確かめる。",
+          "expected": "baseのci.pyは終了0（metadata-complete）。検査器・台帳・目録・config.tomlの変更は、CIの合格だけでは採用しない。別の担当が差分を読み、所有者がtrustedCiの組を記録する。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "INV-RELEASE→INV-STORAGEのrelatedで選ばれただけ。アプリのデータルートには触れない。試験は一時ディレクトリだけを作って消す。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分のpathにsrc/がないことを確かめる。",
+          "expected": "データルートの作成・検査は変えない。"
+        },
+        {
+          "id": "aliases",
+          "method": "test_guard.pyの変更（一時ディレクトリへのchdir）を読む。",
+          "expected": "一時ディレクトリはtempfileで作り、試験の後にcwdを戻してから消す。アプリの保存先の判定には関係しない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "INV-RELEASEのrelatedで選ばれただけ。DB・journal・アプリのバックアップのmanifestには触れない。.review/mekiki/SOURCE.jsonは写したファイルのsha256の記録で、アプリのmanifestではない。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分のpathにsrc/・migrations/がないことを確かめる。",
+          "expected": "DBとmigrationのファイルは変えない。"
+        },
+        {
+          "id": "restore",
+          "method": "差分のpathにsrc/infrastructure/がないことを確かめる。",
+          "expected": "復元の処理は変えない。"
+        },
+        {
+          "id": "manifest",
+          "method": "SOURCE.jsonが自分自身のhashを持たないこと、.review/testsがhashとファイルの中身の一致を確かめることを読む。",
+          "expected": "SOURCE.jsonは自分を含まない7つのファイルのsha256を持つ。アプリのmanifestの規則には関係しない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "古い台帳は段5まで残す（受付が読む）。CIの変更はvalidateの1行だけ。READMEの「段5までの扱い」を、段5までの原因の足し方・分割の作り直し・人が読む変更・検査から外れる17件の唯一の置き場所にし、docs/review-prevention.mdとdocs/pr-review-loop.mdはそこを指す（粗探しRT-2）。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "mekiki #43（head 3204b4f）の状態と、写したguardのcommit（mekiki main 50e5f81）を確かめる。古い台帳を読む受付のコード（scripts/lib/review-dispatch/）を変えないことを確かめる。",
+          "expected": "台帳はmekiki #43のhead 3204b4fから作った。#43はまだマージされていないので、このPRのマージは#43のマージのあとにする（3204b4fと違う内容でマージされたら作り直す）。受付のコードは変えない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "git grep -n -e 'findings.json' -e 'invariants.json' -e 'PR<正整数>' -e 'guard.py validate' -e 'guard.py prepare' -- docs README.md AGENTS.md CLAUDE.md tools/review_guard で、台帳の場所とIDの形を書く箇所をすべて読む。",
+          "expected": "tools/review_guard/README.mdのvalidate・prepare・check・triageのコマンドは新しい組を指し、古い台帳での照合の方法も書く。段5までは原因を古い台帳に足すという規則はREADMEの1か所にあり、docs/review-prevention.mdとdocs/pr-review-loop.mdはリンクで指す。adapters/github-actions.ymlはmekikiの写しのまま変えず、違いをREADMEに書く。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "exit",
+      "location": ".review/causes/*.json・.review/mekiki/global-ids.json・.review/config.toml・この計画（公開repo）",
+      "data": "分割した固有の台帳、共通のID目録（ID・paths・related・scenarioのID・原因のhash）、[causes.paths]",
+      "trust": "untrusted",
+      "control": "mekiki 3204b4fのsplitの出力とバイト単位で一致させる（splitは公開前に24文字のn-gramで共通の本文を照合する）。追加した行を、今のmainにない共通の本文と照合して0件。計画にはcontextを入れない。"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "tools/review_guard/guard.py・ci.py（mekiki main 50e5f81の写し）",
+      "data": "次のPRからCIの計画の検査を決めるコード",
+      "trust": "untrusted",
+      "control": "このPRのCIは、このコードを計画の検査に使わない（baseのci.pyだけ）。50e5f81とバイト単位で同じ。sha256を.review/mekiki/SOURCE.jsonに書き、.review/testsで照合する。所有者がci-trust-digest.shでtrustedCiの組を記録するまで、受付はunknown-evidenceで止まる。"
+    },
+    {
+      "id": "B3",
+      "direction": "entry",
+      "location": ".github/workflows/ci.yml review toolsのvalidateのstep",
+      "data": "PRの台帳・目録・config.toml（PRのguard.pyが読む）",
+      "trust": "untrusted",
+      "control": "pull_request、contents: read、secretなしのまま。変えるのはrunの1行だけ。--catalog・--ledger・--global-ids・--configを明示し、cwdの既定の読み込みに頼らない。"
+    },
+    {
+      "id": "B4",
+      "direction": "entry",
+      "location": "マージ後のbaseの.review/causes/・.review/mekiki/global-ids.json・.review/config.toml（ci.pyが読む）",
+      "data": "次のPRの計画で選ぶ不変条件と原因",
+      "trust": "partially-trusted",
+      "control": "ci.pyは目録と[causes.paths]をbaseからだけ読む（candidateは形だけ）。.review/testsで、古い組と新しい組の不変条件ごとのpaths・related・scenarioのIDが同じことを確かめる。.review/mekiki/とconfig.tomlは受付のCI_TRUST_PATHSに入っていないので、変更は別の担当が手で読む。"
+    },
+    {
+      "id": "B5",
+      "direction": "entry",
+      "location": "作業ディレクトリの.review/config.toml（guard.pyの既定の読み込み）",
+      "data": "[causes.paths]",
+      "trust": "partially-trusted",
+      "control": "--global-idsなしでは目録にないIDとして終了コード1（黙って選び方を変えない）。READMEとCIのコマンドは--configと--global-idsを明示する。test_guard.pyは各試験を空の一時ディレクトリで動かす。受付の信頼した写しのguardは、一時ディレクトリをcwdにして--catalog・--ledgerだけで動くので影響しない。"
+    },
+    {
+      "id": "B6",
+      "direction": "entry",
+      "location": "tests/stage4/fixtures.pyとtools/review_guard/tests/test_stage4_*.py",
+      "data": "合成の台帳と計画",
+      "trust": "partially-trusted",
+      "control": "mekiki 50e5f81の写し。値はすべて合成（example.testのURL、架空の文）。試験は一時ディレクトリと最小の環境変数でguard.pyを子processとして動かす。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "cause_key": "credential-tool-from-untrusted-checkout",
+      "pattern": "PRのcheckoutのコードを、資格情報のある場所で動かす。",
+      "places": [
+        {
+          "location": ".github/workflows/ci.yml review tools",
+          "result": "PRのguard.pyを動かすが、secretもwriteの権限もない（変更前と同じ）。"
+        },
+        {
+          "location": ".github/workflows/ci.yml review plan",
+          "result": "baseのchanged_paths.pyとci.pyだけを動かす。変えていない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "非公開の共通の台帳の本文（condition・question・lesson・sources）を公開repoへ写す。",
+      "places": [
+        {
+          "location": ".review/causes/*.json",
+          "result": "splitの出力と一致。URLはkurashi-ledgerだけ。"
+        },
+        {
+          "location": ".review/mekiki/global-ids.json",
+          "result": "ID・paths・related・scenarioのID・hashだけ（guard.pyのvalidate_global_idsが項目を限る）。"
+        },
+        {
+          "location": "この計画・tools/review_guard/README.md・docs/review-prevention.md",
+          "result": "共通の本文を写していない（n-gramの照合で0件）。計画にcontextはない。"
+        },
+        {
+          "location": "tests/stage4/fixtures.py",
+          "result": "合成の文だけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "workflow-self-modification",
+      "pattern": "PRが検査器・workflow・台帳を変えて、自分の検査を緩める。",
+      "places": [
+        {
+          "location": "review plan",
+          "result": "baseのci.pyと古い台帳で検査される。新しい検査器と台帳はマージ後にだけ効く。"
+        },
+        {
+          "location": "review toolsのvalidate",
+          "result": "PRのguard.pyでPRの新しい組を検査するので、自己検査にとどまる。別の担当が差分を読み、所有者がtrustedCiを記録する。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "known-path-routing-gap",
+      "pattern": "台帳を移すときに、既知のpathがどの不変条件も選ばなくなる。",
+      "places": [
+        {
+          "location": ".review/tests/test_repository_routing.py",
+          "result": "既存の試験を古い組と新しい組の両方で動かす。不変条件ごとのpaths（目録＋[causes.paths]）・related・scenarioのIDが同じことを確かめる。"
+        },
+        {
+          "location": "kurashi mainの全ファイルのpath",
+          "result": "手元で、古い組で選ぶ不変条件がすべて新しい組でも選ばれることを確かめた（失う選択は0件）。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "multiple-plan-exemption",
+      "pattern": "1つのPRで複数の計画を変える。",
+      "places": [
+        {
+          "location": ".review/plans/",
+          "result": "このPRが変える計画はOPS-STAGE4-LEDGER-LAYOUT.jsonだけ。既存の44件は変えない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-task-identity",
+      "pattern": "計画のファイル名とtask_idが合わない。",
+      "places": [
+        {
+          "location": ".review/plans/OPS-STAGE4-LEDGER-LAYOUT.json",
+          "result": "ファイル名とtask_idが同じ。baseのci.pyが確かめる。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "finding-id-normalization",
+      "pattern": "IDの形が台帳ごとにずれる。",
+      "places": [
+        {
+          "location": "guard.py validate",
+          "result": "2段の台帳はC-NNNNだけ、--global-idsなしの1段の台帳だけPR<N>-R<NNN>も受ける。古い台帳と新しい台帳の両方がvalidateを通る。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "batch-cause-duplication",
+      "pattern": "同じ原因が2つのIDに分かれる。",
+      "places": [
+        {
+          "location": ".review/tests/test_repository_routing.py",
+          "result": "PR4-R022・R023の原因を新しい組でtriageすると、既存のC-0017・C-0018になる。validateは同じ原因の重なりを拒否する。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "cause_key": "plan-assessment-drift",
+      "pattern": "差分が変わったのに計画の確認方法が古いまま。",
+      "places": [
+        {
+          "location": "この計画",
+          "result": "test_guard.pyの変更とdocs/review-prevention.mdの変更を、作業の途中で見つけて計画に足した。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "status-docs-current-state-coherence",
+      "pattern": "同じ事実（台帳の場所・IDの形・コマンド）を書く文書がずれる。",
+      "places": [
+        {
+          "location": "tools/review_guard/README.md",
+          "result": "コマンド・IDの形・2組の台帳の節を新しい組に合わせた。「段5までの扱い」に、原因の足し方、分割の作り直しとSOURCE.jsonの入力commitの照合、人が読む変更、外れる17件を書いた。"
+        },
+        {
+          "location": "docs/review-prevention.md",
+          "result": "古い台帳のIDの形と、隣に2段の台帳があることを書き、原因の足し方と計画の作り方はREADMEを指す。"
+        },
+        {
+          "location": "docs/pr-review-loop.md",
+          "result": "RTを台帳に入れる段落で、段5までは古い台帳に足すことをREADMEへのリンクで書いた。粗探しは受付が渡す古い台帳を見るので、それ以外は変えない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "cause_key": "dependency-before-consumer",
+      "pattern": "使う側が、まだ確定していない提供物に頼る。",
+      "places": [
+        {
+          "location": "mekiki #43（head 3204b4f）",
+          "result": "まだマージされていない。このPRは#43のマージのあとにマージする。"
+        },
+        {
+          "location": "mekiki main 50e5f81のguard",
+          "result": "マージ済み。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "cause_key": "verification-on-target-runtime",
+      "pattern": "対象のOSで動かしていない検証を成功と書く。",
+      "places": [
+        {
+          "location": "review toolsの3つのOS",
+          "result": "手元ではmacOS（Python 3.11.17）だけで動かした。LinuxとWindowsはこのPRのCIで確かめる。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "記録用のhashの一覧を、アプリのmanifestと取り違える。",
+      "places": [
+        {
+          "location": ".review/mekiki/SOURCE.json",
+          "result": "写しの出どころの記録だけ。アプリは読まない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "試験が実際の作業ディレクトリやデータルートを変える。",
+      "places": [
+        {
+          "location": "tools/review_guard/tests/test_guard.py",
+          "result": "一時ディレクトリへchdirし、試験の後に元へ戻す。repoのファイルは読み書きしない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "排他の資源を変える。",
+      "places": [
+        {
+          "location": "差分の全path",
+          "result": "lockの処理はない。"
+        }
+      ]
+    }
+  ]
+}
