@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "d8c5c9e025ecbcc0e5d5657f3335d55e11889f40",
+  "base_sha": "929d073909b6cf1836e9b86ac5dccdd5dadb1697",
   "task_id": "OPS-MERGE-ROLE",
   "planned_paths": [
     ".github/copilot-instructions.md",
