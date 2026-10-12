@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "base_sha": "8d092e1e530b598abbd314105445057ac6aebc45",
+  "task_id": "OPS-PR-TEMPLATE",
+  "planned_paths": [
+    "docs/pr-review-loop.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "公開のdoc-gif/.githubのテンプレートへのリンクを足すだけ。所有者の決定は非公開のrepoにあるので、URLを書かず日付だけを書く（PR79-R001と同じ扱い）。秘密・実データは扱わない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。足したリンクは公開のdoc-gif/.githubのテンプレートだけ。非公開のrepoのURL・中身・個人のパスを含まない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "PRを作るときに本文の見出しを埋める手順を1文足す。作業の範囲・担当・終了地点・依存は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "リンク先のテンプレートが、doc-gif/.githubのmainにあることを確かめる。このPRが共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。",
+          "expected": "テンプレートはdoc-gif/.githubのmainにあり、6つの見出しは本文に書いた名前と同じ。差分はdocs/pr-review-loop.mdと計画ファイルだけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "AGENTS.md・CLAUDE.md・docs/external-worker.md・docs/github-agent-operations.mdで、PRの本文に書くこと（関連Issue、変更理由、受入条件の証跡、対象SHA、検証、未対応範囲）をgrepし、テンプレートの見出しと読み合わせる。",
+          "expected": "AGENTS.mdが求める項目は、テンプレートの6つの見出しのどれかに入る（目的に関連Issueと理由、確認に検証、懸念点と残りの作業に未対応範囲）。食い違う決まりはない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "事前レビューの範囲と内容レビューの確かめることに、PRの本文の見出しを1項目ずつ足す。書式の印・キー・判定の値、マージの条件、指摘のIDは変えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分が1節の1文、提出前の粗探しの範囲の5、3節の1文だけで、書式のブロックと指摘のID・原因台帳に触れないことを確かめる。",
+          "expected": "書式のブロックと指摘の追跡の仕組みの差分が0行。"
+        },
+        {
+          "id": "trust",
+          "method": "docs/github-agent-operations.mdのマージの条件の差分を確かめる。",
+          "expected": "差分が0行。見出しの確認はレビューの項目で、マージの条件は変えない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "所有者の決定（2026-10-12の「この案で」、非公開のrepoのPRのコメント）と調整係の指示",
+      "data": "PRの本文をdoc-gif/.githubのテンプレートの6つの見出しで書く決まり",
+      "trust": "partially-trusted",
+      "control": "所有者が承認した範囲（規則・レビューの確認・CIの検査）のうち、規則とレビューの確認だけをこのPRで足す。CIの検査はdoc-gif/.github #2のTDDの後の別のPRで足す。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "公開のdocs/pr-review-loop.md",
+      "data": "公開repoのテンプレートへのリンク",
+      "trust": "untrusted",
+      "control": "非公開のrepoのURLは書かない（PR79-R001）。テンプレートの見出しの名前だけを書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開のrepoに、非公開のrepoの中身を書く。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.mdの1節の新しい文",
+          "result": "所有者の決定は日付だけを書き、非公開のrepoのURLは書かない。テンプレートは公開のdoc-gif/.githubを指す。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "同じ確認の決まりが、事前レビューと内容レビューで違う。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.mdの提出前の粗探しの範囲と、3節",
+          "result": "両方に同じ確認（本文が6つの見出しを埋めている）を足し、1節の決まりへリンクする。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "PRの本文の決まりが、入口ごとに違う。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.mdの1節",
+          "result": "決まりはここに1か所だけ書く。AGENTS.mdのPRの本文の項目は、テンプレートの見出しに入るので変えない。"
+        }
+      ]
+    }
+  ]
+}
