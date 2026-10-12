@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "base_sha": "929d073909b6cf1836e9b86ac5dccdd5dadb1697",
+  "base_sha": "29cab0c3b25d61ae554dfff744f03a0cfc03ac12",
   "task_id": "OPS-STAGE4-PLAN-REWRITE-LIST",
   "planned_paths": [
     ".review/mekiki/SOURCE.json",
