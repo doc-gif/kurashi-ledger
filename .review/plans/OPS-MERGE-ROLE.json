@@ -3,9 +3,12 @@
   "base_sha": "d8c5c9e025ecbcc0e5d5657f3335d55e11889f40",
   "task_id": "OPS-MERGE-ROLE",
   "planned_paths": [
+    ".github/copilot-instructions.md",
     "AGENTS.md",
+    "README.md",
     "docs/external-worker.md",
     "docs/github-agent-operations.md",
+    "docs/implementation-plan.md",
     "docs/pr-review-loop.md",
     "docs/project-status.md",
     "docs/review-dispatch-design.md",
@@ -98,11 +101,11 @@
           "result": "定義元。「マージ担当（今はdoc-gif）」で書き、管理者がほかの文書の「所有者」と同じ人だと書く。"
         },
         {
-          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの冒頭・担当の表・例・4節、docs/project-status.mdの9行目、docs/review-dispatch-design.mdの4か所、docs/review-dispatch-runbook.mdの範囲",
+          "location": "AGENTS.mdのMerge and authority、docs/external-worker.mdのMERGE、docs/pr-review-loop.mdの冒頭・担当の表・例・4節、docs/project-status.mdの9行目、docs/review-dispatch-design.mdの4か所、docs/review-dispatch-runbook.mdの範囲、.github/copilot-instructions.mdの18行目、docs/implementation-plan.mdの22行目、docs/project-status.mdの29行目、README.mdの5行目、docs/implementation-plan.mdの128行目、docs/review-dispatch-design.mdの143行目",
           "result": "マージ担当にそろえ、定義元へリンクする。"
         },
         {
-          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印",
+          "location": "docs/project-status.mdの11行目、docs/github-agent-operations.mdの3行目、docs/pr-review-loop.mdの見出し「所有者がマージ前に確かめる記録」、AGENTS.mdの【所有者】の印、docs/review-dispatch-design.mdの100行目（見出しのアンカーへのリンク）",
           "result": "変えない。当時の言葉の記録、更新の経緯、アンカーが変わる見出し、決まった書式だから。見出しは別の言い換えのPRで、リンクと一緒に直す。"
         }
       ]
