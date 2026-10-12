@@ -20,12 +20,12 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "mekikiの検査器のコード（#49のマージ、415d643）と、合成のデータだけのテスト（#65、68ac0ea）、分割の対応の表（split-map.json）、書き換えの一覧を足す。表と一覧には、ID・原因のキー・ファイル名・hashだけがあり、共通の台帳の本文（条件・質問・教訓・出典）はない。表には、kurashiでまだ公開していない共通の原因のキーが17件あり、その公開は所有者が決めた（mekiki Issue #44の所有者のコメント、2026-10-12）。",
+      "reason": "コピーの元の検査器のコードと、合成のデータだけのテスト、分割の対応の表（split-map.json）、書き換えの一覧を足す。表と一覧には、ID・原因のキー・ファイル名・hashだけがあり、共通の台帳の本文（条件・質問・教訓・出典）はない。表には、kurashiでまだ公開していない共通の原因のキーが17件あり、その公開は所有者が決めた（所有者の判断、2026-10-12）。",
       "checks": [
         {
           "id": "public",
-          "method": "mekikiからコピーした検査器の2ファイルを415d643と、テストの4ファイルを68ac0eaと、バイト単位で比べる。split-map.jsonを、mekikiのsplitの出力とバイト単位で比べる。追加した行を、共通の台帳のすべての文字列の24文字のn-gramと照合する。npm run check:publicを流す。",
-          "expected": "コピーしたファイルと表はmekikiと同じ。共通の台帳の本文のn-gramは、追加した行に0件。公開する原因のキーは、所有者が決めた17件と、すでに公開の計画にある1件だけ。check:publicは終了0。"
+          "method": "コピーした検査器の2ファイルとテストの4ファイルを、SOURCE.jsonに書いたコピーの元と、バイト単位で比べる。split-map.jsonを、分割の道具の出力とバイト単位で比べる。追加した行を、共通の台帳のすべての文字列の24文字のn-gramと照合する。npm run check:publicを流す。",
+          "expected": "コピーしたファイルと表はコピーの元と同じ。共通の台帳の本文のn-gramは、追加した行に0件。公開する原因のキーは、所有者が決めた17件と、すでに公開の計画にある1件だけ。check:publicは終了0。"
         }
       ]
     },
@@ -41,7 +41,7 @@
         },
         {
           "id": "trust",
-          "method": "CIのreview planが、baseのci.pyでこの計画を検査することを、手元で同じ手順で確かめる。新しいci.pyが一覧の無いPRを今までどおりに検査することを、mekikiのテスト（test_ci.pyと書き換えのテスト）で確かめる。",
+          "method": "CIのreview planが、baseのci.pyでこの計画を検査することを、手元で同じ手順で確かめる。新しいci.pyが一覧の無いPRを今までどおりに検査することを、test_ci.pyと書き換えのテストで確かめる。",
           "expected": "baseのci.pyは終了0（metadata-complete）。一覧が無い間は、1つのPRで変えられる計画は1件のままで、検査は緩まない。"
         }
       ]
@@ -53,13 +53,13 @@
       "checks": [
         {
           "id": "dependencies",
-          "method": "検査器のコピーの元がmekiki #49のマージ（415d643）で、テストのコピーの元がmekiki #65（68ac0ea）であることを確かめる。#65のマージのあと、そのマージのコミットとコピーした8ファイルをバイト単位で比べ、SOURCE.jsonのcommitをそのコミットに直す。一覧に載せる計画を、mekikiのrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
-          "expected": "このPRのマージは、mekiki #65のマージのあと。SOURCE.jsonのcommitはmekikiのmainにあり、コピーした8ファイルはそのコミットと同じ。一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
+          "method": "検査器とテストのコピーの元のコミットを確かめる。テストのコピーの元はまだmainにないので、それがmainに入ったあと、そのコミットとコピーした8ファイルをバイト単位で比べ、SOURCE.jsonのcommitをそのコミットに直す。一覧に載せる計画を、分割の道具のrewrite-plansを今のmainの計画に流して、変わる計画から決める。",
+          "expected": "このPRのマージは、テストのコピーの元がmainに入ったあと。SOURCE.jsonのcommitはコピーの元のmainにあり、コピーした8ファイルはそのコミットと同じ。一覧は、rewrite-plansが変える32件だけを載せる。自由文を言い換えてよいのは、決定のとおり2件の計画の3か所だけ。"
         },
         {
           "id": "entrypoints",
           "method": "tools/review_guard/README.mdと.review/mekiki/SOURCE.jsonで、コピーしたファイルの一覧と出どころが一致するかを読む。",
-          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。実際のci.pyを通すテスト19件（mekiki 68ac0eaでhostの2件を分けたもの）をコピーし、kurashiのtools/review_guard/testsで流す。hostの2件はmekikiにだけあることをREADMEに書く。"
+          "expected": "READMEのコピーの一覧にplan_rewrites.pyがあり、SOURCE.jsonのsha256と.review/testsの照合が一致する。実際のci.pyを通すテスト19件をコピーし、kurashiのtools/review_guard/testsで流す。hostの2件はコピーの元にだけあることをREADMEに書く。"
         }
       ]
     }
@@ -68,10 +68,10 @@
     {
       "id": "B1",
       "direction": "entry",
-      "location": "tools/review_guard/ci.py・plan_rewrites.py（mekiki #49のコピー）",
+      "location": "tools/review_guard/ci.py・plan_rewrites.py（コピー）",
       "data": "次のPRからCIの計画の検査を決めるコード",
       "trust": "untrusted",
-      "control": "このPRのCIは、このコードを計画の検査に使わない（baseのci.pyだけ）。mekikiとバイト単位で同じにし、sha256をSOURCE.jsonに書き、.review/testsで照合する。"
+      "control": "このPRのCIは、このコードを計画の検査に使わない（baseのci.pyだけ）。コピーの元とバイト単位で同じにし、sha256をSOURCE.jsonに書き、.review/testsで照合する。"
     },
     {
       "id": "B2",
@@ -79,7 +79,7 @@
       "location": ".review/mekiki/split-map.json・plan-rewrites.json（公開repo）",
       "data": "古い原因IDと新しいIDの対応、原因のキー、書き換える計画のファイル名",
       "trust": "untrusted",
-      "control": "split-map.jsonはmekikiのsplitの出力とバイト単位で同じ。共通の台帳の本文のn-gramを照合して0件。原因のキーの公開は所有者が決めた。"
+      "control": "split-map.jsonは分割の道具の出力とバイト単位で同じ。共通の台帳の本文のn-gramを照合して0件。原因のキーの公開は所有者の判断による。"
     }
   ],
   "variant_analysis": [
