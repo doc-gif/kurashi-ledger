@@ -135,7 +135,7 @@ mekikiの`node scripts/ledger.ts rewrite-plans`（hostで動かす）で書き�
 - 一覧に無い計画は今までどおりだ。外した計画を除いて1つまでで、PRのbaseで`check`する。外した計画だけのPRは、ほかに`split-map.json`と一覧の削除しか変えられない。
 - 一覧の計画を書き換えるPRは、一覧を消す（所有者の決定、mekiki PR #49）。candidateに一覧が残れば、中身が同じでも終了コード1。一覧が残ると、後のPRでも名指しした自由文を言い換えられるためだ。
 - 自由文の公開前の検査は、pushの前にhostの`rewrite-plans`がかける。CIは名指しした場所だけが変わったことを確かめ、共通の本文を持たない。
-- この規則の試験は、APIの試験（`test_plan_rewrites.py`）だけを写した。実際の`ci.py`を通す試験の2ファイル（`test_plan_rewrites_ci.py`の16件と`test_plan_rewrites_null_list.py`の5件）は写していない。`test_plan_rewrites_ci.py`は、hostの`scripts/ledger.ts`を使う2件と、`guard.py`・`ci.py`だけで動く14件が同じファイルにある。`test_plan_rewrites_null_list.py`は、そのファイルを読み込む。そのため今は、`ci.py`の書き換えの経路（`check_with_rewrites`）をkurashiの試験は通らない。19件は、mekikiで同じコードに対して流している。mekikiでhostの2件を別のファイルに分けたあと、19件をここへ写す。
+- この規則の試験は、APIの試験（`test_plan_rewrites.py`）と、実際の`ci.py`を通す試験（`test_plan_rewrites_ci.py`の14件と`test_plan_rewrites_null_list.py`の5件）を写した。hostの`scripts/ledger.ts`を使う2件（`test_plan_rewrites_host.py`）は、mekikiにだけある。
 
 ## CIの配置前提
 
