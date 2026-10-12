@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "base_sha": "4077be8a03c400cb7b29aab7f3430d6196fcadf9",
+  "task_id": "OPS-PR-TEMPLATE",
+  "planned_paths": [
+    "docs/pr-review-loop.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "公開のdoc-gif/.githubのテンプレートと、このrepoのAGENTS.mdへのリンクを足すだけ。所有者の決定は日付だけを書き、非公開の資料の原文・URL・識別子は書かない（PR79-R001、PR85-R001）。秘密・実データは扱わない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。",
+          "expected": "終了0。差分・PRの本文・コメントに、非公開の資料の原文・URL・識別子がない。足したリンクは公開のdoc-gif/.githubのテンプレートとAGENTS.mdだけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "PRの本文の決まりはAGENTS.md（#75）を正とし、1節はそこへリンクして、足りない点（見出しの文字を変えない、空にしない、APIで作るときはテンプレートを読む）だけを足す。作業の範囲・担当・終了地点・依存は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "リンク先のテンプレートが、doc-gif/.githubのmainにあることを確かめる。このPRが共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。",
+          "expected": "テンプレートはdoc-gif/.githubのmainにあり、6つの見出しは本文に書いた名前と同じ。差分はdocs/pr-review-loop.mdと計画ファイルだけ。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "baseのAGENTS.mdの「Validate and hand off」、docs/development.mdの「commit・Issue・PR・引継ぎ」、docs/public-data.mdの手順6で、PRの本文の決まりをgrepし、1節の新しい文と読み合わせる（C-0060: 同じ事実を書く文書どうしの照合）。",
+          "expected": "見出しごとに書くことを決める文はAGENTS.mdの1か所だけ。development.mdはAGENTS.mdを指し、public-data.mdの手順6は「確認」に点検を書くとだけ言い、AGENTS.mdと同じ。1節の新しい文はAGENTS.mdへリンクし、見出しごとに書くことを書き直さない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "提出前の粗探しの範囲と内容レビューの確かめることに、PRの本文の見出しを1項目ずつ足す。書式の印・キー・判定の値、マージの条件、指摘のIDは変えない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分が1節の1文、提出前の粗探しの範囲の5、3節の1文だけで、書式のブロックと指摘のID・原因台帳に触れないことを確かめる。",
+          "expected": "書式のブロックと指摘の追跡の仕組みの差分が0行。範囲の5と3節は、見出しの数を書かずにAGENTS.mdの決まりへリンクする。"
+        },
+        {
+          "id": "trust",
+          "method": "docs/github-agent-operations.mdのマージの条件の差分を確かめる。",
+          "expected": "差分が0行。見出しの確認はレビューの項目で、マージの条件は変えない。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "2026-10-12の所有者の決定と調整係の指示",
+      "data": "PRの本文をアカウント共通のテンプレートの見出しで書き、レビューでも確かめる決まり",
+      "trust": "partially-trusted",
+      "control": "所有者が承認した範囲（規則・レビューの確認・CIの検査）のうち、レビューの確認と、AGENTS.mdに足りない点だけをこのPRで足す。CIの検査はdoc-gif/.github #2のTDDの後の別のPRで足す。"
+    },
+    {
+      "id": "B2",
+      "direction": "exit",
+      "location": "公開のdocs/pr-review-loop.md",
+      "data": "公開repoのテンプレートへのリンク",
+      "trust": "untrusted",
+      "control": "非公開のrepoのURLは書かない（PR79-R001）。テンプレートの見出しの名前だけを書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "公開のrepoに、非公開の資料の原文・URL・識別子を書く（PR79-R001、PR85-R001）。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.mdの1節の新しい文、計画、PRの本文、引き継ぎメモ",
+          "result": "所有者の決定は日付だけを書く。原文・URL・コメントの番号・非公開のrepoのPRの番号は書かない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "同じ確認の決まりが、粗探しと内容レビューで違う。",
+      "places": [
+        {
+          "location": "docs/pr-review-loop.mdの提出前の粗探しの範囲と、3節",
+          "result": "両方に同じ確認（本文がAGENTS.mdの決まりと1節のとおりか）を足す。見出しの数は書かない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "PRの本文の決まりが、入口ごとに違う（C-0060）。",
+      "places": [
+        {
+          "location": "AGENTS.mdの「Validate and hand off」",
+          "result": "正とする。変えない。テンプレートの見出しで書くことと、目的・確認・懸念点と残りの作業に書くことを決めている。"
+        },
+        {
+          "location": "docs/development.mdの「commit・Issue・PR・引継ぎ」",
+          "result": "AGENTS.mdを指している。変えない。"
+        },
+        {
+          "location": "docs/public-data.mdの手順6",
+          "result": "「確認」に点検を書く。AGENTS.mdと同じなので変えない。"
+        },
+        {
+          "location": "docs/pr-review-loop.mdの1節・範囲の5・3節",
+          "result": "AGENTS.mdへリンクし、見出しの文字を変えない・空にしない・APIで作るときはテンプレートを読む、だけを足す。"
+        }
+      ]
+    }
+  ]
+}
