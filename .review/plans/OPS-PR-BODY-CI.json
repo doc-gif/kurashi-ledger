@@ -1,0 +1,228 @@
+{
+  "schema_version": 2,
+  "base_sha": "29cab0c3b25d61ae554dfff744f03a0cfc03ac12",
+  "task_id": "OPS-PR-BODY-CI",
+  "planned_paths": [
+    ".github/workflows/pr-body.yml",
+    "README.md",
+    "SECURITY.md",
+    "docs/development.md",
+    "docs/testing.md"
+  ],
+  "conflicts": [],
+  "assessments": [
+    {
+      "id": "INV-PRIVACY",
+      "disposition": "preserve",
+      "reason": "PRの本文を読むjobを足す。本文はjobのログに出さない（道具は無い・空の見出しの名前だけを書く）。呼ぶのは公開のdoc-gif/.githubのworkflowで、非公開のrepoの名前・URL・中身は書かない。",
+      "checks": [
+        {
+          "id": "public",
+          "method": "npm run check:public -- --staged と差分の目視。doc-gif/.githubのb3be4c4の`.github/workflows/check-pr-body.yml`と`scripts/check-pr-body.mjs`を読み、ログに書くものを確かめる。",
+          "expected": "終了0。道具が書くのは「missing heading: ## 見出し」「empty heading: ## 見出し」だけで、本文の中身はログに出ない。SECURITY.mdが書くのは公開のdoc-gif/.githubだけ。"
+        }
+      ]
+    },
+    {
+      "id": "INV-REVIEW",
+      "disposition": "preserve",
+      "reason": "PRの本文の見出しの検査をCIに足す（2026-10-12の管理者の決定。PR #85で決まりと事前レビュー・内容レビューの確認は入っている）。合格はレビューの代わりにせず、Quality gateにも含めない。",
+      "checks": [
+        {
+          "id": "duplicates",
+          "method": "差分が、指摘のID・原因台帳・docs/pr-review-loop.mdの書式に触れないことを確かめる。",
+          "expected": "差分はplanned_pathsの5ファイル（workflow 1つと、CIを説明する4つの文書）と計画だけで、指摘のID・原因台帳・docs/pr-review-loop.mdの差分は0行。"
+        },
+        {
+          "id": "trust",
+          "method": "このrepoのworkflowと、呼ぶworkflow（doc-gif/.githubのb3be4c4の`check-pr-body.yml`）のpermissions・トリガー・secrets・checkoutの対象とSHAを読む。ci.ymlとQuality gateの差分を確かめる。",
+          "expected": "このrepoのworkflowはpull_request（pull_request_targetではない）・permissionsはcontents: readだけ・secretsを渡さない。呼ぶworkflowは`uses:`と`with: ref:`の両方で同じcommitのSHAに固定し、呼ばれる側は`ref`が40桁のSHAかを確かめてからdoc-gif/.githubだけをpersist-credentials: falseでcheckoutする。ci.ymlとQuality gateの差分は0行。"
+        }
+      ]
+    },
+    {
+      "id": "INV-TASKS",
+      "disposition": "preserve",
+      "reason": "CIのjobを1つ足し、CIとGitHub Actionsを説明する文書（README.md、SECURITY.md、docs/development.md、docs/testing.md）にそのjobを書く。jobはdoc-gif/.githubの呼べるworkflowを呼ぶ。作業の範囲・担当・依存は変えない。",
+      "checks": [
+        {
+          "id": "dependencies",
+          "method": "doc-gif/.githubのb3be4c4に`.github/workflows/check-pr-body.yml`・`scripts/check-pr-body.mjs`・`pull_request_template.md`があること、共有資源（lockfile・migration・CIの権限）に触れないことを確かめる。開いているPRごとに、`git merge-tree --write-tree`でmainとこのPRのheadのそれぞれと合わせ、衝突するファイルを比べる。",
+          "expected": "3つのファイルはb3be4c4にある。差分はplanned_pathsの5ファイルと計画だけ。開いているPRのうち#33（Issue #19）は、mainとは衝突しないが、このPRのheadと合わせるとREADME.mdとdocs/testing.mdで衝突する（どちらもCIの説明の段落を変える）。あとにマージするPRの担当が、mainを取り込むときにその段落を合わせる。#25・#28・#36・#38はmainとすでに衝突していて、このPRのheadと合わせても衝突するファイルは増えない。#29は衝突しない。"
+        },
+        {
+          "id": "entrypoints",
+          "method": "README.md、SECURITY.md、docs/development.md、docs/testing.md、AGENTS.md、docs/pr-review-loop.mdで、CIとGitHub Actionsを説明する文と、PRの本文の決まりを読み合わせる（C-0060）。`git grep -n \"ci\\.yml\" -- README.md SECURITY.md docs`の結果を1行ずつ読む。",
+          "expected": "CI全体やGitHub Actions全体を説明する行には、pr-body.ymlも書いてある。CIの表の行はQuality gateの行の下にあり、Quality gateに含まれないことと食い違わない。文書は、doc-gif/.githubの呼べるworkflowを固定したcommitで呼ぶと書く。本文の決まりはAGENTS.mdとdocs/pr-review-loop.mdのまま。"
+        }
+      ]
+    },
+    {
+      "id": "INV-RELEASE",
+      "disposition": "preserve",
+      "reason": "依存・lockfile・Node.jsの版・配信物を変えない。CIに別のworkflowを1つ足すだけ。",
+      "checks": [
+        {
+          "id": "update",
+          "method": "package.json・package-lock.json・.nvmrc・mise.tomlの差分を確かめる。",
+          "expected": "差分は0行。呼ばれるworkflowはrunnerに入っているNode.jsで、依存のない道具を動かす。"
+        },
+        {
+          "id": "artifact",
+          "method": "このrepoのworkflowと呼ぶworkflowが、artifactをuploadせず、配信物を作らないことを確かめる。",
+          "expected": "upload・build・deployのstepはない。"
+        }
+      ]
+    },
+    {
+      "id": "INV-ROOT",
+      "disposition": "not-applicable",
+      "reason": "データルートの識別・作成・復元を変えない。",
+      "checks": [
+        {
+          "id": "first-use",
+          "method": "差分がsrc/とdocs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        },
+        {
+          "id": "aliases",
+          "method": "差分がsrc/とdocs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        }
+      ]
+    },
+    {
+      "id": "INV-LOCK",
+      "disposition": "not-applicable",
+      "reason": "アプリのデータルート・DB・lockを読まず書かない。",
+      "checks": [
+        {
+          "id": "identity",
+          "method": "差分がsrc/とdocs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        },
+        {
+          "id": "recovery",
+          "method": "差分がsrc/とdocs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        }
+      ]
+    },
+    {
+      "id": "INV-STORAGE",
+      "disposition": "not-applicable",
+      "reason": "DB・journal・manifest・復元に触れない。",
+      "checks": [
+        {
+          "id": "rollback",
+          "method": "差分がsrc/・migrations/・docs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        },
+        {
+          "id": "restore",
+          "method": "差分がsrc/・migrations/・docs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        },
+        {
+          "id": "manifest",
+          "method": "差分がsrc/・migrations/・docs/adr/に触れないことを確かめる。",
+          "expected": "差分は0行。"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "B1",
+      "direction": "entry",
+      "location": "pull_requestのeventの本文（GITHUB_EVENT_PATH）",
+      "data": "PRの作者が書いた本文",
+      "trust": "untrusted",
+      "control": "本文は道具が読むだけで、実行しない。ログには見出しの名前だけを書く。"
+    },
+    {
+      "id": "B2",
+      "direction": "entry",
+      "location": "doc-gif/.githubのb3be4c4（公開）",
+      "data": "呼べるworkflow`.github/workflows/check-pr-body.yml`、道具`scripts/check-pr-body.mjs`とテンプレート",
+      "trust": "partially-trusted",
+      "control": "レビュー済みのcommitのSHAに、`uses:`と`with: ref:`の2か所で固定する。呼ばれる側はdoc-gif/.githubだけをpersist-credentials: falseでcheckoutし、secretsを受け取らない。道具を変えたら、このrepoのPRで2か所のSHAを変える。この境界はSECURITY.mdにも書く。"
+    }
+  ],
+  "variant_analysis": [
+    {
+      "invariant_id": "INV-PRIVACY",
+      "pattern": "CIのログに、PRの本文や非公開の資料を出す。",
+      "places": [
+        {
+          "location": ".github/workflows/pr-body.yml",
+          "result": "道具は無い・空の見出しの名前だけを書く。呼ぶのは公開のdoc-gif/.githubのworkflowだけ。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-REVIEW",
+      "pattern": "CIの合格を、レビューの代わりや迂回できない門として扱う。",
+      "places": [
+        {
+          "location": "workflowの先頭のコメント、docs/development.mdのCIの表",
+          "result": "合格はレビューの代わりにならないと書き、Quality gateに含めない。必須のcheckにするかは管理者が決める。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-TASKS",
+      "pattern": "CIの説明が、入口ごとに違う。",
+      "places": [
+        {
+          "location": "docs/development.mdのCIの表と「CIで使う版」の行",
+          "result": "新しいjobの行をQuality gateの行の下に足し、呼ばれる側がrunnerのNode.jsを使うことを書く。"
+        },
+        {
+          "location": "README.mdのCIの説明、SECURITY.mdのGitHub Actionsの節、docs/testing.mdのCIの説明",
+          "result": "2つ目のworkflowとして書き、Quality gateに含まれないことと、doc-gif/.githubの呼べるworkflowを固定したcommitで呼ぶことを書く。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-RELEASE",
+      "pattern": "CIの変更で、依存や配信物を変える。",
+      "places": [
+        {
+          "location": ".github/workflows/pr-body.yml",
+          "result": "setup・install・build・uploadのstepはない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-ROOT",
+      "pattern": "CIの変更で、アプリのデータルート・lock・保存に触れる。",
+      "places": [
+        {
+          "location": ".github/workflows/pr-body.yml",
+          "result": "jobはPRの本文とdoc-gif/.githubの道具だけを読み、アプリのコード・データ・DBに触れない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-LOCK",
+      "pattern": "CIの変更で、アプリのデータルート・lock・保存に触れる。",
+      "places": [
+        {
+          "location": ".github/workflows/pr-body.yml",
+          "result": "jobはPRの本文とdoc-gif/.githubの道具だけを読み、アプリのコード・データ・DBに触れない。"
+        }
+      ]
+    },
+    {
+      "invariant_id": "INV-STORAGE",
+      "pattern": "CIの変更で、アプリのデータルート・lock・保存に触れる。",
+      "places": [
+        {
+          "location": ".github/workflows/pr-body.yml",
+          "result": "jobはPRの本文とdoc-gif/.githubの道具だけを読み、アプリのコード・データ・DBに触れない。"
+        }
+      ]
+    }
+  ]
+}
