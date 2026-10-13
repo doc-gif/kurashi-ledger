@@ -1,0 +1,20 @@
+# PRの本文が、doc-gif/.githubのPRのテンプレートの見出しをすべて埋めているかを確かめる（doc-gif/.github #2）。
+# - 公開のdoc-gif/.githubの呼べるworkflowを、1つのcommitのSHAで呼ぶ。`uses:`と`with: ref:`には同じSHAを書く。
+#   道具とテンプレートを変えたら、2か所とも新しいSHAにする。
+# - 読むのはpull_requestのeventの本文だけで、secretsを渡さず、PRのコードを実行しない。
+# - PR自身がこのworkflowを変えられるので、合格はレビューの代わりにならない（docs/review-prevention.md）。
+# - Quality gateには含めない。必須のcheckにするかは管理者が決める。
+name: PR body
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-body:
+    uses: doc-gif/.github/.github/workflows/check-pr-body.yml@b3be4c4bd291b7469c8a67f1c7517530b788fb8f
+    with:
+      ref: b3be4c4bd291b7469c8a67f1c7517530b788fb8f
