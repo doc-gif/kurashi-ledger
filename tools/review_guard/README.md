@@ -103,6 +103,8 @@ mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた
 
 ### 段5までの扱い
 
+古いレビュー受付を止めて消したあと（[#90](https://github.com/doc-gif/kurashi-ledger/pull/90)）も、新しい組を作り直すPRまでは、次の扱いを続ける。
+
 - 新しい原因は、今までどおり古い台帳（`.review/findings.json`、IDは`PR<N>-R<番号>`）にだけ足す。`.review/causes/`と目録は手で直さない。だから段5までに足した原因は、CIの計画の検査には出ない。粗探しは、古い台帳で全部の原因を見る。
 - 段5の前に、その時点のmainの古い台帳と計画から、mekikiで分割を作り直す（C-NNNNはmekikiが振る）。そのPRで、`.review/causes/`、`.review/mekiki/global-ids.json`、`.review/mekiki/SOURCE.json`を作り直す。
 - そのPRでは、`SOURCE.json`の`split.input.commit`が、そのPRの`base_sha`と同じことを確かめる。違えば、2つのcommitの間で`.review/invariants.json`・`.review/findings.json`が変わっていないことを`git diff`で確かめる。変わっていれば作り直す。

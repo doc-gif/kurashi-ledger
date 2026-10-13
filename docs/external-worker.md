@@ -13,12 +13,9 @@ SCOPE
 
 WORK
 1. Fix existing PR findings first. Before changes, follow docs/review-prevention.md.
-2. Request review:
-   IF the owner, a receipt or a notice says the PR is on the active dispatcher
-   THEN use the standard Draft->Ready. The dispatcher runs the red team after Ready.
-   ELSE stay Draft with `worker_status: working` and "awaiting pre-review red team";
-        post ready-for-review only when a red-team record for that exact head/base
-        has no unresolved RT (docs/pr-review-loop.md, 提出前の粗探し).
+2. Request review: stay Draft with `worker_status: working` and "awaiting pre-review red team";
+   post ready-for-review only when a red-team record for that exact head/base
+   has no unresolved RT (docs/pr-review-loop.md, 提出前の粗探し).
 3. Use the concise handoff format. Wait for independent review.
 
 MERGE

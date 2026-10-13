@@ -5,7 +5,9 @@
   "planned_paths": [
     ".review/plans/OPS-STAGE5-REMOVE-DISPATCHER.json",
     ".review/tests/test_dispatch_supervisor.py",
+    ".review/tests/test_repository_routing.py",
     "README.md",
+    "docs/external-worker.md",
     "docs/github-agent-operations.md",
     "docs/github-apps.md",
     "docs/implementation-tasks.md",
@@ -65,7 +67,7 @@
     {
       "id": "INV-LOCK",
       "disposition": "not-applicable",
-      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形・文書を消し、それを指す文書を直す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
       "checks": [
         {
           "id": "identity",
@@ -82,19 +84,19 @@
     {
       "id": "INV-PRIVACY",
       "disposition": "preserve",
-      "reason": "消すだけで、新しい内容を足さない。計画にも、非公開のrepoの名前・番号・本文を書かない。",
+      "reason": "コードと3つの文書を消し、文書に短い説明と、消す前のcommitへのリンクを足す。足した文と計画に、非公開のrepoの名前・番号・本文を書かない。",
       "checks": [
         {
           "id": "public",
-          "method": "追加した行（この計画だけ）を読み、npm run check:publicを流す。",
-          "expected": "追加した行は計画だけで、共通の本文も非公開の識別子もない。check:publicは終了0。"
+          "method": "追加した行（文書の説明と計画）を読み、npm run check:publicを流す。",
+          "expected": "追加した行に、共通の本文も非公開の識別子もない。check:publicは終了0。"
         }
       ]
     },
     {
       "id": "INV-RECORDS",
       "disposition": "not-applicable",
-      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形・文書を消し、それを指す文書を直す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
       "checks": [
         {
           "id": "meaning",
@@ -111,7 +113,7 @@
     {
       "id": "INV-RELEASE",
       "disposition": "not-applicable",
-      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形・文書を消し、それを指す文書を直す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
       "checks": [
         {
           "id": "update",
@@ -128,7 +130,7 @@
     {
       "id": "INV-REVIEW",
       "disposition": "preserve",
-      "reason": "レビュー窓口の切替（段階5）のあとに、kurashiの古い受付のコードを消す。切替の前にマージすると、今動いている受付のコードの元が無くなるので、マージは切替のあとにする。CIの計画の検査（tools/review_guard/）は消さない。",
+      "reason": "管理者がMacで古いレビュー窓口を止めたので、そのコードと文書を消す。CIの計画の検査（tools/review_guard/）は消さない。",
       "checks": [
         {
           "id": "duplicates",
@@ -145,7 +147,7 @@
     {
       "id": "INV-ROOT",
       "disposition": "not-applicable",
-      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形・文書を消し、それを指す文書を直す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
       "checks": [
         {
           "id": "first-use",
@@ -162,7 +164,7 @@
     {
       "id": "INV-STORAGE",
       "disposition": "not-applicable",
-      "reason": "レビュー窓口のコード・テスト・launchdの雛形だけを消す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
+      "reason": "レビュー窓口のコード・テスト・launchdの雛形・文書を消し、それを指す文書を直す。アプリと保守コマンド（src/・scripts/setup.ts等）は変えない。scripts/**のpathで選ばれただけ。",
       "checks": [
         {
           "id": "rollback",
@@ -184,17 +186,17 @@
     {
       "id": "INV-TASKS",
       "disposition": "preserve",
-      "reason": "段階5の切替のあとに消す。マージの順をPR本文に書く。レビュー窓口の文書（docs/review-dispatch-*.md）と、それを指す文書の直しは、このPRの残りの作業にする。",
+      "reason": "管理者がMacでレビュー窓口を止めたあとに消す。マージの順をPR本文に書く。レビュー窓口の文書（docs/review-dispatch-*.md）と、それを指す文書は、このPRで直す。",
       "checks": [
         {
           "id": "dependencies",
-          "method": "切替が済んだことを、管理者の記録で確かめてからReadyにする。",
-          "expected": "切替の前はDraftのまま。マージは切替のあと。"
+          "method": "管理者がMacでレビュー窓口を止めたことを、管理者がこのPRに書いた記録で確かめる。",
+          "expected": "記録があるまでマージしない。"
         },
         {
           "id": "entrypoints",
-          "method": "git grepで、消したファイルを指す文書を探す。",
-          "expected": "指す文書は、Readyにする前にこのPRで直す。Draftの間は残りの作業としてPR本文に書く。"
+          "method": "git grepで、消したファイル・文書・見出しを指す文書とリンクを探す（.review/plans/の過去の計画は除く）。",
+          "expected": "指す文書とリンクは、このPRで直した。残っていない。"
         }
       ]
     }
@@ -203,10 +205,10 @@
     {
       "id": "B1",
       "direction": "exit",
-      "location": "このPRで消すファイル",
-      "data": "レビュー窓口のコードとテスト",
+      "location": "このPRで消すファイルと直す文書",
+      "data": "レビュー窓口のコード・テスト・文書",
       "trust": "trusted",
-      "control": "消すだけで、CIの計画の検査（tools/review_guard/）とその設定は残す。マージは段階5の切替のあと。"
+      "control": "消すだけで、CIの計画の検査（tools/review_guard/）とその設定は残す。マージは、管理者がレビュー窓口を止めたことをこのPRに記録したあと。"
     }
   ],
   "variant_analysis": [
@@ -227,6 +229,10 @@
         {
           "location": "この計画",
           "result": "非公開のrepoの名前・番号・本文はない。"
+        },
+        {
+          "location": "文書に足した文（README・docs/・tools/review_guard/README.md）",
+          "result": "非公開のrepoの名前・番号・本文はない。リンクはこのrepoのPRとcommitだけ。"
         }
       ]
     },
@@ -257,6 +263,10 @@
         {
           "location": "review plan",
           "result": "baseのci.pyで検査される。tools/review_guard/は変えない。"
+        },
+        {
+          "location": "docs/external-worker.md・docs/pr-review-loop.md",
+          "result": "activeのPRだけの手順を消し、すべてのPRを提出前の粗探しの手順に戻した。"
         }
       ]
     },
@@ -285,8 +295,12 @@
       "pattern": "使う基盤より先に、それを消す。",
       "places": [
         {
-          "location": "段階5の切替",
-          "result": "切替のあとにだけマージする。Draftで止める。"
+          "location": "管理者のMacのレビュー窓口",
+          "result": "管理者が止めた。マージは、その記録がこのPRに付いたあと。"
+        },
+        {
+          "location": "docs/・README.md・docs/external-worker.md・docs/implementation-tasks.md・tools/review_guard/README.md",
+          "result": "レビュー窓口を動かす前提の記述とリンクを直した。"
         }
       ]
     }

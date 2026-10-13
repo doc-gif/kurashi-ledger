@@ -39,7 +39,7 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
-webhookは使わない。以前はレビュー受付の受信にCodexのAppのwebhookを使っていたが、2026-10-13に受付を止めたときに、管理者が無効にした。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
+webhookは使わない。以前はレビュー受付の受信にCodexのAppのwebhookを使っていたが、2026-10-13に受付を止めたときに、管理者が無効にした（[#90](https://github.com/doc-gif/kurashi-ledger/pull/90)）。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
 
 ### 所有者が行ったこと
 
