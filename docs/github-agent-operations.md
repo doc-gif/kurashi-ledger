@@ -11,7 +11,6 @@
 | 実装AI（Claude Code等） | 最新mainと担当Issueを確認し、専用branch/worktreeで実装・検証。定期的に自分のPRの指摘へ対応 | 作業中はDraft。レビュー依頼時はOpen PRと対象SHA付き引継ぎ。マージはしない |
 | レビューAI（実装していない別の担当。Claude側の実装はCodex側、Codex側の実装はClaude側） | 定期的にPRを確認し、明示的な作業完了後に差分・受入条件・検証・Copilot指摘をレビュー | 指摘、修正確認、レビュー結果の報告 |
 | GitHub Copilot | PRへの補助レビュー | 指摘を提示。実装担当や最終レビューの代替ではない |
-| レビュー受付（[Issue #45](https://github.com/doc-gif/kurashi-ledger/issues/45)、[#50](https://github.com/doc-gif/kurashi-ledger/issues/50)） | activeのPRだけで、起動条件の判定、粗探し・レビューの起動と投稿、表示用の通知 | マージしない（[規則](#dispatch-active)） |
 
 <a id="owner-merge-only"></a>
 <a id="merge-conditions"></a>
@@ -36,15 +35,9 @@
 
 <a id="dispatch-active"></a>
 
-### 受付がactiveのPR
+### 以前のレビュー受付
 
-2026-10-04の所有者決定（[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。手順は[PR書式](pr-review-loop.md#受付がactiveのpr)。
-
-- レビューしたheadは、`APPROVE`のcommit_idで確かめる。
-- 受付のpolicyに登録した参加者（必要なreviewer以外も含む。所有者・Codex・Claude等）の最新の`CHANGES_REQUESTED`や未解消の指摘があればマージしない。登録していない第三者のものは参考にとどめる（[受領記録](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5978984980)）。
-- 受付は、粗探しとレビューの起動と投稿だけを行う。
-- 粗探しの時点を読み替える（所有者承認）: Readyはレビューの依頼。粗探しはReadyのあと・レビューJobの前に、同じhead/baseで行う。
-- 受領記録と受付の通知は表示と案内だけで、権限を変えない。AIと所有者がすべての身元を共用し、所有者だけの合図がないため。
+以前は、レビュー受付がactiveのPRの粗探しとレビューを起動していた（2026-10-04の所有者決定、[受領記録1](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977365862)、[受領記録2](https://github.com/doc-gif/kurashi-ledger/issues/50#issuecomment-5977430810)）。管理者の判断で2026-10-13に受付を止め、コードを消した（[PR書式](pr-review-loop.md#以前のレビュー受付)）。今は、すべてのPRが[マージ条件](#merge-conditions)に従う。
 
 ## タスクと着手条件
 
@@ -75,8 +68,6 @@ Open PRだから完成、Draftだから絶対未完成とはみなさない。�
 ## 定期実行
 
 確認間隔・job ID・稼働状態は実行環境の設定を正本とする。2026-10-03の[所有者の直接指示を受領した記録](https://github.com/doc-gif/kurashi-ledger/pull/40#issuecomment-5969756770)により、Codexレビューは受付とPR専用担当に分け、5分間隔・専用担当最大10件（受付を除く）とした。1 PRに1担当を再利用し、変更なし・作業中・レビュー待ちでは投稿しない。実装側は所有者指定の10分を現在の基準とする。頻度は別設定で、レビュー頻度から変更を推定しない。前runが作業中なら同じ担当を二重起動しない。
-
-旧巡回（Codex・Claudeのレビュー巡回、T23の巡回）は、ownerが管理する巡回の設定で受付の対象PRを飛ばす（[受付がactiveのPR](pr-review-loop.md#受付がactiveのpr)）。
 
 巡回は、停止設定→最新mainの規約→GitHubの全必要ページ→既存担当とPR→未対応指摘→承認済み担当タスクの順に確認する。APIの一部取得・認証失敗・rate limitを「PRなし」とみなさない。同じ障害の通知はまとめる。
 

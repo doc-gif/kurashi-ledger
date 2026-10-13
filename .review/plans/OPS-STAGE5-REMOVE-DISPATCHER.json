@@ -5,6 +5,15 @@
   "planned_paths": [
     ".review/plans/OPS-STAGE5-REMOVE-DISPATCHER.json",
     ".review/tests/test_dispatch_supervisor.py",
+    "README.md",
+    "docs/github-agent-operations.md",
+    "docs/github-apps.md",
+    "docs/implementation-tasks.md",
+    "docs/pr-review-loop.md",
+    "docs/project-status.md",
+    "docs/review-dispatch-design.md",
+    "docs/review-dispatch-implementation.md",
+    "docs/review-dispatch-runbook.md",
     "scripts/lib/review-dispatch/active.test.ts",
     "scripts/lib/review-dispatch/active.ts",
     "scripts/lib/review-dispatch/broker.test.ts",
@@ -48,7 +57,8 @@
     "tools/review_dispatch/launchd/cycle.plist.in",
     "tools/review_dispatch/launchd/serve.plist.in",
     "tools/review_dispatch/seatbelt/cli.sb",
-    "tools/review_dispatch/supervisor.py"
+    "tools/review_dispatch/supervisor.py",
+    "tools/review_guard/README.md"
   ],
   "conflicts": [],
   "assessments": [
