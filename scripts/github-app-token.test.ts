@@ -1728,6 +1728,53 @@ test('--repo .githubは、doc-gif/.githubだけに縮小し、ほかのrepoを�
   }
 });
 
+test('--repo kokenは、doc-gif/kokenだけに縮小し、ほかのrepoを指すコマンドは鍵を読む前に拒む', async () => {
+  // 2026-10-14の所有者の決定: 所有者の非公開のrepo doc-gif/kokenを、AIのレビューの対象として加える。
+  const push = ['git', '-C', '/synthetic/worktree', 'push', 'https://github.com/doc-gif/koken.git', 'HEAD:refs/heads/ci/x'];
+  const h = harness([{ status: 201, body: repoGranted('implement', 'koken') }, repoListed('koken'), REVOKED]);
+  assert.equal(await run(['--agent', 'claude', '--purpose', 'implement', '--repo', 'koken', ...ID_ARGS, '--', ...push], h.deps), 0, h.err.join(''));
+  assert.deepEqual(JSON.parse(h.calls[0]?.init.body ?? '{}'), { repositories: ['koken'], permissions: PURPOSES.implement });
+  assert.deepEqual(h.children[0]?.command, ['/synthetic/bin/git', ...push.slice(1)]);
+  // kokenを選んで、応答や触れるrepoが別のrepoなら、失効させて子を起動しない。
+  for (const replies of [
+    [{ status: 201, body: repoGranted('implement', 'mekiki') }, REVOKED],
+    [{ status: 201, body: repoGranted('implement', 'koken') }, repoListed('kurashi-ledger'), REVOKED],
+  ]) {
+    const bad = harness(replies);
+    assert.equal(await run(['--agent', 'claude', '--purpose', 'implement', '--repo', 'koken', ...ID_ARGS, '--', 'true'], bad.deps), EXIT_OWN_FAILURE);
+    assert.deepEqual(bad.children, []);
+    assert.equal(bad.calls.at(-1)?.init.method, 'DELETE');
+  }
+  // kokenを指すコマンドは通し、別のrepo・似た名前を指すコマンドは拒む。逆向き（ほかのrepoを選んでkokenを指す）も拒む。
+  const accepted: [string, ...string[]][] = [
+    ['gh', 'pr', 'create', '-R', 'doc-gif/koken', '--draft', '--body-file', '/synthetic/body.md'],
+    ['gh', 'api', 'repos/doc-gif/koken/pulls?state=open'],
+    ['gh', 'pr', 'view', 'https://github.com/doc-gif/koken/pull/1'],
+    ['git', 'push', 'https://github.com/doc-gif/koken.git', 'HEAD:refs/heads/x'],
+  ];
+  for (const command of accepted) assert.equal(commandTargetProblem(command, 'koken', {}), null, JSON.stringify(command));
+  const mismatched: { repo: Repository; command: [string, ...string[]] }[] = [
+    { repo: 'koken', command: ['gh', 'pr', 'view', '1', '--repo', 'doc-gif/kurashi-ledger'] },
+    { repo: 'koken', command: ['gh', 'api', 'repos/doc-gif/mekiki/pulls'] },
+    { repo: 'koken', command: ['gh', 'pr', 'list', '--repo', 'doc-gif/Koken'] },
+    { repo: 'koken', command: ['gh', 'pr', 'list', '--repo', 'someone/koken'] },
+    { repo: 'koken', command: ['git', 'push', 'https://github.com/someone/koken.git', 'HEAD'] },
+    { repo: 'kurashi-ledger', command: ['gh', 'pr', 'view', '1', '--repo', 'doc-gif/koken'] },
+    { repo: 'kurashi-ledger', command: ['git', 'push', 'https://github.com/doc-gif/koken.git', 'HEAD'] },
+    { repo: 'mekiki', command: ['gh', 'api', 'repos/doc-gif/koken/contents/README.md'] },
+  ];
+  for (const c of mismatched) {
+    const label = `${c.repo} ${JSON.stringify(c.command)}`;
+    assert.notEqual(commandTargetProblem(c.command, c.repo, {}), null, label);
+    const r = harness([], { env: { PATH: '/usr/bin' } });
+    const args = ['--agent', 'claude', '--purpose', 'implement', ...(c.repo === 'kurashi-ledger' ? [] : ['--repo', c.repo]), ...ID_ARGS, '--', ...c.command];
+    assert.equal(await run(args, r.deps), EXIT_OWN_FAILURE, label);
+    assert.deepEqual(r.keychainCalls, [], label);
+    assert.deepEqual(r.calls, [], label);
+    assert.deepEqual(r.children, [], label);
+  }
+});
+
 test('PR74 RT-1: どの--repoでも、repoの設定にある許可リストの別のrepoのURL用のextraheaderを、実際のgitで使わない', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kl-app-token-'));
   try {

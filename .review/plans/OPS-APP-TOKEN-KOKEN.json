@@ -138,7 +138,7 @@
       "location": "子のコマンド（gh・git）",
       "data": "指す先のrepo",
       "trust": "untrusted",
-      "control": "ghの--repo・gh apiのパス・URL・gitのpushのURLが、選んだrepoと違えば発行の前に拒む。既存の試験が、許可リストのすべてのrepoの組み合わせで両方向を確かめる。"
+      "control": "ghの--repo・gh apiのパス・URL・gitのpushのURLが、選んだrepoと違えば発行の前に拒む。kokenを選んで別のrepoを指す場合と、別のrepoを選んでkokenを指す場合の両方を、kokenの試験で確かめる。"
     },
     {
       "id": "B4",
