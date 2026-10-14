@@ -23,7 +23,8 @@ export const REPOSITORY_OWNER = 'doc-gif';
 // 2つのAppをmekikiにも加えたので、AIはmekikiへも自分のAppで書く。--repoで1つを選び、省略時は既定。
 // 2026-10-11の所有者の決定（kurashi-ledger PR #79）: AIが共通の公開の文書を置くdoc-gif/.githubを加える。
 // この表の変更は権限の制御の変更なので、独立したレビューを受ける（docs/github-apps.md）。
-export const REPOSITORIES = Object.freeze(['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github'] as const);
+// 2026-10-14の所有者の決定: 所有者の非公開のrepo doc-gif/kokenを、AIのレビューの対象として加える。
+export const REPOSITORIES = Object.freeze(['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github', 'koken'] as const);
 export type Repository = (typeof REPOSITORIES)[number];
 export const DEFAULT_REPOSITORY: Repository = 'kurashi-ledger';
 // 文書のpushのURL（利用者名なし。範囲を限った資格情報のhelperが当たる）。

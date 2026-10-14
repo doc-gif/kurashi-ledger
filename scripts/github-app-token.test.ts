@@ -521,8 +521,8 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_SSH: '/x',
     GIT_SSH_COMMAND: 'ssh -i x',
     GIT_CONFIG_PARAMETERS: "'url.ssh://github.com/.insteadof'='https://github.com/'",
-    GIT_CONFIG_COUNT: '9',
-    GIT_CONFIG_KEY_8: 'x',
+    GIT_CONFIG_COUNT: '10',
+    GIT_CONFIG_KEY_9: 'x',
     GIT_TRACE: '1',
     GIT_TRACE_CURL: '1',
     GIT_TRACE_PACKET: '/tmp/x',
@@ -548,7 +548,7 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_GLOBAL: join(CONFIG_DIR, UNUSED_GIT_GLOBAL_CONFIG),
     GIT_SSH_COMMAND: 'false',
     GIT_TRACE_REDACT: '1',
-    GIT_CONFIG_COUNT: '8',
+    GIT_CONFIG_COUNT: '9',
     GIT_CONFIG_KEY_0: 'credential.helper',
     GIT_CONFIG_VALUE_0: '',
     GIT_CONFIG_KEY_1: 'credential.https://github.com.helper',
@@ -563,8 +563,10 @@ test('子の環境: Appのトークンだけを渡し、ghとgitが保存済み�
     GIT_CONFIG_VALUE_5: '',
     GIT_CONFIG_KEY_6: 'http.https://github.com/doc-gif/.github.git.extraheader',
     GIT_CONFIG_VALUE_6: '',
-    GIT_CONFIG_KEY_7: 'core.askPass',
+    GIT_CONFIG_KEY_7: 'http.https://github.com/doc-gif/koken.git.extraheader',
     GIT_CONFIG_VALUE_7: '',
+    GIT_CONFIG_KEY_8: 'core.askPass',
+    GIT_CONFIG_VALUE_8: '',
   });
   assert.equal(pushUrl(DEFAULT_REPOSITORY), 'https://github.com/doc-gif/kurashi-ledger.git');
   // helperはトークンの値を含まず、子の環境のGH_TOKENを読む。
@@ -1489,7 +1491,7 @@ const repoListed = (repository: string) => ({ status: 200, body: JSON.stringify(
 
 test('--repoの既定はkurashi-ledgerで、省略したときの要求・確認・子の環境は今と同じ', async () => {
   assert.equal(DEFAULT_REPOSITORY, 'kurashi-ledger');
-  assert.deepEqual([...REPOSITORIES], ['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github']);
+  assert.deepEqual([...REPOSITORIES], ['kurashi-ledger', 'mekiki', 'mekiki-claude', '.github', 'koken']);
   const parsed = parseArgs(['--agent', 'claude', '--purpose', 'implement', ...ID_ARGS, '--', 'true'], {});
   assert.ok(!parsed.help);
   assert.equal(parsed.options.repository, 'kurashi-ledger');
@@ -1498,12 +1500,12 @@ test('--repoの既定はkurashi-ledgerで、省略したときの要求・確認
   assert.equal(await run(args, h.deps), 0);
   assert.deepEqual(JSON.parse(h.calls[0]?.init.body ?? '{}').repositories, ['kurashi-ledger']);
   assert.equal(h.children[0]?.env['GIT_CONFIG_KEY_3'], 'http.https://github.com/doc-gif/kurashi-ledger.git.extraheader');
-  assert.equal(h.children[0]?.env['GIT_CONFIG_COUNT'], '8');
+  assert.equal(h.children[0]?.env['GIT_CONFIG_COUNT'], '9');
   assert.equal(h.calls[0]?.init.headers['User-Agent'], 'kurashi-ledger-github-app-token');
 });
 
 test('--repo mekikiは、トークンの要求・応答と触れるrepoの確認・pushのURLのextraheaderをmekikiにする', async () => {
-  for (const repository of ['mekiki', 'mekiki-claude', '.github'] as const) {
+  for (const repository of ['mekiki', 'mekiki-claude', '.github', 'koken'] as const) {
     assert.deepEqual(JSON.parse(tokenRequest(INSTALLATION_ID, 'x', 'implement', repository).body), {
       repositories: [repository],
       permissions: PURPOSES.implement,
@@ -1569,6 +1571,11 @@ test('許可リストの外・別のowner・パスの形の--repoは、鍵を読
     '.github/../mekiki',
     '..github',
     '.github/',
+    // kokenも名前の完全一致だけを受ける。
+    'Koken',
+    'koken.git',
+    'doc-gif/koken',
+    'koken/',
     'mekiki%2F..%2Fx',
     'mekiki\u0000',
     'https://github.com/doc-gif/mekiki',
@@ -1584,7 +1591,7 @@ test('許可リストの外・別のowner・パスの形の--repoは、鍵を読
     assert.deepEqual(h.children, []);
     assert.deepEqual(h.events, [], '引数の誤りでコマンドの解決まで進んだ');
     const err = h.err.join('');
-    assert.match(err, /--repoは kurashi-ledger・mekiki・mekiki-claude・\.github のどれか/);
+    assert.match(err, /--repoは kurashi-ledger・mekiki・mekiki-claude・\.github・koken のどれか/);
     // 使い方の文の前の、エラーの文に値を出さない。
     const message = err.split('\n\n')[0] ?? '';
     if (value.trim().length >= 3) assert.ok(!message.includes(value), `拒んだ値が出力にある: ${JSON.stringify(value)}`);
