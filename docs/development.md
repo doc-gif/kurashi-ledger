@@ -32,7 +32,7 @@ T02（[Issue #9](https://github.com/doc-gif/kurashi-ledger/issues/9)）の成果
 | Node.jsの対応する範囲 | `package.json`の`devEngines.runtime`・`engines`（`>=24.15.0 <25`） | npmが`npm ci`・`npm run`の前に検査する（`EBADDEVENGINES`） |
 | Pythonの対応する範囲 | 検査器（`tools/review_guard`）の起動時の検査（3.11以上） | 3.11未満なら起動しない |
 | 手元で使う正確な版 | `mise.toml`（`[tools]`の`node`・`python`） | miseが入れて切り替える。範囲の外の版は書かない |
-| CIで使う版 | `.github/workflows/ci.yml`。Node.jsは`package.json`の範囲の最新（`node-version-file: package.json`と`check-latest`）、Pythonは`'3.11'`（対応する最も古いマイナー） | runのSummaryとログに版が出る |
+| CIで使う版 | `.github/workflows/ci.yml`。Node.jsは`package.json`の範囲の最新（`node-version-file: package.json`と`check-latest`）、Pythonは`'3.11'`（対応する最も古いマイナー）。`.github/workflows/pr-body.yml`が呼ぶworkflowは依存のない道具だけを動かすので、runnerに入っているNode.jsを使う | runのSummaryとログに版が出る（`pr-body.yml`が呼ぶworkflowは`node --version`のstep） |
 
 mise.tomlの版の理由（確認日: 2026-10-03）:
 
@@ -158,7 +158,7 @@ T05で、ブラウザ試験の基盤としてPlaywrightを入れた（ADR-0004�
 
 ## CI
 
-T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない）と、mainへのpushで動く。
+T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない）と、mainへのpushで動く。PRの本文の見出しは、別のworkflow`.github/workflows/pr-body.yml`がPRのときだけ確かめる（下の表の`PR body`）。
 
 | ジョブ | OS | 内容 |
 | --- | --- | --- |
@@ -167,6 +167,7 @@ T05で`.github/workflows/ci.yml`を加えた。PR（baseのbranchを問わない
 | `review tools` | Linux・Windows・macOS | Python 3.11（検査器が対応する最も古い版）で、`guard.py validate`と、レビュー運用ツールの試験（`tools/review_guard/tests`、`.review/tests`）。unittestは0件・skip・期待した失敗でも0で終わるので、要約の行にそれらがあれば失敗にする |
 | `review plan` | Linux（PRのときだけ） | PRの計画の検査。baseのcheckoutにある検査器（`changed_paths.py`・`ci.py`）だけを実行し、PRのコードを実行しない（[CLI手順](../tools/review_guard/README.md)のテンプレートを配置したもの）。計画のないPRや、baseを取り込んでいないPRでは失敗する。Quality gateに含めることは、2026-10-03の所有者決定で承認された（所有者本人の確認: PR #18のCodexの記録5965890988） |
 | `Quality gate` | Linux | 上のすべてのジョブの結果をまとめる。どれかが失敗・中断・skip（欠けた）なら失敗にする（pushのときは、`review plan`がskipであることを求める）。PRでは、試験したmerge commitの親が、PRのbaseとheadのSHAであることを確かめる |
+| `PR body`（別のworkflow `pr-body.yml`） | Linux（PRのときだけ） | PRの本文が、アカウント共通のテンプレートの見出しをすべて埋めているかを確かめる。公開のdoc-gif/.githubの呼べるworkflow（`check-pr-body.yml`）を決まったSHAで呼び、その道具とテンプレートを使う。PRのコードは実行しない。Quality gateには含めない |
 
 - 結果の読み方: 各runのSummaryに、`npm test`の件数とskipした試験・理由・diagnostic・表との照合（OSごと、Node.jsの版つき）、ブラウザごとの結果、Quality gateの判定と、試験したcommit・PRのhead・baseのSHAが出る。レビューでは、最新のheadとbaseに対応するrunかを、このSHAで確かめる。runのあとでbaseが進んだ場合、その結果は古いbaseに対するものなので、baseを取り込んでやり直す。
 - 失敗・中断・skipの扱い: `npm test`の失敗・中断・todo・0件、失敗を期待した試験（`expectFailure`。要約ではpassに数えられる）、再実行で合格した試験と、表と違うskip（表にない試験のskip、表にある試験が飛ばされないこと、理由のないskip）は、`check:test-skips`が失敗にする。ブラウザ試験は上の照合。ジョブの失敗・中断・skipはQuality gateが失敗にする。一部のジョブの成功だけで、検証が済んだとは扱わない。
