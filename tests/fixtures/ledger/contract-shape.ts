@@ -7,6 +7,14 @@
 export type FactState = "known" | "unknown" | "not-stated" | "not-applicable";
 export const FACT_STATES: readonly FactState[] = ["known", "unknown", "not-stated", "not-applicable"];
 
+// 計算結果の契約の1（RoundingStepのmethod、Targetのprocedure）と、制度のケース・制度の規則の制度の名前。
+// 台帳の検査（ledger.test.ts）と制度の規則の検査（tests/rules/rules.test.ts）が同じ一覧を使う。
+export const ROUNDING_METHODS: readonly string[] = ["floor", "ceil", "half-up", "half-down"];
+export const PROCEDURES: readonly string[] = ["withholding", "year-end-adjustment", "tax-return", "levy", "premium", "recognition"];
+export const REGIMES: readonly string[] = ["income-tax", "resident-tax", "furusato", "nhi", "employee-insurance", "dependents"];
+// 制度のケースの雛形・未確認の値（docs/test-oracles/README.mdの「制度のケース」）。
+export const REGIME_PLACEHOLDER = "未確認";
+
 export type RecordType =
   | "employer"
   | "employment-term"

@@ -1,0 +1,1082 @@
+{
+  "schemaVersion": 1,
+  "ruleSetId": "jp-income-tax-salary-2026",
+  "version": "1",
+  "status": "draft",
+  "note": "所得税（令和8年分）の給与所得だけの居住者の年税額の制度データ。意味・範囲・選び方はdocs/rules/income-tax.md。金額は円。率は小数の文字列。sourceのrefはrules/manifest.jsonのsourcesのid。",
+  "employmentIncome": {
+    "description": "給与所得控除後の給与等の金額（所得金額調整控除の前）。給与等の収入金額が660万円未満なら表（所得税法別表第五と租税特別措置法第29条の4による令和8年分の表）の行の値、660万円以上なら式（表の最後の行の2,000万円で18,050,000円も、850万円以上の式と同じ値。2,000万円を超える給与は年末調整をしないが、確定申告では同じ式（給与所得控除の上限195万円）による）。表の行の値は、行の下限に率を掛けて定数を引いた値になっている（rows-linear）。rowsTranscribedは表から写した行で、検査がrangesの規則と一致することを確かめる。",
+    "source": {
+      "ref": "nta-nencho2026-table",
+      "location": "47〜54ページの表と備考"
+    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-ta-1410",
+        "location": "給与所得控除の表と注（660万円未満は別表第五による）"
+      },
+      {
+        "ref": "nta-nencho2026-computer",
+        "location": "1 給与所得控除後の給与等の金額の計算 ⑴年調給与額の算出・⑵計算式の表と注1〜4（220万円以上660万円未満は4,000円刻みの各階級の最低金額による）"
+      }
+    ],
+    "ranges": [
+      {
+        "from": 0,
+        "to": 741000,
+        "rule": "fixed",
+        "value": 0
+      },
+      {
+        "from": 741000,
+        "to": 2191000,
+        "rule": "minus",
+        "constant": 740000
+      },
+      {
+        "from": 2191000,
+        "to": 2193000,
+        "rule": "fixed",
+        "value": 1451000
+      },
+      {
+        "from": 2193000,
+        "to": 2196000,
+        "rule": "fixed",
+        "value": 1453000
+      },
+      {
+        "from": 2196000,
+        "to": 2200000,
+        "rule": "fixed",
+        "value": 1456000
+      },
+      {
+        "from": 2200000,
+        "to": 3600000,
+        "rule": "rows-linear",
+        "rowWidth": 4000,
+        "rate": "0.7",
+        "constant": 80000
+      },
+      {
+        "from": 3600000,
+        "to": 6600000,
+        "rule": "rows-linear",
+        "rowWidth": 4000,
+        "rate": "0.8",
+        "constant": 440000
+      },
+      {
+        "from": 6600000,
+        "to": 8500000,
+        "rule": "linear",
+        "rate": "0.9",
+        "constant": 1100000,
+        "roundingItem": "employment-income"
+      },
+      {
+        "from": 8500000,
+        "to": null,
+        "rule": "minus",
+        "constant": 1950000
+      }
+    ],
+    "rowsTranscribed": [
+      {
+        "from": 2191000,
+        "to": 2193000,
+        "value": 1451000,
+        "location": "47ページ"
+      },
+      {
+        "from": 2196000,
+        "to": 2200000,
+        "value": 1456000,
+        "location": "47ページ"
+      },
+      {
+        "from": 2200000,
+        "to": 2204000,
+        "value": 1460000,
+        "location": "47ページ"
+      },
+      {
+        "from": 2580000,
+        "to": 2584000,
+        "value": 1726000,
+        "location": "47ページ"
+      },
+      {
+        "from": 3596000,
+        "to": 3600000,
+        "value": 2437200,
+        "location": "49ページ"
+      },
+      {
+        "from": 3600000,
+        "to": 3604000,
+        "value": 2440000,
+        "location": "49ページ"
+      },
+      {
+        "from": 4500000,
+        "to": 4504000,
+        "value": 3160000,
+        "location": "51ページ"
+      },
+      {
+        "from": 5000000,
+        "to": 5004000,
+        "value": 3560000,
+        "location": "52ページ"
+      },
+      {
+        "from": 6596000,
+        "to": 6600000,
+        "value": 4836800,
+        "location": "54ページ"
+      }
+    ],
+    "salaryOnlyThresholdsCrossCheck": {
+      "description": "基礎控除の表の、収入が給与だけの場合の収入金額の上限（資料の括弧書き）。給与所得控除後の金額の規則から独立に確かめるために写す。",
+      "source": {
+        "ref": "nta-nencho2026-changes",
+        "location": "3ページ ⑴イの表"
+      },
+      "rows": [
+        {
+          "totalIncomeMax": 1320000,
+          "salaryRevenueMax": 2060000
+        },
+        {
+          "totalIncomeMax": 3360000,
+          "salaryRevenueMax": 4751999
+        },
+        {
+          "totalIncomeMax": 4890000,
+          "salaryRevenueMax": 6655556
+        },
+        {
+          "totalIncomeMax": 6550000,
+          "salaryRevenueMax": 8500000
+        },
+        {
+          "totalIncomeMax": 23500000,
+          "salaryRevenueMax": 25450000
+        }
+      ],
+      "spouseRows": {
+        "description": "配偶者控除額及び配偶者特別控除額の一覧表の【参考】欄（配偶者の収入が給与所得だけの場合の給与等の収入金額）。",
+        "source": {
+          "ref": "nta-nencho2026-rates",
+          "location": "55ページ〔参考〕の【参考】欄"
+        },
+        "rows": [
+          {
+            "totalIncomeMax": 620000,
+            "salaryRevenueMax": 1360000
+          },
+          {
+            "totalIncomeMax": 950000,
+            "salaryRevenueMax": 1690000
+          },
+          {
+            "totalIncomeMax": 1000000,
+            "salaryRevenueMax": 1740000
+          },
+          {
+            "totalIncomeMax": 1050000,
+            "salaryRevenueMax": 1790000
+          },
+          {
+            "totalIncomeMax": 1100000,
+            "salaryRevenueMax": 1840000
+          },
+          {
+            "totalIncomeMax": 1150000,
+            "salaryRevenueMax": 1890000
+          },
+          {
+            "totalIncomeMax": 1200000,
+            "salaryRevenueMax": 1940000
+          },
+          {
+            "totalIncomeMax": 1250000,
+            "salaryRevenueMax": 1990000
+          },
+          {
+            "totalIncomeMax": 1300000,
+            "salaryRevenueMax": 2040000
+          },
+          {
+            "totalIncomeMax": 1330000,
+            "salaryRevenueMax": 2070000
+          }
+        ]
+      }
+    }
+  },
+  "incomeAdjustmentDeduction": {
+    "description": "子ども・特別障害者等を有する者等の所得金額調整控除。給与等の収入金額が850万円を超え、本人が特別障害者、年齢23歳未満の扶養親族を有する、または特別障害者である同一生計配偶者か扶養親族を有する場合に、(給与等の収入金額（1,000万円超なら1,000万円）− 850万円）× 10%を給与所得控除後の金額から控除する。1円未満は切り上げ。給与所得と公的年金等の双方がある場合の所得金額調整控除は範囲外（給与所得だけ）。",
+    "source": {
+      "ref": "nta-ta-1411",
+      "location": "子ども・特別障害者等を有する者等の所得金額調整控除 (1)(2)"
+    },
+    "revenueOver": 8500000,
+    "revenueCap": 10000000,
+    "rate": "0.1",
+    "roundingItem": "income-adjustment-deduction"
+  },
+  "basicDeduction": {
+    "description": "合計所得金額に応じた基礎控除額（所得税法第86条の62万円に、合計所得金額655万円以下なら租税特別措置法第41条の16の2の加算額を加えた額。加算は居住者だけ）。合計所得金額2,500万円超は0。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "56ページ〔参考〕令和8年分の基礎控除額の表と注1・注2"
+    },
+    "statutoryBase": 620000,
+    "brackets": [
+      {
+        "totalIncomeMax": 4890000,
+        "amount": 1040000,
+        "addition": 420000
+      },
+      {
+        "totalIncomeMax": 6550000,
+        "amount": 670000,
+        "addition": 50000
+      },
+      {
+        "totalIncomeMax": 23500000,
+        "amount": 620000,
+        "addition": 0
+      },
+      {
+        "totalIncomeMax": 24000000,
+        "amount": 480000,
+        "addition": null
+      },
+      {
+        "totalIncomeMax": 24500000,
+        "amount": 320000,
+        "addition": null
+      },
+      {
+        "totalIncomeMax": 25000000,
+        "amount": 160000,
+        "addition": null
+      },
+      {
+        "totalIncomeMax": null,
+        "amount": 0,
+        "addition": null
+      }
+    ],
+    "crossCheckSources": [
+      {
+        "ref": "nta-nencho2026-changes",
+        "location": "3ページ ⑴イの表と注1・注2（62万円にそれぞれ42万円・5万円を加算）"
+      },
+      {
+        "ref": "nta-ta-1199",
+        "location": "基礎控除の金額の表（令和8年分の列）"
+      }
+    ]
+  },
+  "spouseDeduction": {
+    "description": "配偶者控除。その年12月31日（年の中途で死亡・出国する場合はその時）の現況で、生計を一にする民法上の配偶者で、合計所得金額が62万円以下。本人の合計所得金額が1,000万円を超えると適用なし。老人控除対象配偶者は12月31日現在の年齢が70歳以上。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "55ページ〔参考〕令和8年分の配偶者控除額及び配偶者特別控除額の一覧表"
+    },
+    "crossCheckSource": {
+      "ref": "nta-ta-1191",
+      "location": "配偶者控除の金額・控除対象配偶者となる人の範囲"
+    },
+    "spouseTotalIncomeMax": 620000,
+    "elderlyAgeMin": 70,
+    "elderlyBornOnOrBefore": "1957-01-01",
+    "byTaxpayerTotalIncome": [
+      {
+        "taxpayerTotalIncomeMax": 9000000,
+        "general": 380000,
+        "elderly": 480000
+      },
+      {
+        "taxpayerTotalIncomeMax": 9500000,
+        "general": 260000,
+        "elderly": 320000
+      },
+      {
+        "taxpayerTotalIncomeMax": 10000000,
+        "general": 130000,
+        "elderly": 160000
+      }
+    ],
+    "eligibility": [
+      {
+        "input": "legalSpouse",
+        "subject": "配偶者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "控除対象配偶者となる人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "subject": "配偶者と納税者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "subject": "配偶者",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1191",
+          "location": "同(4)"
+        }
+      }
+    ]
+  },
+  "spouseSpecialDeduction": {
+    "description": "配偶者特別控除。配偶者控除の適用がなく、配偶者の合計所得金額が62万円超133万円以下で、本人の合計所得金額が1,000万円以下。列は本人の合計所得金額（900万円以下・950万円以下・1,000万円以下）。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "55ページ〔参考〕令和8年分の配偶者控除額及び配偶者特別控除額の一覧表"
+    },
+    "crossCheckSource": {
+      "ref": "nta-ta-1195",
+      "location": "配偶者特別控除の金額（令和8年分以降）"
+    },
+    "taxpayerTotalIncomeMax": [
+      9000000,
+      9500000,
+      10000000
+    ],
+    "brackets": [
+      {
+        "spouseTotalIncomeOver": 620000,
+        "spouseTotalIncomeMax": 950000,
+        "amounts": [
+          380000,
+          260000,
+          130000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 950000,
+        "spouseTotalIncomeMax": 1000000,
+        "amounts": [
+          360000,
+          240000,
+          120000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1000000,
+        "spouseTotalIncomeMax": 1050000,
+        "amounts": [
+          310000,
+          210000,
+          110000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1050000,
+        "spouseTotalIncomeMax": 1100000,
+        "amounts": [
+          260000,
+          180000,
+          90000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1100000,
+        "spouseTotalIncomeMax": 1150000,
+        "amounts": [
+          210000,
+          140000,
+          70000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1150000,
+        "spouseTotalIncomeMax": 1200000,
+        "amounts": [
+          160000,
+          110000,
+          60000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1200000,
+        "spouseTotalIncomeMax": 1250000,
+        "amounts": [
+          110000,
+          80000,
+          40000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1250000,
+        "spouseTotalIncomeMax": 1300000,
+        "amounts": [
+          60000,
+          40000,
+          20000
+        ]
+      },
+      {
+        "spouseTotalIncomeOver": 1300000,
+        "spouseTotalIncomeMax": 1330000,
+        "amounts": [
+          30000,
+          20000,
+          10000
+        ]
+      }
+    ],
+    "eligibility": [
+      {
+        "input": "legalSpouse",
+        "subject": "配偶者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "配偶者特別控除を受けるための要件(2)イ"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "subject": "配偶者と納税者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(2)ロ"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "subject": "配偶者",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(2)ハ"
+        }
+      },
+      {
+        "input": "spouseAppliesSpecialDeduction",
+        "subject": "配偶者",
+        "object": "納税者（配偶者が自分の配偶者特別控除で納税者を対象にする）",
+        "allowed": [
+          false
+        ],
+        "meaning": "その年の年末調整・確定申告で、配偶者が配偶者特別控除の適用を受ける",
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(3)・冒頭の「夫婦の間で互いに受けることはできません」"
+        }
+      },
+      {
+        "anyOf": [
+          {
+            "input": "spouseWithheldViaSalaryDeclaration",
+            "allowed": [
+              false
+            ]
+          },
+          {
+            "input": "spouseAppliesSpecialDeduction",
+            "allowed": [
+              false
+            ]
+          }
+        ],
+        "subject": "配偶者",
+        "object": "納税者（配偶者の給与所得者の扶養控除等申告書・従たる給与の申告書の源泉控除対象配偶者）",
+        "meaning": "配偶者が年中に源泉控除対象配偶者がある居住者として源泉徴収されていない。ただし、配偶者が年末調整・確定申告で配偶者特別控除の適用を受けなかった場合を除く（源泉徴収されていても、spouseAppliesSpecialDeductionがfalseなら満たす）。資料の「等」のほかの除く場合は確かめていない",
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(4)"
+        }
+      },
+      {
+        "anyOf": [
+          {
+            "input": "spouseWithheldViaPensionDeclaration",
+            "allowed": [
+              false
+            ]
+          },
+          {
+            "input": "spouseAppliesSpecialDeduction",
+            "allowed": [
+              false
+            ]
+          }
+        ],
+        "subject": "配偶者",
+        "object": "納税者（配偶者の公的年金等の受給者の扶養親族等申告書の源泉控除対象配偶者）",
+        "meaning": "(4)と同じ形で、公的年金等の申告書による源泉徴収",
+        "source": {
+          "ref": "nta-ta-1195",
+          "location": "同(5)"
+        }
+      },
+      {
+        "input": "spouseClaimedAsSpecificRelativeByOther",
+        "subject": "ほかの居住者",
+        "object": "配偶者",
+        "allowed": [
+          false
+        ],
+        "meaning": "配偶者がほかの居住者の特定親族にも該当し、その居住者の特定親族特別控除の対象とされている（所属がほかの人。3-7の②）。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合②"
+        }
+      }
+    ],
+    "excludedIfSpouseDeduction": true
+  },
+  "dependentDeduction": {
+    "description": "扶養控除。扶養親族（その年12月31日（年の中途で死亡・出国する場合はその時）の現況で、配偶者以外の親族等で生計を一にし、合計所得金額が62万円以下）のうち、12月31日現在の年齢が16歳以上の控除対象扶養親族。特定扶養親族は19歳以上23歳未満、老人扶養親族は70歳以上。生年月日の範囲は資料の表のとおり（年齢は誕生日の前日に加わるので、1月1日生まれはその前の年の範囲に入る）。非居住者である扶養親族の要件は範囲外。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "56ページ〔参考〕令和8年分の扶養控除額等の表"
+    },
+    "crossCheckSource": {
+      "ref": "nta-ta-1180",
+      "location": "扶養控除の金額（注1〜注3）・扶養親族に該当する人の範囲"
+    },
+    "ageDeterminationDate": "2026-12-31",
+    "dependentTotalIncomeMax": 620000,
+    "categories": [
+      {
+        "category": "general",
+        "precedence": 2,
+        "ageMin": 16,
+        "bornOnOrBefore": "2011-01-01",
+        "amount": 380000
+      },
+      {
+        "category": "specific",
+        "precedence": 1,
+        "ageMin": 19,
+        "ageBelow": 23,
+        "bornFrom": "2004-01-02",
+        "bornTo": "2008-01-01",
+        "amount": 630000
+      },
+      {
+        "category": "elderly-other",
+        "precedence": 1,
+        "requires": [
+          {
+            "input": "cohabitingLinealAscendant",
+            "allowed": [
+              false
+            ]
+          }
+        ],
+        "ageMin": 70,
+        "bornOnOrBefore": "1957-01-01",
+        "amount": 480000
+      },
+      {
+        "category": "elderly-cohabiting-parent",
+        "precedence": 1,
+        "requires": [
+          {
+            "input": "cohabitingLinealAscendant",
+            "allowed": [
+              true
+            ]
+          }
+        ],
+        "ageMin": 70,
+        "bornOnOrBefore": "1957-01-01",
+        "amount": 580000
+      }
+    ],
+    "eligibility": [
+      {
+        "input": "relationship",
+        "subject": "親族",
+        "allowed": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly"
+        ],
+        "domain": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly",
+          "other"
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "扶養親族に該当する人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "subject": "親族と納税者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "subject": "親族",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1180",
+          "location": "同(4)"
+        }
+      },
+      {
+        "input": "dependentClaimedByOtherTaxpayer",
+        "subject": "ほかの居住者",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "ほかの居住者が、その年分の申告書等（扶養控除等申告書・確定申告書等）でこの親族を扶養親族としている（所属がほかの人）。2人以上の扶養親族に該当する親族の所属は申告書等の記載で決まる。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-ta-1181",
+          "location": "概要（所属は申告書等で定め、変更は所属の異なる記載をした申告書等の提出による）"
+        }
+      }
+    ],
+    "categoryRule": {
+      "description": "年齢で当たる区分のうちprecedenceの小さい区分を選ぶ（特定扶養親族と老人扶養親族は一般の控除対象扶養親族より先）。同じ年齢の範囲の区分（老人扶養親族の2つ）は、requiresの入力（同居老親等＝納税者・配偶者の直系尊属で普段同居しているか）で排他に決まる。cohabitingLinealAscendantは70歳以上の親族についてだけ必要",
+      "source": {
+        "ref": "nta-ta-1180",
+        "location": "扶養控除の金額の表と注3・注4"
+      }
+    }
+  },
+  "specificRelativeDeduction": {
+    "description": "特定親族特別控除。12月31日の現況で、生計を一にする年齢19歳以上23歳未満の親族等で、控除対象扶養親族に該当せず、合計所得金額が62万円超123万円以下。年齢はageDeterminationDate（12月31日）現在で、生年月日の範囲はbornFrom〜bornTo。控除対象扶養親族に当たる人には適用しない（excludedIfDependent）。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "56ページ〔参考〕令和8年分の特定親族特別控除額の表"
+    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-ta-1177",
+        "location": "特定親族特別控除の金額・特定親族に該当する人の範囲"
+      },
+      {
+        "ref": "nta-nencho2026-rates",
+        "location": "56ページ 扶養控除額等の表の特定扶養親族の生年月日の範囲（同じ19歳以上23歳未満）"
+      }
+    ],
+    "ageDeterminationDate": "2026-12-31",
+    "ageMin": 19,
+    "ageBelow": 23,
+    "bornFrom": "2004-01-02",
+    "bornTo": "2008-01-01",
+    "excludedIfDependent": true,
+    "eligibility": [
+      {
+        "input": "relationship",
+        "subject": "親族",
+        "allowed": [
+          "relative",
+          "foster-child"
+        ],
+        "domain": [
+          "relative",
+          "foster-child",
+          "entrusted-elderly",
+          "other"
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "特定親族に該当する人の範囲(1)"
+        }
+      },
+      {
+        "input": "sameHousehold",
+        "subject": "親族と納税者",
+        "allowed": [
+          true
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(2)"
+        }
+      },
+      {
+        "input": "businessFamilyEmployee",
+        "subject": "親族",
+        "allowed": [
+          false
+        ],
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(4)"
+        }
+      },
+      {
+        "input": "relativeAppliesSpecificRelativeDeduction",
+        "subject": "親族（特定親族）",
+        "object": "親族自身の特定親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "特定親族自身が、自分の所得税で特定親族特別控除を適用している",
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(7)"
+        }
+      },
+      {
+        "input": "relativeDeclaredSourceDeductionRelativeAndWithheld",
+        "subject": "親族（特定親族）",
+        "object": "親族が申告した別の人（親族の源泉控除対象親族である特定親族）",
+        "allowed": [
+          false
+        ],
+        "meaning": "特定親族が、自分の扶養控除等申告書に源泉控除対象親族の特定親族がいる旨を記載し、源泉徴収されている",
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(8)"
+        }
+      },
+      {
+        "input": "taxpayer.declaredAsSourceDeductionRelativeByOtherAndWithheld",
+        "scope": "taxpayer",
+        "subject": "ほかの人",
+        "object": "納税者本人",
+        "allowed": [
+          false
+        ],
+        "meaning": "ほかの人が、扶養控除等申告書（公的年金等の申告書を含む）に、納税者が源泉控除対象親族の特定親族である旨を記載し、源泉徴収されている（入力のtaxpayerに持つ）",
+        "source": {
+          "ref": "nta-ta-1177",
+          "location": "同(9)"
+        }
+      },
+      {
+        "input": "specificRelativeClaimedAsSpecificRelativeByOther",
+        "subject": "ほかの居住者",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "この親族が2人以上の居住者の特定親族に該当し、ほかの居住者の特定親族とされている（所属がほかの人）。いずれか1人の特定親族にだけ該当するとみなされる（3-7の①）。事前に確かめた入力として受け取り、不明ならincomplete",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合①"
+        }
+      },
+      {
+        "input": "specificRelativeClaimedAsSpouseByOther",
+        "subject": "ほかの居住者（この親族の配偶者）",
+        "object": "親族",
+        "allowed": [
+          false
+        ],
+        "meaning": "この親族がほかの居住者の配偶者特別控除の対象の配偶者にも該当し、その居住者の配偶者特別控除の対象とされている（所属がほかの人）。いずれか1人の特定親族か配偶者特別控除の対象の配偶者にだけ該当するとみなされる（3-7の②）",
+        "source": {
+          "ref": "nta-2025kiso-qa",
+          "location": "18ページ 3-7 特定親族特別控除の適用を受けられない場合②"
+        }
+      }
+    ],
+    "brackets": [
+      {
+        "totalIncomeOver": 620000,
+        "totalIncomeMax": 850000,
+        "amount": 630000
+      },
+      {
+        "totalIncomeOver": 850000,
+        "totalIncomeMax": 900000,
+        "amount": 610000
+      },
+      {
+        "totalIncomeOver": 900000,
+        "totalIncomeMax": 950000,
+        "amount": 510000
+      },
+      {
+        "totalIncomeOver": 950000,
+        "totalIncomeMax": 1000000,
+        "amount": 410000
+      },
+      {
+        "totalIncomeOver": 1000000,
+        "totalIncomeMax": 1050000,
+        "amount": 310000
+      },
+      {
+        "totalIncomeOver": 1050000,
+        "totalIncomeMax": 1100000,
+        "amount": 210000
+      },
+      {
+        "totalIncomeOver": 1100000,
+        "totalIncomeMax": 1150000,
+        "amount": 110000
+      },
+      {
+        "totalIncomeOver": 1150000,
+        "totalIncomeMax": 1200000,
+        "amount": 60000
+      },
+      {
+        "totalIncomeOver": 1200000,
+        "totalIncomeMax": 1230000,
+        "amount": 30000
+      }
+    ]
+  },
+  "personalDeductionAmounts": {
+    "description": "障害者控除・寡婦控除・ひとり親控除・勤労学生控除の額。該当するかどうかの要件は範囲外（入力）。ひとり親控除の38万円への引上げは令和9年分以後（令和8年分は35万円）。",
+    "source": {
+      "ref": "nta-nencho2026-rates",
+      "location": "56ページ〔参考〕令和8年分の扶養控除額等の表 ⑵〜⑸"
+    },
+    "crossCheckSource": {
+      "ref": "nta-2026kiso-qa",
+      "location": "Q3-2（ひとり親控除）"
+    },
+    "disabled": 270000,
+    "speciallyDisabled": 400000,
+    "cohabitingSpeciallyDisabled": 750000,
+    "widow": 270000,
+    "singleParent": 350000,
+    "workingStudent": 270000
+  },
+  "taxRates": {
+    "description": "課税される所得金額（1,000円未満切捨て後）に対する所得税額の速算表。年末調整の速算表は課税給与所得金額18,050,000円まで。",
+    "source": {
+      "ref": "nta-ta-2260",
+      "location": "所得税の速算表（平成27年分以後）"
+    },
+    "crossCheckSource": {
+      "ref": "nta-nencho2026-rates",
+      "location": "55ページ 令和8年分の年末調整のための算出所得税額の速算表"
+    },
+    "brackets": [
+      {
+        "taxableIncomeMax": 1949000,
+        "rate": "0.05",
+        "quickDeduction": 0
+      },
+      {
+        "taxableIncomeMax": 3299000,
+        "rate": "0.10",
+        "quickDeduction": 97500
+      },
+      {
+        "taxableIncomeMax": 6949000,
+        "rate": "0.20",
+        "quickDeduction": 427500
+      },
+      {
+        "taxableIncomeMax": 8999000,
+        "rate": "0.23",
+        "quickDeduction": 636000
+      },
+      {
+        "taxableIncomeMax": 17999000,
+        "rate": "0.33",
+        "quickDeduction": 1536000
+      },
+      {
+        "taxableIncomeMax": 39999000,
+        "rate": "0.40",
+        "quickDeduction": 2796000
+      },
+      {
+        "taxableIncomeMax": null,
+        "rate": "0.45",
+        "quickDeduction": 4796000
+      }
+    ]
+  },
+  "reconstructionSpecialIncomeTax": {
+    "description": "復興特別所得税。確定申告では基準所得税額×2.1%（1円未満切捨て）を所得税と併せる。年末調整では年調所得税額×102.1%（100円未満切捨て）を年調年税額とする。令和9年以後に生ずる所得の税率の引下げ（1.1%）と防衛特別所得税は、この版の範囲外。",
+    "source": {
+      "ref": "nta-nencho2026-tax",
+      "location": "39ページ 3⑶ 年調年税額の計算"
+    },
+    "crossCheckSource": {
+      "ref": "nta-ta-2260",
+      "location": "※2・注（復興特別所得税、令和9年以後の改正）"
+    },
+    "rate": "0.021",
+    "yearEndAdjustmentMultiplier": "1.021"
+  },
+  "yearEndAdjustmentLimits": {
+    "description": "12月に行う年末調整の対象者の条件（targetConditions）。扶養控除等申告書を提出し、年末まで勤務している人が対象で、給与の総額が2,000万円を超える人と、災害減免法による源泉徴収の猶予・還付を受けた人を除く。条件はmanifestのunsupportedInputs（年末調整だけ）とidで一対一に対応する。課税給与所得金額の上限（taxableIncomeMax）は、給与の上限の収入の給与所得控除後の金額で、別の条件ではない。",
+    "source": {
+      "ref": "nta-ta-2665",
+      "location": "12月に行う年末調整の対象となる人"
+    },
+    "crossCheckSources": [
+      {
+        "ref": "nta-hotei2025-scope",
+        "location": "【給与所得の源泉徴収票の提出範囲】(4)ロ"
+      },
+      {
+        "ref": "nta-nencho2026-rates",
+        "location": "55ページ 速算表の注2"
+      }
+    ],
+    "targetConditions": [
+      {
+        "id": "dependent-declaration",
+        "input": "yearEndAdjustment.dependentDeclarationSubmitted",
+        "allowed": [
+          true
+        ],
+        "meaning": "給与所得者の扶養控除等（異動）申告書を、年末調整を行う日までにこの支払者へ提出している",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "概要"
+        }
+      },
+      {
+        "id": "employed-at-year-end",
+        "input": "yearEndAdjustment.employedAtYearEnd",
+        "allowed": [
+          true
+        ],
+        "meaning": "1年を通じて勤務しているか、年の中途で就職し年末まで勤務している（年の中途の退職者の年末調整はこの版の範囲外）",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人"
+        }
+      },
+      {
+        "id": "salary-total-max",
+        "input": "salaryRevenue",
+        "maxRef": "salaryRevenueMax",
+        "meaning": "1年間に支払うべきことが確定した給与の総額がsalaryRevenueMax以下",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人の(1)"
+        }
+      },
+      {
+        "id": "disaster-relief",
+        "input": "yearEndAdjustment.disasterReliefWithholding",
+        "allowed": [
+          false
+        ],
+        "meaning": "災害減免法により、その年の給与の源泉徴収について徴収猶予や還付を受けていない",
+        "source": {
+          "ref": "nta-ta-2665",
+          "location": "12月に行う年末調整の対象となる人の(2)"
+        }
+      }
+    ],
+    "salaryRevenueMax": 20000000,
+    "taxableIncomeMax": 18050000
+  },
+  "rounding": [
+    {
+      "item": "employment-income",
+      "applies": "給与等の収入金額が660万円以上850万円未満の式の値",
+      "method": "floor",
+      "unit": "1",
+      "source": {
+        "ref": "nta-nencho2026-table",
+        "location": "54ページ（備考）"
+      }
+    },
+    {
+      "item": "income-adjustment-deduction",
+      "applies": "所得金額調整控除額",
+      "method": "ceil",
+      "unit": "1",
+      "source": {
+        "ref": "nta-ta-1411",
+        "location": "(2) 所得金額調整控除額の※"
+      }
+    },
+    {
+      "item": "taxable-income",
+      "applies": "課税される所得金額（課税給与所得金額）",
+      "method": "floor",
+      "unit": "1000",
+      "source": {
+        "ref": "egov-tsusoku",
+        "location": "第118条第1項"
+      },
+      "crossCheckSources": [
+        {
+          "ref": "nta-nencho2026-rates",
+          "location": "55ページ 速算表の注1"
+        },
+        {
+          "ref": "nta-shinkoku2025-taxable",
+          "location": "課税される所得金額の計算欄（千円未満の端数切捨て）"
+        }
+      ]
+    },
+    {
+      "item": "annual-tax",
+      "applies": "年調年税額（年末調整）",
+      "method": "floor",
+      "unit": "100",
+      "source": {
+        "ref": "nta-nencho2026-tax",
+        "location": "39ページ 3⑶ 年調年税額の計算"
+      }
+    },
+    {
+      "item": "reconstruction-tax",
+      "applies": "復興特別所得税額（確定申告）",
+      "method": "floor",
+      "unit": "1",
+      "source": {
+        "ref": "nta-shinkoku2025-reconstruction",
+        "location": "計算欄の※（令和8年分の手引きは取得日に未公表。令和7年分の手引きで確かめた）"
+      }
+    },
+    {
+      "item": "filing-tax-balance",
+      "applies": "申告納税額（確定申告。差し引いた金額が黒字の場合だけ。赤字（還付）は丸めない）",
+      "method": "floor",
+      "unit": "100",
+      "source": {
+        "ref": "egov-tsusoku",
+        "location": "第119条第1項"
+      },
+      "crossCheckSource": {
+        "ref": "nta-shinkoku2025-balance",
+        "location": "申告納税額 第一表（黒字の場合・赤字の場合）"
+      }
+    }
+  ]
+}

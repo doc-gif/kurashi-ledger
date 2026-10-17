@@ -21,6 +21,8 @@ Product tests are not implemented yet. T02 added tests for the development tooli
 
 T03 turned the contract examples (docs/contracts/examples.md) and these cases into a synthetic fixture ledger with expected results derived from the contract text, not from an implementation: `tests/fixtures/ledger/` (fixtures and the ledger check `ledger.test.ts`, which runs as part of `npm test` and in CI) and docs/test-oracles/README.md (how to read and use it, and open questions). Regime cases there must state the year, jurisdiction, primary sources and rounding before they can be approved.
 
+T14 (docs/rules/README.md) records the tax and insurance rules per regime from primary sources: `rules/manifest.json` (rule sets, versions, status, where each applies by year, procedure, reference point and jurisdiction, and the primary sources with their update and retrieval dates) and `rules/<regime>/*.json` (sourced parameters and rounding). The regime cases in `tests/fixtures/ledger/regime/regime-cases.json` carry synthetic inputs and expected values derived from those rules in two independent ways, and stay `draft` until another reviewer has confirmed them. `tests/rules/rules.test.ts` (part of `npm test`) checks the shape and cross-references, re-computes every recorded rounding step, and cross-checks transcribed table rows against the table rules; it does not prove that a rule or expected value is correct.
+
 ## Rules
 
 Before adopting a calculator, record official source examples and independently reviewed expected values. Test boundary equality, dates, age transitions, rounding, multiple employers and mid-year changes. Record the jurisdiction and rule version for each fixture.

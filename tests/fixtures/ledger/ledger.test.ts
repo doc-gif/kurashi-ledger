@@ -28,7 +28,11 @@ import {
   NOTICE_TYPES,
   PAYSLIP_AMOUNT_ITEMS,
   PREFIX,
+  PROCEDURES,
   RECORD_TYPES,
+  REGIME_PLACEHOLDER,
+  REGIMES,
+  ROUNDING_METHODS,
   recordTypeOfId,
   RUN_PREFIX,
   SPECS,
@@ -107,8 +111,6 @@ const AGG_STATES = ["complete", "incomplete", "not-applicable", "no-records"];
 const COMPARISON_STATES = ["rule-pending", "no-coverage", "incomplete", "match", "mismatch-unresolved", "mismatch-explained"];
 const SELECTIONS = ["annual-document", "entered-payslips", "no-annual-document", "adoption-needed"];
 const SERIES_STATUSES = ["current", "superseded", "unconfirmed-series", "voided", "not-in-view"];
-const ROUNDING_METHODS = ["floor", "ceil", "half-up", "half-down"];
-const PROCEDURES = ["withholding", "year-end-adjustment", "tax-return", "levy", "premium", "recognition"];
 
 // 派生キーの表（共通の型の11）: 状態と、refが指す記録の種類。
 const DERIVED_KEYS: Readonly<Record<string, { states: readonly string[]; ref: readonly RecordType[]; line?: "line" }>> = {
@@ -1401,8 +1403,6 @@ function checkOrderVariants(variants: unknown, replay: ReplayResult, ops: Obj[],
   }
 }
 
-const REGIME_PLACEHOLDER = "未確認";
-const REGIMES = ["income-tax", "resident-tax", "furusato", "nhi", "employee-insurance", "dependents"];
 
 function hasNumber(v: unknown): boolean {
   if (typeof v === "number") return true;
@@ -1489,10 +1489,15 @@ const REGIME_FIELDS: Readonly<Record<string, (v: unknown, c: Obj, target: Obj) =
     });
     return out;
   },
-  derivation: (v) =>
-    isObj(v) && nonEmpty(v["method"]) && nonEmpty(v["reviewedBy"]) && v["independentOfImplementation"] === true
-      ? []
-      : ["{ method（空でない）, reviewedBy（空でない）, independentOfImplementation: true }"],
+  // T14: 期待値は2通りの独立した導き方で求める（docs/rules/README.mdの「期待値の導き方」）。crossCheckは2つ目の導き方。
+  // reviewedByは確かめた別の担当（レビューの記録）。レビュー前のdraftだけ「未確認」を許し、approvedでは許さない。
+  derivation: (v, c) => {
+    if (!isObj(v) || !nonEmpty(v["method"]) || !nonEmpty(v["crossCheck"]) || !nonEmpty(v["reviewedBy"]) || v["independentOfImplementation"] !== true) {
+      return ["{ method（空でない）, crossCheck（2つ目の独立した導き方。空でない）, reviewedBy（空でない）, independentOfImplementation: true }"];
+    }
+    if (c["status"] === "approved" && v["reviewedBy"] === REGIME_PLACEHOLDER) return ["approvedのreviewedByが未確認（別の担当が確かめた記録が要る）"];
+    return [];
+  },
 };
 
 export function validateRegimeCase(c: unknown, where: string, problems: Problems): void {
@@ -1791,7 +1796,7 @@ const APPROVED = {
   rounding: [{ itemKey: "a", method: "floor", unit: "1", basis: "rule", location: "第2条" }],
   input: { synthetic: "架空の入力" },
   expected: { results: [{ key: "a", valueType: "yen", value: { state: "known", value: 1 } }] },
-  derivation: { method: "m", reviewedBy: "r", independentOfImplementation: true },
+  derivation: { method: "m", crossCheck: "c", reviewedBy: "r", independentOfImplementation: true },
 };
 
 function runRegime(c: unknown): string[] {
@@ -1806,6 +1811,13 @@ test("検査の自己確認: approvedの制度のケースの見本は通る（l
   assert.deepEqual(runRegime(levy), []);
   const premium = { ...APPROVED, regime: "employee-insurance", target: { ...APPROVED.target, procedure: "premium", referencePoint: { kind: "month", month: "2030-04" } } };
   assert.deepEqual(runRegime(premium), []);
+});
+
+test("検査の自己確認: draftは確かめた担当が未確認でもよいが、2つ目の導き方は要る", () => {
+  const draft = { ...APPROVED, status: "draft", derivation: { ...APPROVED.derivation, reviewedBy: "未確認" } };
+  assert.deepEqual(runRegime(draft), []);
+  const p = runRegime({ ...draft, derivation: { method: "m", reviewedBy: "未確認", independentOfImplementation: true } });
+  assert.ok(p.some((x) => x.includes("crossCheck")), p.join(" / "));
 });
 
 test("検査の自己確認: approvedで必須の値がnull・空・形の違う値なら見つける", () => {
@@ -1827,7 +1839,10 @@ test("検査の自己確認: approvedで必須の値がnull・空・形の違う
     ["expectedの値が型に合わない", { ...APPROVED, expected: { results: [{ key: "a", valueType: "yen", value: { state: "known", value: 1.5 } }] } }, "expected"],
     ["derivation.methodが空", { ...APPROVED, derivation: { ...APPROVED.derivation, method: "" } }, "derivation"],
     ["derivation.reviewedByが空白", { ...APPROVED, derivation: { ...APPROVED.derivation, reviewedBy: "  " } }, "derivation"],
-    ["独立に導いたことがない", { ...APPROVED, derivation: { method: "m", reviewedBy: "r" } }, "derivation"],
+    ["独立に導いたことがない", { ...APPROVED, derivation: { method: "m", crossCheck: "c", reviewedBy: "r" } }, "derivation"],
+    ["2つ目の導き方がない", { ...APPROVED, derivation: { method: "m", reviewedBy: "r", independentOfImplementation: true } }, "crossCheck"],
+    ["2つ目の導き方が空白", { ...APPROVED, derivation: { ...APPROVED.derivation, crossCheck: " " } }, "crossCheck"],
+    ["approvedの確かめた担当が未確認", { ...APPROVED, derivation: { ...APPROVED.derivation, reviewedBy: "未確認" } }, "reviewedBy"],
     ["yearがnull", { ...APPROVED, target: { ...t, year: null } }, "target.year"],
     ["yearの種類がyearKindと違う", { ...APPROVED, target: { ...t, year: { kind: "fiscal", year: 2030 } } }, "target.year"],
     ["yearKindが未確認", { ...APPROVED, target: { ...t, yearKind: "未確認" } }, "yearKind"],
