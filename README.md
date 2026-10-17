@@ -35,7 +35,7 @@
 - [実装AIとレビューAIの役割分担](docs/github-agent-operations.md)
 - [PRの完了報告・指摘対応・再レビュー](docs/pr-review-loop.md)
 - [AIのGitHub App（CodexとClaudeの身元、トークンの発行）](docs/github-apps.md)
-- [人・AI共通のレビュー受付の設計](docs/review-dispatch-design.md)と[実装](docs/review-dispatch-implementation.md)・[導入手順](docs/review-dispatch-runbook.md)（Issue #45・#50、既定off）
+- レビュー受付（Issue #45・#50）は、管理者の判断で2026-10-13に止め、コードを消した。設計・実装・導入手順の文書は[消す前のcommit](https://github.com/doc-gif/kurashi-ledger/tree/29cab0c3b25d61ae554dfff744f03a0cfc03ac12/docs)にある
 - [修正前の整合確認とレビュー運用ツール](docs/review-prevention.md)
 - [Claude Code等へ渡す定期確認の指示](docs/external-worker.md)
 - [最初の担当へ渡すプロンプト（T00）](docs/first-worker-prompt.md)

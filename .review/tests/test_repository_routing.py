@@ -1,7 +1,7 @@
 """Kurashi-specific routing checks; retained here when the generic tool is extracted.
 
 Stage 4 of mekiki (design 8): the routing is checked with both ledgers until stage 5 removes the old one.
-- old: .review/invariants.json and .review/findings.json (PR<N>-R<NNN> IDs; the frozen dispatcher reads them).
+- old: .review/invariants.json and .review/findings.json (PR<N>-R<NNN> IDs; kept until the new ledger is rebuilt, although the old dispatcher is gone).
 - new: the project ledger .review/causes/, the global ID catalogue .review/mekiki/global-ids.json and
   [causes.paths] of .review/config.toml (C-NNNN IDs; the CI validate step and, once on main, ci.py read them).
 """

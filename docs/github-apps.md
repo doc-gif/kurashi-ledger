@@ -39,7 +39,7 @@ serviceの名前に入っている`reviewer`・`implementer`は、所有者が�
 | Metadata | Read-only | 必須（GitHubが自動で付ける） |
 | Administration | **なし** | rulesetとrepoの設定を変えられないようにする |
 
-webhookは、受付の受信に使うCodexのAppだけ（[導入手順](review-dispatch-runbook.md#11-webhookの秘密と購読codexのapp)）。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
+webhookは使わない。以前はレビュー受付の受信にCodexのAppのwebhookを使っていたが、2026-10-13に受付を止めたときに、管理者が無効にした（[#90](https://github.com/doc-gif/kurashi-ledger/pull/90)）。インストールできるのは所有者のアカウントだけ（「Only on this account」）。
 
 ### 所有者が行ったこと
 
@@ -90,7 +90,7 @@ env -u NODE_OPTIONS node "$KL_APP_TOKEN_DIR/github-app-token.ts" --agent <codex|
 
   | 用途 | 権限 | 使う場面 |
   | --- | --- | --- |
-  | `dispatch-read` | contents・pull_requests・issues・actions・checks・statuses:read（metadata:readは追加分） | Codex Appによる受付の取得・shadow照合。書込み・worker用認証には使わない |
+  | `dispatch-read` | contents・pull_requests・issues・actions・checks・statuses:read（metadata:readは追加分） | 以前のレビュー受付の取得・shadow照合に使った（受付は2026-10-13に止めた）。書込み・worker用認証には使わない |
   | `review` | pull_requests:write、contents:read、actions:read、checks:read、statuses:read | レビューの投稿（APPROVE・REQUEST_CHANGES・COMMENT）、PRへのコメント、差分とCIの確認 |
   | `implement` | contents:write、pull_requests:write、issues:write、actions:read、checks:read、statuses:read | push、PR・Issue・コメントの作成、CIの確認 |
   | `implement-workflows` | `implement`＋workflows:write | `.github/workflows/`のファイルを変えるcommitをpushするとき（所有者決定: 必要なときだけ付ける）。自分で変えていなくても、workflowの変更を含むmainを取り込んだmerge commitのpushや、`.github/workflows/`の変更を含むPRのbranchの更新（update-branch）には要る（未確認。下の「確かめていないこと」） |
@@ -274,4 +274,4 @@ ghはHTTPの状態を標準エラーに出す（例: `HTTP 403`）。workflows�
 
 `dispatch-read`はcontents、pull_requests、issues、actions、checks、statusesをreadに限定します。metadata:readはGitHubの追加分です。書込み・Administration・workflowsは付けません。変更は権限制御として独立レビューし、承認済みmainの固定版へownerが更新してから使います。実鍵の試験をPR checkoutから行わないでください。
 
-[受付の導入手順](review-dispatch-runbook.md)は既定offから始めます。用途追加だけでWebhook・実AI・投稿・rulesetを有効にしません。
+レビュー受付は2026-10-13に止めたので、今はこの用途を使いません。用途が残っていても、Webhook・実AI・投稿・rulesetは有効になりません。

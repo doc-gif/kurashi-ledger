@@ -95,7 +95,7 @@ python3 tools/review_guard/guard.py triage --catalog .review/causes/invariants.j
 mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた。所有者の決定（2026-10-12、非公開のmekikiで記録）で、段5までは次の2組を並べて置く。
 
 - 新しい組は、固有の台帳`.review/causes/invariants.json`・`findings.json`・`origins.json`（各原因の元の指摘）と、共通のID目録`.review/mekiki/global-ids.json`と、`.review/config.toml`の`[causes.paths]`だ。IDは`C-NNNN`。CIの`validate`はこの組を検査する。baseに`.review/causes/`があれば、`ci.py`は計画をこの組で検査する。
-- 古い組は`.review/invariants.json`・`.review/findings.json`だ。IDは`PR<N>-R<NNN>`。今の受付（`scripts/lib/review-dispatch/`）がbaseから読むので、段5まで消さない。`.review/tests`が古い組も検査し、どちらの組でも同じpathが同じ不変条件を選ぶことを確かめる。
+- 古い組は`.review/invariants.json`・`.review/findings.json`だ。IDは`PR<N>-R<NNN>`。以前のレビュー受付がbaseから読んでいた。受付は2026-10-13に止めたが、古い組は、新しい組を作り直すまで消さない（下の「段5までの扱い」）。`.review/tests`が古い組も検査し、どちらの組でも同じpathが同じ不変条件を選ぶことを確かめる。
 - 目録は、`condition`・`question`・`lesson`・`sources`を持たない。不変条件のID・paths・related・scenarioのIDと、原因のIDとhashだけを持つ。原因のhashは`sha256(invariant_id + "\n" + cause_key)`で、計画の`cause_key`も同じ式で照合する。
 - 固有と共通でIDや原因が重なる、共通の`related`が固有を指す、目録の形が違う、のどれでも終了コード1。固有のfindingは`cause_key`を持ち、`cause_key_hash`を書けない。
 - 目録を使う`check`は、`context`に共通のIDを持つ計画を拒否する。出力の`empty_global_paths`は、どのpathも選ばない共通の不変条件の一覧だ。
@@ -103,7 +103,9 @@ mekikiの段4（設計8節）で、原因の台帳を共通と固有に分けた
 
 ### 段5までの扱い
 
-- 新しい原因は、今までどおり古い台帳（`.review/findings.json`、IDは`PR<N>-R<番号>`）にだけ足す。`.review/causes/`と目録は手で直さない。だから段5までに足した原因は、CIの計画の検査には出ない。粗探しは、受付が渡す古い台帳で全部の原因を見る。
+古いレビュー受付を止めて消したあと（[#90](https://github.com/doc-gif/kurashi-ledger/pull/90)）も、新しい組を作り直すPRまでは、次の扱いを続ける。
+
+- 新しい原因は、今までどおり古い台帳（`.review/findings.json`、IDは`PR<N>-R<番号>`）にだけ足す。`.review/causes/`と目録は手で直さない。だから段5までに足した原因は、CIの計画の検査には出ない。粗探しは、古い台帳で全部の原因を見る。
 - 段5の前に、その時点のmainの古い台帳と計画から、mekikiで分割を作り直す（C-NNNNはmekikiが振る）。そのPRで、`.review/causes/`、`.review/mekiki/global-ids.json`、`.review/mekiki/SOURCE.json`を作り直す。
 - そのPRでは、`SOURCE.json`の`split.input.commit`が、そのPRの`base_sha`と同じことを確かめる。違えば、2つのcommitの間で`.review/invariants.json`・`.review/findings.json`が変わっていないことを`git diff`で確かめる。変わっていれば作り直す。
 - `ci.py`の`policy_changes_to_review`と`ledger_changed`は、`.review/causes/`の変更だけを出す。`.review/mekiki/global-ids.json`、`.review/config.toml`、古い台帳の変更は出さない。段5まで、これらを変えるPRは、レビューの担当が差分を読んで確かめる。
